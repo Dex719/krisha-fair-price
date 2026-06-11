@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Krisha Fair Price — справедливая цена квартиры</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4">
+  <main class="w-full max-w-xl">
+    <h1 class="text-3xl font-bold text-center mb-2">🏠 Krisha Fair Price</h1>
+    <p class="text-slate-400 text-center mb-8">Вставь ссылку на объявление с Krisha.kz — узнай, справедливая ли цена</p>
+
+    <form id="form" class="flex gap-2 mb-6">
+      <input id="url" type="url" required placeholder="https://krisha.kz/a/show/..."
+        class="flex-1 rounded-xl bg-slate-900 border border-slate-700 px-4 py-3 outline-none focus:border-emerald-500" />
+      <button id="btn" type="submit"
+        class="rounded-xl bg-emerald-600 hover:bg-emerald-500 px-6 py-3 font-semibold transition disabled:opacity-50">
+        Оценить
+      </button>
+    </form>
+
+    <div id="result" class="hidden rounded-2xl bg-slate-900 border border-slate-800 p-6"></div>
+    <div id="error" class="hidden rounded-2xl bg-red-950 border border-red-800 p-4 text-red-300"></div>
+  </main>
+
+  <script>
+    const FEATURE_NAMES = {
+      area: "Площадь", rooms: "Комнаты", floor: "Этаж", total_floors: "Этажность",
+      floor_ratio: "Положение по этажам", is_first_floor: "Первый этаж", is_last_floor: "Последний этаж",
+      year_built: "Год постройки", building_age: "Возраст дома", ceiling: "Потолки",
+      lat: "Широта", lon: "Долгота", dist_center_km: "Расстояние до центра",
+      district: "Район", microdistrict: "Микрорайон", building_type: "Тип дома",
+      complex_name: "Жилой комплекс", user_type: "Продавец", category: "Категория",
+      photos_count: "Кол-во фото",
+    };
+    const VERDICTS = {
+      GOOD_DEAL: ["💸 Выгодно!", "text-emerald-400"],
+      FAIR: ["✅ Справедливая цена", "text-sky-400"],
+      OVERPRICED: ["🔥 Переплата", "text-red-400"],
+    };
+    const fmt = (n) => new Intl.NumberFormat("ru-RU").format(Math.round(n)) + " ₸";
+
+    document.getElementById("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("btn");
+      const result = document.getElementById("result");
+      const error = document.getElementById("error");
+      result.classList.add("hidden");
+      error.classList.add("hidden");
+      btn.disabled = true;
+      btn.textContent = "Думаю…";
+      try {
+        const resp = await fetch("/api/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: document.getElementById("url").value }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || "Что-то пошло не так");
+        const [label, cls] = VERDICTS[data.verdict] || ["🤔", "text-slate-300"];
+        result.innerHTML = `
+          <p class="text-sm text-slate-400 mb-1">${data.title || ""} · ${data.address || ""}</p>
+          <p class="text-2xl font-bold ${cls} mb-4">${label}
+            ${data.diff_pct != null ? `<span class="text-base font-normal text-slate-400">(${data.diff_pct > 0 ? "+" : ""}${data.diff_pct}% к справедливой)</span>` : ""}
+          </p>
+          <div class="grid grid-cols-2 gap-4 mb-4">
+            <div><p class="text-slate-500 text-sm">Цена в объявлении</p><p class="text-lg font-semibold">${data.actual_price ? fmt(data.actual_price) : "—"}</p></div>
+            <div><p class="text-slate-500 text-sm">Справедливая цена</p><p class="text-lg font-semibold">${fmt(data.fair_price)}</p></div>
+          </div>
+          <p class="text-slate-500 text-sm mb-2">Что влияет на цену:</p>
+          <ul class="space-y-1 text-sm">
+            ${data.top_factors.map(f => `
+              <li class="flex justify-between">
+                <span>${FEATURE_NAMES[f.feature] || f.feature}</span>
+                <span class="${f.impact > 0 ? "text-emerald-400" : "text-red-400"}">${f.impact > 0 ? "▲ повышает" : "▼ понижает"}</span>
+              </li>`).join("")}
+          </ul>`;
+        result.classList.remove("hidden");
+      } catch (err) {
+        error.textContent = err.message;
+        error.classList.remove("hidden");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Оценить";
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Lint
+        run: ruff check src tests scripts
+      - name: Tests
+        run: pytest -q
+
+# ⚠️ GitHub App Viktor'а не имеет права создавать workflow-файлы.
+# Чтобы включить CI, выполни локально (или через веб-интерфейс GitHub):
+#   git mv .github/ci.yml.example .github/workflows/ci.yml
+#   git commit -m "ci: enable GitHub Actions" && git push

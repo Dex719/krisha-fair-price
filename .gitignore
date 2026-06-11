@@ -1,6 +1,31 @@
-venv/
-cache/
+# Python
 __pycache__/
-*.db
-*.parquet
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Данные и артефакты (не коммитим — большие)
+data/*.db
+data/*.csv
+models/*.cbm
+models/*.json
+reports/*.png
+
+# но папки сохраняем
+!data/.gitkeep
+!models/.gitkeep
+!reports/.gitkeep
+
+# Окружение
 .env
+.DS_Store
+.idea/
+.vscode/
+
+# catboost
+catboost_info/
