@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Статистика рынка — Krisha Fair Price</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-8">
+  <main class="w-full max-w-4xl mx-auto">
+    <div class="flex items-center justify-between mb-2">
+      <h1 class="text-3xl font-bold">📊 Рынок квартир Алматы</h1>
+      <a href="/" class="text-emerald-400 hover:text-emerald-300 text-sm">← Оценить квартиру</a>
+    </div>
+    <p id="meta" class="text-slate-400 mb-8">Загрузка…</p>
+
+    <div id="cards" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8 hidden">
+      <div class="rounded-2xl bg-slate-900 border border-slate-800 p-4">
+        <p class="text-slate-500 text-sm">Объявлений</p>
+        <p id="c-total" class="text-2xl font-bold"></p>
+      </div>
+      <div class="rounded-2xl bg-slate-900 border border-slate-800 p-4">
+        <p class="text-slate-500 text-sm">Медианная цена</p>
+        <p id="c-price" class="text-2xl font-bold"></p>
+      </div>
+      <div class="rounded-2xl bg-slate-900 border border-slate-800 p-4">
+        <p class="text-slate-500 text-sm">Медиана ₸/м²</p>
+        <p id="c-ppsm" class="text-2xl font-bold"></p>
+      </div>
+      <div class="rounded-2xl bg-slate-900 border border-slate-800 p-4">
+        <p class="text-slate-500 text-sm">Новостройки / вторичка</p>
+        <p id="c-cat" class="text-2xl font-bold"></p>
+      </div>
+    </div>
+
+    <div class="rounded-2xl bg-slate-900 border border-slate-800 p-6 mb-8">
+      <h2 class="font-semibold mb-4">Медианная цена за м² по районам</h2>
+      <canvas id="chart-district" height="220"></canvas>
+    </div>
+
+    <div class="grid sm:grid-cols-2 gap-8 mb-8">
+      <div class="rounded-2xl bg-slate-900 border border-slate-800 p-6">
+        <h2 class="font-semibold mb-4">Распределение цен</h2>
+        <canvas id="chart-hist" height="240"></canvas>
+      </div>
+      <div class="rounded-2xl bg-slate-900 border border-slate-800 p-6">
+        <h2 class="font-semibold mb-4">Медианная цена по комнатам</h2>
+        <canvas id="chart-rooms" height="240"></canvas>
+      </div>
+    </div>
+
+    <div id="error" class="hidden rounded-2xl bg-red-950 border border-red-800 p-4 text-red-300"></div>
+  </main>
+
+  <script>
+    const fmtMln = (n) => (n / 1_000_000).toFixed(1) + " млн ₸";
+    const fmtK = (n) => Math.round(n / 1000) + " тыс ₸";
+    Chart.defaults.color = "#94a3b8";
+    Chart.defaults.borderColor = "rgba(148,163,184,0.15)";
+
+    async function load() {
+      try {
+        const resp = await fetch("/api/stats");
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.detail || "Не удалось загрузить статистику");
+
+        document.getElementById("meta").textContent =
+          `Данные: ${data.source === "db" ? "живая база" : "снапшот при обучении"} · обновлено ${new Date(data.updated_at).toLocaleString("ru-RU")}`;
+        document.getElementById("c-total").textContent = data.total_listings.toLocaleString("ru-RU");
+        document.getElementById("c-price").textContent = fmtMln(data.median_price);
+        document.getElementById("c-ppsm").textContent = fmtK(data.median_ppsm);
+        document.getElementById("c-cat").textContent =
+          `${data.by_category.novostroiki} / ${data.by_category.vtorichka}`;
+        document.getElementById("cards").classList.remove("hidden");
+
+        new Chart(document.getElementById("chart-district"), {
+          type: "bar",
+          data: {
+            labels: data.by_district.map(d => d.district),
+            datasets: [{
+              label: "₸/м² (медиана)",
+              data: data.by_district.map(d => d.median_ppsm),
+              backgroundColor: "rgba(16,185,129,0.6)",
+              borderRadius: 6,
+            }],
+          },
+          options: {
+            indexAxis: "y",
+            plugins: { legend: { display: false }, tooltip: { callbacks: {
+              label: (ctx) => `${fmtK(ctx.parsed.x)} · ${data.by_district[ctx.dataIndex].n} объявл.`,
+            }}},
+            scales: { x: { ticks: { callback: (v) => Math.round(v / 1000) + "к" } } },
+          },
+        });
+
+        new Chart(document.getElementById("chart-hist"), {
+          type: "bar",
+          data: {
+            labels: data.price_hist.map(b => b.label),
+            datasets: [{ data: data.price_hist.map(b => b.count),
+              backgroundColor: "rgba(56,189,248,0.6)", borderRadius: 6 }],
+          },
+          options: { plugins: { legend: { display: false } } },
+        });
+
+        new Chart(document.getElementById("chart-rooms"), {
+          type: "bar",
+          data: {
+            labels: data.by_rooms.map(r => r.rooms + "-комн"),
+            datasets: [{ data: data.by_rooms.map(r => r.median_price / 1_000_000),
+              backgroundColor: "rgba(167,139,250,0.6)", borderRadius: 6 }],
+          },
+          options: {
+            plugins: { legend: { display: false }, tooltip: { callbacks: {
+              label: (ctx) => ctx.parsed.y.toFixed(1) + " млн ₸ · " + data.by_rooms[ctx.dataIndex].n + " объявл.",
+            }}},
+            scales: { y: { ticks: { callback: (v) => v + " млн" } } },
+          },
+        });
+      } catch (err) {
+        const el = document.getElementById("error");
+        el.textContent = err.message;
+        el.classList.remove("hidden");
+      }
+    }
+    load();
+  </script>
+</body>
+</html>

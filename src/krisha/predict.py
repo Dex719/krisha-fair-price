@@ -59,7 +59,7 @@ def top_factors(model: CatBoostRegressor, pool: Pool, features: list[str], n: in
 def predict_from_listing(listing: dict[str, Any]) -> dict[str, Any]:
     model, meta = load_model()
     features = meta["features"]
-    df = listing_to_frame(listing)
+    df = listing_to_frame(listing, ppsm_maps=meta.get("ppsm_maps"))
     pool = Pool(df[features], cat_features=meta["cat_features"])
     fair_price = float(np.expm1(model.predict(pool)[0]))
 

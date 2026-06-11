@@ -24,7 +24,14 @@ from krisha.config import (
     RANDOM_STATE,
     REPORTS_DIR,
 )
-from krisha.features import ALL_FEATURES, CAT_FEATURES, TARGET, build_features, clean
+from krisha.features import (
+    ALL_FEATURES,
+    CAT_FEATURES,
+    TARGET,
+    build_features,
+    clean,
+    compute_ppsm_maps,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,10 +71,14 @@ def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = T
     """Полный пайплайн обучения. Возвращает метрики (model vs baseline)."""
     if df is None:
         df = load_dataset()
-    df = build_features(clean(df))
+    df = clean(df)
     logger.info("После очистки: %s строк", len(df))
 
-    train_df, test_df = train_test_split(df, test_size=0.2, random_state=RANDOM_STATE)
+    raw_train, raw_test = train_test_split(df, test_size=0.2, random_state=RANDOM_STATE)
+    # ₸/м²-статистику считаем только на train, чтобы не было утечки в метрики
+    ppsm_maps = compute_ppsm_maps(raw_train)
+    train_df = build_features(raw_train, ppsm_maps=ppsm_maps)
+    test_df = build_features(raw_test, ppsm_maps=ppsm_maps)
     train_pool = Pool(train_df[ALL_FEATURES], train_df[TARGET], cat_features=CAT_FEATURES)
     test_pool = Pool(test_df[ALL_FEATURES], test_df[TARGET], cat_features=CAT_FEATURES)
 
@@ -99,10 +110,21 @@ def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = T
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
         model.save_model(str(MODEL_PATH))
         MODEL_META_PATH.write_text(json.dumps(
-            {"features": ALL_FEATURES, "cat_features": CAT_FEATURES, "metrics": metrics},
+            {
+                "features": ALL_FEATURES,
+                "cat_features": CAT_FEATURES,
+                "metrics": metrics,
+                "ppsm_maps": ppsm_maps,
+            },
             ensure_ascii=False, indent=2,
         ))
         _save_shap_report(model, test_df)
+        # Снапшот статистики рынка — деплой без БД отдаёт /api/stats из него
+        try:
+            from krisha.stats import snapshot_stats
+            snapshot_stats()
+        except Exception as exc:
+            logger.warning("Не удалось сохранить снапшот статистики: %s", exc)
         logger.info("Модель сохранена: %s", MODEL_PATH)
     return metrics
 

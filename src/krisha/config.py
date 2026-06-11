@@ -18,8 +18,14 @@ USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
-# Бережный режим: пауза между запросами (секунды, случайная в диапазоне)
-REQUEST_DELAY_RANGE = (2.0, 4.0)
+# Бережный режим: пауза между запросами (секунды, случайная в диапазоне).
+# Можно переопределить через env: KRISHA_DELAY_MIN / KRISHA_DELAY_MAX.
+import os as _os
+
+REQUEST_DELAY_RANGE = (
+    float(_os.environ.get("KRISHA_DELAY_MIN", "2.0")),
+    float(_os.environ.get("KRISHA_DELAY_MAX", "4.0")),
+)
 REQUEST_TIMEOUT = 30.0
 MAX_RETRIES = 3
 

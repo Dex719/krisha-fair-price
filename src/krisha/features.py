@@ -20,7 +20,8 @@ CAT_FEATURES = ["district", "microdistrict", "building_type", "complex_name", "u
 NUM_FEATURES = [
     "rooms", "area", "floor", "total_floors", "floor_ratio", "is_first_floor",
     "is_last_floor", "year_built", "building_age", "ceiling", "lat", "lon",
-    "dist_center_km", "photos_count",
+    "dist_center_km", "photos_count", "is_new_building",
+    "district_ppsm", "microdistrict_ppsm",
 ]
 ALL_FEATURES = NUM_FEATURES + CAT_FEATURES
 TARGET = "log_price"
@@ -47,7 +48,27 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
-def build_features(df: pd.DataFrame) -> pd.DataFrame:
+def compute_ppsm_maps(df: pd.DataFrame) -> dict:
+    """Медианная цена за м² по районам/микрорайонам (считать ТОЛЬКО на train-части).
+
+    Возвращаемый dict сохраняется в model_meta.json и используется в predict.
+    """
+    sub = df.dropna(subset=["price", "area"]).copy()
+    sub = sub[sub["area"] > 0]
+    sub["ppsm"] = sub["price"] / sub["area"]
+    for col in ("district", "microdistrict"):
+        if col not in sub:
+            sub[col] = MISSING_CAT
+    district = sub["district"].fillna(MISSING_CAT).astype(str)
+    micro = sub["microdistrict"].fillna(MISSING_CAT).astype(str)
+    return {
+        "district": sub.groupby(district)["ppsm"].median().to_dict(),
+        "microdistrict": sub.groupby(micro)["ppsm"].median().to_dict(),
+        "global": float(sub["ppsm"].median()),
+    }
+
+
+def build_features(df: pd.DataFrame, ppsm_maps: dict | None = None) -> pd.DataFrame:
     """Добавляет производные фичи. Работает и для одного объявления (predict)."""
     df = df.copy()
     for col in ["rooms", "area", "floor", "total_floors", "year_built", "ceiling",
@@ -70,11 +91,25 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = MISSING_CAT
         df[col] = df[col].fillna(MISSING_CAT).astype(str)
 
+    # Новостройка vs вторичка: категория krisha + свежий год постройки + продаёт ЖК
+    df["is_new_building"] = (
+        (df["category"] == "novostroiki")
+        | (df["building_age"] <= 1)
+        | (df["user_type"] == "complex")
+    ).astype(int)
+
+    # Медианная ₸/м² по району и микрорайону (из train-статистики, без утечки)
+    maps = ppsm_maps or {}
+    d_map, m_map = maps.get("district", {}), maps.get("microdistrict", {})
+    global_ppsm = maps.get("global", np.nan)
+    df["district_ppsm"] = df["district"].map(d_map).fillna(global_ppsm)
+    df["microdistrict_ppsm"] = df["microdistrict"].map(m_map).fillna(df["district_ppsm"])
+
     if "price" in df:
         df["log_price"] = np.log1p(df["price"])
     return df
 
 
-def listing_to_frame(listing: dict[str, Any]) -> pd.DataFrame:
+def listing_to_frame(listing: dict[str, Any], ppsm_maps: dict | None = None) -> pd.DataFrame:
     """Один распарсенный listing-dict → DataFrame с фичами для предсказания."""
-    return build_features(pd.DataFrame([listing]))
+    return build_features(pd.DataFrame([listing]), ppsm_maps=ppsm_maps)
