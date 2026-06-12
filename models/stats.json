@@ -1,135 +1,135 @@
 {
-  "total_listings": 6102,
+  "total_listings": 7050,
   "median_price": 42000000,
-  "median_ppsm": 736842,
+  "median_ppsm": 739415,
   "by_district": [
     {
       "district": "Медеуский",
-      "n": 479,
-      "median_ppsm": 915750,
-      "median_price": 65750000
+      "n": 564,
+      "median_ppsm": 938478,
+      "median_price": 67000000
     },
     {
       "district": "Бостандыкский",
-      "n": 1259,
-      "median_ppsm": 915596,
+      "n": 1519,
+      "median_ppsm": 920000,
       "median_price": 63000000
     },
     {
       "district": "Алмалинский",
-      "n": 728,
-      "median_ppsm": 833333,
-      "median_price": 48000000
+      "n": 858,
+      "median_ppsm": 828571,
+      "median_price": 47000000
     },
     {
       "district": "Ауэзовский",
-      "n": 965,
-      "median_ppsm": 732113,
+      "n": 1094,
+      "median_ppsm": 730329,
       "median_price": 40500000
     },
     {
       "district": "Наурызбайский",
-      "n": 845,
-      "median_ppsm": 658163,
+      "n": 945,
+      "median_ppsm": 657731,
       "median_price": 34500000
     },
     {
       "district": "Жетысуский",
-      "n": 283,
-      "median_ppsm": 624657,
+      "n": 328,
+      "median_ppsm": 625657,
       "median_price": 35000000
     },
     {
       "district": "Алатауский",
-      "n": 946,
-      "median_ppsm": 619286,
+      "n": 1055,
+      "median_ppsm": 621212,
       "median_price": 33500000
     },
     {
       "district": "Турксибский",
-      "n": 474,
-      "median_ppsm": 607355,
-      "median_price": 32500000
+      "n": 553,
+      "median_ppsm": 604060,
+      "median_price": 32000000
     }
   ],
   "price_hist": [
     {
       "label": "0–20 млн",
-      "count": 223
+      "count": 266
     },
     {
       "label": "20–30 млн",
-      "count": 1161
+      "count": 1314
     },
     {
       "label": "30–40 млн",
-      "count": 1405
+      "count": 1609
     },
     {
       "label": "40–50 млн",
-      "count": 1055
+      "count": 1219
     },
     {
       "label": "50–60 млн",
-      "count": 699
+      "count": 813
     },
     {
       "label": "60–80 млн",
-      "count": 725
+      "count": 812
     },
     {
       "label": "80–100 млн",
-      "count": 309
+      "count": 370
     },
     {
       "label": "100–150 млн",
-      "count": 279
+      "count": 340
     },
     {
       "label": "150–250 млн",
-      "count": 173
+      "count": 213
     },
     {
       "label": "250+ млн",
-      "count": 73
+      "count": 94
     }
   ],
   "by_rooms": [
     {
       "rooms": 1,
-      "n": 1418,
+      "n": 1635,
       "median_price": 26500000
     },
     {
       "rooms": 2,
-      "n": 2360,
+      "n": 2721,
       "median_price": 39500000
     },
     {
       "rooms": 3,
-      "n": 1837,
-      "median_price": 55000000
+      "n": 2105,
+      "median_price": 55500000
     },
     {
       "rooms": 4,
-      "n": 414,
-      "median_price": 90081716
+      "n": 493,
+      "median_price": 91750000
     },
     {
       "rooms": 5,
-      "n": 44,
-      "median_price": 187500000
+      "n": 57,
+      "median_price": 180000000
     },
     {
       "rooms": 6,
-      "n": 17,
-      "median_price": 310000000
+      "n": 23,
+      "median_price": 300000000
     }
   ],
   "by_category": {
     "novostroiki": 245,
-    "vtorichka": 5857
+    "vtorichka": 6805
   },
-  "updated_at": "2026-06-12T00:34:11.959802+00:00",
+  "updated_at": "2026-06-12T07:44:34.651287+00:00",
   "source": "db"
 }
