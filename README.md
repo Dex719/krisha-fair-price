@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="static/avatar.png" alt="Krisha Fair Price" width="96" />
+<img src="static/avatar.png" alt="Krisha Fair Price" width="110" />
 
 # Krisha Fair Price
 
