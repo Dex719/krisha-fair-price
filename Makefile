@@ -1,4 +1,4 @@
-.PHONY: install crawl crawl-full crawl-complexes train api test lint
+.PHONY: install crawl crawl-full crawl-complexes rescrape train api test lint
 
 install:        ## зависимости (venv создай заранее: python -m venv .venv && source .venv/bin/activate)
 	pip install -e ".[dev]"
@@ -11,6 +11,9 @@ crawl-full:     ## полный сбор: ~300 страниц
 
 crawl-complexes: ## разовый скрейп каталога ЖК Алматы (этап 2)
 	python scripts/crawl_complexes.py --skip-known
+
+rescrape:       ## этап 4: регулярный проход — история цен, дни на рынке
+	python scripts/rescrape.py
 
 train:          ## обучить модель
 	python scripts/train.py
