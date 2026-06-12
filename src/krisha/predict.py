@@ -15,6 +15,7 @@ from catboost import CatBoostRegressor, Pool
 
 from krisha.config import MODEL_META_PATH, MODEL_PATH
 from krisha.features import listing_to_frame
+from krisha.geo import build_location_details
 from krisha.scraping.client import PoliteClient
 from krisha.scraping.detail_parser import parse_detail
 
@@ -156,6 +157,7 @@ def predict_from_listing(listing: dict[str, Any]) -> dict[str, Any]:
         "top_factors": top_factors(model, pool, features),
         "details": build_details(listing),
         "complex_details": build_complex_details(listing),
+        "location_details": build_location_details(listing.get("lat"), listing.get("lon")),
         "photos": (listing.get("photos") or [])[:12],
         "description": (listing.get("description") or None),
     }
