@@ -4,12 +4,11 @@
 """
 
 import logging
+import time
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-
-import time
 
 from krisha.api.schemas import HealthResponse, PredictRequest, PredictResponse
 from krisha.config import MODEL_PATH, ROOT_DIR
