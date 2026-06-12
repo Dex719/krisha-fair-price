@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,100..125,300..900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/m3.css" />
-  <link rel="icon" type="image/png" href="/static/avatar.png" />
+  <link rel="icon" type="image/png" href="/static/avatar.png?v=2" />
   <script src="/static/icons.js"></script>
   <script>
     // до отрисовки — чтобы не мигала тема
@@ -26,7 +26,7 @@
   <div class="page page-narrow">
     <header class="top-bar reveal">
       <a class="brand" href="/">
-        <span class="logo"><img src="/static/avatar.png" alt="Krisha Fair Price" /></span>
+        <span class="logo"><img src="/static/avatar.png?v=2" alt="Krisha Fair Price" /></span>
         Krisha Fair Price
       </a>
       <div class="spacer"></div>
@@ -48,7 +48,9 @@
     </section>
 
     <form id="form" class="search-bar reveal" autocomplete="off">
-      <span data-icon="link"></span>
+      <button type="button" id="paste-btn" class="paste-btn" aria-label="Вставить ссылку из буфера обмена" title="Вставить из буфера">
+        <span data-icon="link" data-icon-size="22"></span>
+      </button>
       <input id="url" type="url" required placeholder="https://krisha.kz/a/show/…" aria-label="Ссылка на объявление" />
       <button id="btn" type="submit" class="btn btn-filled">
         <span id="btn-icon" data-icon="sparkles" data-icon-size="20"></span>
@@ -253,6 +255,35 @@
       }));
     }
 
+    /* ---------- вставка из буфера по клику на иконку ссылки ---------- */
+    const pasteBtn = document.getElementById("paste-btn");
+    pasteBtn.addEventListener("click", async () => {
+      const input = document.getElementById("url");
+      const iconWrap = pasteBtn.querySelector("[data-icon], .paste-icon");
+      try {
+        const text = (await navigator.clipboard.readText()).trim();
+        if (text) {
+          input.value = text;
+          iconWrap.innerHTML = kfpIcon("check-circle", 22);
+          pasteBtn.classList.add("ok");
+          setTimeout(() => {
+            iconWrap.innerHTML = kfpIcon("link", 22);
+            pasteBtn.classList.remove("ok");
+          }, 1300);
+        }
+      } catch (_) { /* буфер недоступен — просто фокус на поле */ }
+      input.focus();
+    });
+
+    /* анимация смены текста на кнопке */
+    const setBtnText = (t) => {
+      const el = document.getElementById("btn-text");
+      el.textContent = t;
+      el.classList.remove("text-swap");
+      void el.offsetWidth;
+      el.classList.add("text-swap");
+    };
+
     /* ---------- сабмит ---------- */
     document.getElementById("form").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -264,7 +295,7 @@
       error.style.display = "none";
       loading.style.display = "block";
       btn.disabled = true;
-      btnText.textContent = "Думаю…";
+      setBtnText("Думаю…");
       btnIcon.outerHTML = `<span id="btn-icon" class="spinner"></span>`;
       try {
         const resp = await fetch("/api/predict", {
@@ -281,7 +312,7 @@
       } finally {
         loading.style.display = "none";
         btn.disabled = false;
-        btnText.textContent = "Оценить";
+        setBtnText("Оценить");
         document.getElementById("btn-icon").outerHTML =
           `<span id="btn-icon">${kfpIcon("sparkles", 20)}</span>`;
       }

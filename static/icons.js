@@ -39,3 +39,20 @@
     window.kfpApplyIcons();
   }
 })();
+
+/* Ripple при нажатии на кнопки (M3 state layer) */
+(function () {
+  document.addEventListener("pointerdown", function (e) {
+    var btn = e.target.closest ? e.target.closest(".btn, .icon-btn, .paste-btn") : null;
+    if (!btn) return;
+    var rect = btn.getBoundingClientRect();
+    var size = Math.max(rect.width, rect.height);
+    var ink = document.createElement("span");
+    ink.className = "ripple-ink";
+    ink.style.width = ink.style.height = size + "px";
+    ink.style.left = (e.clientX - rect.left - size / 2) + "px";
+    ink.style.top = (e.clientY - rect.top - size / 2) + "px";
+    btn.appendChild(ink);
+    ink.addEventListener("animationend", function () { ink.remove(); });
+  });
+})();

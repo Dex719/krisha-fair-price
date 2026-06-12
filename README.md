@@ -9,7 +9,7 @@
 ![CatBoost](https://img.shields.io/badge/CatBoost-gradient%20boosting-FFCC00)
 ![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)
 ![Deployed on Railway](https://img.shields.io/badge/Railway-deployed-0B0D0E?logo=railway&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-17%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-25%20passing-brightgreen)
 
 ## ✨ What it does
 
@@ -17,6 +17,12 @@
 2. The service fetches the listing, extracts ~20 features (area, rooms, floor, building age, district, residential complex, coordinates, distance to city center…).
 3. A CatBoost model predicts the *fair* market price and compares it with the asking price.
 4. You get a verdict (`GOOD_DEAL` / `FAIR` / `OVERPRICED`), the deviation in %, and the top factors that drive the price up or down (SHAP values).
+
+## 🤖 Telegram bot
+
+The same model is available as a Telegram bot: **[@testadsjklasdjklbot](https://t.me/testadsjklasdjklbot)** — send it a Krisha.kz listing link and get the verdict right in the chat (photo, fair price, top price factors).
+
+It runs on the same Railway service via webhooks (`POST /tg/webhook`) — no extra server or polling worker needed. To enable it on your own deploy, set the `TELEGRAM_BOT_TOKEN` env variable; the webhook is registered automatically on startup.
 
 ## 📈 Model
 
@@ -65,10 +71,11 @@ src/krisha/
 ├── features.py     # cleaning + feature engineering (floor ratio, building age, dist to center, ₸/m² maps)
 ├── train.py        # CatBoost training, baseline comparison, SHAP report
 ├── predict.py      # URL → verdict pipeline
+├── bot.py          # Telegram bot: webhook updates → predict → reply
 ├── api/            # FastAPI app + static frontend
 └── db.py           # SQLite schema, upsert by listing id
 static/             # Material 3 Expressive UI: index (estimator) + stats (dashboard)
-tests/              # 17 tests: parsers (real-markup fixtures), features, DB, train smoke
+tests/              # 25 tests: parsers (real-markup fixtures), features, DB, train smoke
 ```
 
 ## ⚠️ Disclaimer
