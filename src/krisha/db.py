@@ -37,6 +37,29 @@ CREATE TABLE IF NOT EXISTS listings (
 );
 CREATE INDEX IF NOT EXISTS idx_listings_district ON listings(district);
 CREATE INDEX IF NOT EXISTS idx_listings_rooms ON listings(rooms);
+
+CREATE TABLE IF NOT EXISTS complexes (
+    id                  INTEGER PRIMARY KEY,      -- id ЖК на Krisha
+    url                 TEXT,
+    name                TEXT,                     -- «Maxima City» (без префикса ЖК)
+    name_norm           TEXT,                     -- нормализованное имя для джойна
+    region              TEXT,
+    address             TEXT,
+    developer           TEXT,                     -- застройщик
+    housing_class       TEXT,                     -- эконом / комфорт / бизнес / премиум
+    completion_year     INTEGER,                  -- год сдачи (последняя очередь)
+    deadline_text       TEXT,
+    construction_status TEXT,                     -- «Сдан в эксплуатацию» / «Строится»
+    material            TEXT,                     -- монолитный / кирпичный / панельный
+    max_floors          INTEGER,
+    facing              TEXT,                     -- отделка
+    apartments_count    INTEGER,
+    lat                 REAL,
+    lon                 REAL,
+    raw_params          TEXT,                     -- JSON всех распарсенных параметров
+    scraped_at          TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_complexes_name_norm ON complexes(name_norm);
 """
 
 UPSERT_SQL = """
@@ -66,6 +89,21 @@ LISTING_COLUMNS = [
 ]
 
 
+COMPLEX_COLUMNS = [
+    "id", "url", "name", "name_norm", "region", "address", "developer",
+    "housing_class", "completion_year", "deadline_text", "construction_status",
+    "material", "max_floors", "facing", "apartments_count", "lat", "lon", "raw_params",
+]
+
+COMPLEX_UPSERT_SQL = f"""
+INSERT INTO complexes ({", ".join(COMPLEX_COLUMNS)})
+VALUES ({", ".join(":" + c for c in COMPLEX_COLUMNS)})
+ON CONFLICT(id) DO UPDATE SET
+    {", ".join(f"{c} = excluded.{c}" for c in COMPLEX_COLUMNS if c != "id")},
+    scraped_at = datetime('now');
+"""
+
+
 @contextmanager
 def get_conn(db_path: Path | str = DB_PATH) -> Iterator[sqlite3.Connection]:
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -87,6 +125,20 @@ def upsert_listing(listing: dict[str, Any], db_path: Path | str = DB_PATH) -> No
     row = {col: listing.get(col) for col in LISTING_COLUMNS}
     with get_conn(db_path) as conn:
         conn.execute(UPSERT_SQL, row)
+
+
+def upsert_complex(complex_row: dict[str, Any], db_path: Path | str = DB_PATH) -> None:
+    row = {col: complex_row.get(col) for col in COMPLEX_COLUMNS}
+    with get_conn(db_path) as conn:
+        conn.execute(COMPLEX_UPSERT_SQL, row)
+
+
+def known_complex_ids(db_path: Path | str = DB_PATH) -> set[int]:
+    with get_conn(db_path) as conn:
+        try:
+            return {r[0] for r in conn.execute("SELECT id FROM complexes")}
+        except sqlite3.OperationalError:
+            return set()
 
 
 def known_ids(db_path: Path | str = DB_PATH) -> set[int]:

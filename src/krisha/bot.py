@@ -59,6 +59,10 @@ FEATURE_RU = {
     "has_intercom": "Домофон",
     "has_video_surveillance": "Видеонаблюдение",
     "security_count": "Опции безопасности",
+    "housing_class": "Класс жилья",
+    "developer": "Застройщик",
+    "completion_year": "Год сдачи ЖК",
+    "apartments_count": "Размер ЖК",
 }
 
 VERDICT_RU = {
