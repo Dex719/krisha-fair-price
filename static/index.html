@@ -102,6 +102,10 @@
       complex_name: "Жилой комплекс", user_type: "Продавец", category: "Категория",
       photos_count: "Кол-во фото", district_median_ppsm: "Уровень цен района",
       micro_median_ppsm: "Уровень цен микрорайона", is_new_building: "Новостройка",
+      district_ppsm: "Уровень цен района", microdistrict_ppsm: "Уровень цен микрорайона",
+      renovation: "Ремонт", toilet: "Санузел", furniture: "Мебель", parking: "Парковка",
+      balcony: "Балкон", has_security_guard: "Охрана", has_intercom: "Домофон",
+      has_video_surveillance: "Видеонаблюдение", security_count: "Опции безопасности",
     };
     const VERDICTS = {
       GOOD_DEAL: { label: "Выгодно!", icon: "trending-down", cls: "chip-good" },
@@ -109,6 +113,14 @@
       OVERPRICED: { label: "Переплата", icon: "flame", cls: "chip-bad" },
     };
     const fmt = (n) => new Intl.NumberFormat("ru-RU").format(Math.round(n)) + " ₸";
+
+    /* бейдж сделки: «ниже рынка на 8%» / «выше рынка на 12%» / «в рынке» */
+    const diffBadge = (pct) => {
+      const abs = Math.abs(pct).toFixed(1).replace(/\.0$/, "");
+      if (pct <= -1) return `ниже рынка на ${abs}%`;
+      if (pct >= 1) return `выше рынка на ${abs}%`;
+      return "в рынке";
+    };
 
     /* ---------- анимация чисел ---------- */
     function countUp(el, target, suffix) {
@@ -209,7 +221,7 @@
           <p class="label" style="margin:0 0 12px">${data.title || "Объявление"}${data.address ? " · " + data.address : ""}</p>
           <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:22px">
             <span class="chip ${v.cls}">${kfpIcon(v.icon, 20)}${v.label}</span>
-            ${data.diff_pct != null ? `<span class="body-lg" style="margin:0">${data.diff_pct > 0 ? "+" : ""}${data.diff_pct}% к справедливой</span>` : ""}
+            ${data.diff_pct != null ? `<span class="body-lg" style="margin:0">${diffBadge(data.diff_pct)}</span>` : ""}
           </div>
 
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px">
