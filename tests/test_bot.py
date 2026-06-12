@@ -1,0 +1,86 @@
+"""Тесты Telegram-бота: форматирование и обработка апдейтов (без сети)."""
+
+from krisha import bot
+
+SAMPLE_RESULT = {
+    "listing_id": 123,
+    "url": "https://krisha.kz/a/show/123",
+    "title": "2-комнатная квартира, 60 м², 5/9 этаж",
+    "address": "Алматы, Бостандыкский р-н",
+    "actual_price": 52_000_000,
+    "fair_price": 48_120_000.0,
+    "verdict": "FAIR",
+    "diff_pct": 8.1,
+    "top_factors": [
+        {"feature": "area", "impact": 0.21},
+        {"feature": "dist_center_km", "impact": -0.08},
+    ],
+    "photos": ["https://example.com/p1.jpg"],
+}
+
+
+def test_extract_url():
+    assert bot.extract_url("глянь https://krisha.kz/a/show/757565999 пожалуйста") == (
+        "https://krisha.kz/a/show/757565999"
+    )
+    assert bot.extract_url("просто текст") is None
+
+
+def test_format_reply_contains_key_fields():
+    text = bot.format_reply(SAMPLE_RESULT)
+    assert "52 000 000 ₸" in text
+    assert "48 120 000 ₸" in text
+    assert "Справедливая цена" in text
+    assert "+8.1%" in text
+    assert "Площадь" in text and "▲" in text
+    assert "Расстояние до центра" in text and "▼" in text
+
+
+def test_format_reply_without_actual_price():
+    result = dict(SAMPLE_RESULT, actual_price=None, verdict=None, diff_pct=None)
+    text = bot.format_reply(result)
+    assert "Цена в объявлении" not in text
+    assert "48 120 000 ₸" in text
+
+
+def test_handle_update_start_sends_help(monkeypatch):
+    calls = []
+    monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
+    bot.handle_update({"message": {"chat": {"id": 42}, "text": "/start"}})
+    assert calls and calls[0][0] == "sendMessage"
+    assert calls[0][1]["chat_id"] == 42
+    assert "krisha.kz" in calls[0][1]["text"]
+
+
+def test_handle_update_no_url_hint(monkeypatch):
+    calls = []
+    monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
+    bot.handle_update({"message": {"chat": {"id": 42}, "text": "сколько стоит квартира?"}})
+    assert calls[0][0] == "sendMessage"
+    assert "Не вижу ссылки" in calls[0][1]["text"]
+
+
+def test_handle_update_predicts_and_sends_photo(monkeypatch):
+    calls = []
+    monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
+    monkeypatch.setattr(bot, "predict_from_url", lambda url: SAMPLE_RESULT)
+    bot.handle_update({"message": {"chat": {"id": 42}, "text": "https://krisha.kz/a/show/123"}})
+    methods = [m for m, _ in calls]
+    assert "sendChatAction" in methods
+    assert "sendPhoto" in methods
+    photo_call = [kw for m, kw in calls if m == "sendPhoto"][0]
+    assert photo_call["photo"] == "https://example.com/p1.jpg"
+    assert "48 120 000 ₸" in photo_call["caption"]
+
+
+def test_handle_update_ignores_non_message():
+    # не должно падать
+    bot.handle_update({"callback_query": {"id": "1"}})
+    bot.handle_update({"message": {"chat": {"id": 42}}})  # без текста
+
+
+def test_webhook_secret_is_stable():
+    s1 = bot.webhook_secret("token123")
+    assert s1 == bot.webhook_secret("token123")
+    assert len(s1) == 32
+    assert s1 != bot.webhook_secret("other")
