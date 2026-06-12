@@ -21,6 +21,8 @@
     "has_intercom",
     "has_video_surveillance",
     "security_count",
+    "completion_year",
+    "apartments_count",
     "district",
     "microdistrict",
     "building_type",
@@ -31,7 +33,9 @@
     "toilet",
     "furniture",
     "parking",
-    "balcony"
+    "balcony",
+    "housing_class",
+    "developer"
   ],
   "cat_features": [
     "district",
@@ -44,13 +48,15 @@
     "toilet",
     "furniture",
     "parking",
-    "balcony"
+    "balcony",
+    "housing_class",
+    "developer"
   ],
   "metrics": {
     "model": {
-      "mae": 7184462.716928172,
-      "mape": 0.0998137955410601,
-      "r2": 0.8135124620386323
+      "mae": 7087111.541274776,
+      "mape": 0.09864515905993772,
+      "r2": 0.8422339306651246
     },
     "baseline": {
       "mae": 12105573.87850417,
@@ -59,7 +65,7 @@
     },
     "n_train": 5637,
     "n_test": 1410,
-    "trained_at": "2026-06-12T15:50:36.257309+00:00"
+    "trained_at": "2026-06-12T16:56:11.755898+00:00"
   },
   "ppsm_maps": {
     "district": {
