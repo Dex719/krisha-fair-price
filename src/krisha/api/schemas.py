@@ -17,6 +17,16 @@ class DetailItem(BaseModel):
     value: str
 
 
+class PricePoint(BaseModel):
+    price: int
+    observed_at: str
+
+
+class Liquidity(BaseModel):
+    median_days: int  # медиана дней до снятия у похожих (район + комнаты)
+    sample: int       # размер выборки снятых аналогов
+
+
 class PredictResponse(BaseModel):
     listing_id: int | None
     url: str | None
@@ -27,8 +37,13 @@ class PredictResponse(BaseModel):
     verdict: str | None  # GOOD_DEAL / FAIR / OVERPRICED
     diff_pct: float | None
     top_factors: list[Factor]
-    details: list[DetailItem] = []  # характеристики объявления (этаж, год, ремонт...)
-    photos: list[str] = []          # URL фото с krisha-photos.kcdn.online
+    details: list[DetailItem] = []          # характеристики объявления (этаж, год, ремонт...)
+    complex_details: list[DetailItem] = []  # этап 2: блок «О доме» из справочника ЖК
+    location_details: list[DetailItem] = [] # этап 3: блок «Локация» (walk score, POI)
+    price_history: list[PricePoint] = []    # этап 4: точки истории цены
+    days_on_market: int | None = None       # этап 4: дней в выдаче
+    liquidity: Liquidity | None = None      # этап 4: за сколько продаются аналоги
+    photos: list[str] = []                  # URL фото с krisha-photos.kcdn.online
     description: str | None = None
 
 
