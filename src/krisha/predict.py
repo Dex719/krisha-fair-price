@@ -137,6 +137,17 @@ def top_factors(model: CatBoostRegressor, pool: Pool, features: list[str], n: in
     ]
 
 
+def _with_hints(listing: dict[str, Any], factors: list[dict]) -> list[dict]:
+    """Подсказки со статистикой рынка к каждому фактору (fail-soft)."""
+    try:
+        from krisha.factor_hints import build_factor_hints
+
+        return build_factor_hints(listing, factors)
+    except Exception:  # noqa: BLE001
+        logger.exception("factor hints failed")
+        return factors
+
+
 def predict_from_listing(
     listing: dict[str, Any], flags_live: bool = True
 ) -> dict[str, Any]:
@@ -156,7 +167,7 @@ def predict_from_listing(
         "fair_price": round(fair_price, -4),  # округляем до 10 тыс ₸
         "verdict": _verdict(actual, fair_price) if actual else None,
         "diff_pct": round((actual - fair_price) / fair_price * 100, 1) if actual else None,
-        "top_factors": top_factors(model, pool, features),
+        "top_factors": _with_hints(listing, top_factors(model, pool, features)),
         "details": build_details(listing),
         "complex_details": build_complex_details(listing),
         "location_details": build_location_details(listing.get("lat"), listing.get("lon")),

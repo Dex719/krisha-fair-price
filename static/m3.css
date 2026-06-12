@@ -126,13 +126,23 @@ a.btn:hover { text-decoration: none; }
   padding: 0 24px 72px;
 }
 .page-narrow { max-width: 760px; }
+/* на ПК сайт занимает ~80% экрана, а не узкую колонку */
+@media (min-width: 1100px) {
+  .page, .page-narrow { max-width: min(80vw, 1500px); }
+}
 
 .top-bar {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 20px 0;
+  padding: 14px 0;
   border-bottom: 1px solid var(--outline-variant);
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  background: color-mix(in oklab, var(--surface) 82%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
 }
 .spacer { flex: 1; }
 
@@ -319,25 +329,6 @@ a.btn:hover { text-decoration: none; }
   background: var(--surface-container);
   color: var(--on-surface);
   border: 1px solid var(--outline-variant);
-}
-/* Скелет-заглушка: LLM-бейджи догружаются фоном */
-.chip-skel {
-  height: 28px;
-  background: linear-gradient(
-    90deg,
-    var(--surface-container-high) 25%,
-    var(--surface-container) 50%,
-    var(--surface-container-high) 75%
-  );
-  background-size: 200% 100%;
-  animation: skel-shimmer 1.4s ease-in-out infinite;
-}
-@keyframes skel-shimmer {
-  from { background-position: 200% 0; }
-  to { background-position: -200% 0; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .chip-skel { animation: none; }
 }
 
 /* ---------- Шкала цены ---------- */
@@ -624,4 +615,39 @@ a.btn:hover { text-decoration: none; }
 }
 @keyframes kfp-ripple {
   to { transform: scale(2.8); opacity: 0; }
+}
+
+/* ---------- Подсказки к факторам цены ---------- */
+.factor-name { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+.hint-i { color: var(--outline); display: inline-flex; }
+.factor.has-hint { cursor: help; }
+.factor.has-hint:hover .hint-i,
+.factor.has-hint:focus-visible .hint-i { color: var(--primary); }
+.hint-pop {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 10px);
+  z-index: 70;
+  width: min(440px, 78vw);
+  padding: 13px 16px;
+  border-radius: 14px;
+  background: var(--surface-container-highest);
+  color: var(--on-surface);
+  border: 1px solid var(--outline-variant);
+  box-shadow: var(--shadow);
+  font-size: 0.86rem;
+  font-weight: 500;
+  line-height: 1.5;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
+  pointer-events: none;
+}
+.factor.has-hint:hover .hint-pop,
+.factor.has-hint:focus-within .hint-pop,
+.factor.has-hint:focus-visible .hint-pop {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
 }
