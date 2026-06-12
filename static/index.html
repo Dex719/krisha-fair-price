@@ -152,6 +152,22 @@
           </div>`;
     }
 
+    /* этап 5: блок «Анализ описания» — бейджи red flags / плюсов от LLM */
+    function flagsBlock(data) {
+      const flags = data.text_flags || [];
+      if (!flags.length) return "";
+      return `
+          <p class="title" style="display:flex;align-items:center;gap:10px;margin:22px 0 12px;font-size:.95rem">
+            <span style="color:var(--secondary)">${kfpIcon("check-circle", 20)}</span>Анализ описания
+          </p>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">
+            ${flags.map((f) => `
+              <span class="chip ${f.kind === "warn" ? "chip-bad" : "chip-good"}">
+                ${f.kind === "warn" ? "⚠️" : "✅"} ${f.label}
+              </span>`).join("")}
+          </div>`;
+    }
+
     const diffBadge = (pct) => {
       const abs = Math.abs(pct).toFixed(1).replace(/\.0$/, "");
       if (pct <= -1) return `ниже рынка на ${abs}%`;
@@ -225,6 +241,7 @@
               </div>`).join("")}
           </div>` : ""}
           ${marketBlock(data)}
+          ${flagsBlock(data)}
           ${data.description ? `
           <p class="title" style="margin:22px 0 4px;font-size:.95rem">Описание</p>
           <p class="listing-desc" id="g-desc"></p>
