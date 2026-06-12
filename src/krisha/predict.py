@@ -161,6 +161,12 @@ def predict_from_listing(listing: dict[str, Any]) -> dict[str, Any]:
         "photos": (listing.get("photos") or [])[:12],
         "description": (listing.get("description") or None),
     }
+    # Этап 4: сигналы рынка — история цены и ликвидность (копятся рескрейпом)
+    from krisha.market import days_on_market, liquidity_estimate, price_history_points
+
+    result["price_history"] = price_history_points(listing.get("id"))
+    result["days_on_market"] = days_on_market(listing.get("id"))
+    result["liquidity"] = liquidity_estimate(listing.get("district"), listing.get("rooms"))
     return result
 
 
