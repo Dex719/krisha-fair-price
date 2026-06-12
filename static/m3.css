@@ -320,6 +320,25 @@ a.btn:hover { text-decoration: none; }
   color: var(--on-surface);
   border: 1px solid var(--outline-variant);
 }
+/* Скелет-заглушка: LLM-бейджи догружаются фоном */
+.chip-skel {
+  height: 28px;
+  background: linear-gradient(
+    90deg,
+    var(--surface-container-high) 25%,
+    var(--surface-container) 50%,
+    var(--surface-container-high) 75%
+  );
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skel-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chip-skel { animation: none; }
+}
 
 /* ---------- Шкала цены ---------- */
 .meter {

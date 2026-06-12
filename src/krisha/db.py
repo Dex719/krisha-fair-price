@@ -1,5 +1,6 @@
 """SQLite-хранилище объявлений. Одна таблица `listings`, upsert по id."""
 
+import hashlib
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -81,17 +82,18 @@ INSERT INTO listings (
     id, url, title, price, rooms, area, floor, total_floors, building_type,
     year_built, ceiling, district, microdistrict, street, house_num,
     address_title, complex_name, lat, lon, user_type, category, description,
-    photos_count, raw_params, first_seen, last_seen, is_active
+    photos_count, raw_params, source, fingerprint, first_seen, last_seen, is_active
 ) VALUES (
     :id, :url, :title, :price, :rooms, :area, :floor, :total_floors, :building_type,
     :year_built, :ceiling, :district, :microdistrict, :street, :house_num,
     :address_title, :complex_name, :lat, :lon, :user_type, :category, :description,
-    :photos_count, :raw_params, datetime('now'), datetime('now'), 1
+    :photos_count, :raw_params, :source, :fingerprint, datetime('now'), datetime('now'), 1
 )
 ON CONFLICT(id) DO UPDATE SET
     price = excluded.price,
     title = excluded.title,
     raw_params = excluded.raw_params,
+    fingerprint = excluded.fingerprint,
     last_seen = datetime('now'),
     is_active = 1,
     delisted_at = NULL,
@@ -139,6 +141,9 @@ _MIGRATION_COLUMNS = {
     "last_seen": "TEXT",
     "is_active": "INTEGER DEFAULT 1",
     "delisted_at": "TEXT",
+    # Пользовательские объявления: откуда запись и «отпечаток» квартиры для дублей
+    "source": "TEXT DEFAULT 'scrape'",
+    "fingerprint": "TEXT",
 }
 
 
@@ -166,10 +171,57 @@ def init_db(db_path: Path | str = DB_PATH) -> None:
         _migrate(conn)
 
 
+def listing_fingerprint(listing: dict[str, Any]) -> str | None:
+    """«Отпечаток» квартиры для поиска дублей с разными id.
+
+    Район + комнаты + площадь (до 0.5 м²) + этаж/этажность + координаты
+    (~10 м). Перезалитое объявление почти наверняка даст тот же отпечаток.
+    """
+    area, lat, lon = listing.get("area"), listing.get("lat"), listing.get("lon")
+    if not area or lat is None or lon is None:
+        return None
+    parts = (
+        str(listing.get("district") or "").lower().strip(),
+        str(listing.get("rooms") or ""),
+        f"{round(float(area) * 2) / 2:.1f}",
+        str(listing.get("floor") or ""),
+        str(listing.get("total_floors") or ""),
+        f"{float(lat):.4f}",
+        f"{float(lon):.4f}",
+    )
+    return hashlib.sha1("|".join(parts).encode()).hexdigest()[:16]
+
+
+def find_duplicate_id(
+    fingerprint: str | None, exclude_id: int, db_path: Path | str = DB_PATH
+) -> int | None:
+    """id другого объявления с тем же отпечатком (свежее — первым)."""
+    if not fingerprint:
+        return None
+    with get_conn(db_path) as conn:
+        try:
+            row = conn.execute(
+                "SELECT id FROM listings WHERE fingerprint = ? AND id != ? "
+                "ORDER BY is_active DESC, last_seen DESC LIMIT 1",
+                (fingerprint, int(exclude_id)),
+            ).fetchone()
+        except sqlite3.OperationalError:  # старая база без колонки
+            return None
+    return int(row[0]) if row else None
+
+
 def upsert_listing(listing: dict[str, Any], db_path: Path | str = DB_PATH) -> None:
     row = {col: listing.get(col) for col in LISTING_COLUMNS}
+    row["source"] = listing.get("source") or "scrape"
+    row["fingerprint"] = listing_fingerprint(listing)
     with get_conn(db_path) as conn:
-        conn.execute(UPSERT_SQL, row)
+        try:
+            conn.execute(UPSERT_SQL, row)
+        except sqlite3.OperationalError:
+            # старая база без новых колонок — мигрируем и пробуем ещё раз
+            conn.executescript(SCHEMA)
+            _migrate(conn)
+            conn.execute(UPSERT_SQL, row)
         if row.get("price") is not None:
             _record_price_if_changed(conn, row["id"], int(row["price"]))
 
