@@ -1,8 +1,9 @@
 <div align="center">
 
-<img src="static/avatar.png" alt="Krisha Fair Price" width="110" />
-
-# Krisha Fair Price
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
+  <img src="docs/logo-light.png" alt="Krisha Fair Price" width="440" />
+</picture>
 
 **Fair-price estimator for apartments in Almaty: paste a Krisha.kz link, get a verdict — good deal, fair, or overpriced**
 
