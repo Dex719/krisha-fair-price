@@ -27,6 +27,11 @@ class Liquidity(BaseModel):
     sample: int       # размер выборки снятых аналогов
 
 
+class TextFlag(BaseModel):
+    kind: str   # warn — настораживает, plus — скрытый плюс из текста
+    label: str  # подпись бейджа («Срочная продажа», «Торг уместен»...)
+
+
 class PredictResponse(BaseModel):
     listing_id: int | None
     url: str | None
@@ -43,6 +48,7 @@ class PredictResponse(BaseModel):
     price_history: list[PricePoint] = []    # этап 4: точки истории цены
     days_on_market: int | None = None       # этап 4: дней в выдаче
     liquidity: Liquidity | None = None      # этап 4: за сколько продаются аналоги
+    text_flags: list[TextFlag] = []         # этап 5: LLM-анализ описания
     photos: list[str] = []                  # URL фото с krisha-photos.kcdn.online
     description: str | None = None
 

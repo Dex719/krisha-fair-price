@@ -152,6 +152,15 @@ def format_reply(result: dict[str, Any]) -> str:
             arrow = "▲" if f["impact"] > 0 else "▼"
             lines.append(f"{arrow} {FEATURE_RU.get(f['feature'], f['feature'])}")
 
+    # Этап 5: бейджи из LLM-анализа описания
+    flags = result.get("text_flags") or []
+    if flags:
+        lines.append("")
+        lines.append("📝 <b>Анализ описания:</b>")
+        for f in flags:
+            mark = "⚠️" if f.get("kind") == "warn" else "✅"
+            lines.append(f"{mark} {html.escape(f.get('label', ''))}")
+
     return "\n".join(lines)
 
 
