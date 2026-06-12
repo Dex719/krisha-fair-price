@@ -12,6 +12,11 @@ class Factor(BaseModel):
     impact: float  # вклад в log(price): >0 — повышает цену, <0 — понижает
 
 
+class DetailItem(BaseModel):
+    label: str  # человекочитаемая подпись («Год постройки»)
+    value: str
+
+
 class PredictResponse(BaseModel):
     listing_id: int | None
     url: str | None
@@ -22,6 +27,9 @@ class PredictResponse(BaseModel):
     verdict: str | None  # GOOD_DEAL / FAIR / OVERPRICED
     diff_pct: float | None
     top_factors: list[Factor]
+    details: list[DetailItem] = []  # характеристики объявления (этаж, год, ремонт...)
+    photos: list[str] = []          # URL фото с krisha-photos.kcdn.online
+    description: str | None = None
 
 
 class HealthResponse(BaseModel):
