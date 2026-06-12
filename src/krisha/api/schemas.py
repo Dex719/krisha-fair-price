@@ -49,8 +49,15 @@ class PredictResponse(BaseModel):
     days_on_market: int | None = None       # этап 4: дней в выдаче
     liquidity: Liquidity | None = None      # этап 4: за сколько продаются аналоги
     text_flags: list[TextFlag] = []         # этап 5: LLM-анализ описания
+    flags_pending: bool = False             # кэша нет — фронт догрузит /api/flags/{id}
+    duplicate_of: int | None = None         # возможный дубль (тот же «отпечаток» квартиры)
     photos: list[str] = []                  # URL фото с krisha-photos.kcdn.online
     description: str | None = None
+
+
+class FlagsResponse(BaseModel):
+    listing_id: int
+    text_flags: list[TextFlag] = []
 
 
 class HealthResponse(BaseModel):
