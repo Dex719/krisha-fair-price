@@ -73,6 +73,37 @@ def build_details(listing: dict[str, Any]) -> list[dict[str, str]]:
     return [{"label": label, "value": str(value)} for label, value in items if value not in (None, "")]
 
 
+# (подпись, ключ в справочнике ЖК) — блок «О доме»
+COMPLEX_PARAMS_RU = [
+    ("Застройщик", "developer"),
+    ("Класс жилья", "housing_class"),
+    ("Год сдачи", "completion_year"),
+    ("Статус", "construction_status"),
+    ("Материал", "material"),
+    ("Этажность", "max_floors"),
+    ("Квартир в ЖК", "apartments_count"),
+]
+
+
+def build_complex_details(listing: dict[str, Any]) -> list[dict[str, str]]:
+    """Блок «О доме» из справочника ЖК (этап 2). Нет ЖК в базе → пустой список."""
+    from krisha.complexes import load_complex_lookup, lookup_complex_attrs
+
+    try:
+        raw = json.loads(listing.get("raw_params") or "{}")
+    except json.JSONDecodeError:
+        raw = {}
+    name = raw.get("map.complex") or listing.get("complex_name")
+    attrs = lookup_complex_attrs(name, load_complex_lookup())
+    if not attrs:
+        return []
+    return [
+        {"label": label, "value": str(attrs[key])}
+        for label, key in COMPLEX_PARAMS_RU
+        if attrs.get(key) not in (None, "")
+    ]
+
+
 @lru_cache(maxsize=1)
 def load_model() -> tuple[CatBoostRegressor, dict]:
     if not MODEL_PATH.exists():
@@ -124,6 +155,7 @@ def predict_from_listing(listing: dict[str, Any]) -> dict[str, Any]:
         "diff_pct": round((actual - fair_price) / fair_price * 100, 1) if actual else None,
         "top_factors": top_factors(model, pool, features),
         "details": build_details(listing),
+        "complex_details": build_complex_details(listing),
         "photos": (listing.get("photos") or [])[:12],
         "description": (listing.get("description") or None),
     }
