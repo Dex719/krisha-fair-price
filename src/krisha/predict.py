@@ -23,6 +23,55 @@ logger = logging.getLogger(__name__)
 KRISHA_URL_RE = re.compile(r"krisha\.kz/a/show/(\d+)")
 VERDICT_THRESHOLD = 0.10  # ±10% — справедливая цена
 
+USER_TYPE_RU = {
+    "owner": "Собственник",
+    "agent": "Специалист",
+    "company": "Компания",
+    "builder": "Застройщик",
+}
+
+# (подпись, ключ в raw_params) — extras со страницы объявления
+EXTRA_PARAMS_RU = [
+    ("Ремонт", "flat.renovation"),
+    ("Санузел", "flat.toilet"),
+    ("Балкон", "flat.balcony"),
+    ("Парковка", "flat.parking"),
+    ("Мебель", "live.furniture"),
+    ("Безопасность", "flat.security"),
+]
+
+
+def build_details(listing: dict[str, Any]) -> list[dict[str, str]]:
+    """Характеристики объявления для карточки на фронте: [{label, value}, ...]."""
+    from krisha.stats import DISTRICT_RU  # здесь, чтобы не плодить циклы импортов
+
+    try:
+        raw = json.loads(listing.get("raw_params") or "{}")
+    except json.JSONDecodeError:
+        raw = {}
+
+    floor, total = listing.get("floor"), listing.get("total_floors")
+    area = listing.get("area")
+    ceiling = listing.get("ceiling")
+    district = listing.get("district")
+    category = listing.get("category")
+
+    items: list[tuple[str, Any]] = [
+        ("Комнаты", listing.get("rooms")),
+        ("Площадь", f"{area:g} м²" if area else None),
+        ("Этаж", f"{floor} из {total}" if floor and total else floor),
+        ("Год постройки", listing.get("year_built")),
+        ("Тип дома", listing.get("building_type")),
+        ("Потолки", f"{ceiling:g} м" if ceiling else None),
+        ("Район", DISTRICT_RU.get(district, district) if district else None),
+        ("Микрорайон", listing.get("microdistrict")),
+        ("Жилой комплекс", listing.get("complex_name")),
+        *((label, raw.get(key)) for label, key in EXTRA_PARAMS_RU),
+        ("Продавец", USER_TYPE_RU.get(listing.get("user_type") or "")),
+        ("Категория", "Новостройка" if category == "novostroiki" else "Вторичка" if category else None),
+    ]
+    return [{"label": label, "value": str(value)} for label, value in items if value not in (None, "")]
+
 
 @lru_cache(maxsize=1)
 def load_model() -> tuple[CatBoostRegressor, dict]:
@@ -74,6 +123,9 @@ def predict_from_listing(listing: dict[str, Any]) -> dict[str, Any]:
         "verdict": _verdict(actual, fair_price) if actual else None,
         "diff_pct": round((actual - fair_price) / fair_price * 100, 1) if actual else None,
         "top_factors": top_factors(model, pool, features),
+        "details": build_details(listing),
+        "photos": (listing.get("photos") or [])[:12],
+        "description": (listing.get("description") or None),
     }
     return result
 

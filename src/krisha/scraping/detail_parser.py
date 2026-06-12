@@ -97,6 +97,7 @@ def parse_detail(html: str, url: str = "") -> dict[str, Any] | None:
     year = _first_number(params.get("house.year"))
     ceiling = _first_number(params.get("ceiling"))
     area = adv.get("square") or _first_number(params.get("live.square"))
+    photos = [p["src"] for p in (adv.get("photos") or []) if isinstance(p, dict) and p.get("src")]
 
     return {
         "id": int(adv["id"]),
@@ -122,5 +123,6 @@ def parse_detail(html: str, url: str = "") -> dict[str, Any] | None:
         "category": adv.get("categoryAlias"),
         "description": desc_el.get_text(" ", strip=True) if desc_el else None,
         "photos_count": len(adv.get("photos") or []),
+        "photos": photos,  # список URL фото; в БД не пишется (нет в LISTING_COLUMNS), нужен для API
         "raw_params": json.dumps(params, ensure_ascii=False),
     }
