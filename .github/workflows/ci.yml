@@ -20,8 +20,3 @@ jobs:
         run: ruff check src tests scripts
       - name: Tests
         run: pytest -q
-
-# ⚠️ GitHub App Viktor'а не имеет права создавать workflow-файлы.
-# Чтобы включить CI, выполни локально (или через веб-интерфейс GitHub):
-#   git mv .github/ci.yml.example .github/workflows/ci.yml
-#   git commit -m "ci: enable GitHub Actions" && git push
