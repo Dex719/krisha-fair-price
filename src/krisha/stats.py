@@ -84,8 +84,9 @@ def compute_stats(db_path: Path | str = DB_PATH) -> dict:
         "price_hist": price_hist,
         "by_rooms": by_rooms,
         "by_category": {
+            # на krisha.kz вторичка идёт как "kvartiry", считаем всё не-новостройки
             "novostroiki": int(cat.get("novostroiki", 0)),
-            "vtorichka": int(cat.get("vtorichka", 0)),
+            "vtorichka": int(len(df) - cat.get("novostroiki", 0)),
         },
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "source": "db",
