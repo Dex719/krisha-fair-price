@@ -122,6 +122,36 @@
     const fmt = (n) => new Intl.NumberFormat("ru-RU").format(Math.round(n)) + " ₸";
 
     /* бейдж сделки: «ниже рынка на 8%» / «выше рынка на 12%» / «в рынке» */
+    /* этап 4: блок «Рынок» — история цены, дни на рынке, ликвидность */
+    function marketBlock(data) {
+      const hist = data.price_history || [];
+      const rows = [];
+      if (hist.length > 1) {
+        const first = hist[0].price, last = hist[hist.length - 1].price;
+        const drop = ((last - first) / first * 100).toFixed(1).replace(/\.0$/, "").replace("-", "−");
+        rows.push({ label: "Цена менялась", value: `${hist.length - 1} раз (${last > first ? "+" : ""}${drop}% от старта)` });
+        hist.slice(-4).forEach((p) => {
+          rows.push({ label: p.observed_at.slice(0, 10), value: fmt(p.price) });
+        });
+      }
+      if (data.days_on_market != null && data.days_on_market > 0)
+        rows.push({ label: "Дней на рынке", value: data.days_on_market });
+      if (data.liquidity)
+        rows.push({ label: "Похожие продаются за", value: `~${data.liquidity.median_days} дн.` });
+      if (!rows.length) return "";
+      return `
+          <p class="title" style="display:flex;align-items:center;gap:10px;margin:22px 0 12px;font-size:.95rem">
+            <span style="color:var(--secondary)">${kfpIcon("chart", 20)}</span>Рынок
+          </p>
+          <div class="details-grid">
+            ${rows.map((d) => `
+              <div class="detail-item">
+                <p class="d-label">${d.label}</p>
+                <p class="d-value">${d.value}</p>
+              </div>`).join("")}
+          </div>`;
+    }
+
     const diffBadge = (pct) => {
       const abs = Math.abs(pct).toFixed(1).replace(/\.0$/, "");
       if (pct <= -1) return `ниже рынка на ${abs}%`;
@@ -194,6 +224,7 @@
                 <p class="d-value">${d.value}</p>
               </div>`).join("")}
           </div>` : ""}
+          ${marketBlock(data)}
           ${data.description ? `
           <p class="title" style="margin:22px 0 4px;font-size:.95rem">Описание</p>
           <p class="listing-desc" id="g-desc"></p>
