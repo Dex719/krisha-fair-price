@@ -1,55 +1,76 @@
-# 🏠 Krisha Fair Price — справедливая цена квартир в Алматы
+# 🏠 Krisha Fair Price
 
-ML-сервис, который по ссылке на объявление Krisha.kz говорит: **переплата, выгодно или справедливая цена** — и объясняет почему (SHAP).
+**Fair-price estimator for apartments in Almaty.** Paste a [Krisha.kz](https://krisha.kz) listing URL and get a verdict: **good deal, fair price, or overpriced** — with an ML-predicted fair price and an explanation of the main price factors.
 
-Стек: Python 3.11 · httpx + BeautifulSoup4 · SQLite · pandas · CatBoost · SHAP · FastAPI · Tailwind · GitHub Actions.
+**🔗 Live demo: [krisha-fair-price-production.up.railway.app](https://krisha-fair-price-production.up.railway.app)**
+📊 Market stats dashboard: [/stats](https://krisha-fair-price-production.up.railway.app/stats)
 
-## 🚀 Быстрый старт
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![CatBoost](https://img.shields.io/badge/CatBoost-gradient%20boosting-FFCC00)
+![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)
+![Deployed on Railway](https://img.shields.io/badge/Railway-deployed-0B0D0E?logo=railway&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-17%20passing-brightgreen)
+
+## ✨ What it does
+
+1. You paste a link to an apartment listing on Krisha.kz.
+2. The service fetches the listing, extracts ~20 features (area, rooms, floor, building age, district, residential complex, coordinates, distance to city center…).
+3. A CatBoost model predicts the *fair* market price and compares it with the asking price.
+4. You get a verdict (`GOOD_DEAL` / `FAIR` / `OVERPRICED`), the deviation in %, and the top factors that drive the price up or down (SHAP values).
+
+## 📈 Model
+
+Trained on **7,000+ real listings** crawled from all 8 districts of Almaty (resumable, polite crawler → SQLite).
+
+| Metric | CatBoost | Baseline (median ₸/m² by district × rooms) |
+|---|---|---|
+| MAE | **7.7M ₸** | 12.1M ₸ |
+| MAPE | **10.6%** | 17.4% |
+| R² | **0.78** | 0.65 |
+
+- Target: `log1p(price)`, native categorical features (district, microdistrict, residential complex, building type).
+- Anti-leakage: median ₸/m² maps are computed on the train split only.
+- Explainability: per-prediction SHAP factors + global summary in [`reports/shap_summary.png`](reports/shap_summary.png).
+
+## 🛠 Stack
+
+Python 3.11 · httpx + BeautifulSoup4 · SQLite · pandas · CatBoost · SHAP · FastAPI · vanilla JS + Material 3 Expressive UI (light/dark) · Chart.js · pytest + GitHub Actions · Railway
+
+## 🚀 Quick start
 
 ```bash
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 
-make crawl        # быстрая проба: соберёт ~50 объявлений в data/krisha.db
-make crawl-full   # полный сбор (~300 страниц, 1-2 часа из-за вежливых пауз)
-make train        # обучить CatBoost → models/model.cbm + reports/shap_summary.png
-make api          # http://localhost:8000 — фронт + API
+make crawl        # quick probe: ~50 listings into data/krisha.db
+make crawl-full   # full crawl of Almaty (takes hours — polite delays)
+make train        # train CatBoost → models/model.cbm + SHAP report
+make api          # http://localhost:8000 — web UI + API
 make test         # pytest
 ```
 
-## 📦 Что уже сделано (основа, ~80%)
+## 🔌 API
 
-| Модуль | Что делает |
-|---|---|
-| `src/krisha/scraping/client.py` | Вежливый HTTP-клиент: паузы 2–4 сек, ретраи, обработка 403/429 |
-| `src/krisha/scraping/listing_parser.py` | Парсер страницы выдачи → id объявлений |
-| `src/krisha/scraping/detail_parser.py` | Парсер объявления: `window.data` JSON + HTML-параметры (проверен на реальных страницах) |
-| `src/krisha/scraping/crawler.py` | Возобновляемый краулер → SQLite (Ctrl+C безопасен) |
-| `src/krisha/db.py` | Схема SQLite + upsert по id |
-| `src/krisha/features.py` | Очистка мусора + фичи: этажность, возраст дома, расстояние до центра… |
-| `src/krisha/train.py` | CatBoost на log(price), сравнение с baseline (медиана ₸/м² по району), SHAP-отчёт |
-| `src/krisha/predict.py` | Предсказание по URL: вердикт GOOD_DEAL / FAIR / OVERPRICED + топ-факторы |
-| `src/krisha/api/` | FastAPI: `POST /api/predict`, `GET /api/health` + статичный фронт |
-| `static/index.html` | Фронт на Tailwind: вставил ссылку → получил вердикт |
-| `tests/` | 15+ тестов: парсеры (с фикстурой реальной вёрстки), фичи, БД, смоук обучения |
-| `.github/ci.yml.example` | CI (ruff + pytest): переименуй в `.github/workflows/ci.yml`, чтобы включить — см. комментарий в файле |
+```bash
+POST /api/predict          # {"url": "https://krisha.kz/a/show/..."} → verdict, fair price, factors
+GET  /api/stats            # market snapshot: districts, ₸/m², price distribution
+GET  /api/health           # liveness + model status
+```
 
-## 🤖 Что осталось (отдать Sonnet'у)
+## 🗂 Project structure
 
-- [ ] Docker (Dockerfile + docker-compose) и деплой на Railway/Render
-- [ ] Telegram-бот (aiogram): та же логика, что `/api/predict`
-- [ ] EDA-ноутбук в `notebooks/` (распределения цен, карта, корреляции)
-- [ ] Тюнинг гиперпараметров CatBoost (Optuna), больше фич из `raw_params` (ремонт, мебель, парковка)
-- [ ] Бейджи CI/прочее в README, скриншоты, демо-ссылка
+```
+src/krisha/
+├── scraping/       # polite HTTP client (delays, retries), list & detail parsers, resumable crawler
+├── features.py     # cleaning + feature engineering (floor ratio, building age, dist to center, ₸/m² maps)
+├── train.py        # CatBoost training, baseline comparison, SHAP report
+├── predict.py      # URL → verdict pipeline
+├── api/            # FastAPI app + static frontend
+└── db.py           # SQLite schema, upsert by listing id
+static/             # Material 3 Expressive UI: index (estimator) + stats (dashboard)
+tests/              # 17 tests: parsers (real-markup fixtures), features, DB, train smoke
+```
 
-Детальные промпты для каждого шага — в [`PLAN/`](PLAN/README.md).
+## ⚠️ Disclaimer
 
-## 🧠 Как это работает
-
-1. **Краулер** обходит выдачу `krisha.kz/prodazha/kvartiry/almaty/`, c каждой детальной страницы берёт встроенный JSON `window.data` (цена, площадь, комнаты, адрес, координаты) + HTML-параметры (этаж, год, тип дома, потолки) → SQLite.
-2. **Модель** — CatBoostRegressor на `log1p(price)` с категориальными фичами (район, ЖК, тип дома). Метрики сравниваются с baseline «медианная цена за м² по (район × комнаты)» — модель обязана его бить.
-3. **Сервис** по URL скачивает объявление, прогоняет через ту же модель и отвечает: справедливая цена, отклонение в %, вердикт и топ-факторы (SHAP).
-
-## ⚠️ Дисклеймер
-
-Данные принадлежат Krisha.kz. Проект учебный, парсинг — бережный (паузы 2–4 сек, ничего не перегружаем). Не используйте для коммерческих целей.
+Educational project. Listing data belongs to Krisha.kz; crawling is deliberately gentle (randomized delays, no parallel hammering). Predictions are estimates, not financial advice.
