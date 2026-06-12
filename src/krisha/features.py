@@ -35,9 +35,15 @@ SECURITY_FLAGS = {
     "has_video_surveillance": "видеонаблюдение",
 }
 
+# Фичи из справочника ЖК (этап 2 роадмапа): подмешиваются по имени комплекса
+# через models/complexes.json (см. krisha.complexes). Нет ЖК → unknown/NaN.
+COMPLEX_CAT_FEATURES = ["housing_class", "developer"]
+COMPLEX_NUM_FEATURES = ["completion_year", "apartments_count"]
+
 CAT_FEATURES = [
     "district", "microdistrict", "building_type", "complex_name", "user_type", "category",
     *RAW_PARAM_CAT_MAP,
+    *COMPLEX_CAT_FEATURES,
 ]
 NUM_FEATURES = [
     "rooms", "area", "floor", "total_floors", "floor_ratio", "is_first_floor",
@@ -45,6 +51,7 @@ NUM_FEATURES = [
     "dist_center_km", "photos_count", "is_new_building",
     "district_ppsm", "microdistrict_ppsm",
     *SECURITY_FLAGS, "security_count",
+    *COMPLEX_NUM_FEATURES,
 ]
 ALL_FEATURES = NUM_FEATURES + CAT_FEATURES
 TARGET = "log_price"
@@ -140,11 +147,43 @@ def add_raw_param_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def build_features(df: pd.DataFrame, ppsm_maps: dict | None = None) -> pd.DataFrame:
+def complex_join_name(df: pd.DataFrame) -> pd.Series:
+    """Имя ЖК для джойна: raw_params["map.complex"] (точнее), иначе complex_name."""
+    raw = (
+        df["raw_params"].map(_parse_raw_params)
+        if "raw_params" in df
+        else pd.Series([{}] * len(df), index=df.index)
+    )
+    name = raw.map(lambda p: p.get("map.complex"))
+    if "complex_name" in df:
+        name = name.fillna(df["complex_name"])
+    return name
+
+
+def add_complex_features(df: pd.DataFrame, lookup: dict | None = None) -> pd.DataFrame:
+    """Атрибуты ЖК из справочника: застройщик, класс жилья, год сдачи, размер ЖК."""
+    from krisha.complexes import load_complex_lookup, lookup_complex_attrs
+
+    df = df.copy()
+    if lookup is None:
+        lookup = load_complex_lookup()
+    attrs = complex_join_name(df).map(lambda n: lookup_complex_attrs(n, lookup))
+    for col in COMPLEX_CAT_FEATURES + COMPLEX_NUM_FEATURES:
+        if col not in df:
+            df[col] = attrs.map(lambda a, c=col: a.get(c))
+    return df
+
+
+def build_features(
+    df: pd.DataFrame,
+    ppsm_maps: dict | None = None,
+    complex_lookup: dict | None = None,
+) -> pd.DataFrame:
     """Добавляет производные фичи. Работает и для одного объявления (predict)."""
     df = add_raw_param_features(df)
+    df = add_complex_features(df, lookup=complex_lookup)
     for col in ["rooms", "area", "floor", "total_floors", "year_built", "ceiling",
-                "lat", "lon", "photos_count"]:
+                "lat", "lon", "photos_count", *COMPLEX_NUM_FEATURES]:
         if col not in df:
             df[col] = np.nan
         df[col] = pd.to_numeric(df[col], errors="coerce")

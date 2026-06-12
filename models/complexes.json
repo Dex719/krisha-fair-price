@@ -1,0 +1,6572 @@
+{
+ "мечта на казыбек би": {
+  "developer": "СеАй KZ",
+  "housing_class": "комфорт",
+  "completion_year": 2014,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 60
+ },
+ "izumrud residence": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "комфорт",
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 260
+ },
+ "комфорт плюс": {
+  "developer": "Рамс Казахстан",
+  "housing_class": null,
+  "completion_year": 2015,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 64
+ },
+ "ile de france": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "элит",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 240
+ },
+ "бақытты өмір бакытты омир": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "комфорт",
+  "completion_year": 2017,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 180
+ },
+ "zodiac": {
+  "developer": "MIDDLEMAN",
+  "housing_class": null,
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 396
+ },
+ "мб 52": {
+  "developer": "Alto Partners",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 120
+ },
+ "южный дуэт": {
+  "developer": "Aman Real Estate ТОО",
+  "housing_class": "комфорт",
+  "completion_year": 2011,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 95
+ },
+ "этюд": {
+  "developer": "BAZIS–А",
+  "housing_class": null,
+  "completion_year": 2007,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 80
+ },
+ "элит 2 на калдаякова": {
+  "developer": "ТОО СК Элитстрой",
+  "housing_class": null,
+  "completion_year": 2009,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 15,
+  "apartments_count": 68
+ },
+ "элит 1 на зенкова": {
+  "developer": "ТОО СК Элитстрой",
+  "housing_class": "комфорт",
+  "completion_year": 2004,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 98
+ },
+ "эйвон": {
+  "developer": "ЖСК Алматы",
+  "housing_class": null,
+  "completion_year": 2009,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 36
+ },
+ "эдельвейс": {
+  "developer": "Алматы Пана",
+  "housing_class": "элит",
+  "completion_year": 2013,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 90
+ },
+ "шанырак": {
+  "developer": "Столичная Недвижимость",
+  "housing_class": "комфорт",
+  "completion_year": 2015,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 150
+ },
+ "цитадель": {
+  "developer": "ЖСК Алматы",
+  "housing_class": null,
+  "completion_year": 2004,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 75
+ },
+ "хуторок": {
+  "developer": "ЖСК Алматы",
+  "housing_class": null,
+  "completion_year": 2006,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 16
+ },
+ "фантазия": {
+  "developer": "BAZIS–А",
+  "housing_class": "бизнес",
+  "completion_year": 2004,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 95
+ },
+ "уш тобе": {
+  "developer": "Halyk Active",
+  "housing_class": "комфорт",
+  "completion_year": 2010,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 192
+ },
+ "тюркуаз тауэрс": {
+  "developer": "Туркуаз Инвест",
+  "housing_class": null,
+  "completion_year": 2005,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 17,
+  "apartments_count": 52
+ },
+ "триумф 2": {
+  "developer": "BAZIS–А",
+  "housing_class": null,
+  "completion_year": 2004,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 9,
+  "apartments_count": 70
+ },
+ "триумф 1": {
+  "developer": "BAZIS–А",
+  "housing_class": null,
+  "completion_year": 2004,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 50
+ },
+ "три богатыря": {
+  "developer": "ЖСК Алматы",
+  "housing_class": "комфорт",
+  "completion_year": null,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 12,
+  "apartments_count": 210
+ },
+ "толе би тау": {
+  "developer": "Бейбарыс Продактс",
+  "housing_class": null,
+  "completion_year": 2011,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 400
+ },
+ "терренкур": {
+  "developer": "Silkway construction",
+  "housing_class": "комфорт",
+  "completion_year": 2006,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 15,
+  "apartments_count": 230
+ },
+ "тенгиз тауэрс": {
+  "developer": "Тенгиз Строй",
+  "housing_class": null,
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 19,
+  "apartments_count": 342
+ },
+ "театральный": {
+  "developer": "SV Mega-Stroy ТОО",
+  "housing_class": null,
+  "completion_year": 2011,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 17,
+  "apartments_count": 204
+ },
+ "тау самал на навои": {
+  "developer": "Halyk Active",
+  "housing_class": "комфорт",
+  "completion_year": 2012,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 14,
+  "apartments_count": 120
+ },
+ "талисман": {
+  "developer": "BAZIS–А",
+  "housing_class": null,
+  "completion_year": 2007,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 19,
+  "apartments_count": 500
+ },
+ "сункар": {
+  "developer": "Тенгиз Строй",
+  "housing_class": null,
+  "completion_year": 2011,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 14,
+  "apartments_count": 124
+ },
+ "столичный центр": {
+  "developer": "BAZIS–А",
+  "housing_class": "бизнес",
+  "completion_year": 2004,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 23,
+  "apartments_count": 160
+ },
+ "солнечный квартал": {
+  "developer": "Столичная Недвижимость",
+  "housing_class": "комфорт",
+  "completion_year": 2012,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 376
+ },
+ "сатти": {
+  "developer": "Серт АО",
+  "housing_class": null,
+  "completion_year": 2008,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 89
+ },
+ "sun town": {
+  "developer": "ЖСК Алматы",
+  "housing_class": null,
+  "completion_year": 2004,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 15
+ },
+ "самал делюкс": {
+  "developer": "Алматы Центр Строй",
+  "housing_class": null,
+  "completion_year": 2010,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 140
+ },
+ "салем": {
+  "developer": "ТОО СК Элитстрой",
+  "housing_class": "бизнес",
+  "completion_year": 2006,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 24
+ },
+ "ресми групп": {
+  "developer": "ЖСК Алматы",
+  "housing_class": null,
+  "completion_year": 2008,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 60
+ },
+ "ренессанс": {
+  "developer": "BAZIS–А",
+  "housing_class": "комфорт",
+  "completion_year": 2007,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 170
+ },
+ "реал алматы": {
+  "developer": "ERTOK YAPI MALZEME A.",
+  "housing_class": null,
+  "completion_year": 2009,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 192
+ },
+ "раушан": {
+  "developer": "Айнер Сити",
+  "housing_class": null,
+  "completion_year": 2009,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 70
+ },
+ "рапсодия": {
+  "developer": "BAZIS–А",
+  "housing_class": null,
+  "completion_year": 2007,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 130
+ },
+ "прогресс": {
+  "developer": "ЖСК Алматы",
+  "housing_class": null,
+  "completion_year": 2005,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 11,
+  "apartments_count": 80
+ },
+ "премьера": {
+  "developer": "Жана Курылыс",
+  "housing_class": "комфорт",
+  "completion_year": 2012,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 19,
+  "apartments_count": 1000
+ },
+ "пионер": {
+  "developer": "ТОО СК Элитстрой",
+  "housing_class": null,
+  "completion_year": 2004,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 180
+ },
+ "парк резиденс": {
+  "developer": "Парк Констракшн",
+  "housing_class": "комфорт",
+  "completion_year": 2007,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 104
+ },
+ "парк горького": {
+  "developer": "Саулет Курылыс ТОО",
+  "housing_class": null,
+  "completion_year": 2010,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 200
+ },
+ "отрар": {
+  "developer": "ЖСК Алматы",
+  "housing_class": null,
+  "completion_year": 2009,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 70
+ },
+ "овация": {
+  "developer": "BAZIS–А",
+  "housing_class": null,
+  "completion_year": 2004,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 120
+ },
+ "нурлы тау": {
+  "developer": "BAZIS–А",
+  "housing_class": null,
+  "completion_year": 2010,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 32,
+  "apartments_count": 220
+ },
+ "ностальжи": {
+  "developer": "EMI",
+  "housing_class": null,
+  "completion_year": 2006,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 13,
+  "apartments_count": 40
+ },
+ "новый мир на радостовца утепова": {
+  "developer": "ЖСК Алматы",
+  "housing_class": "эконом",
+  "completion_year": 2009,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 66
+ },
+ "новый мир": {
+  "developer": "BAZIS–А",
+  "housing_class": null,
+  "completion_year": 2004,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 52
+ },
+ "нико на толе би момышулы": {
+  "developer": "НИКО",
+  "housing_class": "комфорт",
+  "completion_year": 2004,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 100
+ },
+ "нико на толе би абдулиных": {
+  "developer": "НИКО",
+  "housing_class": "комфорт",
+  "completion_year": 2005,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 24
+ },
+ "нико на токтабаева навои": {
+  "developer": "НИКО",
+  "housing_class": "комфорт",
+  "completion_year": 2006,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 120
+ },
+ "нико на сатпаева луганского": {
+  "developer": "НИКО",
+  "housing_class": null,
+  "completion_year": 2004,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 50
+ },
+ "меркур тауэрс": {
+  "developer": "MIDDLEMAN",
+  "housing_class": "комфорт",
+  "completion_year": 2006,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 17,
+  "apartments_count": 153
+ },
+ "меркур град": {
+  "developer": "KazCARier ТОО",
+  "housing_class": "эконом",
+  "completion_year": 2019,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 70
+ },
+ "mega tower almaty": {
+  "developer": "BAZIS–А",
+  "housing_class": null,
+  "completion_year": 2014,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 25,
+  "apartments_count": 200
+ },
+ "максима резидентс": {
+  "developer": "Туркуаз Инвест",
+  "housing_class": null,
+  "completion_year": 2012,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 214
+ },
+ "максима на райымбека": {
+  "developer": "ЖСК Алматы",
+  "housing_class": "эконом",
+  "completion_year": 2005,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 8,
+  "apartments_count": 300
+ },
+ "куат на фурманова казыбек би": {
+  "developer": "KUAT",
+  "housing_class": null,
+  "completion_year": 2004,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 48
+ },
+ "куат на торайгырова саина": {
+  "developer": "KUAT",
+  "housing_class": null,
+  "completion_year": 2007,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 14,
+  "apartments_count": 150
+ },
+ "куат на сатпаева гагарина": {
+  "developer": "KUAT",
+  "housing_class": "комфорт",
+  "completion_year": 2008,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 21,
+  "apartments_count": 210
+ },
+ "куат на панфилова гоголя": {
+  "developer": "KUAT",
+  "housing_class": null,
+  "completion_year": 2009,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 36
+ },
+ "куат на масанчи абая": {
+  "developer": "KUAT",
+  "housing_class": null,
+  "completion_year": 2006,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 14,
+  "apartments_count": 250
+ },
+ "куат на барибаева гоголя": {
+  "developer": "KUAT",
+  "housing_class": null,
+  "completion_year": 2004,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 15,
+  "apartments_count": 205
+ },
+ "куаt на достык сатпаева": {
+  "developer": "KUAT",
+  "housing_class": "комфорт",
+  "completion_year": 2007,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 8,
+  "apartments_count": 110
+ },
+ "кокше": {
+  "developer": "Матай Групп",
+  "housing_class": null,
+  "completion_year": 2011,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 43
+ },
+ "кокжиек": {
+  "developer": "Алматыкурылыс",
+  "housing_class": "эконом",
+  "completion_year": 2014,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 252
+ },
+ "керемет": {
+  "developer": "Корпорация ВЕК",
+  "housing_class": "комфорт",
+  "completion_year": 2008,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 857
+ },
+ "каргалы": {
+  "developer": "Имсталькон",
+  "housing_class": "комфорт",
+  "completion_year": 2007,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 15,
+  "apartments_count": 108
+ },
+ "импорио": {
+  "developer": "ХЭМКО TOO",
+  "housing_class": null,
+  "completion_year": 2009,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 76
+ },
+ "изумрудный город": {
+  "developer": "ДомСтрой",
+  "housing_class": null,
+  "completion_year": 2006,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 6,
+  "apartments_count": 110
+ },
+ "зеленая долина": {
+  "developer": "КазКИР",
+  "housing_class": "комфорт",
+  "completion_year": 2008,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 7
+ },
+ "звезда востока": {
+  "developer": "BAZIS–А",
+  "housing_class": "комфорт",
+  "completion_year": 2004,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 9,
+  "apartments_count": 85
+ },
+ "жетысу": {
+  "developer": "МАК Алматыгорстрой АO",
+  "housing_class": "эконом",
+  "completion_year": 2019,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 80
+ },
+ "жеруйык": {
+  "developer": "Atrix Group",
+  "housing_class": null,
+  "completion_year": 2013,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 248
+ },
+ "жастар атамекен": {
+  "developer": "Атамекен",
+  "housing_class": null,
+  "completion_year": 2009,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 60
+ },
+ "жастар mag": {
+  "developer": "MAG",
+  "housing_class": null,
+  "completion_year": 2008,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 18,
+  "apartments_count": 570
+ },
+ "жанел": {
+  "developer": "ЖСК Алматы",
+  "housing_class": null,
+  "completion_year": 2011,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 20
+ },
+ "жана гасыр": {
+  "developer": "Алматы Центр Строй",
+  "housing_class": "эконом",
+  "completion_year": 2004,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 90
+ },
+ "жайляу": {
+  "developer": "Алматыкурылыс",
+  "housing_class": "элит",
+  "completion_year": 2010,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 200
+ },
+ "жайлы": {
+  "developer": "Алматыкурылыс",
+  "housing_class": "эконом",
+  "completion_year": 2012,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 15,
+  "apartments_count": 1000
+ },
+ "esentai apartments": {
+  "developer": "Halyk Актив",
+  "housing_class": "элит",
+  "completion_year": 2015,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 22,
+  "apartments_count": 419
+ },
+ "дуэт": {
+  "developer": "КазСтрой",
+  "housing_class": null,
+  "completion_year": 2004,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 68
+ },
+ "достык, дом 290": {
+  "developer": "BAZIS–А",
+  "housing_class": null,
+  "completion_year": 2004,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 20
+ },
+ "долина роз": {
+  "developer": "BAZIS–А",
+  "housing_class": null,
+  "completion_year": 2006,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 11
+ },
+ "депутатский": {
+  "developer": "ЖСК Алматы",
+  "housing_class": "комфорт",
+  "completion_year": 2007,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 7,
+  "apartments_count": 82
+ },
+ "даймонд групп": {
+  "developer": "Даймонд групп",
+  "housing_class": null,
+  "completion_year": 2014,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 124
+ },
+ "горстрой на аль фараби маркова": {
+  "developer": "МАК Алматыгорстрой",
+  "housing_class": null,
+  "completion_year": 2004,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 24
+ },
+ "горная долина": {
+  "developer": "EMI",
+  "housing_class": "комфорт",
+  "completion_year": 2011,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 41
+ },
+ "гаухартас": {
+  "developer": "MAG",
+  "housing_class": "комфорт",
+  "completion_year": 2009,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 420
+ },
+ "век на байганина": {
+  "developer": "Корпорация ВЕК",
+  "housing_class": null,
+  "completion_year": 2007,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 8,
+  "apartments_count": 60
+ },
+ "бухар жырау тауэрс": {
+  "developer": "ТОО «Науан Корп»",
+  "housing_class": "комфорт",
+  "completion_year": 2009,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 22,
+  "apartments_count": 150
+ },
+ "ботанический cад": {
+  "developer": "BAZIS–А",
+  "housing_class": "комфорт",
+  "completion_year": 2003,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 31
+ },
+ "бейбарыс билдинг": {
+  "developer": "Бейбарыс Билдинг",
+  "housing_class": null,
+  "completion_year": 2005,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 14,
+  "apartments_count": 238
+ },
+ "байсал": {
+  "developer": "Компания Сэт Жол",
+  "housing_class": null,
+  "completion_year": 2009,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 6,
+  "apartments_count": 229
+ },
+ "базис на зенкова 33": {
+  "developer": "BAZIS–А",
+  "housing_class": null,
+  "completion_year": 2004,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 150
+ },
+ "баганашил севен старс": {
+  "developer": "Best Project",
+  "housing_class": null,
+  "completion_year": 2008,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 100
+ },
+ "аэлита": {
+  "developer": "TS Engineering",
+  "housing_class": "комфорт",
+  "completion_year": 2006,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 500
+ },
+ "ата": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "комфорт",
+  "completion_year": 2006,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 11,
+  "apartments_count": 64
+ },
+ "астана": {
+  "developer": "Астана Недвижимость",
+  "housing_class": null,
+  "completion_year": 2009,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 110
+ },
+ "аскарбек": {
+  "developer": "ДомСтрой",
+  "housing_class": "комфорт",
+  "completion_year": 2007,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 88
+ },
+ "аскар тау": {
+  "developer": "ИнтерСтрой НС",
+  "housing_class": "комфорт",
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 85
+ },
+ "асем тау": {
+  "developer": "ДомСтрой",
+  "housing_class": "комфорт",
+  "completion_year": 2007,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 2,
+  "apartments_count": 40
+ },
+ "арман вилла": {
+  "developer": "Туркуаз Инвест",
+  "housing_class": "элит",
+  "completion_year": 2009,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 78
+ },
+ "арман": {
+  "developer": "Демалыс и Ко",
+  "housing_class": "бизнес",
+  "completion_year": 2007,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 14,
+  "apartments_count": 240
+ },
+ "аль фараби": {
+  "developer": "ТОО СК Элитстрой",
+  "housing_class": "комфорт",
+  "completion_year": 2008,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 100
+ },
+ "альпийские луга": {
+  "developer": "BAZIS–А",
+  "housing_class": "элит",
+  "completion_year": 2012,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 78
+ },
+ "алтын орда": {
+  "developer": "МАК Алматыгорстрой",
+  "housing_class": "комфорт",
+  "completion_year": 2014,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 400
+ },
+ "алтын заман": {
+  "developer": "Алматы Центр Строй",
+  "housing_class": "комфорт",
+  "completion_year": 2008,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 15,
+  "apartments_count": 120
+ },
+ "алтын ауыл": {
+  "developer": "Аксу",
+  "housing_class": "эконом",
+  "completion_year": 2010,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 80
+ },
+ "алматы тауэрс": {
+  "developer": "KUAT",
+  "housing_class": "комфорт",
+  "completion_year": 2008,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 22,
+  "apartments_count": 320
+ },
+ "алма ата": {
+  "developer": "ДомСтрой",
+  "housing_class": "комфорт",
+  "completion_year": 2015,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 180
+ },
+ "алем": {
+  "developer": "ТОО СК Элитстрой",
+  "housing_class": null,
+  "completion_year": 2008,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 75
+ },
+ "алгабас": {
+  "developer": "Hold Trading Company",
+  "housing_class": null,
+  "completion_year": 2011,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 208
+ },
+ "алатау плюс": {
+  "developer": "Строй Сервис",
+  "housing_class": null,
+  "completion_year": 2008,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 41
+ },
+ "акмарал": {
+  "developer": "APS Construction",
+  "housing_class": "комфорт",
+  "completion_year": 2009,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 7,
+  "apartments_count": 130
+ },
+ "аккент": {
+  "developer": "Алатау Құрылыс Сауда",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 500
+ },
+ "академия 1": {
+  "developer": "ТОО СК Элитстрой",
+  "housing_class": null,
+  "completion_year": 2004,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 8,
+  "apartments_count": 50
+ },
+ "ак бота": {
+  "developer": "BAZIS–А",
+  "housing_class": null,
+  "completion_year": 2009,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 130
+ },
+ "айгерим": {
+  "developer": "Корпорация Астана-Стройинвест ТОО",
+  "housing_class": null,
+  "completion_year": 2012,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 348
+ },
+ "white fort": {
+  "developer": "ProSystem Group",
+  "housing_class": null,
+  "completion_year": 2006,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 75
+ },
+ "кунбел sun villa": {
+  "developer": "BAZIS–А",
+  "housing_class": null,
+  "completion_year": 2013,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 30
+ },
+ "gorky park residence": {
+  "developer": "Парк Констракшн",
+  "housing_class": null,
+  "completion_year": 2008,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 86
+ },
+ "crystal air village": {
+  "developer": "TS Engineering",
+  "housing_class": null,
+  "completion_year": 2004,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 2,
+  "apartments_count": 24
+ },
+ "bella villa": {
+  "developer": "Кендала Строй Инвест",
+  "housing_class": null,
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 38
+ },
+ "apple town": {
+  "developer": "Woolim Construction",
+  "housing_class": "бизнес",
+  "completion_year": 2012,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 18,
+  "apartments_count": 456
+ },
+ "тау самал на мендыкулова": {
+  "developer": "ТОО СК Элитстрой",
+  "housing_class": null,
+  "completion_year": 2008,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 96
+ },
+ "береке": {
+  "developer": "East Capital Limited ТОО",
+  "housing_class": "комфорт",
+  "completion_year": 2011,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 163
+ },
+ "bayterek residence": {
+  "developer": "Туркуаз Инвест",
+  "housing_class": "бизнес",
+  "completion_year": 2015,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 88
+ },
+ "акбулак": {
+  "developer": "Астана-Курылыс",
+  "housing_class": "комфорт",
+  "completion_year": 2008,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 240
+ },
+ "спутник": {
+  "developer": "Полет М",
+  "housing_class": "комфорт",
+  "completion_year": 2013,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 350
+ },
+ "базис по достык": {
+  "developer": "BAZIS–А",
+  "housing_class": null,
+  "completion_year": 2005,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 68
+ },
+ "версаль": {
+  "developer": "BAZIS–А",
+  "housing_class": null,
+  "completion_year": 2005,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 77
+ },
+ "куат на ескараева": {
+  "developer": "KUAT",
+  "housing_class": "комфорт",
+  "completion_year": 2004,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 14,
+  "apartments_count": 200
+ },
+ "айнабулак": {
+  "developer": "Центр СМР",
+  "housing_class": "бизнес",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 70
+ },
+ "арыстан": {
+  "developer": "Астана-Курылыс",
+  "housing_class": null,
+  "completion_year": 2014,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 250
+ },
+ "жетысу 3": {
+  "developer": "НИКО",
+  "housing_class": "комфорт",
+  "completion_year": 2010,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 11,
+  "apartments_count": 700
+ },
+ "жулдыз": {
+  "developer": "ЖСК Алматы",
+  "housing_class": null,
+  "completion_year": 2007,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 5,
+  "apartments_count": 330
+ },
+ "кулагер": {
+  "developer": "MIDDLEMAN",
+  "housing_class": null,
+  "completion_year": 2007,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 190
+ },
+ "науаи": {
+  "developer": "Halyk Актив",
+  "housing_class": "комфорт",
+  "completion_year": 2008,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 17,
+  "apartments_count": 350
+ },
+ "по тимирязева": {
+  "developer": "BAZIS–А",
+  "housing_class": "комфорт",
+  "completion_year": 2004,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 50
+ },
+ "по шагабутдинова": {
+  "developer": "ЖСК Алматы",
+  "housing_class": null,
+  "completion_year": 2006,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 120
+ },
+ "сайран": {
+  "developer": "Астана-Курылыс",
+  "housing_class": "комфорт",
+  "completion_year": 2013,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 50
+ },
+ "солнечная долина кг": {
+  "developer": "BAZIS–А",
+  "housing_class": "бизнес",
+  "completion_year": 2010,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 26
+ },
+ "koktobe city": {
+  "developer": "Kusto Home",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 392
+ },
+ "манхеттен 29 квартал": {
+  "developer": "Halyk Актив",
+  "housing_class": null,
+  "completion_year": 2011,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 20,
+  "apartments_count": 400
+ },
+ "нико по момышулы райымбека": {
+  "developer": "НИКО",
+  "housing_class": "эконом",
+  "completion_year": 2008,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 90
+ },
+ "нико 2 на толе би абдулиных": {
+  "developer": "НИКО",
+  "housing_class": null,
+  "completion_year": 2008,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 64
+ },
+ "шолпан": {
+  "developer": "East Star",
+  "housing_class": null,
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 90
+ },
+ "коктем по тимирязева шашкина": {
+  "developer": "Рамс Казахстан",
+  "housing_class": null,
+  "completion_year": 2014,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 68
+ },
+ "евразия": {
+  "developer": "Евразия Строй",
+  "housing_class": "бизнес",
+  "completion_year": 2015,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 200
+ },
+ "adal residence": {
+  "developer": "KM Group-2004",
+  "housing_class": "бизнес",
+  "completion_year": 2013,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 24
+ },
+ "солнечная долина": {
+  "developer": "Базис-Люкс ТОО",
+  "housing_class": "бизнес",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 8,
+  "apartments_count": 1094
+ },
+ "арай": {
+  "developer": "Имсталькон",
+  "housing_class": "комфорт",
+  "completion_year": 2015,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 17,
+  "apartments_count": 386
+ },
+ "ария": {
+  "developer": "Aria Project ТОО",
+  "housing_class": "комфорт",
+  "completion_year": 2016,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 6,
+  "apartments_count": 66
+ },
+ "royal": {
+  "developer": "Karpat Group",
+  "housing_class": "элит",
+  "completion_year": 2014,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 103
+ },
+ "радужный берег": {
+  "developer": "Тauba Invest ТОО",
+  "housing_class": null,
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 324
+ },
+ "жасмин": {
+  "developer": "Рамс Казахстан",
+  "housing_class": null,
+  "completion_year": 2013,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 72
+ },
+ "мечта на минина": {
+  "developer": "СеАй KZ",
+  "housing_class": null,
+  "completion_year": 2015,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 98
+ },
+ "олимп": {
+  "developer": "Олимп",
+  "housing_class": null,
+  "completion_year": 2009,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 16
+ },
+ "нахимова 16": {
+  "developer": "МАК Алматыгорстрой АO",
+  "housing_class": "элит",
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 36
+ },
+ "алатау": {
+  "developer": "МАК Алматыгорстрой",
+  "housing_class": "комфорт",
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 130
+ },
+ "ремизовка": {
+  "developer": "EMI",
+  "housing_class": "комфорт",
+  "completion_year": 2014,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 82
+ },
+ "royal gardens": {
+  "developer": "BAZIS–А",
+  "housing_class": null,
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 129
+ },
+ "тау самал": {
+  "developer": "ЖСК Алматы",
+  "housing_class": null,
+  "completion_year": 2011,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 150
+ },
+ "мирный": {
+  "developer": "BAZIS–А",
+  "housing_class": null,
+  "completion_year": 2015,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 14,
+  "apartments_count": 140
+ },
+ "eco green": {
+  "developer": "Eco Green",
+  "housing_class": "комфорт",
+  "completion_year": 2014,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 75
+ },
+ "алматы пана": {
+  "developer": "Алматы Пана",
+  "housing_class": null,
+  "completion_year": 2012,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 130
+ },
+ "таугуль": {
+  "developer": "Каражат НС",
+  "housing_class": null,
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 68
+ },
+ "central park residence": {
+  "developer": "Рамс Казахстан",
+  "housing_class": null,
+  "completion_year": 2015,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 500
+ },
+ "на ладыгина": {
+  "developer": "КУШ-ҚУАТ Wt ТОО",
+  "housing_class": null,
+  "completion_year": 2015,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 50
+ },
+ "весна": {
+  "developer": "Newmark",
+  "housing_class": null,
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 187
+ },
+ "сары арка": {
+  "developer": "MIDDLEMAN",
+  "housing_class": "комфорт",
+  "completion_year": 2015,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 120
+ },
+ "miras park": {
+  "developer": "Halyk Active",
+  "housing_class": "элит",
+  "completion_year": 2016,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 440
+ },
+ "ак жол отау": {
+  "developer": "Ак жол Алматы Строй",
+  "housing_class": null,
+  "completion_year": 2015,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 64
+ },
+ "атлас": {
+  "developer": "EL construction",
+  "housing_class": null,
+  "completion_year": 2015,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 100
+ },
+ "samal tower": {
+  "developer": "IBC TAIMAS",
+  "housing_class": null,
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 20,
+  "apartments_count": 485
+ },
+ "park house": {
+  "developer": "Рамс Казахстан",
+  "housing_class": null,
+  "completion_year": 2015,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 86
+ },
+ "симфония": {
+  "developer": "BAZIS–А",
+  "housing_class": "комфорт",
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 200
+ },
+ "бай тал": {
+  "developer": "Alshyn",
+  "housing_class": null,
+  "completion_year": 2015,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 310
+ },
+ "сезам": {
+  "developer": "BI Group Юг",
+  "housing_class": "бизнес",
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 120
+ },
+ "батыр": {
+  "developer": "ЖСК Алматы",
+  "housing_class": "комфорт",
+  "completion_year": 2012,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 108
+ },
+ "de ville": {
+  "developer": "Бай Мунай",
+  "housing_class": null,
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 31
+ },
+ "ак алем": {
+  "developer": "Tarlan Development",
+  "housing_class": "комфорт",
+  "completion_year": 2015,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 86
+ },
+ "амани": {
+  "developer": "Tarlan Development",
+  "housing_class": "элит",
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 36
+ },
+ "vesnovka": {
+  "developer": "KB Development",
+  "housing_class": "бизнес",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 12,
+  "apartments_count": 257
+ },
+ "панорама": {
+  "developer": "Exclusive Qurylys",
+  "housing_class": null,
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 15,
+  "apartments_count": 417
+ },
+ "dostyk residence": {
+  "developer": "Halyk Active",
+  "housing_class": "бизнес",
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 407
+ },
+ "тараз": {
+  "developer": "Tisha Group ТОО",
+  "housing_class": "комфорт",
+  "completion_year": 2014,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 12
+ },
+ "sun garden": {
+  "developer": "Concrete ТОО",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 50
+ },
+ "северное кольцо": {
+  "developer": "TS Com",
+  "housing_class": "эконом",
+  "completion_year": 2014,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 517
+ },
+ "комфорт": {
+  "developer": "СеАй KZ",
+  "housing_class": null,
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 174
+ },
+ "алма": {
+  "developer": "Рамс Казахстан",
+  "housing_class": null,
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 76
+ },
+ "ns tau": {
+  "developer": "NS-курылыс",
+  "housing_class": null,
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 77
+ },
+ "central esentai residence": {
+  "developer": "Завод «Электрокабель»",
+  "housing_class": "комфорт",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 432
+ },
+ "exclusive residence": {
+  "developer": "Exclusive Qurylys",
+  "housing_class": "бизнес",
+  "completion_year": 2016,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 201
+ },
+ "самга": {
+  "developer": "Alshyn",
+  "housing_class": null,
+  "completion_year": 2015,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 10,
+  "apartments_count": 80
+ },
+ "нур тобе": {
+  "developer": "Имсталькон",
+  "housing_class": null,
+  "completion_year": 2014,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 6,
+  "apartments_count": 23
+ },
+ "бастау": {
+  "developer": "Корпорация ВЕК",
+  "housing_class": null,
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 155
+ },
+ "алмалы": {
+  "developer": "BAZIS–А",
+  "housing_class": "бизнес",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 500
+ },
+ "горное солнце": {
+  "developer": "Таулы Аспан ЖСК",
+  "housing_class": "элит",
+  "completion_year": 2017,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 139
+ },
+ "latifa residence": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "бизнес",
+  "completion_year": 2018,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 17,
+  "apartments_count": 330
+ },
+ "диалин": {
+  "developer": "ЖСК Алматы",
+  "housing_class": "бизнес",
+  "completion_year": 2015,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 8,
+  "apartments_count": 56
+ },
+ "престиж алатау": {
+  "developer": "Tau-house development",
+  "housing_class": "бизнес",
+  "completion_year": 2015,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 8,
+  "apartments_count": 78
+ },
+ "gagarin park": {
+  "developer": "BI Group Юг",
+  "housing_class": "бизнес",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 560
+ },
+ "оркендеу": {
+  "developer": "ХАЛЫК БИЛДИНГ",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 18,
+  "apartments_count": 80
+ },
+ "космо": {
+  "developer": "ХЭМКО TOO",
+  "housing_class": "комфорт",
+  "completion_year": 2017,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 52
+ },
+ "есентай": {
+  "developer": "ХЭМКО TOO",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 130
+ },
+ "falconcity": {
+  "developer": "Falcon Petroleum",
+  "housing_class": null,
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 203
+ },
+ "utegen": {
+  "developer": "MIDDLEMAN",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 467
+ },
+ "салем 1, 2": {
+  "developer": "ТОО СК Элитстрой",
+  "housing_class": "бизнес",
+  "completion_year": 2014,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 72
+ },
+ "ак кайын": {
+  "developer": "Ардис ТОО",
+  "housing_class": null,
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 9,
+  "apartments_count": 120
+ },
+ "куаныш": {
+  "developer": "Bayterek 2050 TOO old",
+  "housing_class": "комфорт",
+  "completion_year": 2017,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 159
+ },
+ "родник 1": {
+  "developer": "Тоо Talas Capital",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 70
+ },
+ "remizovka": {
+  "developer": "BAZIS–А",
+  "housing_class": "бизнес",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 126
+ },
+ "джетысуская 4": {
+  "developer": "Поток-8",
+  "housing_class": "комфорт",
+  "completion_year": 2017,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 80
+ },
+ "достык": {
+  "developer": "Инвестиционная компания B.I.G",
+  "housing_class": null,
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 144
+ },
+ "esentai river townhouse": {
+  "developer": "AV-Construction ТОО",
+  "housing_class": "элит",
+  "completion_year": 2020,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 43
+ },
+ "athletic village": {
+  "developer": "ТОО СК Элитстрой",
+  "housing_class": "комфорт",
+  "completion_year": 2017,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 8,
+  "apartments_count": 890
+ },
+ "cordial": {
+  "developer": "Cordial Construction",
+  "housing_class": null,
+  "completion_year": 2015,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 136
+ },
+ "алем әлем": {
+  "developer": "Корпорация Арт-Медиа",
+  "housing_class": "эконом",
+  "completion_year": 2014,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 72
+ },
+ "vostochka kz": {
+  "developer": "ТОО «Berkut Development»",
+  "housing_class": "комфорт",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 1566
+ },
+ "академия 2": {
+  "developer": "ТОО СК Элитстрой",
+  "housing_class": null,
+  "completion_year": 2005,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 34
+ },
+ "orchard residences": {
+  "developer": "KUMPULAN KAZAKHSTAN",
+  "housing_class": "элит",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 47
+ },
+ "esentai city villas": {
+  "developer": "AV-Construction ТОО",
+  "housing_class": "элит",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 20
+ },
+ "tau house": {
+  "developer": "Tau-house development",
+  "housing_class": null,
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 126
+ },
+ "bloom house": {
+  "developer": "АТА СТРОЙ",
+  "housing_class": null,
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 109
+ },
+ "element": {
+  "developer": "BAZIS–А",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 618
+ },
+ "восточный парк": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 436
+ },
+ "уш сункар": {
+  "developer": "Interstroy Engineering",
+  "housing_class": "комфорт",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 1118
+ },
+ "orion iii": {
+  "developer": "BAZIS–А",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 33,
+  "apartments_count": 277
+ },
+ "legenda": {
+  "developer": "BAZIS–А",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 1000
+ },
+ "акварель": {
+  "developer": "BAZIS–А",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 200
+ },
+ "abay 130": {
+  "developer": "Tau Development",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 288
+ },
+ "кулан": {
+  "developer": "Alshyn",
+  "housing_class": null,
+  "completion_year": 2014,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 75
+ },
+ "алатау ажары": {
+  "developer": "К-стройинвест",
+  "housing_class": "эконом",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 162
+ },
+ "gorny residence": {
+  "developer": "Ordabasy Property Management ТОО",
+  "housing_class": null,
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 15
+ },
+ "адиет": {
+  "developer": "Alshyn",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 352
+ },
+ "тау каргалы": {
+  "developer": "ЖСК Алматы",
+  "housing_class": "эконом",
+  "completion_year": 2017,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 10,
+  "apartments_count": 60
+ },
+ "комильфо": {
+  "developer": "Нефтебаза Альмерек ТОО",
+  "housing_class": null,
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 38
+ },
+ "ideal residence": {
+  "developer": "DIAL GROUP",
+  "housing_class": "бизнес",
+  "completion_year": 2018,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 25
+ },
+ "дом на абая": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 458
+ },
+ "центральный": {
+  "developer": "Темир Пром XXI",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 318
+ },
+ "bass townhouse": {
+  "developer": "BASS Qurylys",
+  "housing_class": null,
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 10
+ },
+ "kayra": {
+  "developer": "Kayra",
+  "housing_class": "комфорт",
+  "completion_year": 2017,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 36
+ },
+ "alatau hills": {
+  "developer": "EMI",
+  "housing_class": "элит",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 60
+ },
+ "таунхаусы мирас": {
+  "developer": "DIAL GROUP",
+  "housing_class": "элит",
+  "completion_year": 2017,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 2,
+  "apartments_count": 30
+ },
+ "вавилон": {
+  "developer": "Тамерлан ТОО",
+  "housing_class": null,
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 340
+ },
+ "шугыла": {
+  "developer": "Тимус-construction",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 496
+ },
+ "мамыр": {
+  "developer": "ЖСК Алматы",
+  "housing_class": null,
+  "completion_year": 2012,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 108
+ },
+ "по ул исаева": {
+  "developer": "ТОО София Строй",
+  "housing_class": null,
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 65
+ },
+ "азия": {
+  "developer": "Азия",
+  "housing_class": null,
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 6,
+  "apartments_count": 36
+ },
+ "престиж": {
+  "developer": "SABA GROUP KZ",
+  "housing_class": "бизнес",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 334
+ },
+ "miras garden village": {
+  "developer": "Integra Engineering",
+  "housing_class": null,
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 12
+ },
+ "city park": {
+  "developer": "Qazaqstroy",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 114
+ },
+ "mountain park": {
+  "developer": "R.S. Building Construction",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 93
+ },
+ "восход": {
+  "developer": "Тамерлан ТОО",
+  "housing_class": null,
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 10,
+  "apartments_count": 148
+ },
+ "braun": {
+  "developer": "Tau Development",
+  "housing_class": "эконом",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 14,
+  "apartments_count": 156
+ },
+ "jasmine garden": {
+  "developer": "Qazaqstroy",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 13
+ },
+ "exclusive life": {
+  "developer": "Exclusive Qurylys",
+  "housing_class": "бизнес",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 191
+ },
+ "alatau golf residences": {
+  "developer": "Cordial Construction",
+  "housing_class": "бизнес",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 380
+ },
+ "сакура": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "элит",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 8,
+  "apartments_count": 418
+ },
+ "кок жер": {
+  "developer": "ЖСК Алматы",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 76
+ },
+ "forum plus": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 162
+ },
+ "alma city": {
+  "developer": "Qazaqstroy",
+  "housing_class": "эконом",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 2052
+ },
+ "terra": {
+  "developer": "Tau Development",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 784
+ },
+ "отау": {
+  "developer": "Корпорация ВЕК",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 341
+ },
+ "alim": {
+  "developer": "MIDDLEMAN",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 352
+ },
+ "rams luxury": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 204
+ },
+ "венский дом": {
+  "developer": "Globus Invest Group",
+  "housing_class": "элит",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 34
+ },
+ "молодёжный": {
+  "developer": "Темир Пром XXI",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 400
+ },
+ "atlant": {
+  "developer": "NOVEC",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 712
+ },
+ "jer ana": {
+  "developer": "Atrix Group",
+  "housing_class": "комфорт",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 19,
+  "apartments_count": 224
+ },
+ "jazz квартал": {
+  "developer": "BAZIS–А",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 19
+ },
+ "верный": {
+  "developer": "АО «НСК Астана Курылыс»",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 228
+ },
+ "наурыз": {
+  "developer": "Сэт Жол Technologies",
+  "housing_class": "бизнес",
+  "completion_year": 2016,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 394
+ },
+ "асыл тау": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 17,
+  "apartments_count": 1167
+ },
+ "наурыз 2": {
+  "developer": "Сэт Жол",
+  "housing_class": "бизнес",
+  "completion_year": 2012,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 185
+ },
+ "аманат": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 422
+ },
+ "art residence": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 72
+ },
+ "жана жетысу": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 276
+ },
+ "central avenue": {
+  "developer": "BI Group Юг",
+  "housing_class": "бизнес",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 21,
+  "apartments_count": 878
+ },
+ "берекет": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 285
+ },
+ "gulder": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 800
+ },
+ "hyde park": {
+  "developer": "BI Group Юг",
+  "housing_class": "элит",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 104
+ },
+ "atameken": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 264
+ },
+ "afd plaza": {
+  "developer": "Halyk Active",
+  "housing_class": "бизнес",
+  "completion_year": 2014,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 21,
+  "apartments_count": 760
+ },
+ "famous town": {
+  "developer": "AQ Invest",
+  "housing_class": "комфорт",
+  "completion_year": 2023,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 57
+ },
+ "акниет": {
+  "developer": "NOVEC",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 250
+ },
+ "жандосова": {
+  "developer": "Предприятие капитального строительства акимата города Алматы",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 17,
+  "apartments_count": 693
+ },
+ "хан тенгри": {
+  "developer": "Halyk Active",
+  "housing_class": "комфорт",
+  "completion_year": 2012,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 594
+ },
+ "moskva": {
+  "developer": "NOVEC",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 168
+ },
+ "шахристан": {
+  "developer": "Halyk Active",
+  "housing_class": "комфорт",
+  "completion_year": 2015,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 18,
+  "apartments_count": 828
+ },
+ "remizovka town": {
+  "developer": "AQ Invest",
+  "housing_class": "комфорт",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 12
+ },
+ "sandel": {
+  "developer": "Sandel",
+  "housing_class": "бизнес",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 8,
+  "apartments_count": 35
+ },
+ "чешские террасы": {
+  "developer": "Codeco Kazakhstan",
+  "housing_class": "элит",
+  "completion_year": 2015,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 11
+ },
+ "тан нуры": {
+  "developer": "Falcon Petroleum",
+  "housing_class": "элит",
+  "completion_year": 2013,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 188
+ },
+ "тау шатыр": {
+  "developer": "KazBuild Development",
+  "housing_class": "бизнес",
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 330
+ },
+ "карасу": {
+  "developer": "Тұрғын үй Қарасу",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 6
+ },
+ "в мкр саялы": {
+  "developer": "Baiterek Национальный Управляющий Холдинг",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 100
+ },
+ "bright hills": {
+  "developer": "РБТ групп",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 8
+ },
+ "дом на гагарина": {
+  "developer": "KazBuild Development",
+  "housing_class": "бизнес",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 120
+ },
+ "alatau village": {
+  "developer": "Hayat Construction Group",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 1,
+  "apartments_count": 134
+ },
+ "suly’ tan": {
+  "developer": "Тоо Talas Capital",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 90
+ },
+ "lamiya": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 335
+ },
+ "nomad": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "комфорт",
+  "completion_year": 2020,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 124
+ },
+ "forum residence": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "бизнес",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 312
+ },
+ "riviera": {
+  "developer": "BAZIS–А",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 111
+ },
+ "varlamova": {
+  "developer": "Поток-8",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 360
+ },
+ "medeu park": {
+  "developer": "Есентай Строй",
+  "housing_class": "комфорт",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 234
+ },
+ "эталон ремизовка": {
+  "developer": "Тура Би",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 24
+ },
+ "ush qonyr": {
+  "developer": "KB Development",
+  "housing_class": "комфорт",
+  "completion_year": 2023,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 519
+ },
+ "arbat": {
+  "developer": "MIDDLEMAN",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 15,
+  "apartments_count": 516
+ },
+ "terrenkur terrace": {
+  "developer": "Есентай Строй",
+  "housing_class": "элит",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 41
+ },
+ "lake town": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 21,
+  "apartments_count": 596
+ },
+ "sun hills": {
+  "developer": "TS Com",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 11
+ },
+ "на ташкентской": {
+  "developer": "TS Com",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 224
+ },
+ "opera": {
+  "developer": "NOVEC",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 252
+ },
+ "metropole": {
+  "developer": "BAZIS–А",
+  "housing_class": "бизнес",
+  "completion_year": 2023,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 19,
+  "apartments_count": 585
+ },
+ "nomad city": {
+  "developer": "Myntas Stroy",
+  "housing_class": "комфорт",
+  "completion_year": 2023,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 324
+ },
+ "atria": {
+  "developer": "BAZIS–А",
+  "housing_class": "бизнес",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 219
+ },
+ "basenova 10": {
+  "developer": "BAZIS–А",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 264
+ },
+ "4you": {
+  "developer": "BI Group Юг",
+  "housing_class": "бизнес",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 18,
+  "apartments_count": 1500
+ },
+ "алтын булак": {
+  "developer": "Halyk Active",
+  "housing_class": "комфорт",
+  "completion_year": 2012,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 19,
+  "apartments_count": 684
+ },
+ "оркен": {
+  "developer": "Ер-Ай Констракшн",
+  "housing_class": "эконом",
+  "completion_year": 2020,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 121
+ },
+ "sirius": {
+  "developer": "Артемида ЛТД",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 132
+ },
+ "dolce vita residence": {
+  "developer": "ТОО \"Ал-Афи Лимитед\"",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 94
+ },
+ "blackberry hills": {
+  "developer": "New Estate",
+  "housing_class": "бизнес",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 30
+ },
+ "sholpan city": {
+  "developer": "Bayterek 2050",
+  "housing_class": "комфорт",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 493
+ },
+ "parasat 2": {
+  "developer": "PARASAT II",
+  "housing_class": "эконом",
+  "completion_year": 2027,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 900
+ },
+ "gagarin terrace": {
+  "developer": "Capital Invest Construction",
+  "housing_class": "комфорт",
+  "completion_year": 2020,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 128
+ },
+ "novella": {
+  "developer": "SHEBERGROUP",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 281
+ },
+ "европолис": {
+  "developer": "Halyk Active",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 130
+ },
+ "palladium": {
+  "developer": "Корпорация ВЕК",
+  "housing_class": "бизнес",
+  "completion_year": 2026,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 75
+ },
+ "dragon city": {
+  "developer": "Karpat Group",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 8,
+  "apartments_count": 592
+ },
+ "12 месяцев": {
+  "developer": "Qazaqstroy",
+  "housing_class": "эконом",
+  "completion_year": 2025,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 780
+ },
+ "terracotta": {
+  "developer": "Qazaqstroy",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 20,
+  "apartments_count": 161
+ },
+ "mountian drive": {
+  "developer": "ТОО «Науан Корп»",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 93
+ },
+ "r house": {
+  "developer": "Etasa Construction",
+  "housing_class": "бизнес",
+  "completion_year": 2023,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 18,
+  "apartments_count": 144
+ },
+ "family club": {
+  "developer": "Samal Development",
+  "housing_class": "комфорт",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 27
+ },
+ "exclusive юбилейный": {
+  "developer": "Exclusive Qurylys",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 59
+ },
+ "chocolate": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 17,
+  "apartments_count": 91
+ },
+ "амаль": {
+  "developer": "Ауес и К",
+  "housing_class": "бизнес",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 176
+ },
+ "алтынсарин": {
+  "developer": "Senim-SN",
+  "housing_class": "бизнес",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 215
+ },
+ "evim": {
+  "developer": "Хатеррэйс",
+  "housing_class": "элит",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 80
+ },
+ "айна": {
+  "developer": "Estateman",
+  "housing_class": "эконом",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 73
+ },
+ "посольский": {
+  "developer": "РБТ групп",
+  "housing_class": "элит",
+  "completion_year": 2023,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 21
+ },
+ "river house exclusive": {
+  "developer": "MN Trade",
+  "housing_class": "бизнес",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 8,
+  "apartments_count": 47
+ },
+ "тау дала": {
+  "developer": "Тау Дала",
+  "housing_class": "эконом",
+  "completion_year": 2017,
+  "construction_status": "Строящийся",
+  "material": "панельный",
+  "max_floors": 2,
+  "apartments_count": 85
+ },
+ "mountain resort": {
+  "developer": "Курылыс Алатау А",
+  "housing_class": "бизнес",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 16
+ },
+ "woodland village": {
+  "developer": "Зодчий Казахстан",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 18
+ },
+ "adem village": {
+  "developer": "ABS Group",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 29
+ },
+ "abay": {
+  "developer": "Tastai Development",
+  "housing_class": "бизнес",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 70
+ },
+ "diamond hills": {
+  "developer": "Diamond Hills",
+  "housing_class": "комфорт",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 45
+ },
+ "акжар тау": {
+  "developer": "Дорожник",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 216
+ },
+ "асыл тобе": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 140
+ },
+ "silverwood apartments": {
+  "developer": "Estatе Co.",
+  "housing_class": "элит",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 55
+ },
+ "assem plaza": {
+  "developer": "DIAL GROUP",
+  "housing_class": "бизнес",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 17,
+  "apartments_count": 270
+ },
+ "nur ay residence": {
+  "developer": "DIAL GROUP",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 130
+ },
+ "elif towers": {
+  "developer": "DIAL GROUP",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 100
+ },
+ "qarasai park": {
+  "developer": "KazBuild Development",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 255
+ },
+ "nef uptown": {
+  "developer": "Nef",
+  "housing_class": "элит",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 471
+ },
+ "grand town": {
+  "developer": "YNTYMAQ CORPORATION",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 300
+ },
+ "ortau": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "бизнес",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 297
+ },
+ "теремки": {
+  "developer": "Qazaqstroy",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 200
+ },
+ "ala park": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 17,
+  "apartments_count": 911
+ },
+ "geneva elite apartments": {
+  "developer": "ТОО KY Invest",
+  "housing_class": "элит",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 47
+ },
+ "galileo terrace": {
+  "developer": "Capital Invest Construction",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 126
+ },
+ "котельникова 8 1": {
+  "developer": "Центр СМР",
+  "housing_class": "бизнес",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 80
+ },
+ "heaven": {
+  "developer": "Qazaqstroy",
+  "housing_class": "комфорт",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 17,
+  "apartments_count": 300
+ },
+ "exclusive time": {
+  "developer": "Exclusive Qurylys",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 14,
+  "apartments_count": 320
+ },
+ "exclusive star": {
+  "developer": "Exclusive Qurylys",
+  "housing_class": "бизнес",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 417
+ },
+ "династия": {
+  "developer": "Mdi-MAX Group",
+  "housing_class": "элит",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 191
+ },
+ "presidents park": {
+  "developer": "BI Group Юг",
+  "housing_class": "элит",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 168
+ },
+ "oscar": {
+  "developer": "NOVEC",
+  "housing_class": "эконом",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 240
+ },
+ "double star": {
+  "developer": "GAB Construction",
+  "housing_class": "бизнес",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 100
+ },
+ "abay residence": {
+  "developer": "Рамс Казахстан",
+  "housing_class": null,
+  "completion_year": 2011,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 72
+ },
+ "garden villa": {
+  "developer": "ТОО Asia Development Group",
+  "housing_class": "бизнес",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 22
+ },
+ "river park": {
+  "developer": "Корпорация Арт-Медиа",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 228
+ },
+ "pioneer": {
+  "developer": "NOVEC",
+  "housing_class": "комфорт",
+  "completion_year": 2019,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 140
+ },
+ "baikonyr": {
+  "developer": "NOVEC",
+  "housing_class": "комфорт",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 140
+ },
+ "navoi 3 0": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 456
+ },
+ "olymp residence": {
+  "developer": "Karpat Group",
+  "housing_class": "комфорт",
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 20
+ },
+ "gorny hills": {
+  "developer": "Ер-Ай Констракшн",
+  "housing_class": "бизнес",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 63
+ },
+ "la verde": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 151
+ },
+ "шугыла city": {
+  "developer": "Тимус-construction",
+  "housing_class": "бизнес",
+  "completion_year": 2020,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 1428
+ },
+ "eco park": {
+  "developer": "DAS CONSTRUCTION",
+  "housing_class": "элит",
+  "completion_year": 2024,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 27
+ },
+ "megapolis": {
+  "developer": "Etasa Construction",
+  "housing_class": "бизнес",
+  "completion_year": 2022,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 20,
+  "apartments_count": 292
+ },
+ "sorrento": {
+  "developer": "Timus Development",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 62
+ },
+ "ojet": {
+  "developer": "SHEBERGROUP",
+  "housing_class": "эконом",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 413
+ },
+ "felicita": {
+  "developer": "Baitau invest",
+  "housing_class": "бизнес",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 72
+ },
+ "riverside": {
+  "developer": "BI Group Юг",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 15,
+  "apartments_count": 221
+ },
+ "tamarix city": {
+  "developer": "Exclusive Qurylys",
+  "housing_class": "эконом",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 560
+ },
+ "oner towers": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 17,
+  "apartments_count": 214
+ },
+ "elite life": {
+  "developer": "Атриум Плюс",
+  "housing_class": "элит",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 231
+ },
+ "river time": {
+  "developer": "Time Group",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 300
+ },
+ "zharkyn": {
+  "developer": "Capital Invest Construction",
+  "housing_class": "комфорт",
+  "completion_year": 2020,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 76
+ },
+ "европейский квартал": {
+  "developer": "SKY DEVELOPMENT",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 385
+ },
+ "nomad 2": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "комфорт",
+  "completion_year": 2023,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 507
+ },
+ "capital club": {
+  "developer": "Capital Invest Construction",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 21
+ },
+ "aul resort chalet village": {
+  "developer": "Aul resort Chalet Village",
+  "housing_class": "бизнес",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 93
+ },
+ "lafayette": {
+  "developer": "K7 Group",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 176
+ },
+ "altyn city": {
+  "developer": "Exclusive Qurylys",
+  "housing_class": "эконом",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 502
+ },
+ "monolux residence": {
+  "developer": "Monolit Development",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 3
+ },
+ "гармония": {
+  "developer": "TOO Verona Remizovka",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 46
+ },
+ "art villa": {
+  "developer": "Capital Invest Construction",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 12
+ },
+ "lotos terrace": {
+  "developer": "Capital Invest Construction",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 330
+ },
+ "luxury park": {
+  "developer": "Атриум Плюс",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 60
+ },
+ "lancashire": {
+  "developer": "K7 Group",
+  "housing_class": "бизнес",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 316
+ },
+ "amir": {
+  "developer": "BI Group Юг",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 209
+ },
+ "agat": {
+  "developer": "NOVEC",
+  "housing_class": "бизнес",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 87
+ },
+ "молодежный на тулебаева": {
+  "developer": "SABA GROUP KZ",
+  "housing_class": "эконом",
+  "completion_year": 2020,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 160
+ },
+ "grande vie": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 168
+ },
+ "hayat park": {
+  "developer": "Hayat Construction Group",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 191
+ },
+ "four seasons": {
+  "developer": "Time Group",
+  "housing_class": "бизнес",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 252
+ },
+ "merey terrace": {
+  "developer": "Magnet Construction",
+  "housing_class": "элит",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 5
+ },
+ "silver hills": {
+  "developer": "ТОО Көк Бәйтерек, Ген.подрядчик TransMaks",
+  "housing_class": "бизнес",
+  "completion_year": 2022,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 213
+ },
+ "beverly hills": {
+  "developer": "BAAS GROUP",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 4
+ },
+ "rams city": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 18,
+  "apartments_count": 2886
+ },
+ "belbulaq hills townhouse": {
+  "developer": "TOO Salem Qurylys",
+  "housing_class": "комфорт",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 26
+ },
+ "seven hills": {
+  "developer": "Nest Stroy",
+  "housing_class": "бизнес",
+  "completion_year": 2021,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 14,
+  "apartments_count": 398
+ },
+ "alma villa": {
+  "developer": "MN Trade",
+  "housing_class": "бизнес",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 202
+ },
+ "serenity park": {
+  "developer": "НурАли Проект",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 2,
+  "apartments_count": 15
+ },
+ "shahar city": {
+  "developer": "Exclusive Qurylys",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 1076
+ },
+ "атмосфера": {
+  "developer": "ATAMURA GROUP",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 728
+ },
+ "auezov city": {
+  "developer": "BAZIS–А",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 15,
+  "apartments_count": 330
+ },
+ "apple park": {
+  "developer": "ТОО Almaty Investment Group Construction",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 162
+ },
+ "kerey residence": {
+  "developer": "Алматыкурылыс",
+  "housing_class": "бизнес",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 12
+ },
+ "medeu city": {
+  "developer": "Domus Qazaqstan",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 150
+ },
+ "dostyk": {
+  "developer": "Egemen Company",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 1353
+ },
+ "jardin": {
+  "developer": "ТОО Lider Company KZ",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 639
+ },
+ "al’farabi 27": {
+  "developer": "BAZIS–А",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 21,
+  "apartments_count": 330
+ },
+ "primavera": {
+  "developer": "BAZIS–А",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 21,
+  "apartments_count": 202
+ },
+ "nurly dala": {
+  "developer": "ТОО «Строй Комфорт Девелопмент»",
+  "housing_class": "эконом",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 234
+ },
+ "ermensai club": {
+  "developer": "Сити Строй Бетон",
+  "housing_class": "бизнес",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 6
+ },
+ "северный": {
+  "developer": "Центр СМР",
+  "housing_class": "эконом",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 400
+ },
+ "баракат": {
+  "developer": "Инвест Билдинг Казахстан",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 50
+ },
+ "saxon yard": {
+  "developer": "K7 Group",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 260
+ },
+ "qadam": {
+  "developer": "Cordial Construction",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 254
+ },
+ "sensata city": {
+  "developer": "Sensata Group",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 454
+ },
+ "комфорт сити": {
+  "developer": "SABA GROUP KZ",
+  "housing_class": "бизнес",
+  "completion_year": 2023,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 20,
+  "apartments_count": 1800
+ },
+ "шапагат": {
+  "developer": "Karpat Group",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 20
+ },
+ "jasmine": {
+  "developer": "Qazaq Stroy Company",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 49
+ },
+ "sofia": {
+  "developer": "Time Group",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 288
+ },
+ "union": {
+  "developer": "Time Group",
+  "housing_class": "бизнес",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 240
+ },
+ "асыл уя": {
+  "developer": "AKAS Development",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 324
+ },
+ "lifetown": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 529
+ },
+ "levitas": {
+  "developer": "ABT Engineering",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 5
+ },
+ "admiral": {
+  "developer": "ТОО Tauman Qurylys",
+  "housing_class": "бизнес",
+  "completion_year": 2023,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 120
+ },
+ "meken": {
+  "developer": "ТОО KAZBUILD - АСТЫК",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 21
+ },
+ "city plus": {
+  "developer": "Qazaqstroy",
+  "housing_class": "эконом",
+  "completion_year": 2024,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 463
+ },
+ "baganashil residence": {
+  "developer": "Rim Group",
+  "housing_class": "элит",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 8
+ },
+ "hill town residence": {
+  "developer": "Курылыс Алатау А",
+  "housing_class": "бизнес",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 16
+ },
+ "dial residence": {
+  "developer": "DIAL GROUP",
+  "housing_class": "бизнес",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 128
+ },
+ "elif garden": {
+  "developer": "GAB Construction",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 500
+ },
+ "family comfort": {
+  "developer": "Samal Development",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 203
+ },
+ "gul ana": {
+  "developer": "KazSMU",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 184
+ },
+ "harmony 2": {
+  "developer": "TOO Verona Remizovka",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 46
+ },
+ "lumiere": {
+  "developer": "BAZIS–А",
+  "housing_class": "элит",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 9,
+  "apartments_count": 100
+ },
+ "sky hills": {
+  "developer": "TS Com",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 126
+ },
+ "nest grand": {
+  "developer": "Nest Stroy",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 520
+ },
+ "soho 17": {
+  "developer": "MN Trade",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 100
+ },
+ "y fit house": {
+  "developer": "ТОО Ақтілек шатыры",
+  "housing_class": "бизнес",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 4,
+  "apartments_count": 32
+ },
+ "jetisu park": {
+  "developer": "ТОО МИА Строй",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 1210
+ },
+ "estet": {
+  "developer": "BAZIS–А",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 500
+ },
+ "сеним": {
+  "developer": "ТОО \"АРТ-ТЕХНОСС\"",
+  "housing_class": "эконом",
+  "completion_year": 2024,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 188
+ },
+ "центральный на тулебаева": {
+  "developer": "SABA GROUP KZ",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 65
+ },
+ "цюрих": {
+  "developer": "Miras Green Technology Building",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 144
+ },
+ "ырысты": {
+  "developer": "ТОО Алатау Прогресс",
+  "housing_class": "эконом",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 8
+ },
+ "solar homes": {
+  "developer": "Parmigiano Group",
+  "housing_class": "бизнес",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 23
+ },
+ "four seasons villa": {
+  "developer": "ТОО RBEST Home",
+  "housing_class": "бизнес",
+  "completion_year": 2010,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 42
+ },
+ "belleview": {
+  "developer": "TOO Mangosteen development",
+  "housing_class": "элит",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 2
+ },
+ "aulet": {
+  "developer": "BI Group Юг",
+  "housing_class": "бизнес",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 121
+ },
+ "california": {
+  "developer": "ТОО Asia Development Group",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 20
+ },
+ "zarya": {
+  "developer": "ТОО Ақтілек шатыры",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 200
+ },
+ "w": {
+  "developer": "SHEBERGROUP",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 92
+ },
+ "evim novo": {
+  "developer": "Evim Development",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 47
+ },
+ "syattilik": {
+  "developer": "ТОО VIP жильё",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 14
+ },
+ "alasha residence": {
+  "developer": "Monolit Group",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 260
+ },
+ "shahar": {
+  "developer": "NOVEC",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 224
+ },
+ "la grace": {
+  "developer": "JD Corp",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 22
+ },
+ "zvezdnyi": {
+  "developer": "А+Development",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 10
+ },
+ "aras residence": {
+  "developer": "А+Development",
+  "housing_class": "бизнес",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "панельный",
+  "max_floors": 3,
+  "apartments_count": 34
+ },
+ "pine hill": {
+  "developer": "TOO Amadeus Hotel Group",
+  "housing_class": "бизнес",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 32
+ },
+ "iris home": {
+  "developer": "Lider Damu Group",
+  "housing_class": "комфорт",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 33
+ },
+ "wonder hills": {
+  "developer": "GD Group LTD",
+  "housing_class": "комфорт",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 2,
+  "apartments_count": 50
+ },
+ "hill town almaty": {
+  "developer": "Курылыс Алатау А",
+  "housing_class": "бизнес",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 50
+ },
+ "everest": {
+  "developer": "Everest Development",
+  "housing_class": "комфорт",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 18,
+  "apartments_count": 800
+ },
+ "miras hills": {
+  "developer": "Гранд Строй групп",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 8
+ },
+ "alem city": {
+  "developer": "Qazaqstroy",
+  "housing_class": "эконом",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 2217
+ },
+ "montblanc": {
+  "developer": "NB Holding",
+  "housing_class": "элит",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 93
+ },
+ "abylaikhan apartments": {
+  "developer": "ТОО Abylaikhan Construction",
+  "housing_class": "бизнес",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 64
+ },
+ "qalqaman": {
+  "developer": "Monumental Building",
+  "housing_class": "эконом",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 180
+ },
+ "status": {
+  "developer": "Capital Invest Construction",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 72
+ },
+ "raiymbek": {
+  "developer": "ТОО \"ИНТЕРФИНАНС\"",
+  "housing_class": "комфорт",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 1274
+ },
+ "gk village": {
+  "developer": "ИП Застройщик",
+  "housing_class": "элит",
+  "completion_year": 2021,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 2
+ },
+ "high garden": {
+  "developer": "Enterprise Development Group",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 4
+ },
+ "garden hills": {
+  "developer": "Rise capital",
+  "housing_class": "элит",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 96
+ },
+ "green city": {
+  "developer": "TOO MG City",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 390
+ },
+ "mountain villa": {
+  "developer": "ТОО ART StroyService",
+  "housing_class": "бизнес",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 9
+ },
+ "айсулу": {
+  "developer": "Tarlan Development",
+  "housing_class": "комфорт",
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 165
+ },
+ "taugul": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 100
+ },
+ "кристалл": {
+  "developer": "Qazaqstroy",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 20,
+  "apartments_count": 1234
+ },
+ "elaman": {
+  "developer": "NOVEC",
+  "housing_class": "эконом",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 706
+ },
+ "4hills": {
+  "developer": "ТОО Lider Company KZ",
+  "housing_class": "комфорт",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 4
+ },
+ "каспий": {
+  "developer": "ТОО SMR-EURASIA",
+  "housing_class": "эконом",
+  "completion_year": 2027,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 1440
+ },
+ "freedom": {
+  "developer": "ТОО «BATYL Group»",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 138
+ },
+ "etasa residence": {
+  "developer": "Etasa Construction",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 18,
+  "apartments_count": 273
+ },
+ "green": {
+  "developer": "Askar Development",
+  "housing_class": "эконом",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 78
+ },
+ "sunday terrace на айтматова": {
+  "developer": "ТОО ЖВК",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 2,
+  "apartments_count": 14
+ },
+ "на жамакаева": {
+  "developer": "Atrix Group",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 78
+ },
+ "sunny village": {
+  "developer": "Хансеитов Батыр",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 14
+ },
+ "жагалау": {
+  "developer": "ТОО \"Халык Актив\"",
+  "housing_class": "бизнес",
+  "completion_year": 2012,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 22,
+  "apartments_count": 220
+ },
+ "regent": {
+  "developer": "ТОО ADS Capital",
+  "housing_class": "элит",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 27
+ },
+ "jaryq": {
+  "developer": "Pine Hills Group",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "панельный",
+  "max_floors": 1,
+  "apartments_count": 34
+ },
+ "болашак": {
+  "developer": "TOO A-PRAID-DALA",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 8,
+  "apartments_count": 288
+ },
+ "titul town": {
+  "developer": "IQONIQ Construction",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 996
+ },
+ "qargaly city": {
+  "developer": "Exclusive Qurylys",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 4284
+ },
+ "родник": {
+  "developer": "ИП Жамбаев",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 23
+ },
+ "alma tau residence": {
+  "developer": "Amanat Group",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 74
+ },
+ "gornyi gigant": {
+  "developer": "ТОО \"Корпорация Айгерим\"",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 7
+ },
+ "m park": {
+  "developer": "Monumental Building",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 17,
+  "apartments_count": 175
+ },
+ "kokjiek city": {
+  "developer": "Time Group",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 1476
+ },
+ "meridian apartments": {
+  "developer": "Sensata Group",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 1044
+ },
+ "apple residence": {
+  "developer": "Barys Stroy",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 316
+ },
+ "rams garden": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 643
+ },
+ "zhuldyz residence": {
+  "developer": "TTC Group",
+  "housing_class": "элит",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 80
+ },
+ "достар deluxe": {
+  "developer": "Relaible Building Company",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 700
+ },
+ "home village": {
+  "developer": "Diamond Hills",
+  "housing_class": "бизнес",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 38
+ },
+ "greenlandia": {
+  "developer": "USGBC",
+  "housing_class": "бизнес",
+  "completion_year": 2017,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 1
+ },
+ "sweet home miras": {
+  "developer": "Sweet Home Miras",
+  "housing_class": "комфорт",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 1
+ },
+ "samal prestige": {
+  "developer": "Kablan",
+  "housing_class": "бизнес",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 34,
+  "apartments_count": 1
+ },
+ "альтаир": {
+  "developer": "Atrix Group",
+  "housing_class": "элит",
+  "completion_year": 2020,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "кирпичный",
+  "max_floors": 7,
+  "apartments_count": 1
+ },
+ "на чайковского": {
+  "developer": "BAZIS–А",
+  "housing_class": "элит",
+  "completion_year": 2013,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 1
+ },
+ "бес тулга": {
+  "developer": "Атамекен",
+  "housing_class": "элит",
+  "completion_year": 2016,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 1
+ },
+ "виктория": {
+  "developer": "ИП Застройщик",
+  "housing_class": "комфорт",
+  "completion_year": 2013,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 9,
+  "apartments_count": 1
+ },
+ "зеленые холмы": {
+  "developer": "TOO Таймас Temir Treid",
+  "housing_class": "комфорт",
+  "completion_year": 2016,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 2,
+  "apartments_count": 1
+ },
+ "на бокеева": {
+  "developer": "ПКС акимата Алматы",
+  "housing_class": "эконом",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 1
+ },
+ "на богенбай батыра": {
+  "developer": "Риголит",
+  "housing_class": "комфорт",
+  "completion_year": 2016,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 1
+ },
+ "на дунаевского": {
+  "developer": "ИП Застройщик",
+  "housing_class": "эконом",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 8,
+  "apartments_count": 1
+ },
+ "на нахимова, 16": {
+  "developer": "МАК Алматыгорстрой",
+  "housing_class": "элит",
+  "completion_year": 2015,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 1
+ },
+ "олд базис": {
+  "developer": "BAZIS–А",
+  "housing_class": "комфорт",
+  "completion_year": 2001,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 6,
+  "apartments_count": 1
+ },
+ "на ул луганского, 86": {
+  "developer": "ИП Застройщик",
+  "housing_class": "элит",
+  "completion_year": 2018,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 8
+ },
+ "рабат": {
+  "developer": "ИнтерТехСтрой",
+  "housing_class": "эконом",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 1
+ },
+ "рамс казахстан": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "элит",
+  "completion_year": 2012,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 1
+ },
+ "ботанический бульвар": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "элит",
+  "completion_year": 2013,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 1
+ },
+ "современный": {
+  "developer": "ARMADA STROY",
+  "housing_class": "эконом",
+  "completion_year": 2014,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 1
+ },
+ "qazyna": {
+  "developer": "Qazaq Invest Qurylys",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 403
+ },
+ "domino life": {
+  "developer": "Interstroy Engineering",
+  "housing_class": "элит",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 30
+ },
+ "munar tau": {
+  "developer": "ТОО Integra Construction KZ",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 598
+ },
+ "regis hills": {
+  "developer": "BI Group Юг",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 14
+ },
+ "exclusive duet": {
+  "developer": "Exclusive Qurylys",
+  "housing_class": "бизнес",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 132
+ },
+ "raiymbek park": {
+  "developer": "DIAL GROUP",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 265
+ },
+ "aqtolqyn grand": {
+  "developer": "AB Capital",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 173
+ },
+ "seyfullin park": {
+  "developer": "DIAL GROUP",
+  "housing_class": "эконом",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 80
+ },
+ "flora": {
+  "developer": "Flora City Stroy",
+  "housing_class": "комфорт",
+  "completion_year": 2027,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 36
+ },
+ "buta legacy": {
+  "developer": "BUTA Group",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 1218
+ },
+ "sky villa": {
+  "developer": "Stroy Sistems",
+  "housing_class": "комфорт",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 39
+ },
+ "ozhet plus": {
+  "developer": "ТОО Асем Курылыс и Ко",
+  "housing_class": "эконом",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 540
+ },
+ "orda city": {
+  "developer": "ТОО Investment Stroy",
+  "housing_class": "комфорт",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 550
+ },
+ "miracle": {
+  "developer": "EPC Group",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 229
+ },
+ "шынырау": {
+  "developer": "Темирбетон-1",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 5,
+  "apartments_count": 100
+ },
+ "almatym": {
+  "developer": "SVOYDOM",
+  "housing_class": "комфорт",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 713
+ },
+ "madeira villas": {
+  "developer": "BAAS GROUP",
+  "housing_class": "элит",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 4
+ },
+ "arena park": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 8000
+ },
+ "айзере & аделина": {
+  "developer": "Жумадилов Ж.А.",
+  "housing_class": "эконом",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 8
+ },
+ "alma garden": {
+  "developer": "Abra Development",
+  "housing_class": "элит",
+  "completion_year": 2027,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 24
+ },
+ "hayat meliora": {
+  "developer": "Hayat Construction Group",
+  "housing_class": "элит",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "кирпичный",
+  "max_floors": 7,
+  "apartments_count": 280
+ },
+ "ermensai house": {
+  "developer": "Alen Stroy",
+  "housing_class": "бизнес",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 12
+ },
+ "adele": {
+  "developer": "Qazaqstroy",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 1149
+ },
+ "акжар": {
+  "developer": "Argymaq Montre",
+  "housing_class": "бизнес",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 38
+ },
+ "ozen park navoi": {
+  "developer": "Bereke Stroy Group",
+  "housing_class": "бизнес",
+  "completion_year": 2023,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 242
+ },
+ "sicilia": {
+  "developer": "Tetris Construction Group",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 99
+ },
+ "koksai юбилейный": {
+  "developer": "Pine Hills Group",
+  "housing_class": "элит",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 90
+ },
+ "kamenka park": {
+  "developer": "Dos Development",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 192
+ },
+ "rams signature": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 496
+ },
+ "verona": {
+  "developer": "TOO Verona Remizovka",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 145
+ },
+ "турар": {
+  "developer": "Тумар Строй Инвест",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 1513
+ },
+ "rams saiahat": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 855
+ },
+ "айнабулак 33 2": {
+  "developer": "Центр СМР",
+  "housing_class": "эконом",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 60
+ },
+ "tumar": {
+  "developer": "Корпорация ВЕК",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 101
+ },
+ "guldala": {
+  "developer": "SVOYDOM",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 780
+ },
+ "rams evo": {
+  "developer": "Рамс Казахстан",
+  "housing_class": "бизнес",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 15,
+  "apartments_count": 1000
+ },
+ "кинотеатр шугыла": {
+  "developer": "ТОО ЕВРАЗИЯ",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 115
+ },
+ "citadel": {
+  "developer": "ТОО MR Construction",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 108
+ },
+ "tauda villa 3 0": {
+  "developer": "Tauda Construсtion",
+  "housing_class": "бизнес",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 3
+ },
+ "monarch": {
+  "developer": "ATAMURA GROUP",
+  "housing_class": "бизнес",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 14
+ },
+ "ремизовка идеальная резиденция": {
+  "developer": "ТОО MR Construction",
+  "housing_class": "комфорт",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 21
+ },
+ "jana arbat": {
+  "developer": "Холдинговая компания Айсултан",
+  "housing_class": "эконом",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 152
+ },
+ "seneca": {
+  "developer": "Seneca Partners",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 44
+ },
+ "garden house": {
+  "developer": "Garden house",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 12
+ },
+ "kamila": {
+  "developer": "Aspan Development",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 300
+ },
+ "buta fenomen": {
+  "developer": "BUTA Group",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 1771
+ },
+ "centrium": {
+  "developer": "Crystal Solutions",
+  "housing_class": "бизнес",
+  "completion_year": 2026,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 800
+ },
+ "aurus": {
+  "developer": "Continent Qurylys",
+  "housing_class": "комфорт",
+  "completion_year": 2023,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 288
+ },
+ "autograph": {
+  "developer": "AKAS Development",
+  "housing_class": "элит",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 164
+ },
+ "merei": {
+  "developer": "ТОО Алтын Сапа ALM",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 615
+ },
+ "мадениет 1": {
+  "developer": "Atrix Group",
+  "housing_class": "эконом",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 1464
+ },
+ "altyn ai": {
+  "developer": "Exclusive Qurylys",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 1872
+ },
+ "arena sunset": {
+  "developer": "Build Your Dreams",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 214
+ },
+ "aspen": {
+  "developer": "MDI Construction",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 129
+ },
+ "seifullin": {
+  "developer": "Sensata Group",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 656
+ },
+ "boulevard residence": {
+  "developer": "BI Group Юг",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 110
+ },
+ "new life": {
+  "developer": "Qazaqstroy",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 890
+ },
+ "exclusive opera": {
+  "developer": "Exclusive Qurylys",
+  "housing_class": "элит",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 63
+ },
+ "grandview house": {
+  "developer": "Expert Engineering Company",
+  "housing_class": "элит",
+  "completion_year": 2022,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 1
+ },
+ "sunrise village": {
+  "developer": "Asia BS Group",
+  "housing_class": "элит",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 6
+ },
+ "birlik": {
+  "developer": "Vertical Development",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 276
+ },
+ "maxima city": {
+  "developer": "KazSMU",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 194
+ },
+ "vendome": {
+  "developer": "ТОО AKSU Group LTD",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 84
+ },
+ "arman city": {
+  "developer": "SABA GROUP KZ",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 1490
+ },
+ "жетысу казстрой": {
+  "developer": "КазСтрой",
+  "housing_class": "эконом",
+  "completion_year": 2009,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 15,
+  "apartments_count": 300
+ },
+ "royal time": {
+  "developer": "Time Group",
+  "housing_class": "бизнес",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 237
+ },
+ "das haus": {
+  "developer": "Invescore Alma",
+  "housing_class": "элит",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 26
+ },
+ "melody": {
+  "developer": "EPC Group",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 250
+ },
+ "south garden": {
+  "developer": "GlavStroy",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 14
+ },
+ "nurly dala 2": {
+  "developer": "ТОО «Строй Комфорт Девелопмент»",
+  "housing_class": "эконом",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 66
+ },
+ "la era de aquarius": {
+  "developer": "Trinity",
+  "housing_class": "элит",
+  "completion_year": 2021,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 18
+ },
+ "mereke": {
+  "developer": "ТОО \"ИНТЕРФИНАНС\"",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 813
+ },
+ "alma villa deluxe": {
+  "developer": "R2Group",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 75
+ },
+ "turan": {
+  "developer": "Myntas Stroy",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 562
+ },
+ "loro residence": {
+  "developer": "SD Construction",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 19
+ },
+ "buta legend": {
+  "developer": "BUTA Group",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 751
+ },
+ "hayat regency": {
+  "developer": "Hayat Construction Group",
+  "housing_class": "элит",
+  "completion_year": 2026,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 184
+ },
+ "44": {
+  "developer": "BI Group Юг",
+  "housing_class": "элит",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 44
+ },
+ "verdi": {
+  "developer": "BI Group Юг",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 102
+ },
+ "umai": {
+  "developer": "SVOYDOM",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 220
+ },
+ "ulytau": {
+  "developer": "Qazaqstroy",
+  "housing_class": "эконом",
+  "completion_year": 2025,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 1392
+ },
+ "river city": {
+  "developer": "Qazaqstroy",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 13,
+  "apartments_count": 300
+ },
+ "kenesary": {
+  "developer": "Qazaqstroy",
+  "housing_class": "эконом",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 4082
+ },
+ "каусар": {
+  "developer": "ТОО \"Халык Актив\"",
+  "housing_class": "комфорт",
+  "completion_year": 2012,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 21,
+  "apartments_count": 840
+ },
+ "sky park": {
+  "developer": "Atrium Plus",
+  "housing_class": "элит",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 73
+ },
+ "dream city family": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 220
+ },
+ "на кассина": {
+  "developer": "Qazaqstroy",
+  "housing_class": "эконом",
+  "completion_year": 2024,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 9,
+  "apartments_count": 250
+ },
+ "arena city sport": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 364
+ },
+ "olympic park": {
+  "developer": "Sensata Group",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 862
+ },
+ "aisafi": {
+  "developer": "Magistral-S",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 900
+ },
+ "dream city eco": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 220
+ },
+ "ala town": {
+  "developer": "BI Group Юг",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 2,
+  "apartments_count": 33
+ },
+ "arena city life": {
+  "developer": "BI Group Юг",
+  "housing_class": "бизнес",
+  "completion_year": 2027,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 47
+ },
+ "наследие": {
+  "developer": "ТОО \"ИНТЕРФИНАНС\"",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 96
+ },
+ "raaf park": {
+  "developer": "Raaf Construction",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 91
+ },
+ "meiram park": {
+  "developer": "Bereke Stroy Group",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 500
+ },
+ "white residence": {
+  "developer": "Tau Development",
+  "housing_class": "бизнес",
+  "completion_year": 2026,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 177
+ },
+ "baitas": {
+  "developer": "AB Capital",
+  "housing_class": "элит",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 33
+ },
+ "elet": {
+  "developer": "AKAS Development",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 118
+ },
+ "oslo residence": {
+  "developer": "MARA GRUPPE",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 114
+ },
+ "tamga residence": {
+  "developer": "BI Group Юг",
+  "housing_class": "бизнес",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 33
+ },
+ "biography": {
+  "developer": "BI Group Юг",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 92
+ },
+ "noble house": {
+  "developer": "ТОО \"TENACITY\"",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 230
+ },
+ "mangilik": {
+  "developer": "Sensata Group",
+  "housing_class": "бизнес",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 300
+ },
+ "wisteria": {
+  "developer": "Nana Development",
+  "housing_class": "элит",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 223
+ },
+ "jan dostar": {
+  "developer": "BAZIS–А",
+  "housing_class": "комфорт",
+  "completion_year": 2027,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 150
+ },
+ "satpaev": {
+  "developer": "BAZIS–А",
+  "housing_class": "бизнес",
+  "completion_year": 2028,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 176
+ },
+ "shabyt": {
+  "developer": "SVOYDOM",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 150
+ },
+ "asyl tas": {
+  "developer": "SVOYDOM",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 500
+ },
+ "история": {
+  "developer": "Холдинговая компания Айсултан",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 300
+ },
+ "dream city tech": {
+  "developer": "BI Group Юг",
+  "housing_class": "бизнес",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 178
+ },
+ "altai city": {
+  "developer": "DIAL GROUP",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 60
+ },
+ "el monte": {
+  "developer": "BI Group Юг",
+  "housing_class": "элит",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 86
+ },
+ "1st by bi": {
+  "developer": "BI Group Юг",
+  "housing_class": "элит",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 54
+ },
+ "selin residence": {
+  "developer": "EPC Group",
+  "housing_class": "элит",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 61
+ },
+ "dastur": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2027,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 965
+ },
+ "saulet": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 892
+ },
+ "дубровка": {
+  "developer": "Atrix Group",
+  "housing_class": "элит",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 30
+ },
+ "hayat arena": {
+  "developer": "Hayat Construction Group",
+  "housing_class": "бизнес",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 1293
+ },
+ "arena city park": {
+  "developer": "BI Group Юг",
+  "housing_class": "бизнес",
+  "completion_year": 2027,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 325
+ },
+ "taymas": {
+  "developer": "SVOYDOM",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 395
+ },
+ "oner": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2023,
+  "construction_status": "Продажи завершены",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 504
+ },
+ "buta albion": {
+  "developer": "BUTA Group",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 701
+ },
+ "dostyq 300": {
+  "developer": "Sensata Group",
+  "housing_class": "элит",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 100
+ },
+ "vertex garden": {
+  "developer": "Vertex AG",
+  "housing_class": "бизнес",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 7,
+  "apartments_count": 265
+ },
+ "benelux": {
+  "developer": "BAZIS–А",
+  "housing_class": "элит",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 60
+ },
+ "tumanbay moldagaliyev": {
+  "developer": "KazSMU",
+  "housing_class": "эконом",
+  "completion_year": 2027,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 435
+ },
+ "madeniet": {
+  "developer": "KazSMU",
+  "housing_class": "эконом",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 1000
+ },
+ "everest boulevard": {
+  "developer": "Everest Development",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 97
+ },
+ "prime park": {
+  "developer": "ТОО Tauman Qurylys",
+  "housing_class": "бизнес",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 168
+ },
+ "nurlitau hills": {
+  "developer": "Diamond Hills",
+  "housing_class": "элит",
+  "completion_year": 2019,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 48
+ },
+ "kamenka luxury": {
+  "developer": "Asia BS Group",
+  "housing_class": "бизнес",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 1,
+  "apartments_count": 4
+ },
+ "asyl mura": {
+  "developer": "SVOYDOM",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 572
+ },
+ "berekeli": {
+  "developer": "SVOYDOM",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 360
+ },
+ "terekti": {
+  "developer": "Monolit Group",
+  "housing_class": "комфорт",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 147
+ },
+ "7su nury": {
+  "developer": "ТОО «СК Алматау Строй Гарант»",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 160
+ },
+ "diamond": {
+  "developer": "Kusto Home",
+  "housing_class": "элит",
+  "completion_year": 2028,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 294
+ },
+ "habi park": {
+  "developer": "Trust Qurylys",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 190
+ },
+ "riviera plus": {
+  "developer": "BAZIS–А",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 16,
+  "apartments_count": 100
+ },
+ "magnit alatau": {
+  "developer": "IKS Group",
+  "housing_class": "комфорт",
+  "completion_year": 2024,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 20
+ },
+ "жайна": {
+  "developer": "Vertex AG",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 1200
+ },
+ "baiqadam": {
+  "developer": "Sensata Group",
+  "housing_class": "бизнес",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 300
+ },
+ "neopark": {
+  "developer": "BAZIS–А",
+  "housing_class": "комфорт",
+  "completion_year": 2027,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 60
+ },
+ "auezov city pro": {
+  "developer": "BAZIS–А",
+  "housing_class": "комфорт",
+  "completion_year": 2027,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 15,
+  "apartments_count": 60
+ },
+ "bastion": {
+  "developer": "ТОО MR Construction",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 140
+ },
+ "kosmonavtova": {
+  "developer": "Поток-8",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 88
+ },
+ "ermensai village": {
+  "developer": "Everest Development",
+  "housing_class": "элит",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 27
+ },
+ "millenium": {
+  "developer": "ТОО ADS Capital",
+  "housing_class": "элит",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 4,
+  "apartments_count": 21
+ },
+ "kazsmu": {
+  "developer": "KazSMU",
+  "housing_class": "эконом",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 100
+ },
+ "vertex ag": {
+  "developer": "Vertex AG",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 1200
+ },
+ "barys stroy": {
+  "developer": "Barys Stroy",
+  "housing_class": "бизнес",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 316
+ },
+ "bromelia": {
+  "developer": "K7 Group",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 176
+ },
+ "ayala park": {
+  "developer": "ТОО JDM CONSTRUCTION",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 168
+ },
+ "alatau house": {
+  "developer": "GlavStroy",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 15
+ },
+ "kusto home": {
+  "developer": "Kusto Home",
+  "housing_class": "элит",
+  "completion_year": 2028,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 294
+ },
+ "tarlan": {
+  "developer": "SVOYDOM",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 50
+ },
+ "parkville": {
+  "developer": "BAZIS–А",
+  "housing_class": "элит",
+  "completion_year": 2029,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 100
+ },
+ "vesper": {
+  "developer": "BAZIS–А",
+  "housing_class": "элит",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 1
+ },
+ "buta group": {
+  "developer": "BUTA Group",
+  "housing_class": "элит",
+  "completion_year": 2017,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 9,
+  "apartments_count": 10
+ },
+ "dream city art": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2027,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 50
+ },
+ "arena city balance": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2027,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 50
+ },
+ "athletic park": {
+  "developer": "Everest Development",
+  "housing_class": "комфорт",
+  "completion_year": 2027,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 18
+ },
+ "jar jar": {
+  "developer": "SVOYDOM",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 359
+ },
+ "tauman qurylys": {
+  "developer": "ТОО Tauman Qurylys",
+  "housing_class": "бизнес",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 168
+ },
+ "status 2 0": {
+  "developer": "Status Reality",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 10,
+  "apartments_count": 174
+ },
+ "privilegia": {
+  "developer": "Rise capital",
+  "housing_class": "элит",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 74
+ },
+ "аврора": {
+  "developer": "ЖСК Алматы",
+  "housing_class": "комфорт",
+  "completion_year": 2017,
+  "construction_status": "Продажи завершены",
+  "material": "кирпичный",
+  "max_floors": 3,
+  "apartments_count": 12
+ },
+ "monolit group": {
+  "developer": "Monolit Group",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 6,
+  "apartments_count": 2000
+ },
+ "zangar": {
+  "developer": "SVOYDOM",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Строящийся",
+  "material": "кирпичный",
+  "max_floors": 9,
+  "apartments_count": 200
+ },
+ "жас отау": {
+  "developer": "Азия",
+  "housing_class": "эконом",
+  "completion_year": 2023,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 50
+ },
+ "alkey margulan": {
+  "developer": "YNTYMAQ CORPORATION",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 140
+ },
+ "parasat": {
+  "developer": "PARASAT II",
+  "housing_class": "комфорт",
+  "completion_year": 2022,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 900
+ },
+ "batys park": {
+  "developer": "ZIAL GROUP",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 745
+ },
+ "qazaqstroy": {
+  "developer": "Qazaqstroy",
+  "housing_class": "эконом",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 4082
+ },
+ "exclusive qurylys": {
+  "developer": "Exclusive Qurylys",
+  "housing_class": "комфорт",
+  "completion_year": 2025,
+  "construction_status": "Сдан в эксплуатацию",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 1872
+ },
+ "trust qurylys": {
+  "developer": "Trust Qurylys",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 5,
+  "apartments_count": 190
+ },
+ "jibek joly": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2027,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 12,
+  "apartments_count": 220
+ },
+ "orient": {
+  "developer": "AB Capital",
+  "housing_class": "бизнес",
+  "completion_year": 2027,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 120
+ },
+ "bi group": {
+  "developer": "BI Group Юг",
+  "housing_class": "комфорт",
+  "completion_year": 2026,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 100
+ },
+ "hayat astoria": {
+  "developer": "Hayat Construction Group",
+  "housing_class": "бизнес",
+  "completion_year": 2027,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 3,
+  "apartments_count": 399
+ },
+ "nova": {
+  "developer": "DAIMOND SOLUTIONS GROUP",
+  "housing_class": "комфорт",
+  "completion_year": 2028,
+  "construction_status": "Строящийся",
+  "material": "монолитный",
+  "max_floors": 9,
+  "apartments_count": 160
+ }
+}
