@@ -25,7 +25,8 @@ from krisha.db import get_conn
 logger = logging.getLogger(__name__)
 
 GEMINI_API_KEY_ENV = "GEMINI_API_KEY"
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+# flash-lite: у бесплатного тарифа лимит ~1000 запросов/день (у 2.5-flash — всего 20)
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
 GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
@@ -69,6 +70,9 @@ PROMPT = """Ты анализируешь тексты объявлений о �
 - "pledge" — квартира в залоге/ипотеке у банка; обычная фраза "подходит под
   ипотеку" — это НЕ pledge.
 - "needs_repair" — текст говорит о черновой отделке или необходимости ремонта.
+- "windows_courtyard" — только при явной фразе про окна во двор ("окна выходят
+  во двор"); "пластиковые окна" или "тихий двор" сами по себе — это НЕ оно.
+- "good_view" — только про явный вид из окон (горы, панорама), не "светлая".
 - Пустой список флагов — нормальный ответ.
 
 Объявления (id и текст):
