@@ -1,7 +1,5 @@
 """Тесты статистики рынка."""
 
-import sqlite3
-
 from krisha import db, stats
 
 
