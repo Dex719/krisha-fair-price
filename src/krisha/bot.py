@@ -50,6 +50,15 @@ FEATURE_RU = {
     "district_ppsm": "Уровень цен района",
     "microdistrict_ppsm": "Уровень цен микрорайона",
     "is_new_building": "Новостройка",
+    "renovation": "Ремонт",
+    "toilet": "Санузел",
+    "furniture": "Мебель",
+    "parking": "Парковка",
+    "balcony": "Балкон",
+    "has_security_guard": "Охрана",
+    "has_intercom": "Домофон",
+    "has_video_surveillance": "Видеонаблюдение",
+    "security_count": "Опции безопасности",
 }
 
 VERDICT_RU = {
