@@ -1,0 +1,374 @@
+/* Material 3 Expressive — дизайн-система Krisha Fair Price.
+   Токены: https://m3.material.io (tonal palette, seed — зелёный). */
+
+/* ---------- Цветовые токены ---------- */
+:root {
+  /* light */
+  --primary: #38693c;
+  --on-primary: #ffffff;
+  --primary-container: #b9f0b8;
+  --on-primary-container: #21512a;
+  --secondary: #52634f;
+  --secondary-container: #d5e8cf;
+  --on-secondary-container: #3a4b38;
+  --tertiary: #39656b;
+  --tertiary-container: #bcebf2;
+  --on-tertiary-container: #1f4d53;
+  --error: #ba1a1a;
+  --on-error: #ffffff;
+  --error-container: #ffdad6;
+  --on-error-container: #93000a;
+  --surface: #f7fbf1;
+  --surface-dim: #d7dbd1;
+  --on-surface: #181d17;
+  --on-surface-variant: #424940;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f1f5eb;
+  --surface-container: #ebefe5;
+  --surface-container-high: #e6e9df;
+  --surface-container-highest: #e0e4da;
+  --outline: #72796f;
+  --outline-variant: #c2c9bd;
+  --inverse-surface: #2d322c;
+  --inverse-on-surface: #eef2e6;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .12), 0 2px 6px rgba(0, 0, 0, .08);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, .12), 0 12px 32px rgba(24, 29, 23, .14);
+  --chart-grid: rgba(66, 73, 64, .14);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --primary: #9ed49f;
+  --on-primary: #053911;
+  --primary-container: #215025;
+  --on-primary-container: #b9f0b8;
+  --secondary: #b9ccb4;
+  --secondary-container: #3a4b38;
+  --on-secondary-container: #d5e8cf;
+  --tertiary: #a1ced5;
+  --tertiary-container: #1f4d53;
+  --on-tertiary-container: #bcebf2;
+  --error: #ffb4ab;
+  --on-error: #690005;
+  --error-container: #93000a;
+  --on-error-container: #ffdad6;
+  --surface: #101410;
+  --surface-dim: #101410;
+  --on-surface: #e0e4da;
+  --on-surface-variant: #c2c9bd;
+  --surface-container-lowest: #0b0f0b;
+  --surface-container-low: #181d17;
+  --surface-container: #1c211b;
+  --surface-container-high: #272b25;
+  --surface-container-highest: #31362f;
+  --outline: #8c9388;
+  --outline-variant: #424940;
+  --inverse-surface: #e0e4da;
+  --inverse-on-surface: #2d322c;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 2px 6px rgba(0, 0, 0, .3);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, .4), 0 12px 32px rgba(0, 0, 0, .45);
+  --chart-grid: rgba(194, 201, 189, .12);
+  color-scheme: dark;
+}
+
+/* ---------- База ---------- */
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  font-family: "Roboto Flex", "Roboto", system-ui, sans-serif;
+  font-variation-settings: "wdth" 100;
+  background: var(--surface);
+  color: var(--on-surface);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  transition: background-color .4s ease, color .4s ease;
+}
+
+::selection { background: var(--primary-container); color: var(--on-primary-container); }
+
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.material-symbols-rounded {
+  font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24;
+  vertical-align: middle;
+  user-select: none;
+}
+
+/* ---------- Типографика ---------- */
+.display {
+  font-size: clamp(2.6rem, 7vw, 4.2rem);
+  font-weight: 800;
+  font-variation-settings: "wdth" 110;
+  line-height: 1.02;
+  letter-spacing: -.02em;
+  margin: 0;
+}
+
+.display .accent {
+  color: var(--primary);
+  position: relative;
+  white-space: nowrap;
+}
+
+.headline { font-size: 1.5rem; font-weight: 700; letter-spacing: -.01em; margin: 0; }
+.title { font-size: 1.05rem; font-weight: 650; margin: 0; }
+.body-lg { font-size: 1.06rem; line-height: 1.55; color: var(--on-surface-variant); }
+.label { font-size: .8rem; font-weight: 600; letter-spacing: .03em; color: var(--on-surface-variant); }
+
+/* ---------- Шапка ---------- */
+.top-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 4px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 750;
+  font-size: 1.05rem;
+  color: var(--on-surface);
+}
+.brand:hover { text-decoration: none; }
+
+.brand .logo {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: var(--primary-container);
+  color: var(--on-primary-container);
+  transition: border-radius .5s cubic-bezier(.34, 1.56, .64, 1), transform .5s cubic-bezier(.34, 1.56, .64, 1);
+}
+.brand:hover .logo { border-radius: 50%; transform: rotate(-8deg) scale(1.06); }
+
+.top-bar .spacer { flex: 1; }
+
+/* ---------- Кнопки ---------- */
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  border-radius: 999px;
+  padding: 14px 26px;
+  overflow: hidden;
+  transition: border-radius .35s cubic-bezier(.34, 1.56, .64, 1),
+              transform .25s cubic-bezier(.34, 1.56, .64, 1),
+              box-shadow .25s ease, background-color .25s ease, color .25s ease;
+}
+.btn::after { /* state layer */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity .2s ease;
+}
+.btn:hover::after { opacity: .09; }
+.btn:active { transform: scale(.96); border-radius: 18px; }
+.btn:disabled { opacity: .55; cursor: default; pointer-events: none; }
+.btn:focus-visible, .icon-btn:focus-visible, .text-field input:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.btn-filled { background: var(--primary); color: var(--on-primary); box-shadow: var(--shadow); }
+.btn-filled:hover { box-shadow: var(--shadow-lg); }
+.btn-tonal { background: var(--secondary-container); color: var(--on-secondary-container); }
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  cursor: pointer;
+  border-radius: 50%;
+  background: var(--surface-container-high);
+  color: var(--on-surface-variant);
+  transition: transform .3s cubic-bezier(.34, 1.56, .64, 1), background-color .25s, border-radius .3s;
+}
+.icon-btn:hover { transform: rotate(15deg) scale(1.08); background: var(--surface-container-highest); border-radius: 14px; }
+
+/* ---------- Карточки ---------- */
+.card {
+  background: var(--surface-container-low);
+  border-radius: 28px;
+  padding: 24px;
+  transition: background-color .4s ease;
+}
+.card-elevated { background: var(--surface-container); box-shadow: var(--shadow); }
+.card-hero { background: var(--primary-container); color: var(--on-primary-container); }
+
+/* ---------- Поле ввода (search bar) ---------- */
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-container-high);
+  border-radius: 999px;
+  padding: 8px 8px 8px 22px;
+  box-shadow: var(--shadow);
+  transition: box-shadow .25s ease, background-color .25s ease, border-radius .35s cubic-bezier(.34, 1.56, .64, 1);
+}
+.search-bar:focus-within { box-shadow: var(--shadow-lg); border-radius: 28px; background: var(--surface-container-highest); }
+.search-bar .material-symbols-rounded { color: var(--on-surface-variant); }
+.search-bar input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--on-surface);
+  padding: 10px 4px;
+}
+.search-bar input::placeholder { color: var(--outline); }
+
+/* ---------- Чипы / вердикты ---------- */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+.chip-good { background: var(--primary-container); color: var(--on-primary-container); }
+.chip-fair { background: var(--tertiary-container); color: var(--on-tertiary-container); }
+.chip-bad { background: var(--error-container); color: var(--on-error-container); }
+
+/* ---------- Метр «справедливый диапазон» ---------- */
+.meter { position: relative; height: 14px; border-radius: 999px; background: var(--surface-container-highest); overflow: visible; }
+.meter .zone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: var(--primary-container);
+}
+.meter .needle {
+  position: absolute;
+  top: -5px;
+  width: 4px;
+  height: 24px;
+  border-radius: 4px;
+  background: var(--on-surface);
+  transform: translateX(-50%);
+  transition: left 1s cubic-bezier(.2, 0, 0, 1);
+}
+.meter-labels { display: flex; justify-content: space-between; margin-top: 8px; }
+
+/* ---------- Бары факторов ---------- */
+.factor { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; padding: 7px 0; }
+.factor .bar-track { grid-column: 1 / -1; height: 8px; border-radius: 999px; background: var(--surface-container-highest); overflow: hidden; }
+.factor .bar {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  transition: width .9s cubic-bezier(.2, 0, 0, 1);
+}
+.factor .bar.up { background: var(--primary); }
+.factor .bar.down { background: var(--error); }
+.factor .impact { font-weight: 650; font-size: .85rem; }
+.factor .impact.up { color: var(--primary); }
+.factor .impact.down { color: var(--error); }
+
+/* ---------- Статы ---------- */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
+.stat-card {
+  border-radius: 28px;
+  padding: 22px;
+  background: var(--surface-container);
+  transition: border-radius .45s cubic-bezier(.34, 1.56, .64, 1), transform .45s cubic-bezier(.34, 1.56, .64, 1);
+}
+.stat-card:hover { border-radius: 16px; transform: translateY(-4px); }
+.stat-card .value { font-size: clamp(1.6rem, 3.4vw, 2.2rem); font-weight: 800; font-variation-settings: "wdth" 108; line-height: 1.1; margin-top: 6px; }
+.stat-card:nth-child(1) { background: var(--primary-container); color: var(--on-primary-container); }
+.stat-card:nth-child(2) { background: var(--secondary-container); color: var(--on-secondary-container); }
+.stat-card:nth-child(3) { background: var(--tertiary-container); color: var(--on-tertiary-container); }
+.stat-card:nth-child(1) .label, .stat-card:nth-child(2) .label, .stat-card:nth-child(3) .label { color: inherit; opacity: .75; }
+
+/* ---------- Декоративные блобы ---------- */
+.blobs { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.blob {
+  position: absolute;
+  border-radius: 60% 40% 55% 45% / 45% 55% 40% 60%;
+  opacity: .5;
+  filter: blur(60px);
+  animation: blob-morph 18s ease-in-out infinite alternate, blob-drift 32s ease-in-out infinite alternate;
+}
+.blob-1 { width: 46vw; height: 46vw; top: -18vw; right: -12vw; background: var(--primary-container); }
+.blob-2 { width: 34vw; height: 34vw; bottom: -14vw; left: -10vw; background: var(--tertiary-container); animation-delay: -8s; }
+
+@keyframes blob-morph {
+  0%   { border-radius: 60% 40% 55% 45% / 45% 55% 40% 60%; }
+  50%  { border-radius: 42% 58% 38% 62% / 60% 38% 62% 40%; }
+  100% { border-radius: 55% 45% 60% 40% / 40% 60% 45% 55%; }
+}
+@keyframes blob-drift {
+  to { transform: translate(4vw, 5vh) rotate(24deg) scale(1.08); }
+}
+
+/* ---------- Анимации появления ---------- */
+.reveal { opacity: 0; transform: translateY(26px) scale(.98); }
+.reveal.in {
+  opacity: 1;
+  transform: none;
+  transition: opacity .6s cubic-bezier(.2, 0, 0, 1), transform .7s cubic-bezier(.34, 1.4, .64, 1);
+}
+
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(22px) scale(.96); }
+  to   { opacity: 1; transform: none; }
+}
+.pop-in { animation: pop-in .55s cubic-bezier(.34, 1.4, .64, 1) both; }
+
+@keyframes shimmer { to { background-position: -200% 0; } }
+.skeleton {
+  border-radius: 12px;
+  background: linear-gradient(100deg, var(--surface-container-high) 40%, var(--surface-container-highest) 50%, var(--surface-container-high) 60%);
+  background-size: 200% 100%;
+  animation: shimmer 1.3s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  border: 3px solid currentColor;
+  border-top-color: transparent;
+  animation: spin .8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  .reveal { opacity: 1; transform: none; }
+}
+
+/* ---------- Раскладка ---------- */
+.page { width: 100%; max-width: 1040px; margin: 0 auto; padding: 0 20px 64px; }
+.page-narrow { max-width: 720px; }
+
+footer.colophon {
+  margin-top: 48px;
+  text-align: center;
+  font-size: .85rem;
+  color: var(--outline);
+}
