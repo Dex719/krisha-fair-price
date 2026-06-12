@@ -148,46 +148,6 @@
           </div>`;
     }
 
-    /* этап 5: блок «Анализ описания» — бейджи red flags / плюсов от LLM.
-       Если кэша на сервере нет (flags_pending) — рисуем скелет и догружаем фоном. */
-    const flagChips = (flags) => flags.map((f) => `
-              <span class="chip ${f.kind === "warn" ? "chip-bad" : "chip-good"}">
-                ${f.kind === "warn" ? "⚠️" : "✅"} ${f.label}
-              </span>`).join("");
-
-    function flagsBlock(data) {
-      const flags = data.text_flags || [];
-      if (!flags.length && !data.flags_pending) return "";
-      const inner = data.flags_pending
-        ? `<span class="chip chip-skel" style="width:130px"></span>
-           <span class="chip chip-skel" style="width:170px"></span>
-           <span class="chip chip-skel" style="width:110px"></span>`
-        : flagChips(flags);
-      return `
-          <div id="flags-area">
-          <p class="title" style="display:flex;align-items:center;gap:10px;margin:22px 0 12px;font-size:.95rem">
-            <span style="color:var(--secondary)">${kfpIcon("check-circle", 20)}</span>Анализ описания
-          </p>
-          <div id="flags-chips" style="display:flex;flex-wrap:wrap;gap:8px">${inner}</div>
-          </div>`;
-    }
-
-    async function loadFlags(listingId) {
-      const area = document.getElementById("flags-area"),
-            chips = document.getElementById("flags-chips");
-      if (!area || !chips) return;
-      try {
-        const resp = await fetch(`/api/flags/${listingId}`);
-        if (!resp.ok) throw new Error();
-        const data = await resp.json();
-        const flags = data.text_flags || [];
-        if (!flags.length) { area.remove(); return; }
-        chips.innerHTML = flagChips(flags);
-      } catch {
-        area.remove(); // не получилось — просто убираем скелет
-      }
-    }
-
     const diffBadge = (pct) => {
       const abs = Math.abs(pct).toFixed(1).replace(/\.0$/, "");
       if (pct <= -1) return `ниже рынка на ${abs}%`;
@@ -261,7 +221,6 @@
               </div>`).join("")}
           </div>` : ""}
           ${marketBlock(data)}
-          ${flagsBlock(data)}
           ${data.description ? `
           <p class="title" style="margin:22px 0 4px;font-size:.95rem">Описание</p>
           <p class="listing-desc" id="g-desc"></p>
@@ -347,8 +306,8 @@
 
           <p class="title" style="margin:26px 0 10px">Что влияет на цену</p>
           ${data.top_factors.map((f, i) => `
-            <div class="factor">
-              <span>${FEATURE_NAMES[f.feature] || f.feature}</span>
+            <div class="factor ${f.hint ? "has-hint" : ""}" ${f.hint ? 'tabindex="0"' : ""}>
+              <span class="factor-name">${FEATURE_NAMES[f.feature] || f.feature}${f.hint ? `<span class="hint-i">${kfpIcon("help", 15)}</span><span class="hint-pop">${f.hint}</span>` : ""}</span>
               <span class="impact ${f.impact > 0 ? "up" : "down"}">${f.impact > 0 ? "▲ повышает" : "▼ понижает"}</span>
               <div class="bar-track"><div class="bar ${f.impact > 0 ? "up" : "down"}" data-w="${Math.max(8, Math.abs(f.impact) / maxImpact * 100)}" style="transition-delay:${.15 + i * .08}s"></div></div>
             </div>`).join("")}
@@ -356,7 +315,6 @@
         ${listingCard(data)}`;
       result.style.display = "block";
       initListingCard(data);
-      if (data.flags_pending && data.listing_id) loadFlags(data.listing_id);
 
       if (hasActual) countUp(document.getElementById("num-actual"), data.actual_price, " ₸");
       countUp(document.getElementById("num-fair"), data.fair_price, " ₸");
