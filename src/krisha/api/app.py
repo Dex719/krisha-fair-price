@@ -5,14 +5,21 @@
 
 import logging
 import time
+from collections import defaultdict, deque
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from krisha import bot
-from krisha.api.schemas import HealthResponse, PredictRequest, PredictResponse
-from krisha.config import MODEL_PATH, ROOT_DIR
+from krisha.api.schemas import (
+    FlagsResponse,
+    HealthResponse,
+    PredictRequest,
+    PredictResponse,
+)
+from krisha.config import DB_PATH, MODEL_PATH, ROOT_DIR
+from krisha.db import get_conn
 from krisha.predict import predict_from_url
 from krisha.stats import get_stats
 
@@ -29,10 +36,32 @@ def health() -> HealthResponse:
     return HealthResponse(status="ok", model_loaded=MODEL_PATH.exists())
 
 
+# Анти-спам: скользящее окно запросов на IP (живём в одном процессе — хватает)
+RATE_LIMIT = 15  # запросов
+RATE_WINDOW_S = 60.0
+_rate: dict[str, deque] = defaultdict(deque)
+
+
+def _check_rate_limit(request: Request) -> None:
+    ip = (request.client.host if request.client else None) or "?"
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        ip = fwd.split(",")[0].strip()
+    q = _rate[ip]
+    now = time.monotonic()
+    while q and now - q[0] > RATE_WINDOW_S:
+        q.popleft()
+    if len(q) >= RATE_LIMIT:
+        raise HTTPException(status_code=429, detail="Слишком много запросов, подожди минуту")
+    q.append(now)
+
+
 @app.post("/api/predict", response_model=PredictResponse)
-def predict(req: PredictRequest) -> PredictResponse:
+def predict(req: PredictRequest, request: Request) -> PredictResponse:
+    _check_rate_limit(request)
     try:
-        result = predict_from_url(req.url)
+        # flags_live=False: отвечаем сразу, LLM-флаги фронт догружает отдельно
+        result = predict_from_url(req.url, flags_live=False)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except FileNotFoundError as exc:
@@ -40,6 +69,22 @@ def predict(req: PredictRequest) -> PredictResponse:
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
     return PredictResponse(**result)
+
+
+@app.get("/api/flags/{listing_id}", response_model=FlagsResponse)
+def flags(listing_id: int, request: Request) -> FlagsResponse:
+    """Догрузка LLM-бейджей: из кэша или один живой запрос к Gemini."""
+    _check_rate_limit(request)
+    from krisha.llm_flags import build_text_flags
+
+    with get_conn(DB_PATH) as conn:
+        row = conn.execute(
+            "SELECT id, description FROM listings WHERE id = ?", (listing_id,)
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Объявление не найдено")
+    text_flags = build_text_flags({"id": row["id"], "description": row["description"]})
+    return FlagsResponse(listing_id=listing_id, text_flags=text_flags)
 
 
 _stats_cache: dict = {"data": None, "ts": 0.0}

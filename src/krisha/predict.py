@@ -137,7 +137,9 @@ def top_factors(model: CatBoostRegressor, pool: Pool, features: list[str], n: in
     ]
 
 
-def predict_from_listing(listing: dict[str, Any]) -> dict[str, Any]:
+def predict_from_listing(
+    listing: dict[str, Any], flags_live: bool = True
+) -> dict[str, Any]:
     model, meta = load_model()
     features = meta["features"]
     df = listing_to_frame(listing, ppsm_maps=meta.get("ppsm_maps"))
@@ -168,14 +170,25 @@ def predict_from_listing(listing: dict[str, Any]) -> dict[str, Any]:
     result["days_on_market"] = days_on_market(listing.get("id"))
     result["liquidity"] = liquidity_estimate(listing.get("district"), listing.get("rooms"))
 
-    # Этап 5: LLM-анализ описания — бейджи red flags / плюсов (кэш + Gemini)
-    from krisha.llm_flags import build_text_flags
+    # Этап 5: LLM-анализ описания — бейджи red flags / плюсов (кэш + Gemini).
+    # flags_live=False — быстрый ответ: отдаём только кэш, а если кэша нет,
+    # ставим flags_pending=True и фронт догружает флаги отдельным запросом.
+    import os
 
-    result["text_flags"] = build_text_flags(listing)
+    from krisha.llm_flags import GEMINI_API_KEY_ENV, build_text_flags, get_cached_flags
+
+    result["text_flags"] = build_text_flags(listing, live=flags_live)
+    text = listing.get("description") or ""
+    result["flags_pending"] = bool(
+        not flags_live
+        and len(text.strip()) >= 20
+        and get_cached_flags(listing.get("id"), text) is None
+        and os.environ.get(GEMINI_API_KEY_ENV)
+    )
     return result
 
 
-def predict_from_url(url: str) -> dict[str, Any]:
+def predict_from_url(url: str, flags_live: bool = True) -> dict[str, Any]:
     if not KRISHA_URL_RE.search(url):
         raise ValueError("Ожидается ссылка вида https://krisha.kz/a/show/<id>")
     with PoliteClient(delay_range=(0.5, 1.0)) as client:
@@ -185,4 +198,16 @@ def predict_from_url(url: str) -> dict[str, Any]:
     listing = parse_detail(html, url)
     if listing is None:
         raise RuntimeError("Не удалось распарсить объявление")
-    return predict_from_listing(listing)
+    result = predict_from_listing(listing, flags_live=flags_live)
+    # Каждая проверенная ссылка пополняет базу (fail-soft: read-only FS и т.п.)
+    from krisha.db import find_duplicate_id, listing_fingerprint, upsert_listing
+
+    result["duplicate_of"] = None
+    try:
+        result["duplicate_of"] = find_duplicate_id(
+            listing_fingerprint(listing), int(listing["id"])
+        )
+        upsert_listing({**listing, "source": "user"})
+    except Exception:  # noqa: BLE001 — сохранение не должно ломать оценку
+        logger.warning("predict: не удалось сохранить объявление в базу", exc_info=True)
+    return result
