@@ -109,6 +109,17 @@
 
     /* ---------- утилиты ---------- */
     const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    /* Chart.js не умеет парсить oklch() при анимации/ховере — конвертируем в rgba через canvas */
+    const _cnv = document.createElement("canvas");
+    _cnv.width = _cnv.height = 1;
+    const _ctx = _cnv.getContext("2d", { willReadFrequently: true });
+    const cssRGBA = (name) => {
+      _ctx.clearRect(0, 0, 1, 1);
+      _ctx.fillStyle = css(name);
+      _ctx.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = _ctx.getImageData(0, 0, 1, 1).data;
+      return `rgba(${r},${g},${b},${(a / 255).toFixed(3)})`;
+    };
     const fmtMln = (n) => (n / 1_000_000).toFixed(1) + " млн ₸";
     const fmtK = (n) => Math.round(n / 1000) + " тыс ₸";
 
@@ -125,15 +136,15 @@
     const charts = [];
     function palette() {
       return {
-        primary: css("--primary"),
-        secondary: css("--secondary"),
-        tertiary: css("--tertiary"),
-        primaryC: css("--primary-container"),
-        text: css("--on-surface-variant"),
-        grid: css("--chart-grid"),
-        surfHigh: css("--surface-container-high"),
-        invSurf: css("--inverse-surface"),
-        invText: css("--inverse-on-surface"),
+        primary: cssRGBA("--primary"),
+        secondary: cssRGBA("--chart-3"),
+        tertiary: cssRGBA("--chart-2"),
+        primaryC: cssRGBA("--primary-container"),
+        text: cssRGBA("--on-surface-variant"),
+        grid: cssRGBA("--chart-grid"),
+        surfHigh: cssRGBA("--surface-container-high"),
+        invSurf: cssRGBA("--inverse-surface"),
+        invText: cssRGBA("--inverse-on-surface"),
       };
     }
 
@@ -214,7 +225,7 @@
             scales: { x: { grid: { display: false }, ticks: { maxRotation: 60 } }, y: { grid: { drawTicks: false } } },
           },
         });
-        track(histChart, (c, p) => { c.data.datasets[0].backgroundColor = p.tertiary; c.options.scales.y.grid.color = p.grid; });
+        track(histChart, (c, p) => { c.data.datasets[0].backgroundColor = c.data.datasets[0].data.map(() => p.tertiary); c.options.scales.y.grid.color = p.grid; });
 
         /* комнаты */
         const roomsChart = new Chart(document.getElementById("chart-rooms"), {
@@ -231,7 +242,7 @@
             scales: { x: { grid: { display: false } }, y: { ticks: { callback: (v) => v + " млн" }, grid: { drawTicks: false } } },
           },
         });
-        track(roomsChart, (c, p) => { c.data.datasets[0].backgroundColor = p.secondary; c.options.scales.y.grid.color = p.grid; });
+        track(roomsChart, (c, p) => { c.data.datasets[0].backgroundColor = c.data.datasets[0].data.map(() => p.secondary); c.options.scales.y.grid.color = p.grid; });
 
         /* категории */
         const catChart = new Chart(document.getElementById("chart-cat"), {
