@@ -1,20 +1,29 @@
-# 🏠 Krisha Fair Price
+<div align="center">
 
-**Fair-price estimator for apartments in Almaty.** Paste a [Krisha.kz](https://krisha.kz) listing URL and get a verdict: **good deal, fair price, or overpriced** — with an ML-predicted fair price and an explanation of the main price factors.
+<img src="static/avatar.png" alt="Krisha Fair Price" width="96" />
 
-**🔗 Live demo: [krisha-fair-price-production.up.railway.app](https://krisha-fair-price-production.up.railway.app)**
-📊 Market stats dashboard: [/stats](https://krisha-fair-price-production.up.railway.app/stats)
+# Krisha Fair Price
 
-![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
-![CatBoost](https://img.shields.io/badge/CatBoost-gradient%20boosting-FFCC00)
-![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)
-![Deployed on Railway](https://img.shields.io/badge/Railway-deployed-0B0D0E?logo=railway&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-25%20passing-brightgreen)
+**Fair-price estimator for apartments in Almaty: paste a Krisha.kz link, get a verdict — good deal, fair, or overpriced**
+
+[![CI](https://github.com/Dex719/krisha-fair-price/actions/workflows/ci.yml/badge.svg)](https://github.com/Dex719/krisha-fair-price/actions/workflows/ci.yml)
+![tests](https://img.shields.io/badge/tests-25_passed-2ea44f)
+![python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
+![CatBoost](https://img.shields.io/badge/CatBoost-MAPE_10.6%25-FFCC00)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+
+**[🚀 Live demo](https://krisha-fair-price-production.up.railway.app)** · **[📊 Almaty market dashboard](https://krisha-fair-price-production.up.railway.app/stats)**
+
+<img src="docs/screenshot-light.png" alt="Verdict for a listing" width="800" />
+
+</div>
+
+---
 
 ## ✨ What it does
 
-1. You paste a link to an apartment listing on Krisha.kz.
-2. The service fetches the listing, extracts ~20 features (area, rooms, floor, building age, district, residential complex, coordinates, distance to city center…).
+1. You paste a link to an apartment listing on [Krisha.kz](https://krisha.kz).
+2. The service fetches the listing and extracts ~20 features (area, rooms, floor, building age, district, residential complex, coordinates, distance to city center…).
 3. A CatBoost model predicts the *fair* market price and compares it with the asking price.
 4. You get a verdict (`GOOD_DEAL` / `FAIR` / `OVERPRICED`), the deviation in %, and the top factors that drive the price up or down (SHAP values).
 
@@ -40,7 +49,7 @@ Trained on **7,000+ real listings** crawled from all 8 districts of Almaty (resu
 
 ## 🛠 Stack
 
-Python 3.11 · httpx + BeautifulSoup4 · SQLite · pandas · CatBoost · SHAP · FastAPI · vanilla JS + Material 3 Expressive UI (light/dark) · Chart.js · pytest + GitHub Actions · Railway
+`Python 3.11` · `httpx` + `BeautifulSoup4` · `SQLite` · `pandas` · `CatBoost` · `SHAP` · `FastAPI` · `vanilla JS` · `Material 3 Expressive` (light/dark) · `Chart.js` · `pytest` + `GitHub Actions` · `Railway`
 
 ## 🚀 Quick start
 
@@ -57,11 +66,12 @@ make test         # pytest
 
 ## 🔌 API
 
-```bash
-POST /api/predict          # {"url": "https://krisha.kz/a/show/..."} → verdict, fair price, factors
-GET  /api/stats            # market snapshot: districts, ₸/m², price distribution
-GET  /api/health           # liveness + model status
-```
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/predict` | `{"url": "https://krisha.kz/a/show/..."}` → verdict, fair price, factors |
+| `GET` | `/api/stats` | market snapshot: districts, ₸/m², price distribution |
+| `GET` | `/api/health` | liveness + model status |
+| `POST` | `/tg/webhook` | Telegram bot updates (secret-protected) |
 
 ## 🗂 Project structure
 
@@ -75,9 +85,15 @@ src/krisha/
 ├── api/            # FastAPI app + static frontend
 └── db.py           # SQLite schema, upsert by listing id
 static/             # Material 3 Expressive UI: index (estimator) + stats (dashboard)
-tests/              # 25 tests: parsers (real-markup fixtures), features, DB, train smoke
+tests/              # 25 tests: parsers (real-markup fixtures), features, DB, bot, train smoke
 ```
 
 ## ⚠️ Disclaimer
 
 Educational project. Listing data belongs to Krisha.kz; crawling is deliberately gentle (randomized delays, no parallel hammering). Predictions are estimates, not financial advice.
+
+<div align="center">
+
+<img src="docs/screenshot-dark.png" alt="Almaty market dashboard, dark theme" width="800" />
+
+</div>
