@@ -6,10 +6,11 @@
 import logging
 import time
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from krisha import bot
 from krisha.api.schemas import HealthResponse, PredictRequest, PredictResponse
 from krisha.config import MODEL_PATH, ROOT_DIR
 from krisha.predict import predict_from_url
@@ -57,6 +58,29 @@ def stats() -> dict:
         raise HTTPException(status_code=503, detail=str(exc))
     _stats_cache.update(data=data, ts=now)
     return data
+
+
+@app.post("/tg/webhook", include_in_schema=False)
+def telegram_webhook(
+    update: dict,
+    x_telegram_bot_api_secret_token: str | None = Header(default=None),
+) -> dict:
+    """Webhook Telegram-бота. Telegram шлёт сюда апдейты после setWebhook."""
+    token = bot.bot_token()
+    if not token:
+        raise HTTPException(status_code=404)
+    if x_telegram_bot_api_secret_token != bot.webhook_secret(token):
+        raise HTTPException(status_code=403)
+    try:
+        bot.handle_update(update)
+    except Exception:  # бот не должен ронять вебхук — Telegram будет ретраить
+        logger.exception("Ошибка обработки Telegram-апдейта")
+    return {"ok": True}
+
+
+@app.on_event("startup")
+def _startup() -> None:
+    bot.setup_webhook()
 
 
 @app.get("/", include_in_schema=False)
