@@ -20,7 +20,7 @@
 
 ## 🤖 Telegram bot
 
-The same model is available as a Telegram bot: **[@testadsjklasdjklbot](https://t.me/testadsjklasdjklbot)** — send it a Krisha.kz listing link and get the verdict right in the chat (photo, fair price, top price factors).
+The same model is available as a Telegram bot: **[@krisha_fair_price_bot](https://t.me/krisha_fair_price_bot)** — send it a Krisha.kz listing link and get the verdict right in the chat (photo, fair price, top price factors).
 
 It runs on the same Railway service via webhooks (`POST /tg/webhook`) — no extra server or polling worker needed. To enable it on your own deploy, set the `TELEGRAM_BOT_TOKEN` env variable; the webhook is registered automatically on startup.
 
