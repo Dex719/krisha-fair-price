@@ -23,6 +23,15 @@
     "security_count",
     "completion_year",
     "apartments_count",
+    "dist_metro_km",
+    "dist_school_km",
+    "dist_kindergarten_km",
+    "dist_park_km",
+    "dist_supermarket_km",
+    "dist_bus_stop_km",
+    "dist_big_road_km",
+    "dist_industrial_km",
+    "walk_score",
     "district",
     "microdistrict",
     "building_type",
@@ -54,9 +63,9 @@
   ],
   "metrics": {
     "model": {
-      "mae": 7087111.541274776,
-      "mape": 0.09864515905993772,
-      "r2": 0.8422339306651246
+      "mae": 7180537.697982463,
+      "mape": 0.09807366036365345,
+      "r2": 0.8035253215478959
     },
     "baseline": {
       "mae": 12105573.87850417,
@@ -65,7 +74,7 @@
     },
     "n_train": 5637,
     "n_test": 1410,
-    "trained_at": "2026-06-12T16:56:11.755898+00:00"
+    "trained_at": "2026-06-12T18:26:56.757627+00:00"
   },
   "ppsm_maps": {
     "district": {
