@@ -108,6 +108,11 @@
       has_video_surveillance: "Видеонаблюдение", security_count: "Опции безопасности",
       housing_class: "Класс жилья", developer: "Застройщик",
       completion_year: "Год сдачи ЖК", apartments_count: "Размер ЖК",
+      dist_metro_km: "Близость метро", dist_school_km: "Близость школы",
+      dist_kindergarten_km: "Близость детсада", dist_park_km: "Близость парка",
+      dist_supermarket_km: "Близость супермаркета", dist_bus_stop_km: "Близость остановки",
+      dist_big_road_km: "Близость магистрали", dist_industrial_km: "Близость промзоны",
+      walk_score: "Пешая доступность",
     };
     const VERDICTS = {
       GOOD_DEAL: { label: "Выгодно!", icon: "trending-down", cls: "chip-good" },
@@ -173,6 +178,17 @@
           </p>
           <div class="details-grid">
             ${data.complex_details.map((d) => `
+              <div class="detail-item">
+                <p class="d-label">${d.label}</p>
+                <p class="d-value">${d.value}</p>
+              </div>`).join("")}
+          </div>` : ""}
+          ${(data.location_details || []).length ? `
+          <p class="title" style="display:flex;align-items:center;gap:10px;margin:22px 0 12px;font-size:.95rem">
+            <span style="color:var(--secondary)">${kfpIcon("map-pin", 20)}</span>Локация
+          </p>
+          <div class="details-grid">
+            ${data.location_details.map((d) => `
               <div class="detail-item">
                 <p class="d-label">${d.label}</p>
                 <p class="d-value">${d.value}</p>

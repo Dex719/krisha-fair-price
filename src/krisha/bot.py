@@ -63,6 +63,15 @@ FEATURE_RU = {
     "developer": "Застройщик",
     "completion_year": "Год сдачи ЖК",
     "apartments_count": "Размер ЖК",
+    "dist_metro_km": "Близость метро",
+    "dist_school_km": "Близость школы",
+    "dist_kindergarten_km": "Близость детсада",
+    "dist_park_km": "Близость парка",
+    "dist_supermarket_km": "Близость супермаркета",
+    "dist_bus_stop_km": "Близость остановки",
+    "dist_big_road_km": "Близость магистрали",
+    "dist_industrial_km": "Близость промзоны",
+    "walk_score": "Пешая доступность",
 }
 
 VERDICT_RU = {
