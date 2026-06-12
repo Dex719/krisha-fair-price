@@ -6,7 +6,7 @@
   <title>Рынок квартир Алматы — Krisha Fair Price</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,100..125,300..900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/m3.css" />
   <link rel="icon" type="image/png" href="/static/avatar.png?v=3" />
   <script src="/static/icons.js"></script>
@@ -18,10 +18,6 @@
   </script>
 </head>
 <body>
-  <div class="blobs" aria-hidden="true">
-    <div class="blob blob-1"></div>
-    <div class="blob blob-2"></div>
-  </div>
 
   <div class="page">
     <header class="top-bar reveal">
@@ -143,14 +139,14 @@
 
     function baseDefaults() {
       const p = palette();
-      Chart.defaults.font.family = '"Roboto Flex", system-ui, sans-serif';
-      Chart.defaults.font.weight = 550;
+      Chart.defaults.font.family = '"Manrope", system-ui, sans-serif';
+      Chart.defaults.font.weight = 600;
       Chart.defaults.color = p.text;
       Chart.defaults.borderColor = p.grid;
       Chart.defaults.plugins.tooltip = {
         ...Chart.defaults.plugins.tooltip,
         backgroundColor: p.invSurf, titleColor: p.invText, bodyColor: p.invText,
-        cornerRadius: 14, padding: 12, displayColors: false,
+        cornerRadius: 10, padding: 12, displayColors: false,
         titleFont: { weight: 700 },
       };
       Chart.defaults.animation.duration = 1100;
