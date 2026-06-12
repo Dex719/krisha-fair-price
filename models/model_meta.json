@@ -17,12 +17,21 @@
     "is_new_building",
     "district_ppsm",
     "microdistrict_ppsm",
+    "has_security_guard",
+    "has_intercom",
+    "has_video_surveillance",
+    "security_count",
     "district",
     "microdistrict",
     "building_type",
     "complex_name",
     "user_type",
-    "category"
+    "category",
+    "renovation",
+    "toilet",
+    "furniture",
+    "parking",
+    "balcony"
   ],
   "cat_features": [
     "district",
@@ -30,13 +39,18 @@
     "building_type",
     "complex_name",
     "user_type",
-    "category"
+    "category",
+    "renovation",
+    "toilet",
+    "furniture",
+    "parking",
+    "balcony"
   ],
   "metrics": {
     "model": {
-      "mae": 7653876.29203965,
-      "mape": 0.10565476764143633,
-      "r2": 0.7801482287949272
+      "mae": 7184462.716928172,
+      "mape": 0.0998137955410601,
+      "r2": 0.8135124620386323
     },
     "baseline": {
       "mae": 12105573.87850417,
@@ -45,7 +59,7 @@
     },
     "n_train": 5637,
     "n_test": 1410,
-    "trained_at": "2026-06-12T07:42:37.597938+00:00"
+    "trained_at": "2026-06-12T15:50:36.257309+00:00"
   },
   "ppsm_maps": {
     "district": {

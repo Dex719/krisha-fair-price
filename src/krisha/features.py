@@ -1,5 +1,6 @@
 """Очистка данных и фичи для модели. Используется и в обучении, и в предсказании."""
 
+import json
 import math
 from typing import Any
 
@@ -16,12 +17,34 @@ from krisha.config import (
     PRICE_MIN,
 )
 
-CAT_FEATURES = ["district", "microdistrict", "building_type", "complex_name", "user_type", "category"]
+# Поля из raw_params (этап 1 роадмапа): имя фичи → ключ в JSON объявления.
+# Значения — стандартные опции krisha («свежий ремонт», «совмещенный», ...),
+# пропуск → MISSING_CAT, CatBoost обрабатывает её как обычную категорию.
+RAW_PARAM_CAT_MAP = {
+    "renovation": "flat.renovation",   # состояние ремонта — главный прирост
+    "toilet": "flat.toilet",           # санузел
+    "furniture": "live.furniture",     # мебель
+    "parking": "flat.parking",         # парковка
+    "balcony": "flat.balcony",         # балкон/лоджия — тот же механизм, бесплатно
+}
+# flat.security — список через запятую («охрана, домофон, видеонаблюдение»):
+# раскладываем в бинарные флаги + общий счётчик опций.
+SECURITY_FLAGS = {
+    "has_security_guard": "охрана",
+    "has_intercom": "домофон",
+    "has_video_surveillance": "видеонаблюдение",
+}
+
+CAT_FEATURES = [
+    "district", "microdistrict", "building_type", "complex_name", "user_type", "category",
+    *RAW_PARAM_CAT_MAP,
+]
 NUM_FEATURES = [
     "rooms", "area", "floor", "total_floors", "floor_ratio", "is_first_floor",
     "is_last_floor", "year_built", "building_age", "ceiling", "lat", "lon",
     "dist_center_km", "photos_count", "is_new_building",
     "district_ppsm", "microdistrict_ppsm",
+    *SECURITY_FLAGS, "security_count",
 ]
 ALL_FEATURES = NUM_FEATURES + CAT_FEATURES
 TARGET = "log_price"
@@ -68,9 +91,58 @@ def compute_ppsm_maps(df: pd.DataFrame) -> dict:
     }
 
 
+def _parse_raw_params(value: Any) -> dict:
+    """JSON-строка raw_params → dict; мусор и пропуски → пустой dict."""
+    if isinstance(value, dict):
+        return value
+    if not value or not isinstance(value, str):
+        return {}
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def _norm_cat(value: Any) -> str:
+    """Нормализация категориального значения: регистр, пробелы, пропуск → MISSING_CAT."""
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return MISSING_CAT
+    text = " ".join(str(value).split()).strip().lower()
+    return text or MISSING_CAT
+
+
+def add_raw_param_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Фичи из raw_params: ремонт, санузел, мебель, парковка, балкон, безопасность.
+
+    Работает в двух режимах:
+    - есть колонка `raw_params` (train из БД, predict по URL) — парсим JSON;
+    - колонки уже заданы напрямую (ручной ввод) — только нормализуем.
+    """
+    df = df.copy()
+    raw = (
+        df["raw_params"].map(_parse_raw_params)
+        if "raw_params" in df
+        else pd.Series([{}] * len(df), index=df.index)
+    )
+
+    for col, key in RAW_PARAM_CAT_MAP.items():
+        if col not in df:
+            df[col] = raw.map(lambda p, k=key: p.get(k))
+        df[col] = df[col].map(_norm_cat)
+
+    if "security" not in df:
+        df["security"] = raw.map(lambda p: p.get("flat.security") or "")
+    sec = df["security"].fillna("").astype(str).str.lower()
+    for col, keyword in SECURITY_FLAGS.items():
+        df[col] = sec.str.contains(keyword, regex=False).astype(int)
+    df["security_count"] = sec.map(lambda s: len([x for x in s.split(",") if x.strip()]))
+    return df
+
+
 def build_features(df: pd.DataFrame, ppsm_maps: dict | None = None) -> pd.DataFrame:
     """Добавляет производные фичи. Работает и для одного объявления (predict)."""
-    df = df.copy()
+    df = add_raw_param_features(df)
     for col in ["rooms", "area", "floor", "total_floors", "year_built", "ceiling",
                 "lat", "lon", "photos_count"]:
         if col not in df:
