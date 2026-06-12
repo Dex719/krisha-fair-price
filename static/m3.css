@@ -39,6 +39,8 @@
   --shadow: 0 1px 3px rgba(15, 25, 18, 0.07);
   --shadow-lg: 0 1px 3px rgba(15, 25, 18, 0.07);
   --chart-grid: oklch(0.42 0.012 160 / 0.14);
+  --chart-2: oklch(0.55 0.1 220);   /* графики: тил */
+  --chart-3: oklch(0.55 0.09 152);  /* графики: средний зелёный */
   --focus-ring: oklch(0.46 0.12 152 / 0.35);
   color-scheme: light;
 }
@@ -78,6 +80,8 @@
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 1px 3px rgba(0, 0, 0, 0.4);
   --chart-grid: oklch(0.74 0.01 160 / 0.14);
+  --chart-2: oklch(0.75 0.09 220);
+  --chart-3: oklch(0.72 0.11 152);
   --focus-ring: oklch(0.78 0.13 152 / 0.4);
   color-scheme: dark;
 }
