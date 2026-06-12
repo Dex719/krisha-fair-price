@@ -16,6 +16,7 @@ from krisha.config import (
     PRICE_MAX,
     PRICE_MIN,
 )
+from krisha.geo import GEO_FEATURES  # этап 3: расстояния до POI + walk_score
 
 # Поля из raw_params (этап 1 роадмапа): имя фичи → ключ в JSON объявления.
 # Значения — стандартные опции krisha («свежий ремонт», «совмещенный», ...),
@@ -52,6 +53,7 @@ NUM_FEATURES = [
     "district_ppsm", "microdistrict_ppsm",
     *SECURITY_FLAGS, "security_count",
     *COMPLEX_NUM_FEATURES,
+    *GEO_FEATURES,
 ]
 ALL_FEATURES = NUM_FEATURES + CAT_FEATURES
 TARGET = "log_price"
@@ -180,8 +182,11 @@ def build_features(
     complex_lookup: dict | None = None,
 ) -> pd.DataFrame:
     """Добавляет производные фичи. Работает и для одного объявления (predict)."""
+    from krisha.geo import add_geo_features
+
     df = add_raw_param_features(df)
     df = add_complex_features(df, lookup=complex_lookup)
+    df = add_geo_features(df)
     for col in ["rooms", "area", "floor", "total_floors", "year_built", "ceiling",
                 "lat", "lon", "photos_count", *COMPLEX_NUM_FEATURES]:
         if col not in df:
