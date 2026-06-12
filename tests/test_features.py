@@ -50,3 +50,52 @@ def test_haversine_known_distance():
     # Алматы → Астана ≈ 970 км
     d = haversine_km(43.238949, 76.889709, 51.169392, 71.449074)
     assert 900 < d < 1050
+
+
+# ---------- этап 1: фичи из raw_params ----------
+
+RAW_PARAMS_JSON = (
+    '{"flat.renovation": "Свежий ремонт", "flat.toilet": "совмещенный", '
+    '"live.furniture": "полностью", "flat.parking": "паркинг", '
+    '"flat.balcony": "лоджия", '
+    '"flat.security": "охрана, домофон, видеонаблюдение, видеодомофон"}'
+)
+
+
+def test_raw_params_extracted():
+    df = build_features(pd.DataFrame([
+        {"price": 30_000_000, "area": 50, "raw_params": RAW_PARAMS_JSON},
+    ]))
+    row = df.iloc[0]
+    assert row["renovation"] == "свежий ремонт"  # нормализован регистр
+    assert row["toilet"] == "совмещенный"
+    assert row["furniture"] == "полностью"
+    assert row["parking"] == "паркинг"
+    assert row["balcony"] == "лоджия"
+    assert row["has_security_guard"] == 1
+    assert row["has_intercom"] == 1
+    assert row["has_video_surveillance"] == 1
+    assert row["security_count"] == 4
+
+
+def test_raw_params_missing_is_unknown():
+    df = build_features(pd.DataFrame([{"price": 30_000_000, "area": 50}]))
+    row = df.iloc[0]
+    assert row["renovation"] == "unknown"
+    assert row["toilet"] == "unknown"
+    assert row["has_security_guard"] == 0
+    assert row["security_count"] == 0
+
+
+def test_raw_params_broken_json_safe():
+    df = build_features(pd.DataFrame([
+        {"price": 30_000_000, "area": 50, "raw_params": "{broken"},
+    ]))
+    assert df.iloc[0]["renovation"] == "unknown"
+
+
+def test_listing_to_frame_with_raw_params():
+    df = listing_to_frame({"price": 30_000_000, "area": 50, "rooms": 2,
+                           "raw_params": RAW_PARAMS_JSON})
+    assert df.iloc[0]["renovation"] == "свежий ремонт"
+    assert set(ALL_FEATURES) <= set(df.columns)
