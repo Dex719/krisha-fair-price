@@ -167,6 +167,11 @@ def predict_from_listing(listing: dict[str, Any]) -> dict[str, Any]:
     result["price_history"] = price_history_points(listing.get("id"))
     result["days_on_market"] = days_on_market(listing.get("id"))
     result["liquidity"] = liquidity_estimate(listing.get("district"), listing.get("rooms"))
+
+    # Этап 5: LLM-анализ описания — бейджи red flags / плюсов (кэш + Gemini)
+    from krisha.llm_flags import build_text_flags
+
+    result["text_flags"] = build_text_flags(listing)
     return result
 
 
