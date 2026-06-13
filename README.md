@@ -10,7 +10,7 @@
 [![CI](https://github.com/Dex719/krisha-fair-price/actions/workflows/ci.yml/badge.svg)](https://github.com/Dex719/krisha-fair-price/actions/workflows/ci.yml)
 ![tests](https://img.shields.io/badge/tests-25_passed-2ea44f)
 ![python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
-![CatBoost](https://img.shields.io/badge/CatBoost-MAPE_10.6%25-FFCC00)
+![CatBoost](https://img.shields.io/badge/CatBoost-MAPE_10.1%25-FFCC00)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 
 **[🚀 Live demo](https://krisha-fair-price-production.up.railway.app)** · **[📊 Almaty market dashboard](https://krisha-fair-price-production.up.railway.app/stats)**
@@ -36,13 +36,13 @@ It runs on the same Railway service via webhooks (`POST /tg/webhook`) — no ext
 
 ## 📈 Model
 
-Trained on **7,000+ real listings** crawled from all 8 districts of Almaty (resumable, polite crawler → SQLite).
+Trained on **8,000+ real listings** crawled from all 8 districts of Almaty (resumable, polite crawler → SQLite).
 
 | Metric | CatBoost | Baseline (median ₸/m² by district × rooms) |
 |---|---|---|
-| MAE | **7.7M ₸** | 12.1M ₸ |
-| MAPE | **10.6%** | 17.4% |
-| R² | **0.78** | 0.65 |
+| MAE | **6.8M ₸** | 12.4M ₸ |
+| MAPE | **10.1%** | 18.5% |
+| R² | **0.83** | 0.62 |
 
 - Target: `log1p(price)`, native categorical features (district, microdistrict, residential complex, building type).
 - Anti-leakage: median ₸/m² maps are computed on the train split only.
