@@ -1,6 +1,7 @@
 """Вежливый HTTP-клиент: паузы 2–4 сек, ретраи, единый User-Agent."""
 
 import logging
+import os
 import random
 import time
 
@@ -40,6 +41,16 @@ class PoliteClient:
                     time.sleep(wait)
                     continue
                 logger.warning("HTTP %s: %s", resp.status_code, url)
+            except (httpx.TimeoutException, httpx.ConnectError) as exc:
+                # Таймаут/обрыв соединения = вероятный троттлинг IP. Эскалируем
+                # ожидание, иначе нас банят надолго. Управляется env:
+                #   KRISHA_TIMEOUT_BACKOFF  — базовая пауза (сек, по умолч. 60)
+                base = float(os.environ.get("KRISHA_TIMEOUT_BACKOFF", "60"))
+                wait = base * attempt
+                logger.warning(
+                    "Сеть %s на %s (попытка %s) — ждём %.0f сек", type(exc).__name__, url, attempt, wait
+                )
+                time.sleep(wait)
             except httpx.HTTPError as exc:
                 logger.warning("Ошибка запроса %s (попытка %s): %s", url, attempt, exc)
         return None

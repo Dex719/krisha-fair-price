@@ -27,8 +27,8 @@ REQUEST_DELAY_RANGE = (
     float(_os.environ.get("KRISHA_DELAY_MIN", "2.0")),
     float(_os.environ.get("KRISHA_DELAY_MAX", "4.0")),
 )
-REQUEST_TIMEOUT = 30.0
-MAX_RETRIES = 3
+REQUEST_TIMEOUT = float(_os.environ.get("KRISHA_TIMEOUT", "30"))
+MAX_RETRIES = int(_os.environ.get("KRISHA_MAX_RETRIES", "3"))
 
 # --- Модель -------------------------------------------------------------
 # Центр Алматы (пересечение Абая/Достык, условно) — для фичи "расстояние до центра"
