@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Dev-панель · Krisha Fair Price</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/m3.css" />
+  <link rel="icon" type="image/png" href="/static/avatar.png?v=3" />
+  <script src="/static/icons.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script>
+    document.documentElement.dataset.theme =
+      localStorage.getItem("kfp-theme") ||
+      (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  </script>
+</head>
+<body>
+  <div class="page">
+    <header class="top-bar reveal">
+      <a class="brand" href="/">
+        <span class="logo"><img src="/static/avatar.png?v=3" alt="Krisha Fair Price" /></span>
+        Krisha Fair Price
+      </a>
+      <span class="chip" style="margin-left:10px">dev-панель</span>
+      <div class="spacer"></div>
+      <select id="period" class="btn btn-tonal" style="padding:10px 14px;font-size:.9rem">
+        <option value="7">7 дней</option>
+        <option value="30" selected>30 дней</option>
+        <option value="90">90 дней</option>
+      </select>
+      <button id="theme-toggle" class="icon-btn" type="button" aria-label="Переключить тему">
+        <span id="theme-icon"></span>
+      </button>
+    </header>
+
+    <!-- Гейт по токену -->
+    <section id="gate" class="card card-elevated reveal" style="display:none;max-width:440px;margin:8vh auto;padding:32px">
+      <h1 class="title" style="margin-bottom:8px">🔒 Приватная панель</h1>
+      <p class="body" style="color:var(--on-surface-variant);margin-bottom:18px">Введи токен доступа.</p>
+      <input id="token-input" type="password" placeholder="ADMIN_TOKEN"
+             style="width:100%;padding:13px 16px;border-radius:14px;border:1px solid var(--outline);background:var(--surface-container);color:var(--on-surface);font:inherit;margin-bottom:14px" />
+      <button id="token-btn" class="btn btn-filled" style="width:100%">Войти</button>
+      <p id="gate-err" class="body-sm" style="color:var(--error);margin-top:12px;display:none"></p>
+    </section>
+
+    <!-- Дашборд -->
+    <div id="dash" style="display:none">
+      <section style="padding:4vh 0 24px" class="reveal">
+        <h1 class="display">Мониторинг <span class="accent">сервиса</span></h1>
+        <p id="meta" class="body-lg" style="margin-top:12px">Загрузка…</p>
+      </section>
+
+      <div id="error" class="card" role="alert"
+           style="display:none;background:var(--error-container);color:var(--on-error-container)"></div>
+
+      <div class="stat-grid reveal" style="margin-bottom:18px">
+        <div class="stat-card"><p class="label">Запросов сегодня</p><p class="value" id="c-req-today">—</p></div>
+        <div class="stat-card"><p class="label">Посетителей сегодня</p><p class="value" id="c-vis-today">—</p></div>
+        <div class="stat-card"><p class="label">Запросов за период</p><p class="value" id="c-req">—</p></div>
+        <div class="stat-card"><p class="label">Уникальных посетителей</p><p class="value" id="c-vis">—</p></div>
+        <div class="stat-card"><p class="label">Среднее время ответа</p><p class="value" id="c-ms">—</p></div>
+        <div class="stat-card"><p class="label">Ошибок за период</p><p class="value" id="c-err">—</p></div>
+      </div>
+
+      <div class="card card-elevated reveal" style="margin-bottom:18px;padding:28px">
+        <h2 class="title" style="margin-bottom:18px">
+          <span data-icon="bars" data-icon-size="22" style="color:var(--primary)"></span>
+          Посещаемость по дням
+        </h2>
+        <div style="height:300px"><canvas id="chart-day"></canvas></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px;margin-bottom:18px">
+        <div class="card card-elevated reveal" style="padding:28px">
+          <h2 class="title" style="margin-bottom:18px">
+            <span data-icon="city" data-icon-size="22" style="color:var(--tertiary)"></span>
+            Топ районов в запросах
+          </h2>
+          <div style="height:280px"><canvas id="chart-district"></canvas></div>
+        </div>
+        <div class="card card-elevated reveal" style="padding:28px">
+          <h2 class="title" style="margin-bottom:18px">
+            <span data-icon="search" data-icon-size="22" style="color:var(--secondary)"></span>
+            Активность по часам (UTC)
+          </h2>
+          <div style="height:280px"><canvas id="chart-hour"></canvas></div>
+        </div>
+        <div class="card card-elevated reveal" style="padding:28px">
+          <h2 class="title" style="margin-bottom:18px">
+            <span data-icon="building" data-icon-size="22" style="color:var(--primary)"></span>
+            Источник трафика
+          </h2>
+          <div style="height:280px;display:grid;place-items:center"><canvas id="chart-source"></canvas></div>
+        </div>
+        <div class="card card-elevated reveal" style="padding:28px">
+          <h2 class="title" style="margin-bottom:18px">
+            <span data-icon="bars" data-icon-size="22" style="color:var(--tertiary)"></span>
+            Вердикты оценок
+          </h2>
+          <div style="height:280px;display:grid;place-items:center"><canvas id="chart-verdict"></canvas></div>
+        </div>
+      </div>
+
+      <div class="card card-elevated reveal" style="padding:28px">
+        <h2 class="title" style="margin-bottom:14px">
+          <span data-icon="door" data-icon-size="22" style="color:var(--secondary)"></span>
+          Последние оценки
+        </h2>
+        <div style="overflow-x:auto">
+          <table id="events" style="width:100%;border-collapse:collapse;font-size:.9rem">
+            <thead><tr style="text-align:left;color:var(--on-surface-variant)">
+              <th style="padding:8px 10px">Время</th><th style="padding:8px 10px">Источник</th>
+              <th style="padding:8px 10px">Посетитель</th><th style="padding:8px 10px">Район</th>
+              <th style="padding:8px 10px">Комн.</th><th style="padding:8px 10px">Цена</th>
+              <th style="padding:8px 10px">Оценка</th><th style="padding:8px 10px">Вердикт</th>
+            </tr></thead>
+            <tbody id="events-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <footer class="colophon reveal">Приватная панель · доступ только по токену</footer>
+    </div>
+  </div>
+
+  <script>
+    /* ---------- тема ---------- */
+    const themeIcon = document.getElementById("theme-icon");
+    const syncIcon = () =>
+      themeIcon.innerHTML = kfpIcon(document.documentElement.dataset.theme === "dark" ? "sun" : "moon");
+    syncIcon();
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+      const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem("kfp-theme", next);
+      syncIcon();
+      restyleCharts();
+    });
+
+    const io = new IntersectionObserver((entries) => entries.forEach((e) => {
+      if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+    }), { threshold: 0.08 });
+    document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+
+    /* ---------- утилиты графиков (как в stats.html) ---------- */
+    const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const _cnv = document.createElement("canvas"); _cnv.width = _cnv.height = 1;
+    const _ctx = _cnv.getContext("2d", { willReadFrequently: true });
+    const cssRGBA = (name) => {
+      _ctx.clearRect(0, 0, 1, 1); _ctx.fillStyle = css(name); _ctx.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = _ctx.getImageData(0, 0, 1, 1).data;
+      return `rgba(${r},${g},${b},${(a / 255).toFixed(3)})`;
+    };
+    const fmtMln = (n) => (n / 1_000_000).toFixed(1) + " млн";
+    const palette = () => ({
+      primary: cssRGBA("--primary"), secondary: cssRGBA("--chart-3"), tertiary: cssRGBA("--chart-2"),
+      primaryC: cssRGBA("--primary-container"), text: cssRGBA("--on-surface-variant"),
+      grid: cssRGBA("--chart-grid"), invSurf: cssRGBA("--inverse-surface"), invText: cssRGBA("--inverse-on-surface"),
+    });
+    function baseDefaults() {
+      const p = palette();
+      Chart.defaults.font.family = '"Manrope", system-ui, sans-serif';
+      Chart.defaults.font.weight = 600;
+      Chart.defaults.color = p.text; Chart.defaults.borderColor = p.grid;
+      Chart.defaults.plugins.tooltip = { ...Chart.defaults.plugins.tooltip,
+        backgroundColor: p.invSurf, titleColor: p.invText, bodyColor: p.invText,
+        cornerRadius: 10, padding: 12, displayColors: false, titleFont: { weight: 700 } };
+      Chart.defaults.animation.duration = 900; Chart.defaults.animation.easing = "easeOutQuart";
+    }
+    const charts = [];
+    function track(chart, recolor) { charts.push({ chart, recolor }); recolor(chart, palette()); chart.update("none"); }
+    function restyleCharts() { baseDefaults(); const p = palette(); charts.forEach(({ chart, recolor }) => { recolor(chart, p); chart.update(); }); }
+    function countUp(el, target, fmt) {
+      const dur = 900, t0 = performance.now(), ease = (t) => 1 - Math.pow(1 - t, 3);
+      (function tick(now) { const p = Math.min((now - t0) / dur, 1); el.textContent = fmt(target * ease(p)); if (p < 1) requestAnimationFrame(tick); })(t0);
+    }
+
+    const VERDICT = { GOOD_DEAL: "Ниже рынка", FAIR: "Справедливо", OVERPRICED: "Выше рынка" };
+    const fmtT = (n) => n == null ? "—" : (n / 1_000_000).toFixed(1) + " млн ₸";
+
+    /* ---------- токен ---------- */
+    let TOKEN = new URLSearchParams(location.search).get("token") || localStorage.getItem("kfp-admin-token") || "";
+
+    function showGate(msg) {
+      document.getElementById("dash").style.display = "none";
+      document.getElementById("gate").style.display = "block";
+      if (msg) { const e = document.getElementById("gate-err"); e.textContent = msg; e.style.display = "block"; }
+    }
+    document.getElementById("token-btn").addEventListener("click", () => {
+      TOKEN = document.getElementById("token-input").value.trim();
+      localStorage.setItem("kfp-admin-token", TOKEN);
+      load();
+    });
+    document.getElementById("token-input").addEventListener("keydown", (e) => { if (e.key === "Enter") document.getElementById("token-btn").click(); });
+    document.getElementById("period").addEventListener("change", load);
+
+    const q = (id) => document.getElementById(id);
+
+    async function load() {
+      if (!TOKEN) { showGate(); return; }
+      const days = q("period").value;
+      try {
+        const [sResp, eResp] = await Promise.all([
+          fetch(`/api/admin/stats?token=${encodeURIComponent(TOKEN)}&days=${days}`),
+          fetch(`/api/admin/events?token=${encodeURIComponent(TOKEN)}&limit=50`),
+        ]);
+        if (sResp.status === 403) { localStorage.removeItem("kfp-admin-token"); TOKEN = ""; showGate("Неверный токен"); return; }
+        if (sResp.status === 503) { showGate("ADMIN_TOKEN не настроен на сервере (env)"); return; }
+        const data = await sResp.json();
+        const ev = (await eResp.json()).events || [];
+        if (!sResp.ok) throw new Error(data.detail || "Ошибка загрузки");
+
+        localStorage.setItem("kfp-admin-token", TOKEN);
+        q("gate").style.display = "none";
+        q("dash").style.display = "block";
+        document.querySelectorAll("#dash .reveal").forEach((el) => io.observe(el));
+        render(data, ev);
+      } catch (err) {
+        q("dash").style.display = "block";
+        const el = q("error"); el.textContent = err.message; el.style.display = "block";
+      }
+    }
+
+    function render(data, ev) {
+      baseDefaults();
+      charts.forEach(({ chart }) => chart.destroy());
+      charts.length = 0;
+      q("meta").textContent = `За ${data.days} дней · обновлено ${new Date().toLocaleString("ru-RU")}`;
+      q("error").style.display = "none";
+
+      countUp(q("c-req-today"), data.requests_today, (v) => Math.round(v).toLocaleString("ru-RU"));
+      countUp(q("c-vis-today"), data.visitors_today, (v) => Math.round(v).toLocaleString("ru-RU"));
+      countUp(q("c-req"), data.total_requests, (v) => Math.round(v).toLocaleString("ru-RU"));
+      countUp(q("c-vis"), data.unique_visitors, (v) => Math.round(v).toLocaleString("ru-RU"));
+      countUp(q("c-ms"), data.avg_response_ms, (v) => Math.round(v) + " мс");
+      countUp(q("c-err"), data.errors, (v) => Math.round(v).toLocaleString("ru-RU"));
+
+      /* по дням (линия: запросы + посетители) */
+      const dayLabels = data.by_day.map((d) => d.day.slice(5));
+      mk("chart-day", { type: "line",
+        data: { labels: dayLabels, datasets: [
+          { label: "Запросы", data: data.by_day.map((d) => d.requests), tension: .35, fill: true, pointRadius: 2 },
+          { label: "Посетители", data: data.by_day.map((d) => d.visitors), tension: .35, fill: false, pointRadius: 2 },
+        ]},
+        options: { maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+          plugins: { legend: { display: true, labels: { usePointStyle: true, pointStyle: "circle" } } },
+          scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 14 } }, y: { beginAtZero: true, grid: { drawTicks: false } } } },
+      }, (c, p) => {
+        c.data.datasets[0].borderColor = p.primary; c.data.datasets[0].backgroundColor = p.primaryC;
+        c.data.datasets[1].borderColor = p.tertiary; c.data.datasets[1].backgroundColor = p.tertiary;
+        c.options.scales.y.grid.color = p.grid;
+      });
+
+      /* районы */
+      mk("chart-district", { type: "bar",
+        data: { labels: data.by_district.map((d) => d.district), datasets: [{ data: data.by_district.map((d) => d.n), borderRadius: 999, borderSkipped: false, maxBarThickness: 20 }] },
+        options: { indexAxis: "y", maintainAspectRatio: false, plugins: { legend: { display: false } },
+          scales: { x: { beginAtZero: true, grid: { drawTicks: false } }, y: { grid: { display: false } } } },
+      }, (c, p) => { c.data.datasets[0].backgroundColor = data.by_district.map((_, i) => i === 0 ? p.primary : p.primaryC); c.options.scales.x.grid.color = p.grid; });
+
+      /* часы */
+      mk("chart-hour", { type: "bar",
+        data: { labels: [...Array(24).keys()].map((h) => h + "ч"), datasets: [{ data: data.by_hour, borderRadius: 8, borderSkipped: false }] },
+        options: { maintainAspectRatio: false, plugins: { legend: { display: false } },
+          scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 12 } }, y: { beginAtZero: true, grid: { drawTicks: false } } } },
+      }, (c, p) => { c.data.datasets[0].backgroundColor = data.by_hour.map(() => p.secondary); c.options.scales.y.grid.color = p.grid; });
+
+      /* источники */
+      const srcLabels = Object.keys(data.by_source);
+      mk("chart-source", { type: "doughnut",
+        data: { labels: srcLabels.map((s) => s === "web" ? "Сайт" : s === "bot" ? "Бот" : s), datasets: [{ data: srcLabels.map((s) => data.by_source[s]), borderWidth: 0, hoverOffset: 10, spacing: 4 }] },
+        options: { maintainAspectRatio: false, cutout: "66%", plugins: { legend: { position: "bottom", labels: { usePointStyle: true, pointStyle: "circle", padding: 16 } } } },
+      }, (c, p) => { c.data.datasets[0].backgroundColor = [p.primary, p.tertiary, p.secondary]; });
+
+      /* вердикты */
+      const vLabels = Object.keys(data.by_verdict);
+      mk("chart-verdict", { type: "doughnut",
+        data: { labels: vLabels.map((v) => VERDICT[v] || v), datasets: [{ data: vLabels.map((v) => data.by_verdict[v]), borderWidth: 0, hoverOffset: 10, spacing: 4 }] },
+        options: { maintainAspectRatio: false, cutout: "66%", plugins: { legend: { position: "bottom", labels: { usePointStyle: true, pointStyle: "circle", padding: 16 } } } },
+      }, (c, p) => {
+        const colorOf = { GOOD_DEAL: p.primary, FAIR: p.secondary, OVERPRICED: p.tertiary };
+        c.data.datasets[0].backgroundColor = vLabels.map((v) => colorOf[v] || p.primaryC);
+      });
+
+      /* таблица событий */
+      const tb = q("events-body");
+      tb.innerHTML = "";
+      if (!ev.length) { tb.innerHTML = `<tr><td colspan="8" style="padding:14px 10px;color:var(--on-surface-variant)">Пока нет событий — они появятся после первых оценок.</td></tr>`; }
+      ev.forEach((e) => {
+        const tr = document.createElement("tr");
+        tr.style.borderTop = "1px solid var(--outline-variant)";
+        const t = new Date((e.ts || "").replace(" ", "T") + "Z");
+        const badge = e.verdict ? `<span class="chip">${VERDICT[e.verdict] || e.verdict}</span>` : (e.status === "ok" ? "—" : "❌");
+        tr.innerHTML = `
+          <td style="padding:8px 10px;white-space:nowrap">${isNaN(t) ? (e.ts || "") : t.toLocaleString("ru-RU")}</td>
+          <td style="padding:8px 10px">${e.source === "web" ? "🌐 Сайт" : "🤖 Бот"}</td>
+          <td style="padding:8px 10px;font-family:monospace;color:var(--on-surface-variant)">${(e.visitor || "").slice(0, 8)}</td>
+          <td style="padding:8px 10px">${e.district || "—"}</td>
+          <td style="padding:8px 10px">${e.rooms ?? "—"}</td>
+          <td style="padding:8px 10px;white-space:nowrap">${fmtT(e.actual_price)}</td>
+          <td style="padding:8px 10px;white-space:nowrap">${fmtT(e.fair_price)}</td>
+          <td style="padding:8px 10px">${badge}</td>`;
+        tb.appendChild(tr);
+      });
+    }
+
+    function mk(canvasId, config, recolor) {
+      const c = new Chart(q(canvasId), config);
+      track(c, recolor);
+      return c;
+    }
+
+    /* старт: если токен есть — грузим, иначе показываем гейт */
+    if (TOKEN) load(); else showGate();
+  </script>
+</body>
+</html>

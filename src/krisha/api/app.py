@@ -11,7 +11,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from krisha import bot
+from krisha import analytics, bot
 from krisha.api.schemas import (
     FlagsResponse,
     HealthResponse,
@@ -42,11 +42,16 @@ RATE_WINDOW_S = 60.0
 _rate: dict[str, deque] = defaultdict(deque)
 
 
-def _check_rate_limit(request: Request) -> None:
+def _client_ip(request: Request) -> str:
     ip = (request.client.host if request.client else None) or "?"
     fwd = request.headers.get("x-forwarded-for")
     if fwd:
         ip = fwd.split(",")[0].strip()
+    return ip
+
+
+def _check_rate_limit(request: Request) -> None:
+    ip = _client_ip(request)
     q = _rate[ip]
     now = time.monotonic()
     while q and now - q[0] > RATE_WINDOW_S:
@@ -59,16 +64,33 @@ def _check_rate_limit(request: Request) -> None:
 @app.post("/api/predict", response_model=PredictResponse)
 def predict(req: PredictRequest, request: Request) -> PredictResponse:
     _check_rate_limit(request)
+    visitor = _client_ip(request)
+    t0 = time.monotonic()
     try:
         # flags_live=False: отвечаем сразу, LLM-флаги фронт догружает отдельно
         result = predict_from_url(req.url, flags_live=False)
     except ValueError as exc:
+        _log_predict_event("web", visitor, t0, status="error", url=req.url)
         raise HTTPException(status_code=422, detail=str(exc))
     except FileNotFoundError as exc:
+        _log_predict_event("web", visitor, t0, status="error", url=req.url)
         raise HTTPException(status_code=503, detail=str(exc))
     except RuntimeError as exc:
+        _log_predict_event("web", visitor, t0, status="error", url=req.url)
         raise HTTPException(status_code=502, detail=str(exc))
+    _log_predict_event("web", visitor, t0, result=result, url=req.url)
     return PredictResponse(**result)
+
+
+def _log_predict_event(source, visitor, t0, result=None, status="ok", url=None) -> None:
+    analytics.log_event(
+        source=source,
+        visitor_raw=visitor,
+        result=result,
+        response_ms=int((time.monotonic() - t0) * 1000),
+        status=status,
+        url=url,
+    )
 
 
 @app.get("/api/flags/{listing_id}", response_model=FlagsResponse)
@@ -105,6 +127,36 @@ def stats() -> dict:
     return data
 
 
+# --- Приватная dev-панель аналитики -------------------------------------
+import os as _os  # noqa: E402
+
+
+def _require_admin(token: str | None) -> None:
+    """Гейт по токену из env ADMIN_TOKEN. Без токена в env — панель выключена."""
+    expected = _os.environ.get("ADMIN_TOKEN")
+    if not expected:
+        raise HTTPException(status_code=503, detail="ADMIN_TOKEN не настроен на сервере")
+    if not token or token != expected:
+        raise HTTPException(status_code=403, detail="Неверный токен")
+
+
+@app.get("/api/admin/stats", include_in_schema=False)
+def admin_stats(token: str | None = None, days: int = 30) -> dict:
+    _require_admin(token)
+    return analytics.get_admin_stats(days=days)
+
+
+@app.get("/api/admin/events", include_in_schema=False)
+def admin_events(token: str | None = None, limit: int = 50) -> dict:
+    _require_admin(token)
+    return {"events": analytics.recent_events(limit=limit)}
+
+
+@app.get("/admin", include_in_schema=False)
+def admin_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "admin.html")
+
+
 @app.post("/tg/webhook", include_in_schema=False)
 def telegram_webhook(
     update: dict,
@@ -125,6 +177,7 @@ def telegram_webhook(
 
 @app.on_event("startup")
 def _startup() -> None:
+    analytics.init_events()
     bot.setup_webhook()
 
 

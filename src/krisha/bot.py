@@ -14,10 +14,12 @@ import hashlib
 import html
 import logging
 import os
+import time
 from typing import Any
 
 import httpx
 
+from krisha import analytics
 from krisha.predict import KRISHA_URL_RE, predict_from_url
 
 logger = logging.getLogger(__name__)
@@ -169,6 +171,17 @@ def extract_url(text: str) -> str | None:
     return f"https://krisha.kz/a/show/{match.group(1)}" if match else None
 
 
+def _log_bot_event(chat_id, t0, result=None, status="ok", url=None) -> None:
+    analytics.log_event(
+        source="bot",
+        visitor_raw=chat_id,
+        result=result,
+        response_ms=int((time.monotonic() - t0) * 1000),
+        status=status,
+        url=url,
+    )
+
+
 def handle_update(update: dict[str, Any]) -> None:
     """Обработка одного апдейта Telegram (текстовые сообщения)."""
     message = update.get("message") or update.get("edited_message")
@@ -192,15 +205,19 @@ def handle_update(update: dict[str, Any]) -> None:
         return
 
     tg_call("sendChatAction", chat_id=chat_id, action="typing")
+    t0 = time.monotonic()
     try:
         result = predict_from_url(url)
     except FileNotFoundError:
+        _log_bot_event(chat_id, t0, status="error", url=url)
         tg_call("sendMessage", chat_id=chat_id, text="Модель ещё не загружена, попробуй позже 🙏")
         return
     except (ValueError, RuntimeError) as exc:
+        _log_bot_event(chat_id, t0, status="error", url=url)
         tg_call("sendMessage", chat_id=chat_id,
                 text=f"Не получилось оценить объявление: {exc}")
         return
+    _log_bot_event(chat_id, t0, result=result, url=url)
 
     reply = format_reply(result)
     photos = result.get("photos") or []
