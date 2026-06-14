@@ -77,6 +77,24 @@ def test_admin_endpoints_token_gate(tmp_path, monkeypatch):
     assert "total_requests" in r.json()
     assert client.get("/api/admin/events?token=secret").status_code == 200
 
+    # M2: токен можно (и нужно) передавать в заголовке Authorization: Bearer
+    auth = {"Authorization": "Bearer secret"}
+    assert client.get("/api/admin/stats", headers=auth).status_code == 200
+    assert client.get("/api/admin/events", headers=auth).status_code == 200
+    assert client.get("/api/admin/stats",
+                      headers={"Authorization": "Bearer nope"}).status_code == 403
+
+
+def test_security_headers_present(tmp_path, monkeypatch):
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "k.db"))
+    import krisha.api.app as appmod
+    importlib.reload(appmod)
+    client = TestClient(appmod.app)
+    r = client.get("/api/health")
+    assert "Content-Security-Policy" in r.headers
+    assert "default-src 'self'" in r.headers["Content-Security-Policy"]
+    assert r.headers.get("X-Content-Type-Options") == "nosniff"
+
 
 def test_admin_disabled_without_env(tmp_path, monkeypatch):
     monkeypatch.delenv("ADMIN_TOKEN", raising=False)

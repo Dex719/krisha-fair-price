@@ -204,9 +204,11 @@
       if (!TOKEN) { showGate(); return; }
       const days = q("period").value;
       try {
+        // Токен — в заголовке Authorization, не в query (иначе утекает в логи/Referer).
+        const authHeaders = { headers: { Authorization: `Bearer ${TOKEN}` } };
         const [sResp, eResp] = await Promise.all([
-          fetch(`/api/admin/stats?token=${encodeURIComponent(TOKEN)}&days=${days}`),
-          fetch(`/api/admin/events?token=${encodeURIComponent(TOKEN)}&limit=50`),
+          fetch(`/api/admin/stats?days=${days}`, authHeaders),
+          fetch(`/api/admin/events?limit=50`, authHeaders),
         ]);
         if (sResp.status === 403) { localStorage.removeItem("kfp-admin-token"); TOKEN = ""; showGate("Неверный токен"); return; }
         if (sResp.status === 503) { showGate("ADMIN_TOKEN не настроен на сервере (env)"); return; }

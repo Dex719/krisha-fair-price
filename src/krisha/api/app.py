@@ -3,6 +3,7 @@
 Запуск: `uvicorn krisha.api.app:app --reload`
 """
 
+import hmac
 import logging
 import time
 from collections import defaultdict, deque
@@ -30,6 +31,31 @@ app = FastAPI(title="Krisha Fair Price", version="0.1.0")
 
 STATIC_DIR = ROOT_DIR / "static"
 
+# Content-Security-Policy — defense-in-depth поверх экранирования на фронте.
+# Ограничивает, куда страница может ходить (img/connect/font) и откуда грузить
+# скрипты. 'unsafe-inline' пока нужен для инлайновых <script>/style на страницах;
+# при желании их можно вынести в отдельные файлы и убрать 'unsafe-inline'.
+CSP = (
+    "default-src 'self'; "
+    "img-src 'self' data: https://*.kcdn.online; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "connect-src 'self'; "
+    "base-uri 'self'; "
+    "frame-ancestors 'none'; "
+    "object-src 'none'"
+)
+
+
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("Content-Security-Policy", CSP)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    return response
+
 
 @app.get("/api/health", response_model=HealthResponse)
 def health() -> HealthResponse:
@@ -43,6 +69,9 @@ _rate: dict[str, deque] = defaultdict(deque)
 
 
 def _client_ip(request: Request) -> str:
+    # ВНИМАНИЕ: X-Forwarded-For легко подделать, поэтому это НЕ строгая защита —
+    # лимит можно обойти сменой заголовка. За доверенным прокси (Railway) сюда
+    # стоит подставлять реальный client IP. Пока — best-effort анти-спам.
     ip = (request.client.host if request.client else None) or "?"
     fwd = request.headers.get("x-forwarded-for")
     if fwd:
@@ -50,10 +79,17 @@ def _client_ip(request: Request) -> str:
     return ip
 
 
+MAX_RATE_KEYS = 10_000  # потолок против разрастания памяти (в т.ч. от подделки XFF)
+
+
 def _check_rate_limit(request: Request) -> None:
     ip = _client_ip(request)
-    q = _rate[ip]
     now = time.monotonic()
+    # Вытесняем протухшие ключи, чтобы словарь не рос бесконечно.
+    if len(_rate) > MAX_RATE_KEYS:
+        for key in [k for k, dq in _rate.items() if not dq or now - dq[-1] > RATE_WINDOW_S]:
+            del _rate[key]
+    q = _rate[ip]
     while q and now - q[0] > RATE_WINDOW_S:
         q.popleft()
     if len(q) >= RATE_LIMIT:
@@ -70,14 +106,18 @@ def predict(req: PredictRequest, request: Request) -> PredictResponse:
         # flags_live=False: отвечаем сразу, LLM-флаги фронт догружает отдельно
         result = predict_from_url(req.url, flags_live=False)
     except ValueError as exc:
+        # 422 — пользовательская валидация URL, текст безопасен и полезен
         _log_predict_event("web", visitor, t0, status="error", url=req.url)
         raise HTTPException(status_code=422, detail=str(exc))
-    except FileNotFoundError as exc:
+    except FileNotFoundError:
+        # детали (пути и т.п.) — в лог, наружу обобщённо
+        logger.exception("predict: модель/файл недоступны")
         _log_predict_event("web", visitor, t0, status="error", url=req.url)
-        raise HTTPException(status_code=503, detail=str(exc))
-    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Сервис временно недоступен")
+    except RuntimeError:
+        logger.exception("predict: ошибка обработки объявления")
         _log_predict_event("web", visitor, t0, status="error", url=req.url)
-        raise HTTPException(status_code=502, detail=str(exc))
+        raise HTTPException(status_code=502, detail="Не удалось обработать объявление")
     _log_predict_event("web", visitor, t0, result=result, url=req.url)
     return PredictResponse(**result)
 
@@ -121,8 +161,9 @@ def stats() -> dict:
         return _stats_cache["data"]
     try:
         data = get_stats()
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+    except FileNotFoundError:
+        logger.exception("stats: данные недоступны")
+        raise HTTPException(status_code=503, detail="Статистика временно недоступна")
     _stats_cache.update(data=data, ts=now)
     return data
 
@@ -131,24 +172,42 @@ def stats() -> dict:
 import os as _os  # noqa: E402
 
 
-def _require_admin(token: str | None) -> None:
+def _extract_admin_token(authorization: str | None, token: str | None) -> str | None:
+    """Токен из заголовка Authorization: Bearer <...> (предпочтительно) либо из
+    query (?token=, для совместимости). Заголовок не утекает в логи/Referer."""
+    if authorization and authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
+    return token
+
+
+def _require_admin(authorization: str | None, token: str | None = None) -> None:
     """Гейт по токену из env ADMIN_TOKEN. Без токена в env — панель выключена."""
     expected = _os.environ.get("ADMIN_TOKEN")
     if not expected:
         raise HTTPException(status_code=503, detail="ADMIN_TOKEN не настроен на сервере")
-    if not token or token != expected:
+    provided = _extract_admin_token(authorization, token)
+    # Сравнение константно по времени — нет тайминг-сайдканала на угадывание токена.
+    if not provided or not hmac.compare_digest(provided, expected):
         raise HTTPException(status_code=403, detail="Неверный токен")
 
 
 @app.get("/api/admin/stats", include_in_schema=False)
-def admin_stats(token: str | None = None, days: int = 30) -> dict:
-    _require_admin(token)
+def admin_stats(
+    days: int = 30,
+    token: str | None = None,
+    authorization: str | None = Header(default=None),
+) -> dict:
+    _require_admin(authorization, token)
     return analytics.get_admin_stats(days=days)
 
 
 @app.get("/api/admin/events", include_in_schema=False)
-def admin_events(token: str | None = None, limit: int = 50) -> dict:
-    _require_admin(token)
+def admin_events(
+    limit: int = 50,
+    token: str | None = None,
+    authorization: str | None = Header(default=None),
+) -> dict:
+    _require_admin(authorization, token)
     return {"events": analytics.recent_events(limit=limit)}
 
 
@@ -166,7 +225,9 @@ def telegram_webhook(
     token = bot.bot_token()
     if not token:
         raise HTTPException(status_code=404)
-    if x_telegram_bot_api_secret_token != bot.webhook_secret(token):
+    if not x_telegram_bot_api_secret_token or not hmac.compare_digest(
+        x_telegram_bot_api_secret_token, bot.webhook_secret(token)
+    ):
         raise HTTPException(status_code=403)
     try:
         bot.handle_update(update)

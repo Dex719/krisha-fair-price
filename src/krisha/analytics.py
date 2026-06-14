@@ -26,8 +26,16 @@ from krisha.db import get_conn
 logger = logging.getLogger(__name__)
 
 # Соль для хэша посетителя — чтобы по hash нельзя было восстановить IP.
-# Можно задать через env ANALYTICS_SALT (рекомендуется в проде).
-_SALT = os.environ.get("ANALYTICS_SALT", "krisha-fair-price-analytics-v1")
+# В проде ОБЯЗАТЕЛЬНО задавать ANALYTICS_SALT через env: дефолтная соль публична,
+# а пространство IPv4 маленькое → 12-символьный SHA1 с известной солью
+# перебирается и посетители деанонимизируются.
+_DEFAULT_SALT = "krisha-fair-price-analytics-v1"
+_SALT = os.environ.get("ANALYTICS_SALT", _DEFAULT_SALT)
+if _SALT == _DEFAULT_SALT:
+    logger.warning(
+        "ANALYTICS_SALT не задан — используется публичная дефолтная соль. "
+        "В проде задайте ANALYTICS_SALT в env (иначе хэши посетителей деанонимизируемы)."
+    )
 
 EVENTS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS events (
