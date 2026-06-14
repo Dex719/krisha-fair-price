@@ -229,8 +229,13 @@ def predict_from_listing(
 
 
 def predict_from_url(url: str, flags_live: bool = True) -> dict[str, Any]:
-    if not KRISHA_URL_RE.search(url):
+    match = KRISHA_URL_RE.search(url)
+    if not match:
         raise ValueError("Ожидается ссылка вида https://krisha.kz/a/show/<id>")
+    # Защита от SSRF: не ходим по сырому пользовательскому URL (можно подсунуть
+    # http://169.254.169.254/krisha.kz/a/show/1 — подстрока пройдёт проверку).
+    # Берём только id и собираем канонический адрес сами, как в боте.
+    url = f"https://krisha.kz/a/show/{match.group(1)}"
     with PoliteClient(delay_range=(0.5, 1.0)) as client:
         html = client.get(url)
     if html is None:
