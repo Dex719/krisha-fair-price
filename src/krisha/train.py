@@ -62,9 +62,16 @@ def baseline_predict(train: pd.DataFrame, test: pd.DataFrame) -> np.ndarray:
 
 
 def evaluate(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
+    """Метрики на полной цене. Headline — MdAPE и доля в ±10% (устойчивы к выбросам
+    и не раздуваются площадью, в отличие от R²; см. docs/AB_TARGET_RESULTS.md)."""
+    y_true_arr = np.asarray(y_true, dtype=float)
+    y_pred_arr = np.asarray(y_pred, dtype=float)
+    ape = np.abs(y_pred_arr - y_true_arr) / np.clip(np.abs(y_true_arr), 1e-9, None)
     return {
         "mae": float(mean_absolute_error(y_true, y_pred)),
         "mape": float(mean_absolute_percentage_error(y_true, y_pred)),
+        "mdape": float(np.median(ape)),
+        "within_10pct": float(np.mean(ape <= 0.10)),
         "r2": float(r2_score(y_true, y_pred)),
     }
 
