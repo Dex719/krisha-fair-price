@@ -82,7 +82,16 @@
     "smearing": 0.999926886320186,
     "n_train": 6504,
     "n_test": 1627,
-    "trained_at": "2026-06-14T06:33:09.922056+00:00"
+    "trained_at": "2026-06-14T11:43:15.525944+00:00"
+  },
+  "interval": {
+    "alpha_lo": 0.1,
+    "alpha_hi": 0.9,
+    "target_coverage": 0.8,
+    "cqr_offset_log": 0.04480166453410028,
+    "coverage_test": 0.778119237861094,
+    "median_width_pct": 0.33098884436171083,
+    "n_calib": 1301
   },
   "ppsm_maps": {
     "district": {

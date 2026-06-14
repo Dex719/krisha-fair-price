@@ -13,7 +13,7 @@ from typing import Any
 import numpy as np
 from catboost import CatBoostRegressor, Pool
 
-from krisha.config import MODEL_META_PATH, MODEL_PATH
+from krisha.config import MODEL_HI_PATH, MODEL_LO_PATH, MODEL_META_PATH, MODEL_PATH
 from krisha.features import listing_to_frame, reconstruct_price
 from krisha.geo import build_location_details
 from krisha.scraping.client import PoliteClient
@@ -117,11 +117,36 @@ def load_model() -> tuple[CatBoostRegressor, dict]:
     return model, meta
 
 
+@lru_cache(maxsize=1)
+def load_interval_models() -> tuple[CatBoostRegressor, CatBoostRegressor] | None:
+    """Квантильные модели нижней/верхней границы цены. None — если их нет
+    (старые модели без интервала): тогда вердикт падает на плоский ±10%."""
+    if not (MODEL_LO_PATH.exists() and MODEL_HI_PATH.exists()):
+        return None
+    lo = CatBoostRegressor()
+    lo.load_model(str(MODEL_LO_PATH))
+    hi = CatBoostRegressor()
+    hi.load_model(str(MODEL_HI_PATH))
+    return lo, hi
+
+
 def _verdict(actual: float, fair: float) -> str:
+    """Легаси-вердикт по плоскому порогу ±10% (когда нет интервала)."""
     diff = (actual - fair) / fair
     if diff <= -VERDICT_THRESHOLD:
         return "GOOD_DEAL"
     if diff >= VERDICT_THRESHOLD:
+        return "OVERPRICED"
+    return "FAIR"
+
+
+def _verdict_interval(actual: float, low: float, high: float) -> str:
+    """Вердикт по доверительному интервалу: «выгодно/дорого» — только когда
+    цена объявления выходит ЗА интервал. Внутри — FAIR («в пределах рынка»).
+    Это убирает «вердикт-в-шуме»: ярлык даём лишь при сигнале сильнее погрешности."""
+    if actual < low:
+        return "GOOD_DEAL"
+    if actual > high:
         return "OVERPRICED"
     return "FAIR"
 
@@ -166,7 +191,30 @@ def predict_from_listing(
         area, smearing = 1.0, 1.0
     fair_price = float(reconstruct_price(log_pred, area, smearing))
 
+    # Доверительный интервал цены: квантильные модели + CQR-сдвиг из меты.
+    # Границы разворачиваем БЕЗ smearing (expm1 монотонна → сохраняет квантили).
+    fair_low = fair_high = None
+    interval = load_interval_models()
+    if interval is not None:
+        lo_model, hi_model = interval
+        offset = float(meta.get("interval", {}).get("cqr_offset_log", 0.0))
+        lo_log = float(lo_model.predict(pool)[0]) - offset
+        hi_log = float(hi_model.predict(pool)[0]) + offset
+        fair_low = float(reconstruct_price(lo_log, area, 1.0))
+        fair_high = float(reconstruct_price(hi_log, area, 1.0))
+        if fair_low > fair_high:  # числовая страховка
+            fair_low, fair_high = fair_high, fair_low
+        # точка-оценка всегда внутри интервала (только расширяем, не сужаем)
+        fair_low = min(fair_low, fair_price)
+        fair_high = max(fair_high, fair_price)
+
     actual = listing.get("price")
+    if actual and interval is not None:
+        verdict = _verdict_interval(actual, fair_low, fair_high)
+    elif actual:
+        verdict = _verdict(actual, fair_price)
+    else:
+        verdict = None
     result = {
         "listing_id": listing.get("id"),
         "url": listing.get("url"),
@@ -174,7 +222,9 @@ def predict_from_listing(
         "address": listing.get("address_title"),
         "actual_price": actual,
         "fair_price": round(fair_price, -4),  # округляем до 10 тыс ₸
-        "verdict": _verdict(actual, fair_price) if actual else None,
+        "fair_price_low": round(fair_low, -4) if fair_low is not None else None,
+        "fair_price_high": round(fair_high, -4) if fair_high is not None else None,
+        "verdict": verdict,
         "diff_pct": round((actual - fair_price) / fair_price * 100, 1) if actual else None,
         "top_factors": _with_hints(listing, top_factors(model, pool, features)),
         "details": build_details(listing),

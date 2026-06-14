@@ -40,6 +40,8 @@ class PredictResponse(BaseModel):
     address: str | None
     actual_price: int | None
     fair_price: float
+    fair_price_low: float | None = None   # нижняя граница доверит. интервала (₸)
+    fair_price_high: float | None = None  # верхняя граница доверит. интервала (₸)
     verdict: str | None  # GOOD_DEAL / FAIR / OVERPRICED
     diff_pct: float | None
     top_factors: list[Factor]
