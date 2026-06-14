@@ -34,6 +34,13 @@ The same model is available as a Telegram bot: **[@krisha_fair_price_bot](https:
 
 It runs on the same Railway service via webhooks (`POST /tg/webhook`) — no extra server or polling worker needed. To enable it on your own deploy, set the `TELEGRAM_BOT_TOKEN` env variable; the webhook is registered automatically on startup.
 
+## 📊 Private dev panel
+
+A token-gated analytics dashboard at **`/admin`** logs every valuation (site + bot) and shows how the service is used: daily visitors and unique users, requests today / over a period, what districts and room counts people searched, the verdict mix, traffic source (web vs bot), hourly activity, average response time, and a feed of the latest valuations.
+
+- Enable it by setting the `ADMIN_TOKEN` env variable. Open `/admin?token=YOUR_TOKEN` (the token is stored locally in the browser after the first login). Without `ADMIN_TOKEN` the panel returns `503` and stays disabled.
+- Privacy: visitors are stored as a salted hash of IP / chat id (`ANALYTICS_SALT` env, optional) — no raw IPs or personal data. Events live in the `events` table of the project SQLite DB; logging never blocks a valuation.
+
 ## 📈 Model
 
 Trained on **8,000+ real listings** crawled from all 8 districts of Almaty (resumable, polite crawler → SQLite).
