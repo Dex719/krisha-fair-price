@@ -17,6 +17,7 @@ from krisha.config import (
     PRICE_MIN,
 )
 from krisha.geo import GEO_FEATURES  # этап 3: расстояния до POI + walk_score
+from krisha.knn import KNN_FEATURES  # Задача 2.1: медианная ₸/м² ближайших соседей
 
 # Поля из raw_params (этап 1 роадмапа): имя фичи → ключ в JSON объявления.
 # Значения — стандартные опции krisha («свежий ремонт», «совмещенный», ...),
@@ -54,6 +55,7 @@ NUM_FEATURES = [
     *SECURITY_FLAGS, "security_count",
     *COMPLEX_NUM_FEATURES,
     *GEO_FEATURES,
+    *KNN_FEATURES,
 ]
 ALL_FEATURES = NUM_FEATURES + CAT_FEATURES
 # Таргет — log(цена за м²), а не log(полной цены). Цена за м² куда менее растянута
@@ -82,6 +84,59 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
     ppsm = df["price"] / df["area"]
     df = df[(ppsm >= PPSM_MIN) & (ppsm <= PPSM_MAX)]
     return df.reset_index(drop=True)
+
+
+def _fingerprint_series(df: pd.DataFrame) -> pd.Series:
+    """Векторный геоотпечаток квартиры (без цены): район+комнаты+площадь(0.5)+
+    этаж/этажность+координаты(~10 м). Совпадает с db.listing_fingerprint по полям.
+    Перезалив того же объекта даёт тот же отпечаток. None, если нет area/lat/lon.
+    """
+    area = pd.to_numeric(df.get("area"), errors="coerce")
+    lat = pd.to_numeric(df.get("lat"), errors="coerce")
+    lon = pd.to_numeric(df.get("lon"), errors="coerce")
+    district = df.get("district", pd.Series([""] * len(df), index=df.index))
+    rooms = df.get("rooms", pd.Series([""] * len(df), index=df.index))
+    floor = df.get("floor", pd.Series([""] * len(df), index=df.index))
+    total = df.get("total_floors", pd.Series([""] * len(df), index=df.index))
+
+    def _fp(i: Any) -> str | None:
+        a, la, lo = area.get(i), lat.get(i), lon.get(i)
+        if pd.isna(a) or a == 0 or pd.isna(la) or pd.isna(lo):
+            return None
+        d = str(district.get(i) or "").lower().strip()
+        return "|".join((
+            d,
+            "" if pd.isna(rooms.get(i)) else str(rooms.get(i)),
+            f"{round(float(a) * 2) / 2:.1f}",
+            "" if pd.isna(floor.get(i)) else str(floor.get(i)),
+            "" if pd.isna(total.get(i)) else str(total.get(i)),
+            f"{float(la):.4f}",
+            f"{float(lo):.4f}",
+        ))
+
+    return pd.Series([_fp(i) for i in df.index], index=df.index)
+
+
+def dedup(df: pd.DataFrame) -> pd.DataFrame:
+    """Схлопывает перезаливы одной квартиры по геоотпечатку (без учёта цены).
+
+    Защита от утечки таргета в KNN: один физический объект не должен попадать
+    в индекс соседей дважды (иначе «сосед» с той же ценой) и не должен
+    одновременно оказаться в train и test. Из группы дублей оставляем самое
+    свежее объявление (по last_seen, если колонка есть). Строки без отпечатка
+    (нет координат/площади) не трогаем.
+    """
+    df = df.copy()
+    fp = _fingerprint_series(df)
+    has = fp.notna()
+    if not has.any():
+        return df.reset_index(drop=True)
+    sub = df.loc[has].copy()
+    sub["_fp"] = fp[has]
+    if "last_seen" in sub:
+        sub = sub.sort_values("last_seen")
+    drop_idx = sub.index[sub["_fp"].duplicated(keep="last")]
+    return df.drop(index=drop_idx).reset_index(drop=True)
 
 
 def compute_ppsm_maps(df: pd.DataFrame) -> dict:
@@ -180,10 +235,36 @@ def add_complex_features(df: pd.DataFrame, lookup: dict | None = None) -> pd.Dat
     return df
 
 
+def add_knn_features(df: pd.DataFrame, knn_index=None, knn_self: bool = False) -> pd.DataFrame:
+    """Фичи KNN-цены соседей (Задача 2.1). Нет индекса/координат → NaN-fallback.
+
+    knn_self=True — строки сами лежат в индексе (train): первый сосед = сама
+    точка, его выкидываем. В predict индекс берётся из models/knn_index.npz.
+    """
+    df = df.copy()
+    if knn_index is None:
+        from krisha.knn import load_default_knn_index
+
+        knn_index = load_default_knn_index()
+    if knn_index is None:
+        for col in KNN_FEATURES:
+            if col not in df:
+                df[col] = np.nan
+        return df
+    lat = df["lat"] if "lat" in df else pd.Series(np.nan, index=df.index)
+    lon = df["lon"] if "lon" in df else pd.Series(np.nan, index=df.index)
+    knn_ppm2, knn_dist = knn_index.query(lat, lon, self_neighbor=knn_self)
+    df["knn_ppm2"] = knn_ppm2
+    df["knn_dist_km"] = knn_dist
+    return df
+
+
 def build_features(
     df: pd.DataFrame,
     ppsm_maps: dict | None = None,
     complex_lookup: dict | None = None,
+    knn_index=None,
+    knn_self: bool = False,
 ) -> pd.DataFrame:
     """Добавляет производные фичи. Работает и для одного объявления (predict)."""
     from krisha.geo import add_geo_features
@@ -191,6 +272,7 @@ def build_features(
     df = add_raw_param_features(df)
     df = add_complex_features(df, lookup=complex_lookup)
     df = add_geo_features(df)
+    df = add_knn_features(df, knn_index=knn_index, knn_self=knn_self)
     for col in ["rooms", "area", "floor", "total_floors", "year_built", "ceiling",
                 "lat", "lon", "photos_count", *COMPLEX_NUM_FEATURES]:
         if col not in df:

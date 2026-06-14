@@ -18,6 +18,7 @@ from sklearn.model_selection import train_test_split
 
 from krisha.config import (
     DB_PATH,
+    KNN_INDEX_PATH,
     MODEL_META_PATH,
     MODEL_PATH,
     MODELS_DIR,
@@ -31,9 +32,11 @@ from krisha.features import (
     build_features,
     clean,
     compute_ppsm_maps,
+    dedup,
     reconstruct_price,
     smearing_factor,
 )
+from krisha.knn import KNN_K, build_knn_index, save_knn_index
 
 logger = logging.getLogger(__name__)
 
@@ -75,12 +78,21 @@ def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = T
         df = load_dataset()
     df = clean(df)
     logger.info("После очистки: %s строк", len(df))
+    # Дедуп перезаливов одной квартиры (геоотпечаток): иначе один объект попадёт
+    # и в train, и в test, а в KNN-индекс — дважды (сосед с той же ценой) → утечка.
+    n_before = len(df)
+    df = dedup(df)
+    logger.info("После дедупа: %s строк (-%s дублей)", len(df), n_before - len(df))
 
     raw_train, raw_test = train_test_split(df, test_size=0.2, random_state=RANDOM_STATE)
     # ₸/м²-статистику считаем только на train, чтобы не было утечки в метрики
     ppsm_maps = compute_ppsm_maps(raw_train)
-    train_df = build_features(raw_train, ppsm_maps=ppsm_maps)
-    test_df = build_features(raw_test, ppsm_maps=ppsm_maps)
+    # KNN-индекс соседей — ТОЛЬКО на train. Для train-строк сосед №1 (сама точка)
+    # выкидывается через knn_self=True; для test берём всех k соседей из train.
+    knn_index = build_knn_index(raw_train, k=KNN_K)
+    logger.info("KNN-индекс: %s точек, k=%s", len(knn_index), KNN_K)
+    train_df = build_features(raw_train, ppsm_maps=ppsm_maps, knn_index=knn_index, knn_self=True)
+    test_df = build_features(raw_test, ppsm_maps=ppsm_maps, knn_index=knn_index, knn_self=False)
     train_pool = Pool(train_df[ALL_FEATURES], train_df[TARGET], cat_features=CAT_FEATURES)
     test_pool = Pool(test_df[ALL_FEATURES], test_df[TARGET], cat_features=CAT_FEATURES)
 
@@ -115,6 +127,8 @@ def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = T
         "smearing": smearing,
         "n_train": len(train_df),
         "n_test": len(test_df),
+        "n_dropped_dups": n_before - len(df),
+        "knn_k": KNN_K,
         "trained_at": datetime.now(timezone.utc).isoformat(),
     }
     logger.info("Метрики: %s", json.dumps(metrics, indent=2))
@@ -122,12 +136,15 @@ def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = T
     if save:
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
         model.save_model(str(MODEL_PATH))
+        # Снапшот KNN-индекса (train-объявления) — predict считает соседей без БД
+        save_knn_index(knn_index, KNN_INDEX_PATH)
         MODEL_META_PATH.write_text(json.dumps(
             {
                 "features": ALL_FEATURES,
                 "cat_features": CAT_FEATURES,
                 "target": TARGET,
                 "smearing": smearing,
+                "knn_k": KNN_K,
                 "metrics": metrics,
                 "ppsm_maps": ppsm_maps,
             },

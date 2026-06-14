@@ -34,4 +34,5 @@ def test_train_pipeline_runs():
     assert metrics["model"]["r2"] > 0.5
     assert metrics["model"]["mape"] < 0.2
     assert metrics["baseline"]["mae"] > 0
-    assert metrics["n_train"] + metrics["n_test"] == 400
+    # дедуп может схлопнуть случайные коллизии геоотпечатка → строк не больше исходных
+    assert metrics["n_train"] + metrics["n_test"] == 400 - metrics["n_dropped_dups"]
