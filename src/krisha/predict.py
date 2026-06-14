@@ -14,7 +14,7 @@ import numpy as np
 from catboost import CatBoostRegressor, Pool
 
 from krisha.config import MODEL_META_PATH, MODEL_PATH
-from krisha.features import listing_to_frame
+from krisha.features import listing_to_frame, reconstruct_price
 from krisha.geo import build_location_details
 from krisha.scraping.client import PoliteClient
 from krisha.scraping.detail_parser import parse_detail
@@ -155,7 +155,16 @@ def predict_from_listing(
     features = meta["features"]
     df = listing_to_frame(listing, ppsm_maps=meta.get("ppsm_maps"))
     pool = Pool(df[features], cat_features=meta["cat_features"])
-    fair_price = float(np.expm1(model.predict(pool)[0]))
+    # Модель предсказывает log(цена/м²): разворачиваем в полную цену через area
+    # и smearing-коррекцию лог-смещения (см. krisha.features.reconstruct_price).
+    # Старые модели (таргет log_price, без smearing): area=1, smearing=1 → expm1.
+    log_pred = float(model.predict(pool)[0])
+    if meta.get("target", "log_ppm2") == "log_ppm2":
+        area = float(df["area"].iloc[0])
+        smearing = float(meta.get("smearing", 1.0))
+    else:  # legacy: таргет был log_price
+        area, smearing = 1.0, 1.0
+    fair_price = float(reconstruct_price(log_pred, area, smearing))
 
     actual = listing.get("price")
     result = {

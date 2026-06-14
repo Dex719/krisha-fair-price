@@ -56,7 +56,11 @@ NUM_FEATURES = [
     *GEO_FEATURES,
 ]
 ALL_FEATURES = NUM_FEATURES + CAT_FEATURES
-TARGET = "log_price"
+# Таргет — log(цена за м²), а не log(полной цены). Цена за м² куда менее растянута
+# (≈100k–5M ₸/м² против 5М–1.5млрд ₸), дисперсия стабильнее, и RMSE на лог-таргете
+# ≈ оптимизация относительной ошибки → согласовано с MAPE. `area` остаётся в фичах:
+# ₸/м² нелинейно зависит от площади (у студий выше, у больших — ниже).
+TARGET = "log_ppm2"
 CURRENT_YEAR = 2026
 MISSING_CAT = "unknown"
 
@@ -223,7 +227,39 @@ def build_features(
 
     if "price" in df:
         df["log_price"] = np.log1p(df["price"])
+        # Цена за м² и её лог — основной таргет обучения (см. TARGET).
+        # area уже приведена к числу выше; защищаемся от нулей/NaN.
+        with np.errstate(divide="ignore", invalid="ignore"):
+            df["ppm2"] = df["price"] / df["area"]
+        df["log_ppm2"] = np.log1p(df["ppm2"])
     return df
+
+
+def smearing_factor(y_log_true: Any, y_log_pred: Any) -> float:
+    """Smearing-оценка Дуана для коррекции лог-смещения при обратном переходе.
+
+    При обучении на лог-таргете наивный `expm1(pred)` даёт *смещённую вниз* оценку
+    в ₸ (неравенство Йенсена): среднее лог-ошибки = 0, но среднее exp(ошибки) > 1.
+    Множитель S = mean(exp(residual)) непараметрически снимает это смещение.
+
+    Считать ТОЛЬКО на train-остатках. ppm2 ≥ 100k ≫ 1, поэтому log1p ≈ log и
+    мультипликативная коррекция корректна.
+    """
+    resid = np.asarray(y_log_true, dtype=float) - np.asarray(y_log_pred, dtype=float)
+    resid = resid[np.isfinite(resid)]
+    if resid.size == 0:
+        return 1.0
+    return float(np.mean(np.exp(resid)))
+
+
+def reconstruct_price(log_ppm2_pred: Any, area: Any, smearing: float = 1.0) -> np.ndarray:
+    """log(цена/м²)-предсказание → полная цена ₸ с smearing-коррекцией.
+
+    Единая точка обратного преобразования для train и predict, чтобы они не
+    разъезжались: ppm2 = expm1(pred) * smearing, price = ppm2 * area.
+    """
+    ppm2 = np.expm1(np.asarray(log_ppm2_pred, dtype=float)) * float(smearing)
+    return ppm2 * np.asarray(area, dtype=float)
 
 
 def listing_to_frame(listing: dict[str, Any], ppsm_maps: dict | None = None) -> pd.DataFrame:

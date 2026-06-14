@@ -1,135 +1,261 @@
 {
-  "total_listings": 7050,
+  "total_listings": 8134,
   "median_price": 42000000,
-  "median_ppsm": 739415,
+  "median_ppsm": 726230,
   "by_district": [
     {
+      "district": "Aly-Farabiyskiy_r-n",
+      "n": 7,
+      "median_ppsm": 1190000,
+      "median_price": 159205850
+    },
+    {
       "district": "Медеуский",
-      "n": 564,
-      "median_ppsm": 938478,
-      "median_price": 67000000
+      "n": 582,
+      "median_ppsm": 943367,
+      "median_price": 68000000
     },
     {
       "district": "Бостандыкский",
-      "n": 1519,
+      "n": 1563,
       "median_ppsm": 920000,
       "median_price": 63000000
     },
     {
       "district": "Алмалинский",
-      "n": 858,
-      "median_ppsm": 828571,
+      "n": 878,
+      "median_ppsm": 829174,
       "median_price": 47000000
     },
     {
       "district": "Ауэзовский",
-      "n": 1094,
-      "median_ppsm": 730329,
+      "n": 1130,
+      "median_ppsm": 732476,
       "median_price": 40500000
     },
     {
+      "district": "Esilyskiy_r-n",
+      "n": 198,
+      "median_ppsm": 722816,
+      "median_price": 60828280
+    },
+    {
+      "district": "Enbekshinskiy_r-n",
+      "n": 7,
+      "median_ppsm": 669600,
+      "median_price": 88199712
+    },
+    {
+      "district": "Nura_r-n",
+      "n": 218,
+      "median_ppsm": 668115,
+      "median_price": 45250000
+    },
+    {
       "district": "Наурызбайский",
-      "n": 945,
-      "median_ppsm": 657731,
-      "median_price": 34500000
+      "n": 961,
+      "median_ppsm": 656250,
+      "median_price": 34000000
+    },
+    {
+      "district": "Sarayshyk_r-n",
+      "n": 69,
+      "median_ppsm": 627272,
+      "median_price": 35900000
     },
     {
       "district": "Жетысуский",
-      "n": 328,
-      "median_ppsm": 625657,
-      "median_price": 35000000
+      "n": 341,
+      "median_ppsm": 625000,
+      "median_price": 34500000
     },
     {
       "district": "Алатауский",
-      "n": 1055,
-      "median_ppsm": 621212,
+      "n": 1076,
+      "median_ppsm": 620218,
       "median_price": 33500000
     },
     {
       "district": "Турксибский",
-      "n": 553,
-      "median_ppsm": 604060,
+      "n": 562,
+      "median_ppsm": 603617,
       "median_price": 32000000
+    },
+    {
+      "district": "mkr_Shkolynik",
+      "n": 1,
+      "median_ppsm": 576923,
+      "median_price": 45000000
+    },
+    {
+      "district": "r-n_Baykonur",
+      "n": 18,
+      "median_ppsm": 566086,
+      "median_price": 39150000
+    },
+    {
+      "district": "Almaty_r-n",
+      "n": 72,
+      "median_ppsm": 542888,
+      "median_price": 35450000
+    },
+    {
+      "district": "Ulybinskiy",
+      "n": 4,
+      "median_ppsm": 542439,
+      "median_price": 39750000
+    },
+    {
+      "district": "Karatauskiy_r-n",
+      "n": 12,
+      "median_ppsm": 535423,
+      "median_price": 23600000
+    },
+    {
+      "district": "Saryarka_r-n",
+      "n": 45,
+      "median_ppsm": 493096,
+      "median_price": 29999990
+    },
+    {
+      "district": "Turan_r-n",
+      "n": 13,
+      "median_ppsm": 492672,
+      "median_price": 35000000
+    },
+    {
+      "district": "Abayskiy_r-n",
+      "n": 26,
+      "median_ppsm": 464000,
+      "median_price": 39491755
+    },
+    {
+      "district": "zhiloy_massiv_Yugo-Zapad-2",
+      "n": 2,
+      "median_ppsm": 460000,
+      "median_price": 74520000
+    },
+    {
+      "district": "18-y_mkr_",
+      "n": 2,
+      "median_ppsm": 417508,
+      "median_price": 60750000
+    },
+    {
+      "district": "mkr_Avangard-2",
+      "n": 1,
+      "median_ppsm": 402173,
+      "median_price": 18500000
+    },
+    {
+      "district": "Kazybek_bi_r-n",
+      "n": 8,
+      "median_ppsm": 387419,
+      "median_price": 27320000
+    },
+    {
+      "district": "mkr_Avangard-4",
+      "n": 1,
+      "median_ppsm": 386666,
+      "median_price": 29000000
+    },
+    {
+      "district": "mkr_Zhilgorodok",
+      "n": 1,
+      "median_ppsm": 372093,
+      "median_price": 48000000
+    },
+    {
+      "district": "mkr_Avangard-3",
+      "n": 1,
+      "median_ppsm": 360000,
+      "median_price": 27000000
+    },
+    {
+      "district": "Alihana_Bokeyhanova_r-n",
+      "n": 4,
+      "median_ppsm": 224352,
+      "median_price": 14500000
     }
   ],
   "price_hist": [
     {
       "label": "0–20 млн",
-      "count": 266
+      "count": 343
     },
     {
       "label": "20–30 млн",
-      "count": 1314
+      "count": 1552
     },
     {
       "label": "30–40 млн",
-      "count": 1609
+      "count": 1799
     },
     {
       "label": "40–50 млн",
-      "count": 1219
+      "count": 1370
     },
     {
       "label": "50–60 млн",
-      "count": 813
+      "count": 908
     },
     {
       "label": "60–80 млн",
-      "count": 812
+      "count": 946
     },
     {
       "label": "80–100 млн",
-      "count": 370
+      "count": 443
     },
     {
       "label": "100–150 млн",
-      "count": 340
+      "count": 415
     },
     {
       "label": "150–250 млн",
-      "count": 213
+      "count": 253
     },
     {
       "label": "250+ млн",
-      "count": 94
+      "count": 105
     }
   ],
   "by_rooms": [
     {
       "rooms": 1,
-      "n": 1635,
-      "median_price": 26500000
+      "n": 1829,
+      "median_price": 26000000
     },
     {
       "rooms": 2,
-      "n": 2721,
-      "median_price": 39500000
+      "n": 3035,
+      "median_price": 39000000
     },
     {
       "rooms": 3,
-      "n": 2105,
-      "median_price": 55500000
+      "n": 2364,
+      "median_price": 55000000
     },
     {
       "rooms": 4,
-      "n": 493,
-      "median_price": 91750000
+      "n": 782,
+      "median_price": 83620259
     },
     {
       "rooms": 5,
-      "n": 57,
+      "n": 81,
       "median_price": 180000000
     },
     {
       "rooms": 6,
-      "n": 23,
-      "median_price": 300000000
+      "n": 25,
+      "median_price": 299000000
     }
   ],
   "by_category": {
-    "novostroiki": 245,
-    "vtorichka": 6805
+    "novostroiki": 557,
+    "vtorichka": 7577
   },
-  "updated_at": "2026-06-12T18:27:07.377014+00:00",
+  "updated_at": "2026-06-14T06:33:19.822891+00:00",
   "source": "db"
 }
