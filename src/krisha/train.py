@@ -31,6 +31,8 @@ from krisha.features import (
     build_features,
     clean,
     compute_ppsm_maps,
+    reconstruct_price,
+    smearing_factor,
 )
 
 logger = logging.getLogger(__name__)
@@ -93,13 +95,24 @@ def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = T
     )
     model.fit(train_pool, eval_set=test_pool)
 
+    # Smearing-коррекция лог-смещения: считаем множитель на TRAIN-остатках,
+    # чтобы не подсматривать в test (см. krisha.features.smearing_factor).
+    train_log_pred = model.predict(train_pool)
+    smearing = smearing_factor(train_df[TARGET].to_numpy(), train_log_pred)
+    logger.info("Smearing-фактор (train): %.4f", smearing)
+
+    # Метрики считаем на ВОССТАНОВЛЕННОЙ полной цене, а не на лог-таргете.
     y_true = test_df["price"].to_numpy()
-    y_model = np.expm1(model.predict(test_pool))
+    test_log_pred = model.predict(test_pool)
+    y_model = reconstruct_price(test_log_pred, test_df["area"].to_numpy(), smearing)
+    y_model_raw = reconstruct_price(test_log_pred, test_df["area"].to_numpy(), 1.0)
     y_base = baseline_predict(train_df, test_df)
 
     metrics = {
         "model": evaluate(y_true, y_model),
+        "model_no_smearing": evaluate(y_true, y_model_raw),
         "baseline": evaluate(y_true, y_base),
+        "smearing": smearing,
         "n_train": len(train_df),
         "n_test": len(test_df),
         "trained_at": datetime.now(timezone.utc).isoformat(),
@@ -113,6 +126,8 @@ def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = T
             {
                 "features": ALL_FEATURES,
                 "cat_features": CAT_FEATURES,
+                "target": TARGET,
+                "smearing": smearing,
                 "metrics": metrics,
                 "ppsm_maps": ppsm_maps,
             },
