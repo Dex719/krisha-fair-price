@@ -1,12 +1,12 @@
 {
-  "total_listings": 7050,
+  "total_listings": 7055,
   "median_price": 42000000,
-  "median_ppsm": 739415,
+  "median_ppsm": 739514,
   "by_district": [
     {
       "district": "Медеуский",
-      "n": 564,
-      "median_ppsm": 938478,
+      "n": 566,
+      "median_ppsm": 940561,
       "median_price": 67000000
     },
     {
@@ -23,14 +23,14 @@
     },
     {
       "district": "Ауэзовский",
-      "n": 1094,
-      "median_ppsm": 730329,
+      "n": 1096,
+      "median_ppsm": 730714,
       "median_price": 40500000
     },
     {
       "district": "Наурызбайский",
-      "n": 945,
-      "median_ppsm": 657731,
+      "n": 946,
+      "median_ppsm": 657633,
       "median_price": 34500000
     },
     {
@@ -59,7 +59,7 @@
     },
     {
       "label": "20–30 млн",
-      "count": 1314
+      "count": 1315
     },
     {
       "label": "30–40 млн",
@@ -67,11 +67,11 @@
     },
     {
       "label": "40–50 млн",
-      "count": 1219
+      "count": 1221
     },
     {
       "label": "50–60 млн",
-      "count": 813
+      "count": 814
     },
     {
       "label": "60–80 млн",
@@ -91,23 +91,23 @@
     },
     {
       "label": "250+ млн",
-      "count": 94
+      "count": 95
     }
   ],
   "by_rooms": [
     {
       "rooms": 1,
-      "n": 1635,
+      "n": 1636,
       "median_price": 26500000
     },
     {
       "rooms": 2,
-      "n": 2721,
+      "n": 2724,
       "median_price": 39500000
     },
     {
       "rooms": 3,
-      "n": 2105,
+      "n": 2106,
       "median_price": 55500000
     },
     {
@@ -128,8 +128,8 @@
   ],
   "by_category": {
     "novostroiki": 245,
-    "vtorichka": 6805
+    "vtorichka": 6810
   },
-  "updated_at": "2026-06-12T18:27:07.377014+00:00",
+  "updated_at": "2026-07-02T11:37:23.953623+00:00",
   "source": "db"
 }

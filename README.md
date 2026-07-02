@@ -8,9 +8,9 @@
 **Fair-price estimator for apartments in Almaty: paste a Krisha.kz link, get a verdict — good deal, fair, or overpriced**
 
 [![CI](https://github.com/Dex719/krisha-fair-price/actions/workflows/ci.yml/badge.svg)](https://github.com/Dex719/krisha-fair-price/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-25_passed-2ea44f)
+![tests](https://img.shields.io/badge/tests-68_passed-2ea44f)
 ![python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
-![CatBoost](https://img.shields.io/badge/CatBoost-MAPE_10.6%25-FFCC00)
+![CatBoost](https://img.shields.io/badge/CatBoost-MAPE_9.5%25-FFCC00)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 
 **[🚀 Live demo](https://krisha-fair-price-production.up.railway.app)** · **[📊 Almaty market dashboard](https://krisha-fair-price-production.up.railway.app/stats)**
@@ -40,11 +40,18 @@ Trained on **7,000+ real listings** crawled from all 8 districts of Almaty (resu
 
 | Metric | CatBoost | Baseline (median ₸/m² by district × rooms) |
 |---|---|---|
-| MAE | **7.7M ₸** | 12.1M ₸ |
-| MAPE | **10.6%** | 17.4% |
-| R² | **0.78** | 0.65 |
+| MAE | **7.4M ₸** | 14.2M ₸ |
+| MAPE | **9.5%** | 18.0% |
+| R² | **0.77** | 0.56 |
+
+Metrics are measured on an **honest split**: relisted duplicates are deduplicated and the
+train/test split is grouped by building (`GroupShuffleSplit`), so the model never sees
+apartments from a test building during training. The previously reported random-split
+numbers (~10.6% MAPE) were both inflated by duplicate relistings and leaky at the
+building level — these are directly comparable, honest numbers.
 
 - Target: `log1p(price)`, native categorical features (district, microdistrict, residential complex, building type).
+- Spatial features: median ₸/m² over H3 hexagons (res 7 & 8), computed on train only and snapshotted to `models/spatial_ref.json` for inference.
 - Anti-leakage: median ₸/m² maps are computed on the train split only.
 - Explainability: per-prediction SHAP factors + global summary in [`reports/shap_summary.png`](reports/shap_summary.png).
 
