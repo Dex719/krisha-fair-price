@@ -216,8 +216,16 @@ def handle_update(update: dict[str, Any]) -> None:
         return
 
     if text.startswith("/start") or text.startswith("/help"):
-        tg_call("sendMessage", chat_id=chat_id, text=HELP_TEXT,
-                parse_mode="HTML", disable_web_page_preview=True)
+        payload: dict[str, Any] = {"chat_id": chat_id, "text": HELP_TEXT,
+                                   "parse_mode": "HTML",
+                                   "disable_web_page_preview": True}
+        base = public_base_url()
+        if base and message.get("chat", {}).get("type") == "private":
+            # web_app-кнопки Telegram разрешает только в личных чатах
+            payload["reply_markup"] = {"inline_keyboard": [[
+                {"text": "📱 Открыть приложение", "web_app": {"url": base}}
+            ]]}
+        tg_call("sendMessage", **payload)
         return
 
     if text.startswith("/alerts"):

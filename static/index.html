@@ -10,11 +10,21 @@
   <link rel="stylesheet" href="/static/m3.css" />
   <link rel="icon" type="image/png" href="/static/avatar.png?v=3" />
   <script src="/static/icons.js"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script>
     // до отрисовки — чтобы не мигала тема
     document.documentElement.dataset.theme =
       localStorage.getItem("kfp-theme") ||
       (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    // Telegram Mini App: раскрываемся на весь экран и берём тему Telegram
+    (function () {
+      const tg = window.Telegram && window.Telegram.WebApp;
+      if (!tg || !tg.initData) return; // обычный браузер
+      document.documentElement.dataset.theme = tg.colorScheme === "dark" ? "dark" : "light";
+      document.documentElement.classList.add("tg-miniapp");
+      tg.ready();
+      tg.expand();
+    })();
   </script>
 </head>
 <body>

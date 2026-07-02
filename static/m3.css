@@ -671,3 +671,7 @@ a.btn:hover { text-decoration: none; }
 }
 .scam-medium { background: color-mix(in srgb, #b8860b 12%, var(--surface)); color: var(--on-surface); }
 .scam-high { background: color-mix(in srgb, #c62828 14%, var(--surface)); color: var(--on-surface); }
+
+/* Telegram Mini App: тему диктует Telegram, переключатель не нужен */
+.tg-miniapp #theme-toggle { display: none; }
+.tg-miniapp .top-bar { padding-top: 4px; }
