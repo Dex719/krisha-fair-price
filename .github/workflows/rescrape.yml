@@ -76,4 +76,6 @@ jobs:
       - name: Alerts
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          # Для /track: коммит data/tracked.json через Contents API
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/send_alerts.py
