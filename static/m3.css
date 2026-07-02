@@ -651,3 +651,14 @@ a.btn:hover { text-decoration: none; }
   visibility: visible;
   transform: translateY(0);
 }
+
+/* «Похожие квартиры» — строки-ссылки на аналоги */
+.analog-row {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  padding: 10px 12px; border-radius: 12px; text-decoration: none;
+  color: var(--on-surface);
+}
+.analog-row:hover { background: var(--surface-container-high); }
+.analog-title { font-weight: 600; flex: 1 1 220px; min-width: 0; }
+.analog-meta { color: var(--on-surface-variant); font-size: .85rem; }
+.analog-price { font-weight: 700; color: var(--primary); margin-left: auto; }

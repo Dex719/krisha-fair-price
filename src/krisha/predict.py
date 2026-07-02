@@ -274,6 +274,15 @@ def predict_from_listing(
     result["days_on_market"] = days_on_market(listing.get("id"))
     result["liquidity"] = liquidity_estimate(listing.get("district"), listing.get("rooms"))
 
+    # Аналоги: похожие активные объявления из базы (kNN по фичам, fail-soft)
+    from krisha.analogs import find_analogs
+
+    try:
+        result["analogs"] = find_analogs(listing)
+    except Exception:  # noqa: BLE001 — аналоги не должны ломать оценку
+        logger.exception("analogs failed")
+        result["analogs"] = []
+
     # Этап 5: LLM-анализ описания — бейджи red flags / плюсов (кэш + Gemini).
     # flags_live=False — быстрый ответ: отдаём только кэш, а если кэша нет,
     # ставим flags_pending=True и фронт догружает флаги отдельным запросом.

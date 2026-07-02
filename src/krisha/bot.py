@@ -162,6 +162,17 @@ def format_reply(result: dict[str, Any]) -> str:
                     line += f" ({tenge / 1_000_000:+.1f} млн ₸)"
             lines.append(line)
 
+    analogs = result.get("analogs") or []
+    if analogs:
+        lines.append("")
+        lines.append("🏘 <b>Похожие квартиры:</b>")
+        for a in analogs[:3]:
+            title = html.escape(a.get("title") or f"{a.get('rooms', '?')}-комн, {a.get('area', '?')} м²")
+            lines.append(
+                f'• <a href="{html.escape(a["url"])}">{title}</a> — '
+                f"{a['price'] / 1_000_000:.1f} млн ₸"
+            )
+
     # Этап 5: бейджи из LLM-анализа описания
     flags = result.get("text_flags") or []
     if flags:
