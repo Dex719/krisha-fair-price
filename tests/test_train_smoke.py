@@ -27,9 +27,12 @@ def synthetic_df(n=400):
     })
 
 
-def test_train_pipeline_runs():
+def test_train_pipeline_runs(monkeypatch):
     # На синтетике baseline почти идеален по построению, поэтому проверяем
     # только что пайплайн работает и модель адекватна (не что она бьёт baseline).
+    # Районы здесь случайные — реальная зонная карта OSM их бы «починила»
+    # по координатам и убила синтетический сигнал, поэтому отключаем её.
+    monkeypatch.setattr("krisha.zones.load_zone_index", lambda *a, **k: None)
     metrics = train(df=synthetic_df(), iterations=100, save=False)
     assert metrics["model"]["r2"] > 0.5
     assert metrics["model"]["mape"] < 0.2
