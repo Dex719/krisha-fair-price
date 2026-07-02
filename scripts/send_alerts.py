@@ -6,6 +6,7 @@
 
 Нужен env TELEGRAM_BOT_TOKEN (в GitHub Actions — секрет); для сохранения
 состояния слежки — GITHUB_PAT или GITHUB_TOKEN с contents:write.
+Опционально TG_CHANNEL_ID (@канал или -100…) — дайджест «Топ-5 лотов дня».
 """
 
 import argparse
@@ -17,13 +18,12 @@ from krisha.subscriptions import load_subscriptions
 from krisha.tracking import check_tracked_updates
 
 
-def _send_deal_alerts(dry_run: bool) -> None:
+def _send_deal_alerts(dry_run: bool, deals: list) -> None:
     subs = load_subscriptions()
     if not subs:
         print("Подписчиков на выгодные лоты нет")
         return
 
-    deals = find_good_deals()
     print(f"Подписчиков: {len(subs)}, новых выгодных лотов: {len(deals)}")
     if not deals:
         return
@@ -53,14 +53,26 @@ def _send_track_alerts(dry_run: bool) -> None:
                 parse_mode="HTML", disable_web_page_preview=True)
 
 
+def _post_channel_digest(dry_run: bool, deals: list) -> None:
+    from krisha.channel import post_channel_digest
+
+    text = post_channel_digest(deals, dry_run=dry_run)
+    if dry_run and text:
+        print(f"--- канал:\n{text}")
+    else:
+        print(f"Пост в канал: {'отправлен' if text else 'пропущен'}")
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    _send_deal_alerts(args.dry_run)
+    deals = find_good_deals()
+    _send_deal_alerts(args.dry_run, deals)
     _send_track_alerts(args.dry_run)
+    _post_channel_digest(args.dry_run, deals)
     return 0
 
 
