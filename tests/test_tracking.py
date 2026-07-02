@@ -1,0 +1,138 @@
+"""Тесты слежки за лотами (/track): хранение и алерты об изменениях."""
+
+import sqlite3
+
+from krisha import tracking
+from krisha.db import init_db, upsert_listing
+
+BASE = {
+    "url": "https://krisha.kz/a/show/111",
+    "title": "2-комнатная квартира, 60 м²",
+    "price": 50_000_000,
+    "area": 60.0,
+    "rooms": 2,
+    "source": "test",
+}
+
+
+def _no_github_push(monkeypatch):
+    """Состояние сохраняем только локально — без сети."""
+    monkeypatch.setattr(
+        "krisha.subscriptions._push_to_github", lambda *a, **k: None
+    )
+
+
+def test_add_list_remove(tmp_path, monkeypatch):
+    _no_github_push(monkeypatch)
+    path = tmp_path / "tracked.json"
+
+    ok, reason = tracking.add_tracked(42, 111, 50_000_000, "Квартира", path=path)
+    assert ok and reason is None
+    ok, reason = tracking.add_tracked(42, 111, 50_000_000, "Квартира", path=path)
+    assert not ok and reason == "already"
+
+    lots = tracking.list_tracked(42, path=path)
+    assert set(lots) == {"111"} and lots["111"]["price"] == 50_000_000
+
+    assert tracking.remove_tracked(42, 111, path=path) == 1
+    assert tracking.list_tracked(42, path=path) == {}
+
+
+def test_limit_per_chat(tmp_path, monkeypatch):
+    _no_github_push(monkeypatch)
+    path = tmp_path / "tracked.json"
+    for i in range(tracking.MAX_TRACKED_PER_CHAT):
+        ok, _ = tracking.add_tracked(1, 1000 + i, None, None, path=path)
+        assert ok
+    ok, reason = tracking.add_tracked(1, 9999, None, None, path=path)
+    assert not ok and reason == "limit"
+
+
+def test_untrack_all(tmp_path, monkeypatch):
+    _no_github_push(monkeypatch)
+    path = tmp_path / "tracked.json"
+    tracking.add_tracked(1, 111, None, None, path=path)
+    tracking.add_tracked(1, 222, None, None, path=path)
+    assert tracking.remove_tracked(1, None, path=path) == 2
+    assert tracking.load_tracked(path) == {}
+
+
+def _make_db(tmp_path, price=50_000_000, is_active=1):
+    db = tmp_path / "krisha.db"
+    init_db(db)
+    upsert_listing({**BASE, "id": 111, "price": price}, db_path=db)
+    if not is_active:
+        with sqlite3.connect(db) as conn:
+            conn.execute(
+                "UPDATE listings SET is_active = 0, "
+                "delisted_at = datetime('now') WHERE id = 111"
+            )
+    return db
+
+
+def test_check_updates_price_drop(tmp_path, monkeypatch):
+    _no_github_push(monkeypatch)
+    path = tmp_path / "tracked.json"
+    db = _make_db(tmp_path, price=47_500_000)
+    tracking.add_tracked(42, 111, 50_000_000, "Квартира", path=path)
+
+    updates = tracking.check_tracked_updates(db_path=db, path=path)
+    assert len(updates) == 1
+    chat_id, text = updates[0]
+    assert chat_id == 42
+    assert "📉" in text and "47.5 млн ₸" in text and "-5.0%" in text
+
+    # цена запомнена — повторный проход без изменений молчит
+    assert tracking.check_tracked_updates(db_path=db, path=path) == []
+
+
+def test_check_updates_delisted(tmp_path, monkeypatch):
+    _no_github_push(monkeypatch)
+    path = tmp_path / "tracked.json"
+    db = _make_db(tmp_path, is_active=0)
+    tracking.add_tracked(42, 111, 50_000_000, "Квартира", path=path)
+
+    updates = tracking.check_tracked_updates(db_path=db, path=path)
+    assert len(updates) == 1
+    assert "🏁" in updates[0][1]
+    # снятый лот выброшен из слежки
+    assert tracking.list_tracked(42, path=path) == {}
+
+
+def test_check_updates_no_change(tmp_path, monkeypatch):
+    _no_github_push(monkeypatch)
+    path = tmp_path / "tracked.json"
+    db = _make_db(tmp_path, price=50_000_000)
+    tracking.add_tracked(42, 111, 50_000_000, "Квартира", path=path)
+    assert tracking.check_tracked_updates(db_path=db, path=path) == []
+
+
+def test_bot_track_commands(tmp_path, monkeypatch):
+    """Команды бота: /track со ссылкой, список, /untrack."""
+    from krisha import bot
+
+    _no_github_push(monkeypatch)
+    path = tmp_path / "tracked.json"
+    monkeypatch.setattr(tracking, "TRACKED_PATH", path)
+    monkeypatch.setattr(bot, "_track_listing_meta", lambda lid: (50_000_000, "Квартира"))
+
+    calls = []
+    monkeypatch.setattr(
+        bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True}
+    )
+
+    bot.handle_update(
+        {"message": {"chat": {"id": 42}, "text": "/track https://krisha.kz/a/show/111"}}
+    )
+    sent = [kw for m, kw in calls if m == "sendMessage"]
+    assert sent and "Слежу" in sent[-1]["text"]
+    assert tracking.list_tracked(42) != {}
+
+    bot.handle_update({"message": {"chat": {"id": 42}, "text": "/track"}})
+    assert "Квартира" in calls[-1][1]["text"]
+
+    bot.handle_update(
+        {"message": {"chat": {"id": 42}, "text": "/untrack https://krisha.kz/a/show/111"}}
+    )
+    assert "Убрал" in calls[-1][1]["text"]
+    assert tracking.list_tracked(42) == {}

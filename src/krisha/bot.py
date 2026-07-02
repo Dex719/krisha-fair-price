@@ -87,6 +87,8 @@ HELP_TEXT = (
     "ML-моделью, обученной на тысячах реальных объявлений, и скажу, "
     "выгодно это или переплата.\n\n"
     "🔔 /alerts — ежедневные алерты о новых выгодных объявлениях\n"
+    "👀 /track <i>ссылка</i> — следить за лотом: пришлю алерт, если цена "
+    "изменится или объявление снимут\n"
     "Веб-версия: https://krisha-fair-price-production.up.railway.app"
 )
 
@@ -189,6 +191,10 @@ def handle_update(update: dict[str, Any]) -> None:
         _handle_alerts_command(chat_id, text)
         return
 
+    if text.startswith(("/track", "/untrack")):
+        _handle_track_command(chat_id, text)
+        return
+
     url = extract_url(text)
     if not url:
         tg_call("sendMessage", chat_id=chat_id, parse_mode="HTML",
@@ -257,6 +263,116 @@ def _handle_alerts_command(chat_id: int, text: str) -> None:
         sub = load_subscriptions().get(str(chat_id))
         status = f"\n\nТекущая подписка: <b>{describe_filters(sub)}</b>" if sub else ""
         tg_call("sendMessage", chat_id=chat_id, text=ALERTS_HELP + status, parse_mode="HTML")
+
+
+TRACK_HELP = (
+    "👀 <b>Слежка за объявлениями</b>\n\n"
+    "<code>/track https://krisha.kz/a/show/…</code> — следить за лотом: "
+    "после каждого обновления базы пришлю алерт, если цена изменилась "
+    "или объявление сняли с продажи.\n"
+    "<code>/track</code> — список лотов в слежке\n"
+    "<code>/untrack https://krisha.kz/a/show/…</code> — перестать следить\n"
+    "<code>/untrack all</code> — очистить список"
+)
+
+
+def _tracked_list_text(chat_id: int) -> str:
+    from krisha.tracking import list_tracked
+
+    lots = list_tracked(chat_id)
+    if not lots:
+        return "Ты пока ни за чем не следишь. Пришли /track со ссылкой на объявление."
+    lines = ["👀 <b>Слежу для тебя:</b>", ""]
+    for lid, state in lots.items():
+        title = html.escape(state.get("title") or f"Объявление {lid}")
+        price = state.get("price")
+        price_txt = f" — {price / 1_000_000:.1f} млн ₸" if price else ""
+        lines.append(f'• <a href="https://krisha.kz/a/show/{lid}">{title}</a>{price_txt}')
+    return "\n".join(lines)
+
+
+def _track_listing_meta(listing_id: int) -> tuple[int | None, str | None]:
+    """Цена и заголовок лота: из базы, а если лота там нет — с сайта."""
+    import sqlite3
+
+    from krisha.config import DB_PATH
+    from krisha.db import get_conn, upsert_listing
+    from krisha.scraping.client import PoliteClient
+    from krisha.scraping.detail_parser import parse_detail
+
+    try:
+        with get_conn(DB_PATH) as conn:
+            row = conn.execute(
+                "SELECT price, title FROM listings WHERE id = ?", (listing_id,)
+            ).fetchone()
+        if row is not None:
+            return row["price"], row["title"]
+    except (sqlite3.OperationalError, FileNotFoundError):
+        pass
+
+    url = f"https://krisha.kz/a/show/{listing_id}"
+    with PoliteClient(delay_range=(0.5, 1.0)) as client:
+        page = client.get(url)
+    listing = parse_detail(page, url) if page else None
+    if listing is None:
+        raise RuntimeError("Не удалось загрузить объявление")
+    try:
+        upsert_listing({**listing, "source": "user"})
+    except Exception:  # noqa: BLE001 — сохранение не должно ломать команду
+        logger.warning("track: не удалось сохранить объявление в базу", exc_info=True)
+    return listing.get("price"), listing.get("title")
+
+
+def _handle_track_command(chat_id: int, text: str) -> None:
+    """Команды /track [ссылка], /untrack <ссылка>|all."""
+    from krisha.tracking import MAX_TRACKED_PER_CHAT, add_tracked, remove_tracked
+
+    cmd, _, args = text.partition(" ")
+    cmd = cmd.split("@")[0].lower()
+    args = args.strip()
+    match = KRISHA_URL_RE.search(args)
+
+    if cmd == "/untrack":
+        if not match and args.lower() not in ("all", "все", "всё"):
+            tg_call("sendMessage", chat_id=chat_id, text=TRACK_HELP, parse_mode="HTML",
+                    disable_web_page_preview=True)
+            return
+        listing_id = int(match.group(1)) if match else None
+        removed = remove_tracked(chat_id, listing_id)
+        tg_call("sendMessage", chat_id=chat_id,
+                text="Убрал из слежки 👌" if removed else "Этого лота и не было в слежке 🙂")
+        return
+
+    if not match:
+        text_out = TRACK_HELP + "\n\n" + _tracked_list_text(chat_id)
+        tg_call("sendMessage", chat_id=chat_id, text=text_out, parse_mode="HTML",
+                disable_web_page_preview=True)
+        return
+
+    listing_id = int(match.group(1))
+    tg_call("sendChatAction", chat_id=chat_id, action="typing")
+    try:
+        price, title = _track_listing_meta(listing_id)
+    except RuntimeError as exc:
+        tg_call("sendMessage", chat_id=chat_id, text=f"Не получилось: {exc}")
+        return
+
+    ok, reason = add_tracked(chat_id, listing_id, price, title)
+    if not ok and reason == "limit":
+        tg_call("sendMessage", chat_id=chat_id,
+                text=f"Лимит: не больше {MAX_TRACKED_PER_CHAT} лотов в слежке. "
+                     "Убери что-нибудь: /untrack <ссылка>")
+        return
+    if not ok:
+        tg_call("sendMessage", chat_id=chat_id, text="Уже слежу за этим лотом 👌")
+        return
+
+    name = html.escape(title or f"Объявление {listing_id}")
+    price_txt = f" Текущая цена: <b>{fmt_tenge(price)}</b>." if price else ""
+    tg_call("sendMessage", chat_id=chat_id, parse_mode="HTML",
+            text=f"👀 Слежу за «{name}».{price_txt}\n"
+                 "Пришлю алерт при изменении цены или снятии с продажи. "
+                 "Список: /track, отписка: /untrack")
 
 
 def public_base_url() -> str | None:
