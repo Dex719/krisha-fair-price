@@ -6,11 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       pages:
-        description: "Максимум страниц выдачи"
-        default: "400"
+        description: "Максимум страниц выдачи на один шард (район × комнаты)"
+        default: "250"
       max_new:
         description: "Максимум новых детальных страниц"
-        default: "300"
+        default: "1000"
 
 concurrency:
   group: krisha-db-writes
@@ -22,7 +22,9 @@ permissions:
 jobs:
   rescrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # Полный шардированный проход (~44к объявлений, ~2200 страниц выдачи)
+    # с щадящими задержками ≈ 2.5 ч + до 1000 детальных страниц ≈ 1 ч.
+    timeout-minutes: 350
 
     steps:
       - uses: actions/checkout@v4
@@ -45,8 +47,8 @@ jobs:
           KRISHA_DELAY_MAX: "5.0"
         run: |
           python scripts/rescrape.py \
-            --pages "${{ github.event.inputs.pages || '400' }}" \
-            --max-new "${{ github.event.inputs.max_new || '300' }}" \
+            --pages "${{ github.event.inputs.pages || '250' }}" \
+            --max-new "${{ github.event.inputs.max_new || '1000' }}" \
             --fail-empty \
             --summary-json /tmp/rescrape_stats.json
 
