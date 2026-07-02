@@ -148,12 +148,31 @@ def _with_hints(listing: dict[str, Any], factors: list[dict]) -> list[dict]:
         return factors
 
 
+def _location_details_with_pin_note(listing: dict[str, Any]) -> list[dict[str, str]]:
+    """Блок «Локация» + бейдж «координаты примерные», если точка — метка ЖК."""
+    from krisha.zones import approximate_pin_note
+
+    lat, lon = listing.get("lat"), listing.get("lon")
+    items = build_location_details(lat, lon)
+    note = approximate_pin_note(lat, lon)
+    if note is not None:
+        items.append(note)
+    return items
+
+
 def predict_from_listing(
     listing: dict[str, Any], flags_live: bool = True
 ) -> dict[str, Any]:
     model, meta = load_model()
     features = meta["features"]
     df = listing_to_frame(listing, ppsm_maps=meta.get("ppsm_maps"))
+    # Район/микрорайон, восстановленные по OSM-зонам, показываем и в карточке
+    from krisha.features import MISSING_CAT
+
+    for col in ("district", "microdistrict"):
+        val = df[col].iloc[0]
+        if not listing.get(col) and isinstance(val, str) and val != MISSING_CAT:
+            listing = {**listing, col: val}
     pool = Pool(df[features], cat_features=meta["cat_features"])
     fair_price = float(np.expm1(model.predict(pool)[0]))
 
@@ -170,7 +189,7 @@ def predict_from_listing(
         "top_factors": _with_hints(listing, top_factors(model, pool, features)),
         "details": build_details(listing),
         "complex_details": build_complex_details(listing),
-        "location_details": build_location_details(listing.get("lat"), listing.get("lon")),
+        "location_details": _location_details_with_pin_note(listing),
         "photos": (listing.get("photos") or [])[:12],
         "description": (listing.get("description") or None),
     }
