@@ -80,6 +80,13 @@
         </h2>
         <div style="height:260px;display:grid;place-items:center"><canvas id="chart-cat"></canvas></div>
       </div>
+      <div class="card card-elevated reveal" style="padding:28px" id="trend-card" hidden>
+        <h2 class="title" style="margin-bottom:18px">
+          <span data-icon="chart" data-icon-size="22" style="color:var(--primary)"></span>
+          Тренд ₸/м² по неделям
+        </h2>
+        <div style="height:260px"><canvas id="chart-trend"></canvas></div>
+      </div>
     </div>
 
     <footer class="colophon reveal">
@@ -258,6 +265,31 @@
           },
         });
         track(catChart, (c, p) => { c.data.datasets[0].backgroundColor = [p.primary, p.tertiary]; });
+
+        /* тренд ₸/м² по неделям (появляется, когда точек ≥ 2) */
+        const trend = data.trend || [];
+        if (trend.length >= 2) {
+          document.getElementById("trend-card").hidden = false;
+          const trendChart = new Chart(document.getElementById("chart-trend"), {
+            type: "line",
+            data: {
+              labels: trend.map((t) => t.week),
+              datasets: [{ data: trend.map((t) => t.median_ppsm / 1000), tension: 0.3, fill: true, pointRadius: 4 }],
+            },
+            options: {
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false }, tooltip: { callbacks: {
+                label: (ctx) => fmtK(ctx.parsed.y * 1000) + " · " + trend[ctx.dataIndex].n + " объявл.",
+              }}},
+              scales: { x: { grid: { display: false } }, y: { ticks: { callback: (v) => v + " тыс" }, grid: { drawTicks: false } } },
+            },
+          });
+          track(trendChart, (c, p) => {
+            const ds = c.data.datasets[0];
+            ds.borderColor = p.primary; ds.pointBackgroundColor = p.primary; ds.backgroundColor = p.primaryC;
+            c.options.scales.y.grid.color = p.grid;
+          });
+        }
       } catch (err) {
         const el = document.getElementById("error");
         el.textContent = err.message;
