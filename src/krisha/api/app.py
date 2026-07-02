@@ -43,7 +43,7 @@ CSP = (
     "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
     "connect-src 'self'; "
     "base-uri 'self'; "
-    "frame-ancestors 'none'; "
+    "frame-ancestors 'self' https://huggingface.co; "  # iframe на странице Space
     "object-src 'none'"
 )
 
