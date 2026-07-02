@@ -162,6 +162,21 @@ def top_factors(model: CatBoostRegressor, pool: Pool, features: list[str], n: in
     ]
 
 
+def _with_money_impact(factors: list[dict], fair_price: float) -> list[dict]:
+    """Переводит SHAP-вклад из log-пространства в понятные % и тенге.
+
+    Модель предсказывает log1p(price), поэтому вклад s фактора — это
+    множитель exp(s) к цене: impact_pct = (exp(s) - 1) * 100. В деньгах
+    оцениваем «сколько фактор добавил к итоговой цене»: цена без него
+    была бы fair/exp(s), значит вклад ≈ fair * (1 - exp(-s)).
+    """
+    for f in factors:
+        s = f["impact"]
+        f["impact_pct"] = round(float(np.expm1(s)) * 100, 1)
+        f["impact_tenge"] = round(float(fair_price * (1 - np.exp(-s))), -4)
+    return factors
+
+
 def _with_hints(listing: dict[str, Any], factors: list[dict]) -> list[dict]:
     """Подсказки со статистикой рынка к каждому фактору (fail-soft)."""
     try:
@@ -243,7 +258,9 @@ def predict_from_listing(
         "fair_price_high": round(fair_high, -4) if fair_high is not None else None,
         "verdict": verdict,
         "diff_pct": round((actual - fair_price) / fair_price * 100, 1) if actual else None,
-        "top_factors": _with_hints(listing, top_factors(model, pool, features)),
+        "top_factors": _with_hints(
+            listing, _with_money_impact(top_factors(model, pool, features), fair_price)
+        ),
         "details": build_details(listing),
         "complex_details": build_complex_details(listing),
         "location_details": _location_details_with_pin_note(listing),
