@@ -22,7 +22,7 @@ from krisha.api.schemas import (
 from krisha.config import DB_PATH, MODEL_PATH, ROOT_DIR
 from krisha.db import get_conn
 from krisha.predict import predict_from_url
-from krisha.stats import get_stats
+from krisha.stats import get_stats, heatmap_points
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -37,8 +37,8 @@ STATIC_DIR = ROOT_DIR / "static"
 # при желании их можно вынести в отдельные файлы и убрать 'unsafe-inline'.
 CSP = (
     "default-src 'self'; "
-    "img-src 'self' data: https://*.kcdn.online; "
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "img-src 'self' data: https://*.kcdn.online https://*.basemaps.cartocdn.com; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "
     "font-src 'self' https://fonts.gstatic.com; "
     "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
     "connect-src 'self'; "
@@ -148,6 +148,24 @@ def stats() -> dict:
         logger.exception("stats: данные недоступны")
         raise HTTPException(status_code=503, detail="Статистика временно недоступна")
     _stats_cache.update(data=data, ts=now)
+    return data
+
+
+_heatmap_cache: dict = {"data": None, "ts": 0.0}
+
+
+@app.get("/api/heatmap")
+def heatmap() -> list[dict]:
+    """Сетка ₸/м² для карты: ячейки ~400 м по активным лотам с координатами."""
+    now = time.monotonic()
+    if _heatmap_cache["data"] is not None and now - _heatmap_cache["ts"] < STATS_CACHE_TTL:
+        return _heatmap_cache["data"]
+    try:
+        data = heatmap_points()
+    except FileNotFoundError:
+        logger.exception("heatmap: база недоступна")
+        raise HTTPException(status_code=503, detail="Карта временно недоступна")
+    _heatmap_cache.update(data=data, ts=now)
     return data
 
 
