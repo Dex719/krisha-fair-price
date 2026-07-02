@@ -1,0 +1,72 @@
+name: Daily rescrape
+
+on:
+  schedule:
+    - cron: "0 1 * * *" # 06:00 Алматы (UTC+5)
+  workflow_dispatch:
+    inputs:
+      pages:
+        description: "Максимум страниц выдачи"
+        default: "400"
+      max_new:
+        description: "Максимум новых детальных страниц"
+        default: "300"
+
+concurrency:
+  group: krisha-db-writes
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  rescrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: pip install -e .
+
+      - name: Rescrape
+        env:
+          # Не спешим: щадящие задержки, чтобы не злить krisha.kz
+          KRISHA_DELAY_MIN: "2.5"
+          KRISHA_DELAY_MAX: "5.0"
+        run: |
+          python scripts/rescrape.py \
+            --pages "${{ github.event.inputs.pages || '400' }}" \
+            --max-new "${{ github.event.inputs.max_new || '300' }}" \
+            --fail-empty \
+            --summary-json /tmp/rescrape_stats.json
+
+      - name: Job summary
+        if: always()
+        run: |
+          if [ -f /tmp/rescrape_stats.json ]; then
+            {
+              echo "### Рескрейп $(date -u +%F)"
+              echo '```json'
+              cat /tmp/rescrape_stats.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Commit DB
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- data/krisha.db; then
+            echo "База не изменилась — коммитить нечего"
+            exit 0
+          fi
+          git add data/krisha.db
+          git commit -m "data: daily rescrape $(date -u +%F)"
+          git pull --rebase origin main
+          git push origin main
