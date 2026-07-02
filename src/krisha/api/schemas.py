@@ -55,6 +55,12 @@ class TextFlag(BaseModel):
     label: str  # подпись бейджа («Срочная продажа», «Торг уместен»...)
 
 
+class Renovation(BaseModel):
+    level: str                              # rough/needs_repair/dated/good/premium
+    label: str                              # подпись по-русски
+    comment: str | None = None
+
+
 class PredictResponse(BaseModel):
     listing_id: int | None
     url: str | None
@@ -80,6 +86,7 @@ class PredictResponse(BaseModel):
     description: str | None = None
     analogs: list[Analog] = []              # похожие активные объявления (kNN)
     scam_risk: ScamRisk | None = None       # бейдж «подозрительно дёшево»
+    renovation: Renovation | None = None    # оценка ремонта по фото (Gemini)
 
 
 class FlagsResponse(BaseModel):

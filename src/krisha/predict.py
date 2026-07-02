@@ -281,6 +281,16 @@ def predict_from_listing(
         listing, result["fair_price"], result.get("actual_price")
     )
 
+    # Оценка ремонта по фото (Gemini Vision, кэш + fail-soft).
+    # live только когда flags_live=True (бот); веб получает из кэша.
+    from krisha.vision import assess_renovation
+
+    try:
+        result["renovation"] = assess_renovation(listing, live=flags_live)
+    except Exception:  # noqa: BLE001 — фото-анализ не должен ломать оценку
+        logger.exception("vision failed")
+        result["renovation"] = None
+
     # Аналоги: похожие активные объявления из базы (kNN по фичам, fail-soft)
     from krisha.analogs import find_analogs
 
