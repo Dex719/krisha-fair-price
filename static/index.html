@@ -183,6 +183,30 @@
     }
 
     /* ---------- карточка объявления: фото + характеристики ---------- */
+    // «Похожие квартиры»: kNN-аналоги из базы со ссылками на krisha
+    function analogsBlock(data) {
+      const analogs = data.analogs || [];
+      if (!analogs.length) return "";
+      return `
+          <p class="title" style="display:flex;align-items:center;gap:10px;margin:22px 0 12px;font-size:.95rem">
+            <span style="color:var(--secondary)">${kfpIcon("building", 20)}</span>Похожие квартиры
+          </p>
+          ${analogs.map((a) => {
+            const meta = [
+              a.area ? `${a.area} м²` : null,
+              a.floor ? `${a.floor}${a.total_floors ? "/" + a.total_floors : ""} эт.` : null,
+              a.year_built ? `${a.year_built} г.` : null,
+              a.ppsm ? `${Math.round(a.ppsm / 1000)} тыс ₸/м²` : null,
+            ].filter(Boolean).join(" · ");
+            return `
+            <a class="analog-row" href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">
+              <span class="analog-title">${esc(a.title || "Объявление " + a.id)}</span>
+              <span class="analog-meta">${esc(meta)}</span>
+              <span class="analog-price">${fmt(a.price)}</span>
+            </a>`;
+          }).join("")}`;
+    }
+
     function listingCard(data) {
       const photos = data.photos || [], details = data.details || [];
       if (!photos.length && !details.length && !data.description) return "";
@@ -237,6 +261,7 @@
               </div>`).join("")}
           </div>` : ""}
           ${marketBlock(data)}
+          ${analogsBlock(data)}
           ${data.description ? `
           <p class="title" style="margin:22px 0 4px;font-size:.95rem">Описание</p>
           <p class="listing-desc" id="g-desc"></p>
