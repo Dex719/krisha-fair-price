@@ -35,6 +35,9 @@ jobs:
       - name: Install
         run: pip install -e .
 
+      - name: Download DB from release
+        run: python -m krisha.db_release --require
+
       - name: Rescrape
         env:
           # Не спешим: щадящие задержки, чтобы не злить krisha.kz
@@ -42,8 +45,8 @@ jobs:
           KRISHA_DELAY_MAX: "5.0"
         run: |
           python scripts/rescrape.py \
-            --pages "$ github.event.inputs.pages || '400' " \
-            --max-new "$ github.event.inputs.max_new || '300' " \
+            --pages "${{ github.event.inputs.pages || '400' }}" \
+            --max-new "${{ github.event.inputs.max_new || '300' }}" \
             --fail-empty \
             --summary-json /tmp/rescrape_stats.json
 
@@ -59,22 +62,16 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Commit DB
+      - name: Upload DB to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          if git diff --quiet -- data/krisha.db; then
-            echo "База не изменилась — коммитить нечего"
-            exit 0
-          fi
-
-          git add data/krisha.db
-          git commit -m "data: daily rescrape $(date -u +%F)"
-          git pull --rebase origin main
-          git push origin main
+          sqlite3 data/krisha.db "VACUUM;" || true
+          gzip -9 -c data/krisha.db > /tmp/krisha.db.gz
+          gh release upload db-latest /tmp/krisha.db.gz --clobber
+          echo "Размер базы в релизе: $(du -h /tmp/krisha.db.gz | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Alerts
         env:
-          TELEGRAM_BOT_TOKEN: $ secrets.TELEGRAM_BOT_TOKEN 
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: python scripts/send_alerts.py
