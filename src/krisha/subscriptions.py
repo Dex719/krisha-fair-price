@@ -98,19 +98,32 @@ def remove_subscription(chat_id: int) -> bool:
 
 
 def _save(subs: dict[str, Any], message: str) -> None:
-    payload = json.dumps(subs, ensure_ascii=False, indent=2, sort_keys=True)
-    SUBSCRIPTIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SUBSCRIPTIONS_PATH.write_text(payload)
-    _push_to_github(payload, message)
+    save_json_state(SUBSCRIPTIONS_PATH, subs, message)
 
 
-def _push_to_github(payload: str, message: str) -> None:
-    """Коммитит subscriptions.json в GitHub, чтобы пережить редеплой."""
-    token = os.environ.get("GITHUB_PAT")
+def save_json_state(path, data: dict[str, Any], message: str) -> None:
+    """Сохраняет JSON-состояние локально и коммитит в GitHub (см. докстринг модуля).
+
+    Общий механизм для subscriptions.json и tracked.json.
+    """
+    payload = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(payload)
+    _push_to_github(path, payload, message)
+
+
+def _push_to_github(path, payload: str, message: str) -> None:
+    """Коммитит файл состояния в GitHub, чтобы пережить редеплой.
+
+    Токен: GITHUB_PAT (Railway) или GITHUB_TOKEN (GitHub Actions,
+    у workflow есть contents:write).
+    """
+    token = os.environ.get("GITHUB_PAT") or os.environ.get("GITHUB_TOKEN")
     if not token:
-        logger.warning("GITHUB_PAT не задан — подписка сохранена только локально")
+        logger.warning("GITHUB_PAT/GITHUB_TOKEN не задан — %s сохранён только локально", path.name)
         return
-    url = f"{_GH_API}/repos/{GITHUB_REPO}/contents/data/subscriptions.json"
+    rel = f"data/{path.name}"
+    url = f"{_GH_API}/repos/{GITHUB_REPO}/contents/{rel}"
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
     try:
         resp = httpx.get(url, headers=headers, timeout=15.0)
@@ -122,6 +135,6 @@ def _push_to_github(payload: str, message: str) -> None:
         }
         put = httpx.put(url, headers=headers, json=body, timeout=15.0)
         if put.status_code not in (200, 201):
-            logger.warning("GitHub push подписок: %s %s", put.status_code, put.text[:200])
+            logger.warning("GitHub push %s: %s %s", rel, put.status_code, put.text[:200])
     except httpx.HTTPError as exc:
-        logger.warning("GitHub push подписок не удался: %s", exc)
+        logger.warning("GitHub push %s не удался: %s", rel, exc)
