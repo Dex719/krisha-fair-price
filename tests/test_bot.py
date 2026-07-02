@@ -26,6 +26,35 @@ def test_extract_url():
     assert bot.extract_url("просто текст") is None
 
 
+def test_predict_from_url_canonicalizes_against_ssrf(monkeypatch):
+    """SSRF-защита: фетчим только канонический krisha-URL по id, а не сырой ввод."""
+    import pytest
+
+    from krisha import predict as predmod
+
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url):
+            captured["url"] = url
+            return None  # None → RuntimeError, нам важен только захваченный url
+
+    monkeypatch.setattr(predmod, "PoliteClient", FakeClient)
+    # Вредоносный ввод: подстрока krisha.kz/a/show есть, но хост — внутренний.
+    with pytest.raises(RuntimeError):
+        predmod.predict_from_url("http://169.254.169.254/krisha.kz/a/show/777?x=1")
+    assert captured["url"] == "https://krisha.kz/a/show/777"
+
+
 def test_format_reply_contains_key_fields():
     text = bot.format_reply(SAMPLE_RESULT)
     assert "52 000 000 ₸" in text
