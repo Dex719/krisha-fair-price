@@ -41,6 +41,12 @@ SECURITY_FLAGS = {
 COMPLEX_CAT_FEATURES = ["housing_class", "developer"]
 COMPLEX_NUM_FEATURES = ["completion_year", "apartments_count"]
 
+# LLM-флаги описания (этап 5) как бинарные фичи: flag_pledge, flag_bargain, ...
+# Ключи — словарь FLAGS_RU из llm_flags; flags_known=0 — анализа не было.
+from krisha.llm_flags import FLAGS_RU  # noqa: E402
+
+FLAG_FEATURES = [f"flag_{key}" for key in FLAGS_RU]
+
 CAT_FEATURES = [
     "district", "microdistrict", "building_type", "complex_name", "user_type", "category",
     *RAW_PARAM_CAT_MAP,
@@ -54,7 +60,14 @@ NUM_FEATURES = [
     *SECURITY_FLAGS, "security_count",
     *COMPLEX_NUM_FEATURES,
     *GEO_FEATURES,
+    "hex7_ppsm", "hex8_ppsm",      # медианная ₸/м² по гексагонам H3 (krisha.spatial)
 ]
+# Вычисляются, но в модель не идут — абляция на честном сплите (group split по
+# зданиям + dedup перевыставлений) показала, что они ухудшают метрики:
+#   knn_ppsm/knn_n      — на train сосед = свой дом, на test его нет (leakage-mismatch)
+#   flag_*/flags_known  — LLM-флаги описаний: шум, R² падает 0.79 → 0.76
+#   district_mismatch   — нулевой эффект; остаётся как бейдж-предупреждение в predict
+EXTRA_FEATURES = ["district_mismatch", "knn_ppsm", "knn_n", "flags_known", *FLAG_FEATURES]
 ALL_FEATURES = NUM_FEATURES + CAT_FEATURES
 TARGET = "log_price"
 CURRENT_YEAR = 2026
@@ -149,6 +162,42 @@ def add_raw_param_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _row_flags(row: pd.Series) -> list[str] | None:
+    """Флаги строки: колонка llm_flags (list/JSON) или кэш llm_flags по id+тексту."""
+    val = row.get("llm_flags")
+    if isinstance(val, list):
+        return val
+    if isinstance(val, str) and val:
+        try:
+            parsed = json.loads(val)
+            return parsed if isinstance(parsed, list) else None
+        except json.JSONDecodeError:
+            return None
+    from krisha.llm_flags import get_cached_flags
+
+    lid, text = row.get("id"), row.get("description")
+    if not lid or not isinstance(text, str) or len(text.strip()) < 20:
+        return None
+    try:
+        return get_cached_flags(int(lid), text)
+    except Exception:  # noqa: BLE001 — кэш недоступен → фичи по нулям
+        return None
+
+
+def add_llm_flag_features(df: pd.DataFrame) -> pd.DataFrame:
+    """LLM-флаги описания → бинарные фичи flag_* + индикатор flags_known.
+
+    Источник: колонка `llm_flags` (predict кладёт свежие флаги) или кэш в БД
+    (train). Нет анализа → все нули и flags_known=0 — модель это различает.
+    """
+    df = df.copy()
+    flags_list = [_row_flags(row) for _, row in df.iterrows()]
+    df["flags_known"] = [int(f is not None) for f in flags_list]
+    for col, key in zip(FLAG_FEATURES, FLAGS_RU):
+        df[col] = [int(key in f) if f else 0 for f in flags_list]
+    return df
+
+
 def complex_join_name(df: pd.DataFrame) -> pd.Series:
     """Имя ЖК для джойна: raw_params["map.complex"] (точнее), иначе complex_name."""
     raw = (
@@ -180,8 +229,15 @@ def build_features(
     df: pd.DataFrame,
     ppsm_maps: dict | None = None,
     complex_lookup: dict | None = None,
+    spatial_ref: dict | None = None,
+    knn_self_indices=None,
 ) -> pd.DataFrame:
-    """Добавляет производные фичи. Работает и для одного объявления (predict)."""
+    """Добавляет производные фичи. Работает и для одного объявления (predict).
+
+    spatial_ref/knn_self_indices — референс пространственных фичей (train
+    передаёт свежепостроенный по train-части и позиции строк в нём, predict —
+    сохранённый в models/spatial_ref.json через krisha.spatial.load_spatial_ref).
+    """
     from krisha.geo import add_geo_features
     from krisha.zones import resolve_zones
 
@@ -190,6 +246,7 @@ def build_features(
     df = add_raw_param_features(df)
     df = add_complex_features(df, lookup=complex_lookup)
     df = add_geo_features(df)
+    df = add_llm_flag_features(df)
     for col in ["rooms", "area", "floor", "total_floors", "year_built", "ceiling",
                 "lat", "lon", "photos_count", *COMPLEX_NUM_FEATURES]:
         if col not in df:
@@ -224,11 +281,23 @@ def build_features(
     df["district_ppsm"] = df["district"].map(d_map).fillna(global_ppsm)
     df["microdistrict_ppsm"] = df["microdistrict"].map(m_map).fillna(df["district_ppsm"])
 
+    # Пространственные фичи: гексагоны H3 + соседи (после district_ppsm — фолбэк)
+    from krisha.spatial import add_spatial_features
+
+    df = add_spatial_features(df, ref=spatial_ref, self_indices=knn_self_indices)
+
+    if "district_mismatch" not in df:
+        df["district_mismatch"] = 0
+
     if "price" in df:
         df["log_price"] = np.log1p(df["price"])
     return df
 
 
-def listing_to_frame(listing: dict[str, Any], ppsm_maps: dict | None = None) -> pd.DataFrame:
+def listing_to_frame(
+    listing: dict[str, Any],
+    ppsm_maps: dict | None = None,
+    spatial_ref: dict | None = None,
+) -> pd.DataFrame:
     """Один распарсенный listing-dict → DataFrame с фичами для предсказания."""
-    return build_features(pd.DataFrame([listing]), ppsm_maps=ppsm_maps)
+    return build_features(pd.DataFrame([listing]), ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)

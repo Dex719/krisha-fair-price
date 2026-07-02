@@ -1,0 +1,50 @@
+name: Weekly retrain
+
+on:
+  schedule:
+    - cron: "0 2 * * 0" # воскресенье 07:00 Алматы (UTC+5)
+  workflow_dispatch:
+
+concurrency:
+  group: krisha-db-writes
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: pip install -e .
+
+      - name: Snapshot current metrics
+        run: cp models/model_meta.json /tmp/old_meta.json
+
+      - name: Train
+        run: python scripts/train.py
+
+      - name: Metric gate (не деплоим, если стало хуже)
+        run: python scripts/model_gate.py /tmp/old_meta.json models/model_meta.json --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit new model
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add models/ reports/
+          if git diff --cached --quiet; then
+            echo "Модель не изменилась — коммитить нечего"
+            exit 0
+          fi
+          git commit -m "model: weekly retrain $(date -u +%F)"
+          git pull --rebase origin main
+          git push origin main

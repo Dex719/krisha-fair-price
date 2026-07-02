@@ -214,10 +214,11 @@ def analyze_one(listing_id: int, text: str, api_key: str | None = None) -> list[
     return res.get(int(listing_id), [])
 
 
-def build_text_flags(listing: dict[str, Any], live: bool = True) -> list[dict[str, str]]:
-    """Бейджи «Анализ описания» для карточки: [{kind, label}, ...].
+def get_flags_raw(listing: dict[str, Any], live: bool = True) -> list[str] | None:
+    """Сырые ключи флагов для объявления: кэш, при live и ключе — один запрос.
 
-    Берём из кэша; если нет и есть ключ — один живой запрос (fail-soft).
+    None — анализа не было (нет кэша и нет возможности спросить LLM).
+    Используется и для бейджей карточки, и как фичи модели.
     """
     listing_id, text = listing.get("id"), listing.get("description")
     if not listing_id or not text or len(text.strip()) < 20:
@@ -230,6 +231,11 @@ def build_text_flags(listing: dict[str, Any], live: bool = True) -> list[dict[st
                 save_flags(listing_id, text, flags)
             except sqlite3.OperationalError:  # read-only FS и т.п. — не страшно
                 logger.warning("llm_flags: не удалось сохранить кэш")
+    return flags
+
+
+def flags_to_badges(flags: list[str] | None) -> list[dict[str, str]]:
+    """Ключи флагов → бейджи карточки: [{kind, label}, ...]."""
     if not flags:
         return []
     return [
@@ -237,3 +243,11 @@ def build_text_flags(listing: dict[str, Any], live: bool = True) -> list[dict[st
         for f in flags
         if f in FLAGS_RU
     ]
+
+
+def build_text_flags(listing: dict[str, Any], live: bool = True) -> list[dict[str, str]]:
+    """Бейджи «Анализ описания» для карточки: [{kind, label}, ...].
+
+    Берём из кэша; если нет и есть ключ — один живой запрос (fail-soft).
+    """
+    return flags_to_badges(get_flags_raw(listing, live=live))
