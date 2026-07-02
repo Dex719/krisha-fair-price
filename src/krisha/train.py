@@ -18,6 +18,8 @@ from sklearn.model_selection import GroupShuffleSplit
 
 from krisha.config import (
     DB_PATH,
+    MODEL_HI_PATH,
+    MODEL_LO_PATH,
     MODEL_META_PATH,
     MODEL_PATH,
     MODELS_DIR,
@@ -104,6 +106,92 @@ def evaluate(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
     }
 
 
+# --- Доверительный интервал цены: квантильные модели + CQR ----------------
+QUANTILE_ALPHA_LO = 0.10  # нижний квантиль log(price)
+QUANTILE_ALPHA_HI = 0.90  # верхний квантиль log(price)
+INTERVAL_TARGET_COVERAGE = 0.80  # целевая доля цен, попавших в интервал
+QUANTILE_ITERATIONS = 800  # квантильным моделям хватает меньше — CQR чинит покрытие
+
+
+def _fit_quantile(pool: Pool, alpha: float, iterations: int) -> CatBoostRegressor:
+    model = CatBoostRegressor(
+        iterations=iterations,
+        learning_rate=0.05,
+        depth=8,
+        loss_function=f"Quantile:alpha={alpha}",
+        random_seed=RANDOM_STATE,
+        verbose=False,
+    )
+    model.fit(pool)
+    return model
+
+
+def train_quantile_interval(
+    raw_train: pd.DataFrame,
+    ppsm_maps: dict,
+    spatial_ref: dict,
+    test_df: pd.DataFrame,
+    iterations: int = QUANTILE_ITERATIONS,
+) -> tuple[CatBoostRegressor, CatBoostRegressor, dict]:
+    """Квантильные модели q10/q90 + конформная калибровка интервала (CQR).
+
+    Метод (Conformalized Quantile Regression, Romano et al. 2019):
+    1. квантильные модели обучаем на fit-части train;
+    2. на отложенной calib-части считаем conformity score
+       E_i = max(lo_i - y_i, y_i - hi_i) в лог-шкале;
+    3. сдвиг Q (квантиль E уровня ⌈(n+1)·c⌉/n) расширяет интервал так, чтобы
+       покрытие было ≥ целевого с конечно-выборочной гарантией — независимо
+       от того, насколько точны сами квантильные модели.
+
+    fit/calib делим по «зданиям» (как основной сплит) — иначе квартиры одного
+    дома по обе стороны делают conformity-скоры оптимистичными.
+    Покрытие/ширину меряем на holdout test_df, он в калибровке не участвует.
+    """
+    groups = building_groups(raw_train)
+    splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=RANDOM_STATE)
+    fit_idx, cal_idx = next(splitter.split(raw_train, groups=groups))
+    fit_raw = raw_train.iloc[fit_idx].reset_index(drop=True)
+    cal_raw = raw_train.iloc[cal_idx].reset_index(drop=True)
+    fit_df = build_features(fit_raw, ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)
+    cal_df = build_features(cal_raw, ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)
+    fit_pool = Pool(fit_df[ALL_FEATURES], fit_df[TARGET], cat_features=CAT_FEATURES)
+    cal_pool = Pool(cal_df[ALL_FEATURES], cat_features=CAT_FEATURES)
+
+    model_lo = _fit_quantile(fit_pool, QUANTILE_ALPHA_LO, iterations)
+    model_hi = _fit_quantile(fit_pool, QUANTILE_ALPHA_HI, iterations)
+
+    # CQR-сдвиг в лог-шкале на калибровочной части
+    y_cal = cal_df[TARGET].to_numpy()
+    lo_cal = model_lo.predict(cal_pool)
+    hi_cal = model_hi.predict(cal_pool)
+    scores = np.maximum(lo_cal - y_cal, y_cal - hi_cal)
+    n = len(scores)
+    level = min(1.0, np.ceil((n + 1) * INTERVAL_TARGET_COVERAGE) / n)
+    offset = max(float(np.quantile(scores, level, method="higher")), 0.0)
+
+    # Оценка покрытия и ширины на holdout (expm1 монотонна → сохраняет квантили)
+    test_pool = Pool(test_df[ALL_FEATURES], cat_features=CAT_FEATURES)
+    price_lo = np.expm1(model_lo.predict(test_pool) - offset)
+    price_hi = np.expm1(model_hi.predict(test_pool) + offset)
+    y_true = test_df["price"].to_numpy()
+    covered = (y_true >= price_lo) & (y_true <= price_hi)
+    mid = np.maximum((price_lo + price_hi) / 2.0, 1.0)
+    width_pct = (price_hi - price_lo) / mid
+
+    interval_meta = {
+        "alpha_lo": QUANTILE_ALPHA_LO,
+        "alpha_hi": QUANTILE_ALPHA_HI,
+        "target_coverage": INTERVAL_TARGET_COVERAGE,
+        "cqr_offset_log": offset,
+        "coverage_test": float(np.mean(covered)),
+        "median_width_pct": float(np.median(width_pct)),
+        "n_fit": len(fit_df),
+        "n_calib": len(cal_df),
+    }
+    logger.info("Интервал (CQR): %s", json.dumps(interval_meta))
+    return model_lo, model_hi, interval_meta
+
+
 def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = True) -> dict:
     """Полный пайплайн обучения. Возвращает метрики (model vs baseline)."""
     if df is None:
@@ -155,9 +243,14 @@ def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = T
     y_model = np.expm1(model.predict(test_pool))
     y_base = baseline_predict(train_df, test_df)
 
+    model_lo, model_hi, interval_meta = train_quantile_interval(
+        raw_train, ppsm_maps, spatial_ref, test_df
+    )
+
     metrics = {
         "model": evaluate(y_true, y_model),
         "baseline": evaluate(y_true, y_base),
+        "interval": interval_meta,
         "n_train": len(train_df),
         "n_test": len(test_df),
         "split": "group_shuffle_by_building + dedup relistings",
@@ -168,6 +261,8 @@ def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = T
     if save:
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
         model.save_model(str(MODEL_PATH))
+        model_lo.save_model(str(MODEL_LO_PATH))
+        model_hi.save_model(str(MODEL_HI_PATH))
         from krisha.spatial import save_spatial_ref
 
         save_spatial_ref(spatial_ref)

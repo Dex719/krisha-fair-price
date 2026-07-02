@@ -74,10 +74,20 @@
       "mape": 0.1799808110722115,
       "r2": 0.5633705577336385
     },
+    "interval": {
+      "alpha_lo": 0.1,
+      "alpha_hi": 0.9,
+      "target_coverage": 0.8,
+      "cqr_offset_log": 0.05731285405886055,
+      "coverage_test": 0.7890173410404624,
+      "median_width_pct": 0.3377421166786715,
+      "n_fit": 4488,
+      "n_calib": 1112
+    },
     "n_train": 5600,
     "n_test": 1384,
     "split": "group_shuffle_by_building + dedup relistings",
-    "trained_at": "2026-07-02T11:37:17.292762+00:00"
+    "trained_at": "2026-07-02T12:17:33.008221+00:00"
   },
   "ppsm_maps": {
     "district": {
