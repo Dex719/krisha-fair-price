@@ -63,6 +63,22 @@ def _post_channel_digest(dry_run: bool, deals: list) -> None:
         print(f"Пост в канал: {'отправлен' if text else 'пропущен'}")
 
 
+def _maybe_monthly_report(dry_run: bool) -> None:
+    """1-го числа месяца после ночного рескрейпа — отчёт о рынке."""
+    from datetime import datetime, timezone
+
+    if datetime.now(timezone.utc).day != 1 and not dry_run:
+        return
+    from krisha.report import send_monthly_report
+
+    try:
+        sent = send_monthly_report(dry_run=dry_run)
+    except FileNotFoundError:
+        print("Месячный отчёт: базы нет — пропущен")
+        return
+    print(f"Месячный отчёт: отправлен в {sent} чатов")
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser()
@@ -73,6 +89,7 @@ def main() -> int:
     _send_deal_alerts(args.dry_run, deals)
     _send_track_alerts(args.dry_run)
     _post_channel_digest(args.dry_run, deals)
+    _maybe_monthly_report(args.dry_run)
     return 0
 
 
