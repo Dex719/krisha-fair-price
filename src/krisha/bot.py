@@ -150,10 +150,17 @@ def format_reply(result: dict[str, Any]) -> str:
     factors = result.get("top_factors") or []
     if factors:
         lines.append("")
-        lines.append("📊 <b>Что влияет на цену:</b>")
-        for f in factors[:5]:
+        lines.append("📊 <b>Почему такая цена</b> (топ-3 фактора):")
+        for f in factors[:3]:
             arrow = "▲" if f["impact"] > 0 else "▼"
-            lines.append(f"{arrow} {FEATURE_RU.get(f['feature'], f['feature'])}")
+            name = FEATURE_RU.get(f["feature"], f["feature"])
+            line = f"{arrow} {name}"
+            pct, tenge = f.get("impact_pct"), f.get("impact_tenge")
+            if pct is not None and abs(pct) >= 0.05:
+                line += f": {pct:+.1f}%"
+                if tenge and abs(tenge) >= 100_000:
+                    line += f" ({tenge / 1_000_000:+.1f} млн ₸)"
+            lines.append(line)
 
     # Этап 5: бейджи из LLM-анализа описания
     flags = result.get("text_flags") or []
