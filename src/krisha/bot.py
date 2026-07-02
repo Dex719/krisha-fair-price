@@ -85,7 +85,8 @@ HELP_TEXT = (
     "Пришли мне ссылку на объявление о продаже квартиры в Алматы "
     "(вида <code>https://krisha.kz/a/show/…</code>) — я оценю справедливую цену "
     "ML-моделью, обученной на тысячах реальных объявлений, и скажу, "
-    "выгодно это или переплата.\n\n"
+    "выгодно это или переплата.\n"
+    "Можно и без ссылки: вставь текст объявления — оценю по описанию.\n\n"
     "🔔 /alerts — ежедневные алерты о новых выгодных объявлениях\n"
     "👀 /track <i>ссылка</i> — следить за лотом: пришлю алерт, если цена "
     "изменится или объявление снимут\n"
@@ -222,9 +223,7 @@ def handle_update(update: dict[str, Any]) -> None:
 
     url = extract_url(text)
     if not url:
-        tg_call("sendMessage", chat_id=chat_id, parse_mode="HTML",
-                text="Не вижу ссылки на объявление 🤔\nПришли ссылку вида "
-                     "<code>https://krisha.kz/a/show/123456789</code>")
+        _handle_free_text(chat_id, text)
         return
 
     tg_call("sendChatAction", chat_id=chat_id, action="typing")
@@ -248,6 +247,52 @@ def handle_update(update: dict[str, Any]) -> None:
     if not photos or not (sent or {}).get("ok"):
         tg_call("sendMessage", chat_id=chat_id, text=reply,
                 parse_mode="HTML", disable_web_page_preview=True)
+
+
+NO_URL_HINT = ("Не вижу ссылки на объявление 🤔\nПришли ссылку вида "
+               "<code>https://krisha.kz/a/show/123456789</code> — или просто "
+               "вставь текст объявления, попробую оценить по описанию.")
+
+_PARSED_RU = {"rooms": "комнат", "area": "площадь", "floor": "этаж",
+              "total_floors": "этажность", "year_built": "год постройки",
+              "ceiling": "потолки", "district": "район",
+              "microdistrict": "микрорайон", "building_type": "тип дома",
+              "complex_name": "ЖК", "price": "цена", "address_title": "адрес"}
+
+
+def _handle_free_text(chat_id: int, text: str) -> None:
+    """Не ссылка: пробуем распознать вставленный текст объявления (Gemini)."""
+    from krisha.text_parse import MIN_TEXT_LEN, predict_from_text
+
+    if len(text.strip()) < MIN_TEXT_LEN:
+        tg_call("sendMessage", chat_id=chat_id, parse_mode="HTML", text=NO_URL_HINT)
+        return
+
+    tg_call("sendChatAction", chat_id=chat_id, action="typing")
+    try:
+        result = predict_from_text(text)
+    except FileNotFoundError:
+        tg_call("sendMessage", chat_id=chat_id, text="Модель ещё не загружена, попробуй позже 🙏")
+        return
+    except Exception:  # noqa: BLE001 — свободный текст не должен ронять бота
+        logger.exception("text_parse failed")
+        result = None
+
+    if result is None:
+        tg_call("sendMessage", chat_id=chat_id, parse_mode="HTML", text=NO_URL_HINT)
+        return
+    if result.get("error") == "no_key_fields":
+        tg_call("sendMessage", chat_id=chat_id, parse_mode="HTML",
+                text="Похоже на объявление, но не вижу ключевых параметров 🤔\n"
+                     "Добавь в текст хотя бы <b>площадь</b> и <b>число комнат</b>.")
+        return
+
+    parsed = result.get("parsed_fields") or {}
+    known = ", ".join(_PARSED_RU[k] for k in _PARSED_RU if k in parsed)
+    header = ("📝 <b>Оценка по тексту</b> — примерная: без фото, точного адреса "
+              f"и истории лота.\nРаспознал: {known}.\n\n")
+    tg_call("sendMessage", chat_id=chat_id, text=header + format_reply(result),
+            parse_mode="HTML", disable_web_page_preview=True)
 
 
 ALERTS_HELP = (
