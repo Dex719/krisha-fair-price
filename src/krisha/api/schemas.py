@@ -15,6 +15,12 @@ class Factor(BaseModel):
     hint: str | None = None  # подсказка со статистикой рынка (тултип на сайте)
 
 
+class ScamRisk(BaseModel):
+    level: str  # medium / high
+    score: int
+    reasons: list[str] = []
+
+
 class Analog(BaseModel):
     id: int
     url: str
@@ -73,6 +79,7 @@ class PredictResponse(BaseModel):
     photos: list[str] = []                  # URL фото с krisha-photos.kcdn.online
     description: str | None = None
     analogs: list[Analog] = []              # похожие активные объявления (kNN)
+    scam_risk: ScamRisk | None = None       # бейдж «подозрительно дёшево»
 
 
 class FlagsResponse(BaseModel):
