@@ -1,5 +1,6 @@
 """Тесты алертов: разбор фильтров, матчинг, формат сообщения, тренд."""
 
+from krisha import db
 from krisha.alerts import format_alert, match_filters
 from krisha.stats import compute_stats
 from krisha.subscriptions import describe_filters, parse_filters
@@ -38,8 +39,17 @@ def test_format_alert_and_describe():
     assert "45 млн" in describe_filters(parse_filters("2к 45"))
 
 
-def test_stats_trend_key():
-    stats = compute_stats()
+def test_stats_trend_key(tmp_path):
+    # Строим временную базу — в CI и на проде data/krisha.db в git больше нет.
+    path = tmp_path / "t.db"
+    db.init_db(path)
+    for i in range(10):
+        listing = {c: None for c in db.LISTING_COLUMNS}
+        listing.update(
+            {"id": i, "url": f"u{i}", "price": 50_000_000 + i * 1_000_000, "rooms": 2, "area": 60.0}
+        )
+        db.upsert_listing(listing, path)
+    stats = compute_stats(path)
     assert "trend" in stats
     for point in stats["trend"]:
         assert set(point) == {"week", "median_ppsm", "n"}
