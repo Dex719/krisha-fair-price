@@ -147,6 +147,13 @@ def format_reply(result: dict[str, Any]) -> str:
             line += f" ({diff:+.1f}%)"
         lines.append(line)
 
+    scam = result.get("scam_risk")
+    if scam:
+        mark = "🚨" if scam.get("level") == "high" else "⚠️"
+        head = "Похоже на мошенничество" if scam.get("level") == "high" else "Будьте осторожны"
+        reasons = ", ".join(scam.get("reasons") or [])
+        lines.append(f"{mark} <b>{head}:</b> {html.escape(reasons)}")
+
     factors = result.get("top_factors") or []
     if factors:
         lines.append("")
