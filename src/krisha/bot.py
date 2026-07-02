@@ -155,6 +155,13 @@ def format_reply(result: dict[str, Any]) -> str:
         reasons = ", ".join(scam.get("reasons") or [])
         lines.append(f"{mark} <b>{head}:</b> {html.escape(reasons)}")
 
+    reno = result.get("renovation")
+    if reno:
+        line = f"🛠 Ремонт по фото: <b>{html.escape(reno.get('label') or '')}</b>"
+        if reno.get("comment"):
+            line += f" — {html.escape(reno['comment'])}"
+        lines.append(line)
+
     factors = result.get("top_factors") or []
     if factors:
         lines.append("")
