@@ -133,3 +133,25 @@ def test_format_reply_factor_magnitudes():
     assert "Расстояние до центра: -7.7% (-3.9 млн ₸)" in text
     assert "Комнаты: +2.0% (+0.9 млн ₸)" in text
     assert "Этаж" not in text  # только топ-3
+
+
+def test_start_adds_miniapp_button_in_private(monkeypatch):
+    calls = []
+    monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://kfp.example.com")
+    bot.handle_update({"message": {"chat": {"id": 42, "type": "private"}, "text": "/start"}})
+    kb = calls[0][1]["reply_markup"]["inline_keyboard"]
+    assert kb[0][0]["web_app"] == {"url": "https://kfp.example.com"}
+
+    # в группе web_app-кнопку не шлём (Telegram их там не разрешает)
+    calls.clear()
+    bot.handle_update({"message": {"chat": {"id": -1, "type": "group"}, "text": "/help"}})
+    assert "reply_markup" not in calls[0][1]
+
+    # без публичного URL — обычный help
+    calls.clear()
+    monkeypatch.delenv("PUBLIC_BASE_URL")
+    monkeypatch.delenv("RAILWAY_PUBLIC_DOMAIN", raising=False)
+    monkeypatch.delenv("SPACE_HOST", raising=False)
+    bot.handle_update({"message": {"chat": {"id": 42, "type": "private"}, "text": "/start"}})
+    assert "reply_markup" not in calls[0][1]
