@@ -21,6 +21,30 @@ SPATIAL_REF_PATH = MODELS_DIR / "spatial_ref.json"
 # --- Парсинг ------------------------------------------------------------
 BASE_URL = "https://krisha.kz"
 SEARCH_URL = f"{BASE_URL}/prodazha/kvartiry/almaty/"
+
+# --- Шардирование выдачи (этап 4: полное покрытие рескрейпом) -------------
+# Общая выдача по Алматы показывает ~44к объявлений, но пагинация обрезается
+# на 1000 страницах (~20к), а обход по 400 страниц покрывал лишь «популярные»
+# ~7-8к. Дробим выдачу на шарды «район × комнаты» — каждый шард целиком
+# влезает в свою пагинацию, суммарно покрываем почти весь город, и delisted
+# становится честным.
+ALMATY_DISTRICT_SLUGS = {
+    "Алатауский": "almaty-alatauskij",
+    "Алмалинский": "almaty-almalinskij",
+    "Ауэзовский": "almaty-aujezovskij",
+    "Бостандыкский": "almaty-bostandykskij",
+    "Жетысуский": "almaty-zhetysuskij",
+    "Медеуский": "almaty-medeuskij",
+    "Наурызбайский": "almaty-nauryzbajskiy",  # именно -iy: слаг с -ij не существует
+    "Турксибский": "almaty-turksibskij",
+}
+# Значения фильтра das[live.rooms][]: 1/2/3 отдельно, «4+» = 4 и 5 (5 = «5 и более»)
+ROOM_SHARDS = {
+    "1к": ("1",),
+    "2к": ("2",),
+    "3к": ("3",),
+    "4к+": ("4", "5"),
+}
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
