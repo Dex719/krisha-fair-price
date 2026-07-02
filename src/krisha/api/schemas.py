@@ -15,6 +15,20 @@ class Factor(BaseModel):
     hint: str | None = None  # подсказка со статистикой рынка (тултип на сайте)
 
 
+class Analog(BaseModel):
+    id: int
+    url: str
+    title: str | None = None
+    price: float
+    area: float
+    rooms: int | None = None
+    floor: int | None = None
+    total_floors: int | None = None
+    year_built: int | None = None
+    district: str | None = None
+    ppsm: float | None = None  # цена за м²
+
+
 class DetailItem(BaseModel):
     label: str  # человекочитаемая подпись («Год постройки»)
     value: str
@@ -58,6 +72,7 @@ class PredictResponse(BaseModel):
     duplicate_of: int | None = None         # возможный дубль (тот же «отпечаток» квартиры)
     photos: list[str] = []                  # URL фото с krisha-photos.kcdn.online
     description: str | None = None
+    analogs: list[Analog] = []              # похожие активные объявления (kNN)
 
 
 class FlagsResponse(BaseModel):
