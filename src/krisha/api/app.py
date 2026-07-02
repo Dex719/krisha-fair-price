@@ -40,7 +40,7 @@ CSP = (
     "img-src 'self' data: https://*.kcdn.online https://*.basemaps.cartocdn.com; "
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "
     "font-src 'self' https://fonts.gstatic.com; "
-    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://telegram.org; "
     "connect-src 'self'; "
     "base-uri 'self'; "
     "frame-ancestors 'self' https://huggingface.co; "  # iframe на странице Space
