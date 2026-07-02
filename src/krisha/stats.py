@@ -34,6 +34,53 @@ DISTRICT_RU = {
 PRICE_BINS = [0, 20, 30, 40, 50, 60, 80, 100, 150, 250, 10_000]  # млн ₸
 
 
+def _weekly_trend(db_path: Path | str, max_weeks: int = 12, min_n: int = 100) -> list[dict]:
+    """Медиана ₸/м² по неделям: активные в ту неделю объявления с ценой,
+    актуальной на конец недели (реконструкция из price_history)."""
+    with sqlite3.connect(db_path) as conn:
+        listings = pd.read_sql(
+            "SELECT id, area, first_seen, last_seen FROM listings "
+            "WHERE area > 0 AND price > 0 AND first_seen IS NOT NULL",
+            conn,
+        )
+        ph = pd.read_sql(
+            "SELECT listing_id, price, observed_at FROM price_history WHERE price > 0",
+            conn,
+        )
+    if listings.empty or ph.empty:
+        return []
+
+    listings["first_seen"] = pd.to_datetime(listings["first_seen"], format="mixed")
+    listings["last_seen"] = pd.to_datetime(listings["last_seen"], format="mixed").fillna(
+        listings["first_seen"]
+    )
+    ph["observed_at"] = pd.to_datetime(ph["observed_at"], format="mixed")
+    ph = ph.sort_values("observed_at")
+
+    end = pd.Timestamp.utcnow().tz_localize(None)
+    week_end = (end - pd.offsets.Week(weekday=6)).normalize() + pd.Timedelta(days=1)
+    trend = []
+    for i in range(max_weeks - 1, -1, -1):
+        w_end = week_end - pd.Timedelta(weeks=i)
+        w_start = w_end - pd.Timedelta(weeks=1)
+        if i == 0:
+            w_end = end  # текущая (неполная) неделя — до «сейчас»
+        active = listings[(listings["first_seen"] < w_end) & (listings["last_seen"] >= w_start)]
+        if len(active) < min_n:
+            continue
+        # цена на момент w_end: последнее наблюдение не позже конца недели
+        seen = ph[ph["observed_at"] < w_end].groupby("listing_id")["price"].last()
+        grp = active.join(seen.rename("price"), on="id").dropna(subset=["price"])
+        if len(grp) < min_n:
+            continue
+        trend.append({
+            "week": w_start.strftime("%d.%m"),
+            "median_ppsm": int((grp["price"] / grp["area"]).median()),
+            "n": int(len(grp)),
+        })
+    return trend
+
+
 def compute_stats(db_path: Path | str = DB_PATH) -> dict:
     """Считает статистику по базе. Бросает FileNotFoundError, если БД нет."""
     db_path = Path(db_path)
@@ -76,6 +123,9 @@ def compute_stats(db_path: Path | str = DB_PATH) -> dict:
     ]
 
     cat = df["category"].fillna("unknown").value_counts().to_dict()
+
+    trend = _weekly_trend(db_path)
+
     return {
         "total_listings": int(len(df)),
         "median_price": int(df["price"].median()),
@@ -83,6 +133,7 @@ def compute_stats(db_path: Path | str = DB_PATH) -> dict:
         "by_district": by_district,
         "price_hist": price_hist,
         "by_rooms": by_rooms,
+        "trend": trend,
         "by_category": {
             # на krisha.kz вторичка идёт как "kvartiry", считаем всё не-новостройки
             "novostroiki": int(cat.get("novostroiki", 0)),

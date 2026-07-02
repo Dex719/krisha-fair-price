@@ -86,6 +86,7 @@ HELP_TEXT = (
     "(вида <code>https://krisha.kz/a/show/…</code>) — я оценю справедливую цену "
     "ML-моделью, обученной на тысячах реальных объявлений, и скажу, "
     "выгодно это или переплата.\n\n"
+    "🔔 /alerts — ежедневные алерты о новых выгодных объявлениях\n"
     "Веб-версия: https://krisha-fair-price-production.up.railway.app"
 )
 
@@ -184,6 +185,10 @@ def handle_update(update: dict[str, Any]) -> None:
                 parse_mode="HTML", disable_web_page_preview=True)
         return
 
+    if text.startswith("/alerts"):
+        _handle_alerts_command(chat_id, text)
+        return
+
     url = extract_url(text)
     if not url:
         tg_call("sendMessage", chat_id=chat_id, parse_mode="HTML",
@@ -214,12 +219,53 @@ def handle_update(update: dict[str, Any]) -> None:
                 parse_mode="HTML", disable_web_page_preview=True)
 
 
+ALERTS_HELP = (
+    "🔔 <b>Алерты на выгодные объявления</b>\n\n"
+    "Раз в день после обновления базы я присылаю новые объявления, "
+    "которые дешевле оценки модели.\n\n"
+    "<code>/alerts_on</code> — подписаться на все выгодные\n"
+    "<code>/alerts_on 2к до 45млн бостандыкский</code> — с фильтрами "
+    "(комнаты, бюджет, район — в любом порядке, всё опционально)\n"
+    "<code>/alerts_off</code> — отписаться"
+)
+
+
+def _handle_alerts_command(chat_id: int, text: str) -> None:
+    """Команды /alerts, /alerts_on <фильтры>, /alerts_off."""
+    from krisha.subscriptions import (
+        describe_filters,
+        load_subscriptions,
+        parse_filters,
+        remove_subscription,
+        set_subscription,
+    )
+
+    cmd, _, args = text.partition(" ")
+    cmd = cmd.split("@")[0].lower()
+    if cmd == "/alerts_on":
+        flt = parse_filters(args)
+        set_subscription(chat_id, flt)
+        tg_call("sendMessage", chat_id=chat_id, parse_mode="HTML",
+                text=f"✅ Подписал: <b>{describe_filters(flt)}</b>.\n"
+                     "Пришлю новые выгодные лоты после ближайшего обновления базы "
+                     "(раз в день утром). Отписаться: /alerts_off")
+    elif cmd == "/alerts_off":
+        removed = remove_subscription(chat_id)
+        tg_call("sendMessage", chat_id=chat_id,
+                text="Отписал 👌" if removed else "Ты и не был подписан 🙂")
+    else:
+        sub = load_subscriptions().get(str(chat_id))
+        status = f"\n\nТекущая подписка: <b>{describe_filters(sub)}</b>" if sub else ""
+        tg_call("sendMessage", chat_id=chat_id, text=ALERTS_HELP + status, parse_mode="HTML")
+
+
 def public_base_url() -> str | None:
     """Публичный URL приложения: PUBLIC_BASE_URL или домен Railway."""
     explicit = os.environ.get("PUBLIC_BASE_URL")
     if explicit:
         return explicit.rstrip("/")
-    domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+    # Railway и Hugging Face Spaces выставляют свои домены автоматически
+    domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN") or os.environ.get("SPACE_HOST")
     return f"https://{domain}" if domain else None
 
 
