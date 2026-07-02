@@ -34,15 +34,24 @@ DISTRICT_RU = {
 PRICE_BINS = [0, 20, 30, 40, 50, 60, 80, 100, 150, 250, 10_000]  # млн ₸
 
 
-def _weekly_trend(db_path: Path | str, max_weeks: int = 12, min_n: int = 100) -> list[dict]:
+def _weekly_trend(
+    db_path: Path | str,
+    max_weeks: int = 12,
+    min_n: int = 100,
+    district: str | None = None,
+) -> list[dict]:
     """Медиана ₸/м² по неделям: активные в ту неделю объявления с ценой,
-    актуальной на конец недели (реконструкция из price_history)."""
+    актуальной на конец недели (реконструкция из price_history).
+
+    district — слаг района: считать тренд только по нему (для прогноза)."""
+    query = ("SELECT id, area, first_seen, last_seen FROM listings "
+             "WHERE area > 0 AND price > 0 AND first_seen IS NOT NULL")
+    params: tuple = ()
+    if district:
+        query += " AND district = ?"
+        params = (district,)
     with sqlite3.connect(db_path) as conn:
-        listings = pd.read_sql(
-            "SELECT id, area, first_seen, last_seen FROM listings "
-            "WHERE area > 0 AND price > 0 AND first_seen IS NOT NULL",
-            conn,
-        )
+        listings = pd.read_sql(query, conn, params=params)
         ph = pd.read_sql(
             "SELECT listing_id, price, observed_at FROM price_history WHERE price > 0",
             conn,
