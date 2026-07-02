@@ -13,6 +13,7 @@ MODEL_PATH = MODELS_DIR / "model.cbm"
 MODEL_META_PATH = MODELS_DIR / "model_meta.json"
 COMPLEXES_SNAPSHOT_PATH = MODELS_DIR / "complexes.json"
 OSM_POIS_SNAPSHOT_PATH = MODELS_DIR / "osm_pois.json"
+OSM_ZONES_SNAPSHOT_PATH = MODELS_DIR / "osm_zones.json"
 
 # --- Парсинг ------------------------------------------------------------
 BASE_URL = "https://krisha.kz"

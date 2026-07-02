@@ -183,7 +183,10 @@ def build_features(
 ) -> pd.DataFrame:
     """Добавляет производные фичи. Работает и для одного объявления (predict)."""
     from krisha.geo import add_geo_features
+    from krisha.zones import resolve_zones
 
+    # Чиним район/микрорайон по полигонам OSM (пропуски krisha, кривые зоны)
+    df = resolve_zones(df)
     df = add_raw_param_features(df)
     df = add_complex_features(df, lookup=complex_lookup)
     df = add_geo_features(df)

@@ -73,6 +73,10 @@ def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = T
         df = load_dataset()
     df = clean(df)
     logger.info("После очистки: %s строк", len(df))
+    # Зоны чиним до сплита: ppsm-статистика должна считаться по верным районам
+    from krisha.zones import resolve_zones
+
+    df = resolve_zones(df)
 
     raw_train, raw_test = train_test_split(df, test_size=0.2, random_state=RANDOM_STATE)
     # ₸/м²-статистику считаем только на train, чтобы не было утечки в метрики
