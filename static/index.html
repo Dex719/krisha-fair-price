@@ -345,6 +345,7 @@
             <b>${data.scam_risk.level === "high" ? "🚨 Похоже на мошенничество" : "⚠️ Будьте осторожны"}</b>
             <span>${data.scam_risk.reasons.map(esc).join(" · ")}. Не вносите задаток до просмотра квартиры и проверки документов.</span>
           </div>` : ""}
+          ${data.renovation ? `<p class="label" style="margin:-12px 0 18px">🛠 Ремонт по фото: <b>${esc(data.renovation.label)}</b>${data.renovation.comment ? ` — ${esc(data.renovation.comment)}` : ""}</p>` : ""}
 
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px">
             <div class="card" style="background:var(--surface-container-high);padding:18px">
