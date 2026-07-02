@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 from catboost import CatBoostRegressor, Pool
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, r2_score
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GroupShuffleSplit
 
 from krisha.config import (
     DB_PATH,
@@ -41,6 +41,43 @@ def load_dataset(db_path=DB_PATH) -> pd.DataFrame:
         df = pd.read_sql("SELECT * FROM listings", conn)
     logger.info("Загружено %s объявлений", len(df))
     return df
+
+
+def dedup_relistings(df: pd.DataFrame) -> pd.DataFrame:
+    """Убирает перезалитые объявления: одна квартира под разными id.
+
+    Отпечаток — район + комнаты + площадь + этаж/этажность + координаты
+    (как krisha.db.listing_fingerprint). Оставляем самую свежую запись.
+    """
+    from krisha.db import listing_fingerprint
+
+    def _fp(row: pd.Series) -> str | None:
+        # NaN → None: listing_fingerprint ждёт «сырые» значения, а не pandas-NaN
+        d = {k: (None if pd.isna(v) else v) for k, v in row.items()}
+        return listing_fingerprint(d)
+
+    fp = df.apply(_fp, axis=1)
+    fp = fp.fillna(pd.Series((f"solo:{i}" for i in df.index), index=df.index))
+    order_col = next(
+        (c for c in ("last_seen", "scraped_at", "id") if c in df), None
+    )
+    before = len(df)
+    if order_col is not None:
+        df = df.sort_values(order_col, na_position="first")
+    df = df.loc[~fp.reindex(df.index).duplicated(keep="last")]
+    logger.info("Дедуп перезалитых: %d → %d строк", before, len(df))
+    return df.reset_index(drop=True)
+
+
+def building_groups(df: pd.DataFrame) -> pd.Series:
+    """Группа «здание» для сплита: координаты с точностью ~10 м, иначе id."""
+    def key(row) -> str:
+        lat, lon = row.get("lat"), row.get("lon")
+        if pd.notna(lat) and pd.notna(lon):
+            return f"{float(lat):.4f}|{float(lon):.4f}"
+        return f"id:{row.get('id', row.name)}"
+
+    return df.apply(key, axis=1)
 
 
 def baseline_predict(train: pd.DataFrame, test: pd.DataFrame) -> np.ndarray:
@@ -77,12 +114,29 @@ def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = T
     from krisha.zones import resolve_zones
 
     df = resolve_zones(df)
+    # Честная схема валидации:
+    # 1) дедуп перезалитых объявлений (одна квартира под разными id);
+    # 2) сплит по «зданиям» (координаты), а не по строкам — иначе почти
+    #    одинаковые квартиры из одного дома попадают и в train, и в test,
+    #    и метрики выглядят лучше, чем работает модель на новых домах.
+    df = dedup_relistings(df)
+    groups = building_groups(df)
+    splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=RANDOM_STATE)
+    train_idx, test_idx = next(splitter.split(df, groups=groups))
+    raw_train = df.iloc[train_idx].reset_index(drop=True)
+    raw_test = df.iloc[test_idx].reset_index(drop=True)
 
-    raw_train, raw_test = train_test_split(df, test_size=0.2, random_state=RANDOM_STATE)
     # ₸/м²-статистику считаем только на train, чтобы не было утечки в метрики
     ppsm_maps = compute_ppsm_maps(raw_train)
-    train_df = build_features(raw_train, ppsm_maps=ppsm_maps)
-    test_df = build_features(raw_test, ppsm_maps=ppsm_maps)
+    from krisha.spatial import build_spatial_ref, self_indices_for
+
+    spatial_ref = build_spatial_ref(raw_train)
+    # На train сосед-«сам» исключается из KNN — иначе утечка таргета
+    train_df = build_features(
+        raw_train, ppsm_maps=ppsm_maps, spatial_ref=spatial_ref,
+        knn_self_indices=self_indices_for(raw_train),
+    )
+    test_df = build_features(raw_test, ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)
     train_pool = Pool(train_df[ALL_FEATURES], train_df[TARGET], cat_features=CAT_FEATURES)
     test_pool = Pool(test_df[ALL_FEATURES], test_df[TARGET], cat_features=CAT_FEATURES)
 
@@ -106,6 +160,7 @@ def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = T
         "baseline": evaluate(y_true, y_base),
         "n_train": len(train_df),
         "n_test": len(test_df),
+        "split": "group_shuffle_by_building + dedup relistings",
         "trained_at": datetime.now(timezone.utc).isoformat(),
     }
     logger.info("Метрики: %s", json.dumps(metrics, indent=2))
@@ -113,6 +168,9 @@ def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = T
     if save:
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
         model.save_model(str(MODEL_PATH))
+        from krisha.spatial import save_spatial_ref
+
+        save_spatial_ref(spatial_ref)
         MODEL_META_PATH.write_text(json.dumps(
             {
                 "features": ALL_FEATURES,

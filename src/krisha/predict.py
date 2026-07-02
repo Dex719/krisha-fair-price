@@ -165,7 +165,17 @@ def predict_from_listing(
 ) -> dict[str, Any]:
     model, meta = load_model()
     features = meta["features"]
-    df = listing_to_frame(listing, ppsm_maps=meta.get("ppsm_maps"))
+
+    # LLM-флаги достаём ДО фичей: они теперь и фичи модели, и бейджи карточки
+    from krisha.llm_flags import flags_to_badges, get_flags_raw
+    from krisha.spatial import load_spatial_ref
+
+    raw_flags = get_flags_raw(listing, live=flags_live)
+    listing = {**listing, "llm_flags": raw_flags if raw_flags is not None else None}
+
+    df = listing_to_frame(
+        listing, ppsm_maps=meta.get("ppsm_maps"), spatial_ref=load_spatial_ref()
+    )
     # Район/микрорайон, восстановленные по OSM-зонам, показываем и в карточке
     from krisha.features import MISSING_CAT
 
@@ -205,14 +215,14 @@ def predict_from_listing(
     # ставим flags_pending=True и фронт догружает флаги отдельным запросом.
     import os
 
-    from krisha.llm_flags import GEMINI_API_KEY_ENV, build_text_flags, get_cached_flags
+    from krisha.llm_flags import GEMINI_API_KEY_ENV
 
-    result["text_flags"] = build_text_flags(listing, live=flags_live)
+    result["text_flags"] = flags_to_badges(raw_flags)
     text = listing.get("description") or ""
     result["flags_pending"] = bool(
         not flags_live
         and len(text.strip()) >= 20
-        and get_cached_flags(listing.get("id"), text) is None
+        and raw_flags is None
         and os.environ.get(GEMINI_API_KEY_ENV)
     )
     return result
