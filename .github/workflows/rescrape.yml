@@ -23,6 +23,7 @@ jobs:
   rescrape:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+
     steps:
       - uses: actions/checkout@v4
 
@@ -41,8 +42,8 @@ jobs:
           KRISHA_DELAY_MAX: "5.0"
         run: |
           python scripts/rescrape.py \
-            --pages "${{ github.event.inputs.pages || '400' }}" \
-            --max-new "${{ github.event.inputs.max_new || '300' }}" \
+            --pages "$ github.event.inputs.pages || '400' " \
+            --max-new "$ github.event.inputs.max_new || '300' " \
             --fail-empty \
             --summary-json /tmp/rescrape_stats.json
 
@@ -62,11 +63,18 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           if git diff --quiet -- data/krisha.db; then
             echo "База не изменилась — коммитить нечего"
             exit 0
           fi
+
           git add data/krisha.db
           git commit -m "data: daily rescrape $(date -u +%F)"
           git pull --rebase origin main
           git push origin main
+
+      - name: Alerts
+        env:
+          TELEGRAM_BOT_TOKEN: $ secrets.TELEGRAM_BOT_TOKEN 
+        run: python scripts/send_alerts.py
