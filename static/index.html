@@ -117,6 +117,22 @@
     };
     const fmt = (n) => new Intl.NumberFormat("ru-RU").format(Math.round(n)) + " ₸";
 
+    /* ---------- защита от XSS ----------
+       Все поля объявления (title, address, характеристики, URL фото) приходят
+       с пользовательской страницы krisha.kz — экранируем всё, что уходит в
+       innerHTML. esc() — для текста, safePhoto() — для URL картинок. */
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    /* Разрешаем только https с CDN-хоста krisha (…kcdn.online). Иначе — пусто,
+       чтобы нельзя было вырваться из атрибута src и подсунуть onerror=. */
+    const safePhoto = (url) => {
+      try {
+        const u = new URL(String(url), location.origin);
+        if (u.protocol === "https:" && /(^|\.)kcdn\.online$/.test(u.hostname)) return u.href;
+      } catch (_) { /* битый URL */ }
+      return "";
+    };
+
     /* бейдж сделки: «ниже рынка на 8%» / «выше рынка на 12%» / «в рынке» */
     /* этап 4: блок «Рынок» — история цены, дни на рынке, ликвидность */
     function marketBlock(data) {
@@ -142,8 +158,8 @@
           <div class="details-grid">
             ${rows.map((d) => `
               <div class="detail-item">
-                <p class="d-label">${d.label}</p>
-                <p class="d-value">${d.value}</p>
+                <p class="d-label">${esc(d.label)}</p>
+                <p class="d-value">${esc(d.value)}</p>
               </div>`).join("")}
           </div>`;
     }
@@ -177,7 +193,7 @@
           </p>
           ${photos.length ? `
           <div class="gallery" id="gallery">
-            <img class="main" id="g-main" src="${photos[0]}" alt="Фото квартиры" loading="lazy" />
+            <img class="main" id="g-main" src="${esc(safePhoto(photos[0]))}" alt="Фото квартиры" loading="lazy" />
             ${photos.length > 1 ? `
             <button class="gallery-nav prev" type="button" data-dir="-1" aria-label="Назад">${kfpIcon("chevron-left", 22)}</button>
             <button class="gallery-nav next" type="button" data-dir="1" aria-label="Вперёд">${kfpIcon("chevron-right", 22)}</button>
@@ -185,7 +201,7 @@
           </div>
           ${photos.length > 1 ? `
           <div class="thumbs" id="g-thumbs">
-            ${photos.map((src, i) => `<img src="${src}" data-i="${i}" class="${i === 0 ? "active" : ""}" alt="" loading="lazy" />`).join("")}
+            ${photos.map((src, i) => `<img src="${esc(safePhoto(src))}" data-i="${i}" class="${i === 0 ? "active" : ""}" alt="" loading="lazy" />`).join("")}
           </div>` : ""}` : ""}
           ${details.length ? `
           <p class="title" style="display:flex;align-items:center;gap:10px;margin:${photos.length ? "22px" : "0"} 0 12px;font-size:.95rem">
@@ -194,8 +210,8 @@
           <div class="details-grid">
             ${details.map((d) => `
               <div class="detail-item">
-                <p class="d-label">${d.label}</p>
-                <p class="d-value">${d.value}</p>
+                <p class="d-label">${esc(d.label)}</p>
+                <p class="d-value">${esc(d.value)}</p>
               </div>`).join("")}
           </div>` : ""}
           ${(data.complex_details || []).length ? `
@@ -205,8 +221,8 @@
           <div class="details-grid">
             ${data.complex_details.map((d) => `
               <div class="detail-item">
-                <p class="d-label">${d.label}</p>
-                <p class="d-value">${d.value}</p>
+                <p class="d-label">${esc(d.label)}</p>
+                <p class="d-value">${esc(d.value)}</p>
               </div>`).join("")}
           </div>` : ""}
           ${(data.location_details || []).length ? `
@@ -216,8 +232,8 @@
           <div class="details-grid">
             ${data.location_details.map((d) => `
               <div class="detail-item">
-                <p class="d-label">${d.label}</p>
-                <p class="d-value">${d.value}</p>
+                <p class="d-label">${esc(d.label)}</p>
+                <p class="d-value">${esc(d.value)}</p>
               </div>`).join("")}
           </div>` : ""}
           ${marketBlock(data)}
@@ -237,7 +253,7 @@
               thumbs = document.getElementById("g-thumbs");
         const show = (i) => {
           cur = (i + photos.length) % photos.length;
-          main.src = photos[cur];
+          main.src = safePhoto(photos[cur]);
           count.textContent = `${cur + 1} / ${photos.length}`;
           thumbs.querySelectorAll("img").forEach((t) => t.classList.toggle("active", +t.dataset.i === cur));
           thumbs.querySelectorAll("img")[cur].scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
@@ -274,7 +290,7 @@
       const result = document.getElementById("result");
       result.innerHTML = `
         <div class="card card-elevated pop-in" style="padding:28px">
-          <p class="label" style="margin:0 0 12px">${data.title || "Объявление"}${data.address ? " · " + data.address : ""}</p>
+          <p class="label" style="margin:0 0 12px">${esc(data.title || "Объявление")}${data.address ? " · " + esc(data.address) : ""}</p>
           <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:22px">
             <span class="chip ${v.cls}">${kfpIcon(v.icon, 20)}${v.label}</span>
             ${data.diff_pct != null ? `<span class="body-lg" style="margin:0">${diffBadge(data.diff_pct)}</span>` : ""}
@@ -307,7 +323,7 @@
           <p class="title" style="margin:26px 0 10px">Что влияет на цену</p>
           ${data.top_factors.map((f, i) => `
             <div class="factor ${f.hint ? "has-hint" : ""}" ${f.hint ? 'tabindex="0"' : ""}>
-              <span class="factor-name">${FEATURE_NAMES[f.feature] || f.feature}${f.hint ? `<span class="hint-i">${kfpIcon("help", 15)}</span><span class="hint-pop">${f.hint}</span>` : ""}</span>
+              <span class="factor-name">${esc(FEATURE_NAMES[f.feature] || f.feature)}${f.hint ? `<span class="hint-i">${kfpIcon("help", 15)}</span><span class="hint-pop">${esc(f.hint)}</span>` : ""}</span>
               <span class="impact ${f.impact > 0 ? "up" : "down"}">${f.impact > 0 ? "▲ повышает" : "▼ понижает"}</span>
               <div class="bar-track"><div class="bar ${f.impact > 0 ? "up" : "down"}" data-w="${Math.max(8, Math.abs(f.impact) / maxImpact * 100)}" style="transition-delay:${.15 + i * .08}s"></div></div>
             </div>`).join("")}

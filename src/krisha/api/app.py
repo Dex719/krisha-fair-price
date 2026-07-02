@@ -3,6 +3,7 @@
 Запуск: `uvicorn krisha.api.app:app --reload`
 """
 
+import hmac
 import logging
 import time
 from collections import defaultdict, deque
@@ -30,6 +31,31 @@ app = FastAPI(title="Krisha Fair Price", version="0.1.0")
 
 STATIC_DIR = ROOT_DIR / "static"
 
+# Content-Security-Policy — defense-in-depth поверх экранирования на фронте.
+# Ограничивает, куда страница может ходить (img/connect/font) и откуда грузить
+# скрипты. 'unsafe-inline' пока нужен для инлайновых <script>/style на страницах;
+# при желании их можно вынести в отдельные файлы и убрать 'unsafe-inline'.
+CSP = (
+    "default-src 'self'; "
+    "img-src 'self' data: https://*.kcdn.online; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "connect-src 'self'; "
+    "base-uri 'self'; "
+    "frame-ancestors 'none'; "
+    "object-src 'none'"
+)
+
+
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("Content-Security-Policy", CSP)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    return response
+
 
 @app.get("/api/health", response_model=HealthResponse)
 def health() -> HealthResponse:
@@ -42,13 +68,28 @@ RATE_WINDOW_S = 60.0
 _rate: dict[str, deque] = defaultdict(deque)
 
 
-def _check_rate_limit(request: Request) -> None:
+def _client_ip(request: Request) -> str:
+    # ВНИМАНИЕ: X-Forwarded-For легко подделать, поэтому это НЕ строгая защита —
+    # лимит можно обойти сменой заголовка. За доверенным прокси (Railway) сюда
+    # стоит подставлять реальный client IP. Пока — best-effort анти-спам.
     ip = (request.client.host if request.client else None) or "?"
     fwd = request.headers.get("x-forwarded-for")
     if fwd:
         ip = fwd.split(",")[0].strip()
-    q = _rate[ip]
+    return ip
+
+
+MAX_RATE_KEYS = 10_000  # потолок против разрастания памяти (в т.ч. от подделки XFF)
+
+
+def _check_rate_limit(request: Request) -> None:
+    ip = _client_ip(request)
     now = time.monotonic()
+    # Вытесняем протухшие ключи, чтобы словарь не рос бесконечно.
+    if len(_rate) > MAX_RATE_KEYS:
+        for key in [k for k, dq in _rate.items() if not dq or now - dq[-1] > RATE_WINDOW_S]:
+            del _rate[key]
+    q = _rate[ip]
     while q and now - q[0] > RATE_WINDOW_S:
         q.popleft()
     if len(q) >= RATE_LIMIT:
@@ -63,11 +104,15 @@ def predict(req: PredictRequest, request: Request) -> PredictResponse:
         # flags_live=False: отвечаем сразу, LLM-флаги фронт догружает отдельно
         result = predict_from_url(req.url, flags_live=False)
     except ValueError as exc:
+        # 422 — пользовательская валидация URL, текст безопасен и полезен
         raise HTTPException(status_code=422, detail=str(exc))
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
-    except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+    except FileNotFoundError:
+        # детали (пути и т.п.) — в лог, наружу обобщённо
+        logger.exception("predict: модель/файл недоступны")
+        raise HTTPException(status_code=503, detail="Сервис временно недоступен")
+    except RuntimeError:
+        logger.exception("predict: ошибка обработки объявления")
+        raise HTTPException(status_code=502, detail="Не удалось обработать объявление")
     return PredictResponse(**result)
 
 
@@ -99,8 +144,9 @@ def stats() -> dict:
         return _stats_cache["data"]
     try:
         data = get_stats()
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+    except FileNotFoundError:
+        logger.exception("stats: данные недоступны")
+        raise HTTPException(status_code=503, detail="Статистика временно недоступна")
     _stats_cache.update(data=data, ts=now)
     return data
 
@@ -114,7 +160,9 @@ def telegram_webhook(
     token = bot.bot_token()
     if not token:
         raise HTTPException(status_code=404)
-    if x_telegram_bot_api_secret_token != bot.webhook_secret(token):
+    if not x_telegram_bot_api_secret_token or not hmac.compare_digest(
+        x_telegram_bot_api_secret_token, bot.webhook_secret(token)
+    ):
         raise HTTPException(status_code=403)
     try:
         bot.handle_update(update)
