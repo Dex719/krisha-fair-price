@@ -12,7 +12,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from krisha import bot
+from krisha import bot, db_release
 from krisha.api.schemas import (
     FlagsResponse,
     HealthResponse,
@@ -173,6 +173,8 @@ def telegram_webhook(
 
 @app.on_event("startup")
 def _startup() -> None:
+    # База не хранится в git — при старте скачиваем её из GitHub Release.
+    db_release.ensure_db()
     bot.setup_webhook()
 
 
