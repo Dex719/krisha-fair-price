@@ -153,6 +153,34 @@ def snapshot_stats(db_path: Path | str = DB_PATH) -> dict:
     return stats
 
 
+def heatmap_points(
+    db_path: Path | str = DB_PATH, cell_deg: float = 0.004, min_n: int = 2
+) -> list[dict]:
+    """Сетка для тепловой карты ₸/м²: активные лоты с координатами,
+    сгруппированные в ячейки ~400 м. Возвращает [{lat, lon, ppsm, n}]."""
+    if not Path(db_path).exists():
+        raise FileNotFoundError(db_path)
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT ROUND(lat / :cell) * :cell AS clat,
+                   ROUND(lon / :cell) * :cell AS clon,
+                   AVG(price / area) AS ppsm,
+                   COUNT(*) AS n
+            FROM listings
+            WHERE is_active = 1 AND price > 0 AND area > 0
+              AND lat IS NOT NULL AND lon IS NOT NULL
+            GROUP BY clat, clon
+            HAVING COUNT(*) >= :min_n
+            """,
+            {"cell": cell_deg, "min_n": min_n},
+        ).fetchall()
+    return [
+        {"lat": round(clat, 5), "lon": round(clon, 5), "ppsm": round(ppsm), "n": n}
+        for clat, clon, ppsm, n in rows
+    ]
+
+
 def get_stats() -> dict:
     """Живая статистика из БД, иначе снапшот. Бросает FileNotFoundError, если нет ничего."""
     try:

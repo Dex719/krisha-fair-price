@@ -11,6 +11,8 @@
   <link rel="icon" type="image/png" href="/static/avatar.png?v=3" />
   <script src="/static/icons.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"></script>
   <script>
     document.documentElement.dataset.theme =
       localStorage.getItem("kfp-theme") ||
@@ -56,6 +58,16 @@
         Медианная цена за м² по районам
       </h2>
       <div style="height:300px"><canvas id="chart-district"></canvas></div>
+    </div>
+
+    <div class="card card-elevated reveal" style="margin-bottom:18px;padding:28px">
+      <h2 class="title" style="margin-bottom:6px">
+        <span data-icon="map-pin" data-icon-size="22" style="color:var(--primary)"></span>
+        Карта цен: ₸/м² по городу
+      </h2>
+      <p class="label" style="margin:0 0 14px">Ячейки ~400 м по активным объявлениям · от синего (дёшево) к красному (дорого)</p>
+      <div id="price-map" style="height:420px;border-radius:16px;overflow:hidden"></div>
+      <div id="map-legend" class="label" style="margin-top:10px;display:flex;gap:14px;flex-wrap:wrap"></div>
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px">
@@ -179,6 +191,46 @@
 
     function track(chart, recolor) { charts.push({ chart, recolor }); recolor(chart, palette()); chart.update("none"); }
 
+    /* ---------- карта цен ---------- */
+    async function loadMap() {
+      const box = document.getElementById("price-map");
+      try {
+        const resp = await fetch("/api/heatmap");
+        const points = await resp.json();
+        if (!resp.ok || !Array.isArray(points) || !points.length) throw new Error("нет данных");
+
+        const map = L.map(box, { scrollWheelZoom: false }).setView([43.238, 76.889], 11);
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+          maxZoom: 17, attribution: '&copy; OpenStreetMap &copy; CARTO',
+        }).addTo(map);
+
+        // цветовая шкала по квантилям, чтобы выбросы не съедали градиент
+        const sorted = points.map((p) => p.ppsm).sort((a, b) => a - b);
+        const q = (t) => sorted[Math.min(sorted.length - 1, Math.floor(t * sorted.length))];
+        const stops = [q(0.1), q(0.3), q(0.5), q(0.7), q(0.9)];
+        const colors = ["#3b6fd4", "#4aa3a2", "#8dbf5a", "#e0a53f", "#e2633c", "#c62828"];
+        const colorOf = (v) => colors[stops.filter((s) => v > s).length];
+
+        points.forEach((p) => {
+          L.circleMarker([p.lat, p.lon], {
+            radius: Math.min(9, 3 + Math.sqrt(p.n)),
+            color: colorOf(p.ppsm), fillColor: colorOf(p.ppsm),
+            fillOpacity: 0.55, opacity: 0.75, weight: 1,
+          }).bindTooltip(`${Math.round(p.ppsm / 1000)} тыс ₸/м² · ${p.n} объявл.`).addTo(map);
+        });
+
+        const fmtStop = (v) => Math.round(v / 1000) + "к";
+        document.getElementById("map-legend").innerHTML = colors.map((c, i) => {
+          const label = i === 0 ? `до ${fmtStop(stops[0])}`
+            : i === colors.length - 1 ? `от ${fmtStop(stops[stops.length - 1])}`
+            : `${fmtStop(stops[i - 1])}–${fmtStop(stops[i])}`;
+          return `<span style="display:inline-flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:3px;background:${c}"></span>${label} ₸/м²</span>`;
+        }).join("");
+      } catch (e) {
+        box.outerHTML = '<p class="label" style="margin:0">Карта временно недоступна</p>';
+      }
+    }
+
     /* ---------- загрузка ---------- */
     async function load() {
       try {
@@ -297,6 +349,7 @@
       }
     }
     load();
+    loadMap();
   </script>
 </body>
 </html>
