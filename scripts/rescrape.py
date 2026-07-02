@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 """CLI этапа 4: регулярный рескрейп — история цен, дни на рынке, новые объявления.
 
+Выдача обходится по шардам «район × комнаты» (32 шт.), --pages — лимит
+страниц на один шард.
+
 Примеры:
-    python scripts/rescrape.py                  # полный проход выдачи
-    python scripts/rescrape.py --pages 20       # быстрая проба
+    python scripts/rescrape.py                  # полный проход всех шардов
+    python scripts/rescrape.py --pages 3        # быстрая проба (по 3 стр. на шард)
 """
 
 import argparse
@@ -19,7 +22,7 @@ from krisha.scraping.rescrape import sweep  # noqa: E402
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Рескрейп Krisha.kz: цены и ликвидность")
-    parser.add_argument("--pages", type=int, default=400, help="Максимум страниц выдачи")
+    parser.add_argument("--pages", type=int, default=250, help="Максимум страниц выдачи на один шард")
     parser.add_argument("--max-new", type=int, default=300, help="Максимум новых детальных страниц")
     parser.add_argument("--summary-json", help="Записать счётчики прохода в JSON-файл")
     parser.add_argument(
