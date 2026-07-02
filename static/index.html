@@ -340,6 +340,11 @@
             ${data.diff_pct != null ? `<span class="body-lg" style="margin:0">${diffBadge(data.diff_pct)}</span>` : ""}
           </div>
           ${data.duplicate_of ? `<p class="label" style="margin:-12px 0 18px">⚠️ Похоже на перезалив: такая же квартира уже есть в базе (№${data.duplicate_of})</p>` : ""}
+          ${data.scam_risk ? `
+          <div class="scam-banner ${data.scam_risk.level === "high" ? "scam-high" : "scam-medium"}">
+            <b>${data.scam_risk.level === "high" ? "🚨 Похоже на мошенничество" : "⚠️ Будьте осторожны"}</b>
+            <span>${data.scam_risk.reasons.map(esc).join(" · ")}. Не вносите задаток до просмотра квартиры и проверки документов.</span>
+          </div>` : ""}
 
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px">
             <div class="card" style="background:var(--surface-container-high);padding:18px">
