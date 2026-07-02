@@ -34,7 +34,7 @@ jobs:
           # свежий снапшот одним коммитом (без истории — файлы >10МБ уходят в LFS)
           rm -rf .git
           git init -b main
-          git lfs track "data/*.db" "models/*.cbm"
+          git lfs track "data/*.db" "models/*.cbm" "*.png" "*.jpg" "*.ico"
           git add -A
           git -c user.name=deploy -c user.email=deploy@local commit -m "deploy $GITHUB_SHA"
           git push --force "https://Dex719:$HF_TOKEN@huggingface.co/spaces/Dex719/krisha-fair-price" main
