@@ -27,6 +27,9 @@ jobs:
       - name: Install
         run: pip install -e .
 
+      - name: Download DB from release
+        run: python -m krisha.db_release --require
+
       - name: Snapshot current metrics
         run: cp models/model_meta.json /tmp/old_meta.json
 
