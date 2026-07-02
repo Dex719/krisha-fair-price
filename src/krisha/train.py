@@ -276,6 +276,13 @@ def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = T
             ensure_ascii=False, indent=2,
         ))
         _save_shap_report(model, test_df)
+        # История метрик — тренд MAE/MAPE по переобучениям (мониторинг)
+        try:
+            from krisha.monitoring import append_metrics_history
+
+            append_metrics_history(metrics)
+        except Exception as exc:
+            logger.warning("Не удалось записать историю метрик: %s", exc)
         # Снапшот статистики рынка — деплой без БД отдаёт /api/stats из него
         try:
             from krisha.stats import snapshot_stats
