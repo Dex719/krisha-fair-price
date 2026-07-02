@@ -662,3 +662,12 @@ a.btn:hover { text-decoration: none; }
 .analog-title { font-weight: 600; flex: 1 1 220px; min-width: 0; }
 .analog-meta { color: var(--on-surface-variant); font-size: .85rem; }
 .analog-price { font-weight: 700; color: var(--primary); margin-left: auto; }
+
+/* Скам-детектор: баннер «подозрительно дёшево» */
+.scam-banner {
+  display: flex; flex-direction: column; gap: 4px;
+  border-radius: 14px; padding: 14px 16px; margin: -8px 0 20px;
+  font-size: .9rem; line-height: 1.45;
+}
+.scam-medium { background: color-mix(in srgb, #b8860b 12%, var(--surface)); color: var(--on-surface); }
+.scam-high { background: color-mix(in srgb, #c62828 14%, var(--surface)); color: var(--on-surface); }

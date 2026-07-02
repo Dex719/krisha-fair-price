@@ -274,6 +274,13 @@ def predict_from_listing(
     result["days_on_market"] = days_on_market(listing.get("id"))
     result["liquidity"] = liquidity_estimate(listing.get("district"), listing.get("rooms"))
 
+    # Скам-детектор: цена сильно ниже оценки + эвристики по объявлению
+    from krisha.scam import assess_scam_risk
+
+    result["scam_risk"] = assess_scam_risk(
+        listing, result["fair_price"], result.get("actual_price")
+    )
+
     # Аналоги: похожие активные объявления из базы (kNN по фичам, fail-soft)
     from krisha.analogs import find_analogs
 
