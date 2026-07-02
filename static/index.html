@@ -266,8 +266,13 @@
     function render(data) {
       const v = VERDICTS[data.verdict] || { label: "Хм…", icon: "help", cls: "chip-fair" };
       const hasActual = data.actual_price != null;
-      // шкала: справедливая зона ±10% вокруг fair_price
-      const lo = data.fair_price * 0.7, hi = data.fair_price * 1.3;
+      // зона «в пределах рынка»: доверительный интервал модели (CQR),
+      // фолбэк для старых моделей — плоские ±10% вокруг fair_price
+      const zoneLo = data.fair_price_low ?? data.fair_price * 0.9;
+      const zoneHi = data.fair_price_high ?? data.fair_price * 1.1;
+      // границы шкалы с запасом, чтобы зона и стрелка не упирались в края
+      const lo = Math.min(data.fair_price * 0.7, zoneLo * 0.9);
+      const hi = Math.max(data.fair_price * 1.3, zoneHi * 1.1);
       const pos = (x) => Math.min(98, Math.max(2, ((x - lo) / (hi - lo)) * 100));
       const maxImpact = Math.max(...data.top_factors.map(f => Math.abs(f.impact)), 1e-9);
 
@@ -295,12 +300,12 @@
           ${hasActual ? `
           <p class="label" style="margin:0 0 10px">Где цена объявления на шкале</p>
           <div class="meter" style="margin-bottom:4px">
-            <div class="zone" style="left:${pos(data.fair_price * 0.9)}%;right:${100 - pos(data.fair_price * 1.1)}%"></div>
+            <div class="zone" style="left:${pos(zoneLo)}%;right:${100 - pos(zoneHi)}%"></div>
             <div class="needle" id="needle" style="left:2%"></div>
           </div>
           <div class="meter-labels label">
             <span>${fmt(lo)}</span>
-            <span style="color:var(--primary);font-weight:700">справедливо: ${fmt(data.fair_price)}</span>
+            <span style="color:var(--primary);font-weight:700">${data.fair_price_low != null ? `рынок: ${fmt(zoneLo)} – ${fmt(zoneHi)}` : `справедливо: ${fmt(data.fair_price)}`}</span>
             <span>${fmt(hi)}</span>
           </div>` : ""}
 
