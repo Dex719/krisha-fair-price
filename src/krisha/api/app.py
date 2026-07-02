@@ -169,6 +169,26 @@ def heatmap() -> list[dict]:
     return data
 
 
+_forecast_cache: dict = {"data": None, "ts": 0.0}
+
+
+@app.get("/api/forecast")
+def forecast() -> dict:
+    """Прогноз ₸/м² на 3–6 месяцев: линейный тренд недельных медиан по районам."""
+    now = time.monotonic()
+    if _forecast_cache["data"] is not None and now - _forecast_cache["ts"] < STATS_CACHE_TTL:
+        return _forecast_cache["data"]
+    from krisha.forecast import build_forecast
+
+    try:
+        data = build_forecast()
+    except FileNotFoundError:
+        logger.exception("forecast: база недоступна")
+        raise HTTPException(status_code=503, detail="Прогноз временно недоступен")
+    _forecast_cache.update(data=data, ts=now)
+    return data
+
+
 @app.post("/tg/webhook", include_in_schema=False)
 def telegram_webhook(
     update: dict,

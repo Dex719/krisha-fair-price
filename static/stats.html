@@ -99,6 +99,14 @@
         </h2>
         <div style="height:260px"><canvas id="chart-trend"></canvas></div>
       </div>
+      <div class="card card-elevated reveal" style="padding:28px" id="forecast-card" hidden>
+        <h2 class="title" style="margin-bottom:6px">
+          <span data-icon="chart" data-icon-size="22" style="color:var(--primary)"></span>
+          Прогноз ₸/м² на 3–6 месяцев
+        </h2>
+        <p class="label" id="forecast-disclaimer" style="margin:0 0 16px"></p>
+        <div id="forecast-table" style="overflow-x:auto"></div>
+      </div>
     </div>
 
     <footer class="colophon reveal">
@@ -107,6 +115,37 @@
   </div>
 
   <script>
+    async function loadForecast() {
+      try {
+        const resp = await fetch("/api/forecast");
+        if (!resp.ok) return;
+        const fc = await resp.json();
+        const rows = [];
+        const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+        const cell = (h) => {
+          if (!h) return "<td>—</td>";
+          const up = h.change_pct > 0.5, down = h.change_pct < -0.5;
+          const color = up ? "var(--error, #b3261e)" : down ? "var(--primary)" : "inherit";
+          const arrow = up ? "↗" : down ? "↘" : "→";
+          return `<td style="color:${color};white-space:nowrap">${arrow} ${h.change_pct > 0 ? "+" : ""}${h.change_pct}% · ${Math.round(h.ppsm / 1000)}к</td>`;
+        };
+        if (fc.city) rows.push({ district: "Алматы (весь город)", ...fc.city, bold: true });
+        rows.push(...(fc.districts || []));
+        if (!rows.length) return;
+        document.getElementById("forecast-card").hidden = false;
+        document.getElementById("forecast-disclaimer").textContent = fc.disclaimer || "";
+        document.getElementById("forecast-table").innerHTML =
+          `<table class="stat-table" style="width:100%;border-collapse:collapse">
+            <thead><tr><th style="text-align:left">Район</th><th style="text-align:left">Сейчас</th><th style="text-align:left">Через 3 мес</th><th style="text-align:left">Через 6 мес</th></tr></thead>
+            <tbody>${rows.map((r) => `<tr${r.bold ? ' style="font-weight:700"' : ""}>
+              <td>${esc(r.district)}</td>
+              <td style="white-space:nowrap">${Math.round(r.current_ppsm / 1000)}к ₸/м²</td>
+              ${cell(r.m3)}${cell(r.m6)}
+            </tr>`).join("")}</tbody>
+          </table>`;
+      } catch (e) { /* прогноз опционален */ }
+    }
+
     /* ---------- тема ---------- */
     const themeIcon = document.getElementById("theme-icon");
     const syncIcon = () =>
@@ -234,6 +273,7 @@
     /* ---------- загрузка ---------- */
     async function load() {
       try {
+        loadForecast();
         const resp = await fetch("/api/stats");
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.detail || "Не удалось загрузить статистику");

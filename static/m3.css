@@ -675,3 +675,8 @@ a.btn:hover { text-decoration: none; }
 /* Telegram Mini App: тему диктует Telegram, переключатель не нужен */
 .tg-miniapp #theme-toggle { display: none; }
 .tg-miniapp .top-bar { padding-top: 4px; }
+
+/* Таблица прогноза на /stats */
+.stat-table th, .stat-table td { padding: 9px 14px 9px 0; border-bottom: 1px solid var(--outline-variant); font-size: .95rem; }
+.stat-table thead th { color: var(--on-surface-variant); font-weight: 600; font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; }
+.stat-table tbody tr:last-child td { border-bottom: none; }
