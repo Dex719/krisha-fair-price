@@ -113,3 +113,23 @@ def test_webhook_secret_is_stable():
     assert s1 == bot.webhook_secret("token123")
     assert len(s1) == 32
     assert s1 != bot.webhook_secret("other")
+
+
+def test_format_reply_factor_magnitudes():
+    """«Почему такая цена»: топ-3 фактора с процентами и деньгами."""
+    result = dict(
+        SAMPLE_RESULT,
+        top_factors=[
+            {"feature": "area", "impact": 0.21, "impact_pct": 23.4, "impact_tenge": 9_100_000},
+            {"feature": "dist_center_km", "impact": -0.08, "impact_pct": -7.7,
+             "impact_tenge": -3_900_000},
+            {"feature": "rooms", "impact": 0.02, "impact_pct": 2.0, "impact_tenge": 950_000},
+            {"feature": "floor", "impact": 0.01, "impact_pct": 1.0, "impact_tenge": 480_000},
+        ],
+    )
+    text = bot.format_reply(result)
+    assert "Почему такая цена" in text
+    assert "Площадь: +23.4% (+9.1 млн ₸)" in text
+    assert "Расстояние до центра: -7.7% (-3.9 млн ₸)" in text
+    assert "Комнаты: +2.0% (+0.9 млн ₸)" in text
+    assert "Этаж" not in text  # только топ-3

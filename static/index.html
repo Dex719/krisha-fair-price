@@ -292,6 +292,20 @@
       const pos = (x) => Math.min(98, Math.max(2, ((x - lo) / (hi - lo)) * 100));
       const maxImpact = Math.max(...data.top_factors.map(f => Math.abs(f.impact)), 1e-9);
 
+      // «▲ +12.3% (+5.8 млн ₸)» — вклад фактора в цену; фолбэк для старых
+      // ответов без impact_pct — прежние «повышает/понижает»
+      function factorImpactLabel(f) {
+        const arrow = f.impact > 0 ? "▲" : "▼";
+        if (f.impact_pct == null || Math.abs(f.impact_pct) < 0.05)
+          return `${arrow} ${f.impact > 0 ? "повышает" : "понижает"}`;
+        let label = `${arrow} ${f.impact_pct > 0 ? "+" : ""}${f.impact_pct.toFixed(1)}%`;
+        if (f.impact_tenge && Math.abs(f.impact_tenge) >= 1e5) {
+          const mln = Math.abs(f.impact_tenge) / 1e6;
+          label += ` (${f.impact_tenge > 0 ? "+" : "−"}${mln.toFixed(1)} млн ₸)`;
+        }
+        return label;
+      }
+
       const result = document.getElementById("result");
       result.innerHTML = `
         <div class="card card-elevated pop-in" style="padding:28px">
@@ -329,7 +343,7 @@
           ${data.top_factors.map((f, i) => `
             <div class="factor ${f.hint ? "has-hint" : ""}" ${f.hint ? 'tabindex="0"' : ""}>
               <span class="factor-name">${esc(FEATURE_NAMES[f.feature] || f.feature)}${f.hint ? `<span class="hint-i">${kfpIcon("help", 15)}</span><span class="hint-pop">${esc(f.hint)}</span>` : ""}</span>
-              <span class="impact ${f.impact > 0 ? "up" : "down"}">${f.impact > 0 ? "▲ повышает" : "▼ понижает"}</span>
+              <span class="impact ${f.impact > 0 ? "up" : "down"}">${factorImpactLabel(f)}</span>
               <div class="bar-track"><div class="bar ${f.impact > 0 ? "up" : "down"}" data-w="${Math.max(8, Math.abs(f.impact) / maxImpact * 100)}" style="transition-delay:${.15 + i * .08}s"></div></div>
             </div>`).join("")}
         </div>

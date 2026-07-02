@@ -10,6 +10,8 @@ class PredictRequest(BaseModel):
 class Factor(BaseModel):
     feature: str
     impact: float  # вклад в log(price): >0 — повышает цену, <0 — понижает
+    impact_pct: float | None = None  # тот же вклад как множитель цены, в %
+    impact_tenge: float | None = None  # оценка вклада в итоговую цену, ₸
     hint: str | None = None  # подсказка со статистикой рынка (тултип на сайте)
 
 
