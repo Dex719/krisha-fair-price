@@ -33,8 +33,20 @@ def _pct(part: float, base: float) -> int:
     return round((part - base) / base * 100)
 
 
-@lru_cache(maxsize=1)
+def _db_mtime() -> float:
+    """mtime базы — ключ кэша: база обновилась (деплой/рескрейп) → пересчёт."""
+    try:
+        return DB_PATH.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def market_stats() -> dict[str, Any]:
+    return _market_stats_cached(_db_mtime())
+
+
+@lru_cache(maxsize=2)
+def _market_stats_cached(db_mtime: float) -> dict[str, Any]:
     """Медианы ₸/м² по срезам базы. Пустой dict, если базы нет."""
     try:
         with get_conn(DB_PATH) as conn:
@@ -79,15 +91,33 @@ def _floor_hint(listing: dict, s: dict) -> str | None:
     floor, total = listing.get("floor"), listing.get("total_floors")
     if not floor or not total:
         return None
+    floor, total = int(floor), int(total)
     where = f"Этаж {floor} из {total}"
     if floor == total and total >= 2:
         pct = _pct(s["last_floor"], s["mid_floor"]) if s.get("last_floor") and s.get("mid_floor") else None
         stat = f" По нашей базе последние этажи в среднем на {abs(pct)}% дешевле за м², чем средние." if pct else ""
-        return f"{where} — последний: покупатели опасаются протечек крыши и жары летом, такие квартиры обычно уходят дольше.{stat}"
+        extra = ""
+        if total >= 6:
+            extra = f" Плюс зависимость от лифта: сломается — подъём на {floor}-й пешком."
+        if total >= 9:
+            extra += (
+                " Алматы — сейсмоопасная зона, на верхних этажах толчки"
+                " ощущаются сильнее, часть покупателей сознательно ищет ниже."
+            )
+        return (
+            f"{where} — последний: покупатели опасаются протечек крыши и жары летом."
+            f"{extra} Такие квартиры обычно уходят дольше.{stat}"
+        )
     if floor == 1:
         pct = _pct(s["first_floor"], s["mid_floor"]) if s.get("first_floor") and s.get("mid_floor") else None
         stat = f" По нашей базе первые этажи в среднем на {abs(pct)}% дешевле за м²." if pct else ""
         return f"{where} — первый: шум улицы, меньше приватности и света.{stat}"
+    if floor >= 9:
+        return (
+            f"{where}: сверху тише и лучше вид, но выше зависимость от лифта,"
+            " а в сейсмоопасном Алматы верхние этажи ощутимо качает при толчках —"
+            " это сужает круг покупателей."
+        )
     return f"{where} — средние этажи самые ликвидные: нет минусов первого и последнего, дисконта не требуется."
 
 
@@ -163,6 +193,10 @@ def _generic_hints(listing: dict, s: dict) -> dict[str, str | None]:
         "micro_median_ppsm": "Средний уровень цен микрорайона — более точная «температура» локации, чем район.",
         "microdistrict_ppsm": "Средний уровень цен микрорайона — более точная «температура» локации, чем район.",
         "district_median_ppsm": "Средний уровень цен в районе — базовая «температура» локации для модели.",
+        "hex7_ppsm": "Медианная цена м² в гексагоне ~2 км вокруг дома — «температура» округи точнее района.",
+        "hex8_ppsm": "Медианная цена м² в квартале ~500 м вокруг дома — самая точная локальная «температура».",
+        "knn_ppsm": "Медианная цена м² ближайших домов-соседей по карте.",
+        "knn_n": "Сколько активных объявлений рядом — плотность локального предложения.",
         "is_new_building": "Новостройка или вторичка: новостройки в среднем дороже за м², но без отделки.",
         "renovation": "Состояние ремонта напрямую конвертируется в цену: «евроремонт» против «черновой отделки» — разница в миллионы.",
         "furniture": "Мебель в придачу — небольшой, но реальный плюс к цене.",
