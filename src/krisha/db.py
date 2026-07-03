@@ -77,35 +77,43 @@ CREATE TABLE IF NOT EXISTS complexes (
 CREATE INDEX IF NOT EXISTS idx_complexes_name_norm ON complexes(name_norm);
 """
 
-UPSERT_SQL = """
-INSERT INTO listings (
-    id, url, title, price, rooms, area, floor, total_floors, building_type,
-    year_built, ceiling, district, microdistrict, street, house_num,
-    address_title, complex_name, lat, lon, user_type, category, description,
-    photos_count, raw_params, source, fingerprint, first_seen, last_seen, is_active
-) VALUES (
-    :id, :url, :title, :price, :rooms, :area, :floor, :total_floors, :building_type,
-    :year_built, :ceiling, :district, :microdistrict, :street, :house_num,
-    :address_title, :complex_name, :lat, :lon, :user_type, :category, :description,
-    :photos_count, :raw_params, :source, :fingerprint, datetime('now'), datetime('now'), 1
-)
-ON CONFLICT(id) DO UPDATE SET
-    price = excluded.price,
-    title = excluded.title,
-    raw_params = excluded.raw_params,
-    fingerprint = excluded.fingerprint,
-    last_seen = datetime('now'),
-    is_active = 1,
-    delisted_at = NULL,
-    scraped_at = datetime('now');
-"""
-
 LISTING_COLUMNS = [
     "id", "url", "title", "price", "rooms", "area", "floor", "total_floors",
     "building_type", "year_built", "ceiling", "district", "microdistrict",
     "street", "house_num", "address_title", "complex_name", "lat", "lon",
     "user_type", "category", "description", "photos_count", "raw_params",
 ]
+
+# Обновляем всегда: свежий парс — источник истины для этих полей.
+_UPSERT_ALWAYS = ["price", "title", "raw_params"]
+# Остальные поля обновляем только непустым значением: COALESCE не даёт
+# неполному парсу затереть хорошие данные NULL-ом, но подтягивает свежие
+# description/area/floor и т.д., если продавец отредактировал объявление.
+_UPSERT_COALESCE = [
+    c for c in [*LISTING_COLUMNS, "source", "fingerprint"]
+    if c != "id" and c not in _UPSERT_ALWAYS
+]
+
+_UPSERT_SET = ", ".join(
+    [f"{c} = excluded.{c}" for c in _UPSERT_ALWAYS]
+    + [f"{c} = COALESCE(excluded.{c}, {c})" for c in _UPSERT_COALESCE]
+)
+
+UPSERT_SQL = f"""
+INSERT INTO listings (
+    {", ".join(LISTING_COLUMNS)},
+    source, fingerprint, first_seen, last_seen, is_active
+) VALUES (
+    {", ".join(":" + c for c in LISTING_COLUMNS)},
+    :source, :fingerprint, datetime('now'), datetime('now'), 1
+)
+ON CONFLICT(id) DO UPDATE SET
+    {_UPSERT_SET},
+    last_seen = datetime('now'),
+    is_active = 1,
+    delisted_at = NULL,
+    scraped_at = datetime('now');
+"""
 
 
 COMPLEX_COLUMNS = [
@@ -128,6 +136,14 @@ def get_conn(db_path: Path | str = DB_PATH) -> Iterator[sqlite3.Connection]:
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+    # FastAPI гоняет sync-хендлеры в тредпуле → возможны конкурентные записи
+    # (кэши LLM/vision, upsert из predict). WAL пускает читателей параллельно
+    # с писателем, busy_timeout ждёт вместо мгновенного "database is locked".
+    try:
+        conn.execute("PRAGMA busy_timeout = 5000")
+        conn.execute("PRAGMA journal_mode = WAL")
+    except sqlite3.OperationalError:
+        pass  # read-only ФС и т.п. — работаем как раньше
     try:
         yield conn
         conn.commit()
@@ -152,6 +168,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
     for col, decl in _MIGRATION_COLUMNS.items():
         if col not in existing:
             conn.execute(f"ALTER TABLE listings ADD COLUMN {col} {decl}")
+    # Индекс здесь, а не в SCHEMA: колонка fingerprint появляется миграцией.
+    # Без него find_duplicate_id() делает full-scan на каждый предикт.
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_listings_fingerprint ON listings(fingerprint)"
+    )
     # Бэкфилл: для старых записей точка отсчёта — момент скрейпа
     conn.execute("UPDATE listings SET first_seen = scraped_at WHERE first_seen IS NULL")
     conn.execute("UPDATE listings SET last_seen = scraped_at WHERE last_seen IS NULL")

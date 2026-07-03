@@ -8,7 +8,7 @@ import logging
 import time
 from collections import defaultdict, deque
 
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -190,12 +190,31 @@ def forecast() -> dict:
     return data
 
 
+# Дедуп апдейтов Telegram: медленный предикт внутри хендлера раньше приводил
+# к таймауту вебхука → Telegram ретраил тот же update_id → дубли ответов.
+# Помним последние N обработанных id (процесс один, память — достаточно).
+_SEEN_UPDATE_IDS: deque[int] = deque(maxlen=1000)
+
+
+def _process_tg_update(update: dict) -> None:
+    try:
+        bot.handle_update(update)
+    except Exception:  # бот не должен ронять вебхук
+        logger.exception("Ошибка обработки Telegram-апдейта")
+
+
 @app.post("/tg/webhook", include_in_schema=False)
 def telegram_webhook(
     update: dict,
+    background_tasks: BackgroundTasks,
     x_telegram_bot_api_secret_token: str | None = Header(default=None),
 ) -> dict:
-    """Webhook Telegram-бота. Telegram шлёт сюда апдейты после setWebhook."""
+    """Webhook Telegram-бота. Telegram шлёт сюда апдейты после setWebhook.
+
+    Отвечаем 200 сразу, обработку (парсинг страницы + предикт — секунды)
+    уносим в background task: Telegram не успевает затаймаутить вебхук
+    и не присылает ретраи. Повторные update_id молча подтверждаем.
+    """
     token = bot.bot_token()
     if not token:
         raise HTTPException(status_code=404)
@@ -203,10 +222,12 @@ def telegram_webhook(
         x_telegram_bot_api_secret_token, bot.webhook_secret(token)
     ):
         raise HTTPException(status_code=403)
-    try:
-        bot.handle_update(update)
-    except Exception:  # бот не должен ронять вебхук — Telegram будет ретраить
-        logger.exception("Ошибка обработки Telegram-апдейта")
+    update_id = update.get("update_id")
+    if isinstance(update_id, int):
+        if update_id in _SEEN_UPDATE_IDS:
+            return {"ok": True}
+        _SEEN_UPDATE_IDS.append(update_id)
+    background_tasks.add_task(_process_tg_update, update)
     return {"ok": True}
 
 
@@ -214,6 +235,12 @@ def telegram_webhook(
 def _startup() -> None:
     # База не хранится в git — при старте скачиваем её из GitHub Release.
     db_release.ensure_db()
+    if DB_PATH.exists():
+        # Скачанная база могла не проходить init_db: догоняем миграции
+        # и индексы (idx_listings_fingerprint для проверки дублей).
+        from krisha.db import init_db
+
+        init_db()
     bot.setup_webhook()
 
 

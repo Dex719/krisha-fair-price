@@ -9,6 +9,7 @@ import json
 import logging
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -192,8 +193,18 @@ def train_quantile_interval(
     return model_lo, model_hi, interval_meta
 
 
-def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = True) -> dict:
-    """Полный пайплайн обучения. Возвращает метрики (model vs baseline)."""
+def train(
+    df: pd.DataFrame | None = None,
+    iterations: int = 2000,
+    save: bool = True,
+    old_model_path: str | Path | None = None,
+) -> dict:
+    """Полный пайплайн обучения. Возвращает метрики (model vs baseline).
+
+    old_model_path — путь к прошлой model.cbm: если задан, старая модель
+    оценивается на том же свежем test-сплите → metrics["old_model"], и
+    метрический гейт сравнивает яблоки с яблоками (см. scripts/model_gate.py).
+    """
     if df is None:
         df = load_dataset()
     df = clean(df)
@@ -228,7 +239,21 @@ def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = T
     train_pool = Pool(train_df[ALL_FEATURES], train_df[TARGET], cat_features=CAT_FEATURES)
     test_pool = Pool(test_df[ALL_FEATURES], test_df[TARGET], cat_features=CAT_FEATURES)
 
-    model = CatBoostRegressor(
+    # Early stopping — по val-сплиту из train (тоже по «зданиям»), а не по
+    # test: иначе число деревьев подгоняется под тестовую выборку и метрики
+    # чуть оптимистичнее реальности. Схема: probe-модель находит оптимальное
+    # число итераций на val, финальная переобучается на всём train.
+    es_splitter = GroupShuffleSplit(n_splits=1, test_size=0.15, random_state=RANDOM_STATE)
+    fit_idx, val_idx = next(es_splitter.split(raw_train, groups=building_groups(raw_train)))
+    fit_pool = Pool(
+        train_df.iloc[fit_idx][ALL_FEATURES], train_df.iloc[fit_idx][TARGET],
+        cat_features=CAT_FEATURES,
+    )
+    val_pool = Pool(
+        train_df.iloc[val_idx][ALL_FEATURES], train_df.iloc[val_idx][TARGET],
+        cat_features=CAT_FEATURES,
+    )
+    probe = CatBoostRegressor(
         iterations=iterations,
         learning_rate=0.05,
         depth=8,
@@ -237,7 +262,19 @@ def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = T
         early_stopping_rounds=100,
         verbose=200,
     )
-    model.fit(train_pool, eval_set=test_pool)
+    probe.fit(fit_pool, eval_set=val_pool)
+    best_iterations = max(int(probe.tree_count_), 1)
+    logger.info("Early stopping по val: %s деревьев", best_iterations)
+
+    model = CatBoostRegressor(
+        iterations=best_iterations,
+        learning_rate=0.05,
+        depth=8,
+        loss_function="RMSE",
+        random_seed=RANDOM_STATE,
+        verbose=200,
+    )
+    model.fit(train_pool)
 
     y_true = test_df["price"].to_numpy()
     y_model = np.expm1(model.predict(test_pool))
@@ -253,9 +290,23 @@ def train(df: pd.DataFrame | None = None, iterations: int = 2000, save: bool = T
         "interval": interval_meta,
         "n_train": len(train_df),
         "n_test": len(test_df),
+        "best_iterations": best_iterations,
         "split": "group_shuffle_by_building + dedup relistings",
         "trained_at": datetime.now(timezone.utc).isoformat(),
     }
+
+    # Прошлая модель на этом же test-сплите — честная база для гейта:
+    # сравнение по метрикам из старого meta страдает от дрейфа данных
+    # (test-выборки разных недель не совпадают).
+    if old_model_path and Path(old_model_path).exists():
+        try:
+            old_model = CatBoostRegressor()
+            old_model.load_model(str(old_model_path))
+            y_old = np.expm1(old_model.predict(test_pool))
+            metrics["old_model"] = evaluate(y_true, y_old)
+            logger.info("Старая модель на новом test: %s", json.dumps(metrics["old_model"]))
+        except Exception as exc:  # набор фичей мог измениться — гейт уйдёт в fallback
+            logger.warning("Не удалось оценить старую модель (%s): %s", old_model_path, exc)
     logger.info("Метрики: %s", json.dumps(metrics, indent=2))
 
     if save:
