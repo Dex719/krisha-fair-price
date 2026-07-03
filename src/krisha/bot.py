@@ -14,6 +14,7 @@ import hashlib
 import html
 import logging
 import os
+import time
 from typing import Any
 
 import httpx
@@ -491,22 +492,69 @@ def public_base_url() -> str | None:
     return f"https://{domain}" if domain else None
 
 
-def setup_webhook() -> None:
-    """Регистрирует webhook при старте приложения (no-op без токена/домена)."""
+def setup_webhook(retries: int = 3) -> bool:
+    """Регистрирует webhook при старте приложения (no-op без токена/домена).
+
+    С ретраями: на новом хостинге первый вызов может упасть по сети
+    (DNS/egress ещё не готовы) — тогда бот молча оставался без webhook.
+    """
     token = bot_token()
     if not token:
         logger.info("TELEGRAM_BOT_TOKEN не задан — Telegram-бот выключен")
-        return
+        return False
     base = public_base_url()
     if not base:
         logger.warning("Токен бота есть, но публичный URL неизвестен — webhook не настроен")
-        return
-    data = tg_call(
-        "setWebhook",
-        url=f"{base}{WEBHOOK_PATH}",
-        secret_token=webhook_secret(token),
-        allowed_updates=["message"],
-        drop_pending_updates=True,
-    )
-    if data and data.get("ok"):
-        logger.info("Telegram webhook настроен: %s%s", base, WEBHOOK_PATH)
+        return False
+    for attempt in range(1, retries + 1):
+        data = tg_call(
+            "setWebhook",
+            url=f"{base}{WEBHOOK_PATH}",
+            secret_token=webhook_secret(token),
+            allowed_updates=["message"],
+            drop_pending_updates=True,
+        )
+        if data and data.get("ok"):
+            logger.info("Telegram webhook настроен: %s%s", base, WEBHOOK_PATH)
+            return True
+        logger.warning("setWebhook попытка %d/%d не удалась: %s", attempt, retries, data)
+        if attempt < retries:
+            time.sleep(2 * attempt)
+    return False
+
+
+_WEBHOOK_CHECK_INTERVAL_S = 3600.0
+_last_webhook_check: list[float] = [0.0]  # list — чтобы мутировать без global
+_last_webhook_status: list[str] = ["unknown"]
+
+
+def webhook_status(force: bool = False) -> str:
+    """Статус webhook с самолечением (вызывается из /api/health).
+
+    Не чаще раза в час спрашивает Telegram getWebhookInfo; если webhook
+    слетел или смотрит не туда — перерегистрирует. Так пинг keepalive
+    заодно чинит бота, даже если регистрация при старте не удалась.
+    """
+    token = bot_token()
+    if not token:
+        return "no_token"
+    base = public_base_url()
+    if not base:
+        return "no_public_url"
+    now = time.monotonic()
+    if not force and now - _last_webhook_check[0] < _WEBHOOK_CHECK_INTERVAL_S:
+        return _last_webhook_status[0]
+    _last_webhook_check[0] = now
+    data = tg_call("getWebhookInfo")
+    if not data or not data.get("ok"):
+        _last_webhook_status[0] = "unknown"
+        return "unknown"
+    current = (data.get("result") or {}).get("url") or ""
+    expected = f"{base}{WEBHOOK_PATH}"
+    if current == expected:
+        _last_webhook_status[0] = "ok"
+        return "ok"
+    # Слетел или смотрит на старый хостинг — чиним
+    fixed = setup_webhook(retries=1)
+    _last_webhook_status[0] = "ok" if fixed else ("unset" if not current else "mismatch")
+    return _last_webhook_status[0]

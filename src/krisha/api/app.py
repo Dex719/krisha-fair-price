@@ -62,7 +62,11 @@ async def _security_headers(request: Request, call_next):
 
 @app.get("/api/health", response_model=HealthResponse)
 def health() -> HealthResponse:
-    return HealthResponse(status="ok", model_loaded=MODEL_PATH.exists())
+    # webhook_status() заодно самолечит webhook (не чаще раза в час):
+    # keepalive-пинг каждые 6 часов держит бота живым без ручных действий
+    return HealthResponse(
+        status="ok", model_loaded=MODEL_PATH.exists(), tg_webhook=bot.webhook_status()
+    )
 
 
 # Анти-спам: скользящее окно запросов на IP (живём в одном процессе — хватает)

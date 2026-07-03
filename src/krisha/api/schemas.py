@@ -101,3 +101,7 @@ class FlagsResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     model_loaded: bool
+    # Статус Telegram-webhook: ok | unset | mismatch | no_token | no_public_url |
+    # unknown (не удалось спросить Telegram). Позволяет диагностировать бота
+    # снаружи, без доступа к логам хостинга.
+    tg_webhook: str = "unknown"
