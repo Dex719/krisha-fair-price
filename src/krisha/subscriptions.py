@@ -115,7 +115,7 @@ def save_json_state(path, data: dict[str, Any], message: str) -> None:
 def _push_to_github(path, payload: str, message: str) -> None:
     """Коммитит файл состояния в GitHub, чтобы пережить редеплой.
 
-    Токен: GITHUB_PAT (Railway) или GITHUB_TOKEN (GitHub Actions,
+    Токен: GITHUB_PAT (сервер) или GITHUB_TOKEN (GitHub Actions,
     у workflow есть contents:write).
     """
     token = os.environ.get("GITHUB_PAT") or os.environ.get("GITHUB_TOKEN")
