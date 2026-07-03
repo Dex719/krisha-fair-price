@@ -20,6 +20,7 @@
     (function () {
       const tg = window.Telegram && window.Telegram.WebApp;
       if (!tg || !tg.initData) return; // обычный браузер
+      document.documentElement.classList.add("in-telegram");
       document.documentElement.dataset.theme = tg.colorScheme === "dark" ? "dark" : "light";
       document.documentElement.classList.add("tg-miniapp");
       tg.ready();
@@ -75,6 +76,15 @@
 
     <div id="error" class="card pop-in" role="alert"
          style="display:none;margin-top:24px;background:var(--error-container);color:var(--on-error-container)"></div>
+
+    <div class="social-links reveal">
+      <a class="btn btn-tonal social-tg" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">
+        <span data-icon="telegram" data-icon-size="20"></span> Попробуйте в Telegram
+      </a>
+      <a class="btn btn-tonal" href="https://www.threads.com/@fairprice_kz" target="_blank" rel="noopener">
+        <span data-icon="threads" data-icon-size="20"></span> Мы в Threads
+      </a>
+    </div>
 
     <footer class="colophon reveal">
       CatBoost · MAPE 9.8% · R² 0.84 — учебный проект, не финансовый совет

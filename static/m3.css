@@ -576,6 +576,16 @@ a.btn:hover { text-decoration: none; }
 }
 
 /* ---------- Подвал ---------- */
+.social-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 48px;
+}
+.social-links .btn { text-decoration: none; }
+.in-telegram .social-tg { display: none; } /* внутри мини-аппа кнопка Telegram лишняя */
+
 .colophon {
   margin-top: 64px;
   padding-top: 20px;
