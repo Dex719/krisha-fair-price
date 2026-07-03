@@ -70,7 +70,7 @@ _rate: dict[str, deque] = defaultdict(deque)
 
 def _client_ip(request: Request) -> str:
     # ВНИМАНИЕ: X-Forwarded-For легко подделать, поэтому это НЕ строгая защита —
-    # лимит можно обойти сменой заголовка. За доверенным прокси (Railway) сюда
+    # лимит можно обойти сменой заголовка. За доверенным прокси сюда
     # стоит подставлять реальный client IP. Пока — best-effort анти-спам.
     ip = (request.client.host if request.client else None) or "?"
     fwd = request.headers.get("x-forwarded-for")
