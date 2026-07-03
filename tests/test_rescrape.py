@@ -57,6 +57,35 @@ def test_shard_urls_cover_districts_x_rooms():
     assert not any("almaty-nauryzbajskij/" in u for u in urls)
 
 
+def test_shard_urls_arenda():
+    shards = shard_urls("arenda")
+    assert len(shards) == 32
+    for _, url in shards:
+        assert "/arenda/kvartiry/" in url
+        assert "/prodazha/" not in url
+    # продажа остаётся дефолтом
+    assert all("/prodazha/kvartiry/" in url for _, url in shard_urls())
+
+
+def test_sweep_arenda_uses_rent_shards(tmp_path, monkeypatch):
+    """sweep(deal="arenda") ходит по арендной выдаче и пишет в свою базу."""
+    db = tmp_path / "rent.db"
+    shards = shard_urls("arenda")
+    first_url = shards[0][1]
+    pages = {first_url: _card(555, 300_000)}
+    client = FakeClient(pages)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "parse_detail", lambda html, url: _listing(555, 300_000))
+
+    stats = sweep(max_pages=1, max_new_details=10, db_path=db, deal="arenda")
+
+    assert stats["new_listings"] == 1
+    assert all("/arenda/" in u for u in client.requested if "krisha.kz" in u and "/a/show/" not in u)
+    with get_conn(db) as conn:
+        row = conn.execute("SELECT price FROM listings WHERE id = 555").fetchone()
+        assert row[0] == 300_000
+
+
 def test_sweep_walks_shards_and_updates_db(tmp_path, monkeypatch):
     db = tmp_path / "test.db"
     init_db(db)

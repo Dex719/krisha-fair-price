@@ -35,18 +35,21 @@ logger = logging.getLogger(__name__)
 DELIST_AFTER_DAYS = 3  # не видели в выдаче N дней → считаем снятым
 
 
-def shard_urls() -> list[tuple[str, str]]:
+def shard_urls(deal: str = "prodazha") -> list[tuple[str, str]]:
     """Шарды выдачи: (метка, URL первой страницы с фильтрами).
 
     Район (8) × комнаты (1/2/3/4+) = 32 шарда, у каждого своя пагинация.
     Страница N шарда: `{url}&page={N}` (в URL уже есть query-параметры).
+
+    deal: "prodazha" (продажа) или "arenda" (долгосрочная аренда, цена = ₸/мес;
+    разметка выдачи и детальных страниц идентична продаже — парсеры общие).
     """
     shards: list[tuple[str, str]] = []
     for district, slug in ALMATY_DISTRICT_SLUGS.items():
         for rooms, values in ROOM_SHARDS.items():
             query = "&".join(f"das[live.rooms][]={v}" for v in values)
             shards.append(
-                (f"{district} {rooms}", f"{BASE_URL}/prodazha/kvartiry/{slug}/?{query}")
+                (f"{district} {rooms}", f"{BASE_URL}/{deal}/kvartiry/{slug}/?{query}")
             )
     return shards
 
@@ -77,11 +80,15 @@ def _sweep_shard(
     return True
 
 
-def sweep(max_pages: int = 250, max_new_details: int = 300, db_path=DB_PATH) -> dict:
+def sweep(
+    max_pages: int = 250, max_new_details: int = 300, db_path=DB_PATH, deal: str = "prodazha"
+) -> dict:
     """Один проход рескрейпа по всем шардам. Возвращает счётчики для лога/отчёта.
 
     max_pages — лимит страниц НА ОДИН шард (самый большой шард ~4к объявлений
     ≈ 200 страниц, так что 250 хватает с запасом).
+    deal="arenda" — тот же проход по арендной выдаче (обычно в отдельную базу,
+    см. RENT_DB_PATH), price = ₸/месяц.
     """
     init_db(db_path)
     seen_in_db = known_ids(db_path)
@@ -89,7 +96,7 @@ def sweep(max_pages: int = 250, max_new_details: int = 300, db_path=DB_PATH) -> 
     failed_shards: list[str] = []
 
     with PoliteClient() as client:
-        for label, base_url in shard_urls():
+        for label, base_url in shard_urls(deal):
             if not _sweep_shard(client, label, base_url, max_pages, found):
                 failed_shards.append(label)
 
