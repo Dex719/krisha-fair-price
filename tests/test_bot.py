@@ -214,3 +214,24 @@ def test_webhook_status_ok_when_url_matches(monkeypatch):
 def test_webhook_status_without_token(monkeypatch):
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
     assert bot.webhook_status(force=True) == "no_token"
+
+
+def test_webhook_status_failure_not_cached(monkeypatch):
+    """Неудачный getWebhookInfo не кэшируется на час — следующий пинг пробует снова."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://kfp.example.com")
+    calls = []
+
+    def flaky_tg(method, **kw):
+        calls.append(method)
+        if len(calls) == 1:
+            return None  # сеть моргнула при первом вызове
+        return {"ok": True, "result": {"url": "https://kfp.example.com/tg/webhook"}}
+
+    monkeypatch.setattr(bot, "tg_call", flaky_tg)
+    bot._last_webhook_check[0] = 0.0
+
+    assert bot.webhook_status() == "unknown"
+    # без force и без ожидания часа — повторный вызов сразу дёргает Telegram
+    assert bot.webhook_status() == "ok"
+    assert calls == ["getWebhookInfo", "getWebhookInfo"]

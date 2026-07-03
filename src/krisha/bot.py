@@ -547,6 +547,9 @@ def webhook_status(force: bool = False) -> str:
     _last_webhook_check[0] = now
     data = tg_call("getWebhookInfo")
     if not data or not data.get("ok"):
+        # сеть/Telegram моргнули — не кэшируем неудачу на час,
+        # следующий же пинг /api/health попробует снова
+        _last_webhook_check[0] = 0.0
         _last_webhook_status[0] = "unknown"
         return "unknown"
     current = (data.get("result") or {}).get("url") or ""
