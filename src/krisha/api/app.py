@@ -12,7 +12,7 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from krisha import bot, db_release, usage
+from krisha import __version__, bot, db_release, usage
 from krisha.api.schemas import (
     FlagsResponse,
     HealthResponse,
@@ -27,7 +27,7 @@ from krisha.stats import get_stats, heatmap_points
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Krisha Fair Price", version="0.1.0")
+app = FastAPI(title="FairPrice", version=__version__)
 
 STATIC_DIR = ROOT_DIR / "static"
 
