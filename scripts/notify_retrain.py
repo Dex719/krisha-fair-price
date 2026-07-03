@@ -13,7 +13,12 @@ import json
 import logging
 from pathlib import Path
 
-from krisha.monitoring import format_retrain_report, load_metrics_history, notify_retrain
+from krisha.monitoring import (
+    dataset_summary,
+    format_retrain_report,
+    load_metrics_history,
+    notify_retrain,
+)
 
 
 def main() -> None:
@@ -28,7 +33,15 @@ def main() -> None:
     new = json.loads(Path(args.new_meta).read_text())
     gate_passed = args.gate == "success"
 
-    print(format_retrain_report(old, new, gate_passed, history=load_metrics_history()))
+    try:
+        dataset = dataset_summary()
+    except Exception:  # noqa: BLE001
+        dataset = None
+    print(
+        format_retrain_report(
+            old, new, gate_passed, history=load_metrics_history(), dataset=dataset
+        )
+    )
     sent = notify_retrain(old, new, gate_passed)
     print(f"\nTelegram: {'отправлено' if sent else 'пропущено (нет токена/чата)'}")
 
