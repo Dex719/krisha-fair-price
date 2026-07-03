@@ -23,7 +23,7 @@ pinned: false
 ![CatBoost](https://img.shields.io/badge/CatBoost-MAPE_9.5%25-FFCC00)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 
-**[🚀 Live demo](https://krisha-fair-price-production.up.railway.app)** · **[📊 Almaty market dashboard](https://krisha-fair-price-production.up.railway.app/stats)**
+**[🚀 Live demo](https://dex719-krisha-fair-price.hf.space)** · **[📊 Almaty market dashboard](https://dex719-krisha-fair-price.hf.space/stats)**
 
 <img src="docs/screenshot-light.png" alt="Verdict for a listing" width="800" />
 

@@ -1,4 +1,0 @@
-# Заставляем Railway собирать через Nixpacks, как раньше.
-# Dockerfile в корне нужен для Hugging Face Spaces — Railway его не должен трогать.
-[build]
-builder = "NIXPACKS"

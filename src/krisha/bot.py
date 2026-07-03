@@ -6,8 +6,8 @@
 
 Настройка (env):
 - TELEGRAM_BOT_TOKEN — токен от @BotFather (без него бот выключен, приложение работает как обычно)
-- PUBLIC_BASE_URL / RAILWAY_PUBLIC_DOMAIN — публичный адрес для регистрации webhook
-  (на Railway RAILWAY_PUBLIC_DOMAIN выставляется автоматически)
+- PUBLIC_BASE_URL / SPACE_HOST — публичный адрес для регистрации webhook
+  (на Hugging Face Spaces SPACE_HOST выставляется автоматически)
 """
 
 import hashlib
@@ -90,7 +90,7 @@ HELP_TEXT = (
     "🔔 /alerts — ежедневные алерты о новых выгодных объявлениях\n"
     "👀 /track <i>ссылка</i> — следить за лотом: пришлю алерт, если цена "
     "изменится или объявление снимут\n"
-    "Веб-версия: https://krisha-fair-price-production.up.railway.app"
+    "Веб-версия: https://dex719-krisha-fair-price.hf.space"
 )
 
 
@@ -465,7 +465,7 @@ def _handle_track_command(chat_id: int, text: str) -> None:
 
 
 def public_base_url() -> str | None:
-    """Публичный URL приложения: PUBLIC_BASE_URL или домен Railway."""
+    """Публичный URL приложения: PUBLIC_BASE_URL или домен хостинга."""
     explicit = os.environ.get("PUBLIC_BASE_URL")
     if explicit:
         return explicit.rstrip("/")
