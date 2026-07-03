@@ -8,6 +8,9 @@
 - TELEGRAM_BOT_TOKEN — токен от @BotFather (без него бот выключен, приложение работает как обычно)
 - PUBLIC_BASE_URL / SPACE_HOST — публичный адрес для регистрации webhook
   (на Hugging Face Spaces SPACE_HOST выставляется автоматически)
+- TG_API_BASE — базовый адрес Bot API (по умолчанию https://api.telegram.org).
+  Нужен, когда хостинг не пускает исходящие запросы к Telegram напрямую:
+  ставим прокси (см. docs/tg-proxy-worker.js) и указываем его адрес здесь.
 """
 
 import hashlib
@@ -24,6 +27,11 @@ from krisha.predict import KRISHA_URL_RE, predict_from_url
 logger = logging.getLogger(__name__)
 
 TG_API = "https://api.telegram.org"
+
+
+def tg_api_base() -> str:
+    """Базовый адрес Bot API. Переопределяется через TG_API_BASE (прокси)."""
+    return (os.environ.get("TG_API_BASE") or TG_API).rstrip("/")
 WEBHOOK_PATH = "/tg/webhook"
 CAPTION_LIMIT = 1024  # лимит Telegram на подпись к фото
 
@@ -125,7 +133,7 @@ def tg_call(method: str, **payload: Any) -> dict | None:
     if not token:
         return None
     try:
-        resp = _get_tg_client().post(f"{TG_API}/bot{token}/{method}", json=payload)
+        resp = _get_tg_client().post(f"{tg_api_base()}/bot{token}/{method}", json=payload)
         data = resp.json()
         if not data.get("ok"):
             logger.warning("Telegram %s: %s", method, data)
