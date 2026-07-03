@@ -79,6 +79,18 @@ def _maybe_monthly_report(dry_run: bool) -> None:
     print(f"Месячный отчёт: отправлен в {sent} чатов")
 
 
+def _maybe_weekly_usage_report(dry_run: bool) -> None:
+    """По понедельникам (Алматы) — статистика сайта и бота админу."""
+    from datetime import datetime
+
+    from krisha.usage import ALMATY_TZ, send_weekly_report
+
+    if datetime.now(ALMATY_TZ).weekday() != 0 and not dry_run:
+        return
+    sent = send_weekly_report(dry_run=dry_run)
+    print(f"Отчёт статистики: {'отправлен' if sent else 'пропущен (нет данных/чата)'}")
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser()
@@ -90,6 +102,7 @@ def main() -> int:
     _send_track_alerts(args.dry_run)
     _post_channel_digest(args.dry_run, deals)
     _maybe_monthly_report(args.dry_run)
+    _maybe_weekly_usage_report(args.dry_run)
     return 0
 
 
