@@ -1,5 +1,5 @@
 ---
-title: Krisha Fair Price
+title: FairPrice
 emoji: 🏠
 colorFrom: indigo
 colorTo: green
@@ -12,106 +12,116 @@ pinned: false
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
-  <img src="docs/logo-light.png" alt="Krisha Fair Price" width="440" />
+  <img src="docs/logo-light.png" alt="FairPrice" width="440" />
 </picture>
 
-**Fair-price estimator for apartments in Almaty: paste a Krisha.kz link, get a verdict — good deal, fair, or overpriced**
+**FairPrice — справедливая цена квартиры в Алматы: вставь ссылку на объявление и узнай, выгодно это, в рынке или переплата**
 
 [![CI](https://github.com/Dex719/krisha-fair-price/actions/workflows/ci.yml/badge.svg)](https://github.com/Dex719/krisha-fair-price/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-68_passed-2ea44f)
+![tests](https://img.shields.io/badge/tests-147_passed-2ea44f)
 ![python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
 ![CatBoost](https://img.shields.io/badge/CatBoost-MAPE_9.5%25-FFCC00)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![version](https://img.shields.io/badge/version-0.2.0-blue)
 
-**[🚀 Live demo](https://dex719-krisha-fair-price.hf.space)** · **[📊 Almaty market dashboard](https://dex719-krisha-fair-price.hf.space/stats)** · **[🤖 Telegram bot](https://t.me/fairprice_kzbot)** · **[🧵 Threads](https://www.threads.com/@fairprice_kz)**
+**[🚀 Сайт](https://dex719-krisha-fair-price.hf.space)** · **[📊 Рынок Алматы](https://dex719-krisha-fair-price.hf.space/stats)** · **[🤖 Telegram-бот](https://t.me/fairprice_kzbot)** · **[🧵 Threads](https://www.threads.com/@fairprice_kz)**
 
-<img src="docs/screenshot-light.png" alt="Verdict for a listing" width="800" />
+<img src="docs/screenshot-light.png" alt="Вердикт по объявлению" width="800" />
 
 </div>
 
 ---
 
-## ✨ What it does
+## ✨ Что умеет
 
-1. You paste a link to an apartment listing on [Krisha.kz](https://krisha.kz).
-2. The service fetches the listing and extracts ~20 features (area, rooms, floor, building age, district, residential complex, coordinates, distance to city center…).
-3. A CatBoost model predicts the *fair* market price and compares it with the asking price.
-4. You get a verdict (`GOOD_DEAL` / `FAIR` / `OVERPRICED`), the deviation in %, and the top factors that drive the price up or down (SHAP values).
+1. Вставляешь ссылку на объявление о продаже квартиры в Алматы.
+2. Сервис скачивает объявление и извлекает ~20 признаков (площадь, комнаты, этаж, возраст дома, район, ЖК, координаты, расстояние до центра…).
+3. CatBoost-модель считает *справедливую* рыночную цену и сравнивает с ценой в объявлении.
+4. Ответ: вердикт (`ВЫГОДНО` / `В РЫНКЕ` / `ПЕРЕПЛАТА`), отклонение в %, интервал цены и главные факторы, которые тянут цену вверх или вниз (SHAP).
+5. Бонусы: медианный срок до снятия похожих объявлений («похожие уходят за ~N дней»), слежка за ценой (`/track` в боте — алерты при изменении цены и снятии), живой дашборд рынка Алматы.
 
-## 🤖 Telegram bot
+## 🤖 Telegram-бот и Mini App
 
-The same model is available as a Telegram bot: **[@krisha_fair_price_bot](https://t.me/testadsjklasdjklbot)** — send it a Krisha.kz listing link and get the verdict right in the chat (photo, fair price, top price factors).
+Тот же сервис доступен как **[@fairprice_kzbot](https://t.me/fairprice_kzbot)**: кидаешь ссылку — получаешь вердикт прямо в чате (фото, справедливая цена, факторы), плюс Mini App с полноценным интерфейсом сайта.
 
-It runs on the same FastAPI service via webhooks (`POST /tg/webhook`) — no extra server or polling worker needed. To enable it on your own deploy, set the `TELEGRAM_BOT_TOKEN` env variable; the webhook is registered automatically on startup.
+Бот работает на том же FastAPI через webhook (`POST /tg/webhook`) — отдельный сервер не нужен. Для своего деплоя достаточно задать `TELEGRAM_BOT_TOKEN`; webhook регистрируется при старте автоматически, а health-пинг раз в час проверяет его и чинит, если слетел.
 
-## 📈 Model
+## 📈 Модель
 
-Trained on **7,000+ real listings** crawled from all 8 districts of Almaty (resumable, polite crawler → SQLite).
+Обучена на **7 000+ реальных объявлениях** со всех 8 районов Алматы (вежливый resumable-краулер → SQLite). База пополняется ежедневным рескрейпом: свежие цены, новые объявления, отметки о снятии с продажи. Параллельно копится отдельная база аренды — под будущую модель арендной цены и калькулятор «купить vs снимать».
 
-| Metric | CatBoost | Baseline (median ₸/m² by district × rooms) |
+| Метрика | CatBoost | Бейзлайн (медиана ₸/м² по району × комнатам) |
 |---|---|---|
-| MAE | **7.4M ₸** | 14.2M ₸ |
+| MAE | **7.4 млн ₸** | 14.2 млн ₸ |
 | MAPE | **9.5%** | 18.0% |
 | R² | **0.77** | 0.56 |
 
-Metrics are measured on an **honest split**: relisted duplicates are deduplicated and the
-train/test split is grouped by building (`GroupShuffleSplit`), so the model never sees
-apartments from a test building during training. The previously reported random-split
-numbers (~10.6% MAPE) were both inflated by duplicate relistings and leaky at the
-building level — these are directly comparable, honest numbers.
+Метрики на **честном сплите**: перевыставленные дубли схлопнуты, train/test разбит по зданиям (`GroupShuffleSplit`) — модель не видит квартиры из тестового дома при обучении.
 
-- Target: `log1p(price)`, native categorical features (district, microdistrict, residential complex, building type).
-- Spatial features: median ₸/m² over H3 hexagons (res 7 & 8), computed on train only and snapshotted to `models/spatial_ref.json` for inference.
-- Anti-leakage: median ₸/m² maps are computed on the train split only.
-- Explainability: per-prediction SHAP factors + global summary in [`reports/shap_summary.png`](reports/shap_summary.png).
+- Таргет: `log1p(price)`, нативные категориальные признаки (район, микрорайон, ЖК, тип дома).
+- Пространственные признаки: медиана ₸/м² по гексагонам H3 (res 7 и 8), считается только на train и снапшотится в `models/spatial_ref.json`.
+- Интервал цены: конформная калибровка (CQR), покрытие ~80%.
+- Объяснимость: SHAP-факторы на каждый прогноз + глобальный отчёт в [`reports/shap_summary.png`](reports/shap_summary.png).
+- Еженедельное переобучение с гейтом качества: новая модель заезжает, только если не хуже старой на свежем тесте.
 
-## 🛠 Stack
+## 🛠 Стек
 
-`Python 3.11` · `httpx` + `BeautifulSoup4` · `SQLite` · `pandas` · `CatBoost` · `SHAP` · `FastAPI` · `vanilla JS` · `Material 3 Expressive` (light/dark) · `Chart.js` · `pytest` + `GitHub Actions` · `Hugging Face Spaces`
+`Python 3.11` · `httpx` + `BeautifulSoup4` · `SQLite` · `pandas` · `CatBoost` · `SHAP` · `FastAPI` · `vanilla JS` · `Material 3 Expressive` (светлая/тёмная) · `Chart.js` · `Leaflet` · `pytest` + `GitHub Actions` · `Hugging Face Spaces`
 
-## 🚀 Quick start
+## 🚀 Быстрый старт
 
 ```bash
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 
-make crawl        # quick probe: ~50 listings into data/krisha.db
-make crawl-full   # full crawl of Almaty (takes hours — polite delays)
-make train        # train CatBoost → models/model.cbm + SHAP report
-make api          # http://localhost:8000 — web UI + API
+make crawl        # быстрая проба: ~50 объявлений в data/krisha.db
+make crawl-full   # полный обход Алматы (часы — вежливые задержки)
+make train        # обучение CatBoost → models/model.cbm + SHAP-отчёт
+make api          # http://localhost:8000 — веб-интерфейс + API
 make test         # pytest
+```
+
+Сбор аренды (отдельная база `data/krisha_rent.db`):
+
+```bash
+python scripts/rescrape.py --deal arenda --max-new 1000
 ```
 
 ## 🔌 API
 
-| Method | Path | Description |
+| Метод | Путь | Что делает |
 |---|---|---|
-| `POST` | `/api/predict` | `{"url": "https://krisha.kz/a/show/..."}` → verdict, fair price, factors |
-| `GET` | `/api/stats` | market snapshot: districts, ₸/m², price distribution |
-| `GET` | `/api/health` | liveness + model status |
-| `POST` | `/tg/webhook` | Telegram bot updates (secret-protected) |
+| `POST` | `/api/predict` | `{"url": "https://krisha.kz/a/show/..."}` → вердикт, справедливая цена, факторы, срок продажи |
+| `GET` | `/api/stats` | срез рынка: районы, ₸/м², распределение цен, карта |
+| `GET` | `/api/health` | живость + статус модели и Telegram-webhook |
+| `POST` | `/tg/webhook` | апдейты Telegram-бота (защищено секретом) |
 
-## 🗂 Project structure
+## 🗂 Структура проекта
 
 ```
 src/krisha/
-├── scraping/       # polite HTTP client (delays, retries), list & detail parsers, resumable crawler
-├── features.py     # cleaning + feature engineering (floor ratio, building age, dist to center, ₸/m² maps)
-├── train.py        # CatBoost training, baseline comparison, SHAP report
-├── predict.py      # URL → verdict pipeline
-├── bot.py          # Telegram bot: webhook updates → predict → reply
-├── api/            # FastAPI app + static frontend
-└── db.py           # SQLite schema, upsert by listing id
-static/             # Material 3 Expressive UI: index (estimator) + stats (dashboard)
-tests/              # 25 tests: parsers (real-markup fixtures), features, DB, bot, train smoke
+├── scraping/       # вежливый HTTP-клиент (задержки, ретраи), парсеры выдачи и деталей, resumable-краулер, рескрейп
+├── features.py     # очистка + фичи (этажность, возраст дома, до центра, карты ₸/м²)
+├── train.py        # обучение CatBoost, бейзлайн, честная валидация, SHAP
+├── predict.py      # ссылка → вердикт
+├── market.py       # рыночная статистика: срез по районам, срок до снятия
+├── bot.py          # Telegram-бот: webhook → predict → ответ; /track-алерты
+├── api/            # FastAPI + статичный фронт
+└── db.py           # SQLite: схема, upsert по id, история цен
+static/             # Material 3 Expressive UI: оценка + дашборд рынка
+tests/              # 147 тестов: парсеры (фикстуры с реальной разметкой), фичи, БД, бот, API, train-smoke
 ```
 
-## ⚠️ Disclaimer
+## 🏷 Версии
 
-Educational project. Listing data belongs to Krisha.kz; crawling is deliberately gentle (randomized delays, no parallel hammering). Predictions are estimates, not financial advice.
+Релизы нумеруются по [semver](https://semver.org) `0.MINOR.PATCH`, история — в [CHANGELOG.md](CHANGELOG.md). Текущая версия — в подвале сайта и в `/api/health`.
+
+## ⚠️ Дисклеймер
+
+Учебный проект. Данные объявлений принадлежат krisha.kz; сбор нарочно щадящий (случайные задержки, без параллельной долбёжки). Прогнозы — оценка, а не финансовый совет.
 
 <div align="center">
 
-<img src="docs/screenshot-dark.png" alt="Almaty market dashboard, dark theme" width="800" />
+<img src="docs/screenshot-dark.png" alt="Дашборд рынка Алматы, тёмная тема" width="800" />
 
 </div>

@@ -1,4 +1,4 @@
-/* Krisha Fair Price — дизайн-система v2 «Оценка».
+/* FairPrice — дизайн-система v2 «Оценка».
    Регистр: инструмент (product). Стратегия цвета: restrained —
    спокойные нейтральные + один зелёный акцент только для действий,
    вердиктов и текущего состояния. Числа — табличные, как в отчёте. */
@@ -295,6 +295,16 @@ a.btn:hover { text-decoration: none; }
 .paste-btn:hover { background: var(--surface-container-high); color: var(--on-surface); }
 .paste-btn.ok { background: var(--good-bg); color: var(--good); }
 
+/* Кнопка «Оценить» — только иконка, одна линия с полем на любых экранах */
+.submit-btn {
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  flex-shrink: 0;
+  justify-content: center;
+  border-radius: 11px;
+}
+
 /* ---------- Карточки ---------- */
 .card {
   background: var(--surface-container-lowest);
@@ -569,12 +579,6 @@ a.btn:hover { text-decoration: none; }
   to { opacity: 1; transform: none; }
 }
 
-.text-swap { animation: text-swap 0.25s ease; }
-@keyframes text-swap {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: none; }
-}
-
 /* ---------- Подвал ---------- */
 .social-links {
   display: flex;
@@ -607,9 +611,9 @@ a.btn:hover { text-decoration: none; }
 @media (max-width: 560px) {
   .page { padding: 0 16px 56px; }
   .card { padding: 18px; }
-  .search-bar { flex-wrap: wrap; }
-  .search-bar input { flex-basis: 100%; order: -1; padding: 12px 8px 4px; }
-  .search-bar .btn { flex: 1; justify-content: center; }
+  .search-bar { gap: 6px; padding: 6px; }
+  .search-bar input { font-size: 0.95rem; padding: 10px 2px; }
+  .paste-btn, .submit-btn { width: 42px; height: 42px; }
 }
 
 /* ---------- Чернильная рябь по клику (icons.js) ---------- */

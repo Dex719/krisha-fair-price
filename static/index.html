@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Krisha Fair Price — справедливая цена квартиры</title>
+  <title>FairPrice — справедливая цена квартиры в Алматы</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
@@ -33,8 +33,8 @@
   <div class="page page-narrow">
     <header class="top-bar reveal">
       <a class="brand" href="/">
-        <span class="logo"><img src="/static/avatar.png?v=3" alt="Krisha Fair Price" /></span>
-        Krisha Fair Price
+        <span class="logo"><img src="/static/avatar.png?v=3" alt="FairPrice" /></span>
+        FairPrice
       </a>
       <div class="spacer"></div>
       <a class="btn btn-tonal" href="/stats" style="padding:11px 18px;font-size:.92rem">
@@ -49,7 +49,7 @@
     <section style="padding:7vh 0 36px" class="reveal">
       <h1 class="display">Сколько эта квартира стоит <span class="accent">на самом деле?</span></h1>
       <p class="body-lg" style="max-width:540px;margin-top:18px">
-        Вставь ссылку на объявление с Krisha.kz — модель, обученная на
+        Вставь ссылку на объявление — модель, обученная на
         <b>7&nbsp;000+ квартирах Алматы</b>, оценит справедливую цену и покажет, что на неё влияет.
       </p>
     </section>
@@ -59,9 +59,8 @@
         <span data-icon="link" data-icon-size="22"></span>
       </button>
       <input id="url" type="url" required placeholder="https://krisha.kz/a/show/…" aria-label="Ссылка на объявление" />
-      <button id="btn" type="submit" class="btn btn-filled">
-        <span id="btn-icon" data-icon="sparkles" data-icon-size="20"></span>
-        <span id="btn-text">Оценить</span>
+      <button id="btn" type="submit" class="btn btn-filled submit-btn" aria-label="Оценить" title="Оценить">
+        <span id="btn-icon" data-icon="sparkles" data-icon-size="22"></span>
       </button>
     </form>
 
@@ -87,7 +86,7 @@
     </div>
 
     <footer class="colophon reveal">
-      CatBoost · MAPE 9.8% · R² 0.84 — учебный проект, не финансовый совет
+      FairPrice v0.2.0 · CatBoost · MAPE 9.5% · R² 0.77 — учебный проект, не финансовый совет
     </footer>
   </div>
 
@@ -446,19 +445,10 @@
       input.focus();
     });
 
-    /* анимация смены текста на кнопке */
-    const setBtnText = (t) => {
-      const el = document.getElementById("btn-text");
-      el.textContent = t;
-      el.classList.remove("text-swap");
-      void el.offsetWidth;
-      el.classList.add("text-swap");
-    };
-
     /* ---------- сабмит ---------- */
     document.getElementById("form").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const btn = document.getElementById("btn"), btnText = document.getElementById("btn-text"),
+      const btn = document.getElementById("btn"),
             btnIcon = document.getElementById("btn-icon"),
             result = document.getElementById("result"), error = document.getElementById("error"),
             loading = document.getElementById("loading");
@@ -466,7 +456,6 @@
       error.style.display = "none";
       loading.style.display = "block";
       btn.disabled = true;
-      setBtnText("Думаю…");
       btnIcon.outerHTML = `<span id="btn-icon" class="spinner"></span>`;
       try {
         const resp = await fetch("/api/predict", {
@@ -483,9 +472,8 @@
       } finally {
         loading.style.display = "none";
         btn.disabled = false;
-        setBtnText("Оценить");
         document.getElementById("btn-icon").outerHTML =
-          `<span id="btn-icon">${kfpIcon("sparkles", 20)}</span>`;
+          `<span id="btn-icon">${kfpIcon("sparkles", 22)}</span>`;
       }
     });
   </script>
