@@ -23,7 +23,6 @@ jobs:
   rescrape:
     runs-on: ubuntu-latest
     # Полный шардированный проход (~44к объявлений, ~2200 страниц выдачи)
-    # с щадящими задержками ≈ 2.5 ч + до 1000 детальных страниц ≈ 1 ч.
     timeout-minutes: 350
 
     steps:
@@ -42,7 +41,6 @@ jobs:
 
       - name: Rescrape
         env:
-          # Не спешим: щадящие задержки, чтобы не злить krisha.kz
           KRISHA_DELAY_MIN: "2.5"
           KRISHA_DELAY_MAX: "5.0"
         run: |
@@ -76,6 +74,7 @@ jobs:
       - name: Alerts
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          # Для /track: коммит data/tracked.json через Contents API
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TG_CHANNEL_ID: ${{ secrets.TG_CHANNEL_ID 
+          TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
         run: python scripts/send_alerts.py
