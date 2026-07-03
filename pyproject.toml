@@ -11,6 +11,7 @@ dependencies = [
     "numpy>=1.26",
     "catboost>=1.2",
     "h3>=4.0",
+    "scipy>=1.11",
     "scikit-learn>=1.4",
     "shap>=0.45",
     "matplotlib>=3.8",
