@@ -9,6 +9,9 @@ DATA_DIR = ROOT_DIR / "data"
 MODELS_DIR = ROOT_DIR / "models"
 REPORTS_DIR = ROOT_DIR / "reports"
 DB_PATH = DATA_DIR / "krisha.db"
+# Аренда: отдельная база с той же схемой — не трогает продажный пайплайн,
+# все функции db.py принимают db_path (модель аренды и «купить vs снимать» — этап 2)
+RENT_DB_PATH = DATA_DIR / "krisha_rent.db"
 MODEL_PATH = MODELS_DIR / "model.cbm"
 MODEL_LO_PATH = MODELS_DIR / "model_lo.cbm"  # квантиль q10 для интервала цены
 MODEL_HI_PATH = MODELS_DIR / "model_hi.cbm"  # квантиль q90 для интервала цены
