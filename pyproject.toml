@@ -1,6 +1,6 @@
 [project]
 name = "krisha-fair-price"
-version = "0.1.0"
+version = "0.2.0"
 description = "ML-сервис справедливой цены квартир в Алматы по данным Krisha.kz"
 requires-python = ">=3.11"
 dependencies = [
