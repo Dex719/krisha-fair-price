@@ -37,7 +37,15 @@ jobs:
         run: python scripts/train.py
 
       - name: Metric gate (не деплоим, если стало хуже)
+        id: gate
         run: python scripts/model_gate.py /tmp/old_meta.json models/model_meta.json --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Отчёт о переобучении в Telegram
+        if: always() && steps.gate.outcome != 'skipped'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
+        run: python scripts/notify_retrain.py /tmp/old_meta.json models/model_meta.json --gate ${{ steps.gate.outcome }}
 
       - name: Commit new model
         run: |
