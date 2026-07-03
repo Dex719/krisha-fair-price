@@ -1,0 +1,42 @@
+name: Space keep-alive
+
+on:
+  schedule:
+    - cron: "30 */6 * * *" # пинг каждые 6 часов — Space не уходит в сон (лимит 48ч бездействия)
+    - cron: "0 8 * * *" # 13:00 Алматы — рестарт после ночного рескрейпа: Space подтянет свежую базу из релиза
+  workflow_dispatch:
+    inputs:
+      restart:
+        description: "Рестартнуть Space (иначе только пинг)"
+        default: "false"
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Restart Space (подтянуть свежую базу)
+        if: github.event.schedule == '0 8 * * *' || github.event.inputs.restart == 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $HF_TOKEN" \
+            https://huggingface.co/api/spaces/Dex719/krisha-fair-price/restart
+          echo "Рестарт запрошен, жду минуту перед проверкой"
+          sleep 60
+
+      - name: Ping /api/health
+        run: |
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+              https://dex719-krisha-fair-price.hf.space/api/health || true)
+            if [ "$code" = "200" ]; then
+              echo "Space жив (попытка $i)"
+              exit 0
+            fi
+            echo "Попытка $i: HTTP $code — жду 30с (Space может просыпаться/собираться)"
+            sleep 30
+          done
+          echo "Space не ответил 200 за ~5 минут" >&2
+          exit 1
