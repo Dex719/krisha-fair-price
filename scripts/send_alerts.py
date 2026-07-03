@@ -91,6 +91,14 @@ def _maybe_weekly_usage_report(dry_run: bool) -> None:
     print(f"Отчёт статистики: {'отправлен' if sent else 'пропущен (нет данных/чата)'}")
 
 
+def _send_daily_admin_report(dry_run: bool) -> None:
+    """Утренняя сводка админу: проход рескрейпа, база, модель, пользователи."""
+    from krisha.daily_report import send_daily_report
+
+    sent = send_daily_report(scope="sale", dry_run=dry_run)
+    print(f"Утренний отчёт админу: {'отправлен' if sent else 'пропущен'}")
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser()
@@ -103,6 +111,7 @@ def main() -> int:
     _post_channel_digest(args.dry_run, deals)
     _maybe_monthly_report(args.dry_run)
     _maybe_weekly_usage_report(args.dry_run)
+    _send_daily_admin_report(args.dry_run)
     return 0
 
 

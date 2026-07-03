@@ -94,8 +94,9 @@ def build_spatial_ref(train_df: pd.DataFrame) -> dict:
 
 def save_spatial_ref(ref: dict, path: Path | str = SPATIAL_REF_PATH) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
+    payload = {k: v for k, v in ref.items() if k != _TREE_KEY}  # дерево — не для json
     Path(path).write_text(
-        json.dumps(ref, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
     )
 
 
@@ -106,6 +107,30 @@ def load_spatial_ref(path: Path | str | None = None) -> dict | None:
     if not p.exists():
         return None
     return json.loads(p.read_text(encoding="utf-8"))
+
+
+_TREE_KEY = "_kdtree"  # in-memory мемо внутри ref; в json не попадает (save до predict)
+
+
+def _ref_tree(ref: dict):
+    """cKDTree по точкам референса, строится один раз на ref.
+
+    Раньше дерево на ~40к точек пересобиралось на каждый predict — десятки мс
+    CPU на запрос впустую. Кэшируем прямо в dict референса: у predict ref живёт
+    весь процесс (lru_cache в load_spatial_ref), у train — до конца обучения.
+    """
+    tree = ref.get(_TREE_KEY)
+    if tree is None:
+        from scipy.spatial import cKDTree
+
+        tree = cKDTree(
+            _project(
+                np.asarray(ref["lat"], dtype=float),
+                np.asarray(ref["lon"], dtype=float),
+            )
+        )
+        ref[_TREE_KEY] = tree
+    return tree
 
 
 def _knn_ppsm(
@@ -125,10 +150,9 @@ def _knn_ppsm(
     ref_lat = np.asarray(ref["lat"], dtype=float)
     if ref_lat.size == 0:
         return knn, knn_n
-    from scipy.spatial import cKDTree
 
     ref_ppsm = np.asarray(ref["ppsm"], dtype=float)
-    tree = cKDTree(_project(ref_lat, np.asarray(ref["lon"], dtype=float)))
+    tree = _ref_tree(ref)
     ok = ~(np.isnan(lat) | np.isnan(lon))
     if not ok.any():
         return knn, knn_n
