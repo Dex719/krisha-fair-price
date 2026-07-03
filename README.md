@@ -1,3 +1,13 @@
+---
+title: Krisha Fair Price
+emoji: 🏠
+colorFrom: indigo
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 <div align="center">
 
 <picture>
@@ -32,7 +42,7 @@
 
 The same model is available as a Telegram bot: **[@krisha_fair_price_bot](https://t.me/testadsjklasdjklbot)** — send it a Krisha.kz listing link and get the verdict right in the chat (photo, fair price, top price factors).
 
-It runs on the same Railway service via webhooks (`POST /tg/webhook`) — no extra server or polling worker needed. To enable it on your own deploy, set the `TELEGRAM_BOT_TOKEN` env variable; the webhook is registered automatically on startup.
+It runs on the same FastAPI service via webhooks (`POST /tg/webhook`) — no extra server or polling worker needed. To enable it on your own deploy, set the `TELEGRAM_BOT_TOKEN` env variable; the webhook is registered automatically on startup.
 
 ## 📈 Model
 
@@ -57,7 +67,7 @@ building level — these are directly comparable, honest numbers.
 
 ## 🛠 Stack
 
-`Python 3.11` · `httpx` + `BeautifulSoup4` · `SQLite` · `pandas` · `CatBoost` · `SHAP` · `FastAPI` · `vanilla JS` · `Material 3 Expressive` (light/dark) · `Chart.js` · `pytest` + `GitHub Actions` · `Railway`
+`Python 3.11` · `httpx` + `BeautifulSoup4` · `SQLite` · `pandas` · `CatBoost` · `SHAP` · `FastAPI` · `vanilla JS` · `Material 3 Expressive` (light/dark) · `Chart.js` · `pytest` + `GitHub Actions` · `Hugging Face Spaces`
 
 ## 🚀 Quick start
 
