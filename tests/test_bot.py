@@ -254,3 +254,31 @@ def test_webhook_status_checks_on_fresh_boot(monkeypatch):
 
     assert bot.webhook_status() == "ok"
     assert calls == ["getWebhookInfo"]
+
+
+def test_tg_api_base_default_and_override(monkeypatch):
+    monkeypatch.delenv("TG_API_BASE", raising=False)
+    assert bot.tg_api_base() == "https://api.telegram.org"
+    monkeypatch.setenv("TG_API_BASE", "https://tg-proxy.example.workers.dev/")
+    assert bot.tg_api_base() == "https://tg-proxy.example.workers.dev"
+
+
+def test_tg_call_uses_api_base_override(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TG_API_BASE", "https://tg-proxy.example.workers.dev")
+    urls = []
+
+    class FakeClient:
+        def post(self, url, json=None):
+            urls.append(url)
+
+            class R:
+                @staticmethod
+                def json():
+                    return {"ok": True}
+
+            return R()
+
+    monkeypatch.setattr(bot, "_get_tg_client", lambda: FakeClient())
+    assert bot.tg_call("getMe") == {"ok": True}
+    assert urls == ["https://tg-proxy.example.workers.dev/bot123:abc/getMe"]
