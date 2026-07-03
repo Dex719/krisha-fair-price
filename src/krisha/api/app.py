@@ -12,7 +12,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from krisha import bot, db_release
+from krisha import bot, db_release, usage
 from krisha.api.schemas import (
     FlagsResponse,
     HealthResponse,
@@ -113,6 +113,7 @@ def predict(req: PredictRequest, request: Request) -> PredictResponse:
     except RuntimeError:
         logger.exception("predict: ошибка обработки объявления")
         raise HTTPException(status_code=502, detail="Не удалось обработать объявление")
+    usage.record_event("predict")
     return PredictResponse(**result)
 
 
@@ -218,11 +219,13 @@ def _startup() -> None:
 
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
+    usage.record_event("site")
     return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/stats", include_in_schema=False)
 def stats_page() -> FileResponse:
+    usage.record_event("site")
     return FileResponse(STATIC_DIR / "stats.html")
 
 
