@@ -173,3 +173,44 @@ def test_start_adds_miniapp_button_in_private(monkeypatch):
     monkeypatch.delenv("SPACE_HOST", raising=False)
     bot.handle_update({"message": {"chat": {"id": 42, "type": "private"}, "text": "/start"}})
     assert "reply_markup" not in calls[0][1]
+
+
+def test_webhook_status_self_heals(monkeypatch):
+    """Если webhook слетел (url пустой) — health-проверка перерегистрирует его."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://kfp.example.com")
+    calls = []
+
+    def fake_tg(method, **kw):
+        calls.append((method, kw))
+        if method == "getWebhookInfo":
+            return {"ok": True, "result": {"url": ""}}  # webhook не зарегистрирован
+        return {"ok": True}
+
+    monkeypatch.setattr(bot, "tg_call", fake_tg)
+    bot._last_webhook_check[0] = 0.0
+
+    assert bot.webhook_status(force=True) == "ok"
+    set_calls = [kw for m, kw in calls if m == "setWebhook"]
+    assert set_calls and set_calls[0]["url"] == "https://kfp.example.com/tg/webhook"
+
+    # повторный вызов в течение часа не дёргает Telegram (кэш)
+    calls.clear()
+    assert bot.webhook_status() == "ok"
+    assert calls == []
+
+
+def test_webhook_status_ok_when_url_matches(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://kfp.example.com")
+    monkeypatch.setattr(
+        bot,
+        "tg_call",
+        lambda method, **kw: {"ok": True, "result": {"url": "https://kfp.example.com/tg/webhook"}},
+    )
+    assert bot.webhook_status(force=True) == "ok"
+
+
+def test_webhook_status_without_token(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    assert bot.webhook_status(force=True) == "no_token"
