@@ -215,6 +215,10 @@ def handle_update(update: dict[str, Any]) -> None:
     if not chat_id or not text:
         return
 
+    from krisha.usage import record_event
+
+    record_event("bot", user_id=chat_id)
+
     if text.startswith("/start") or text.startswith("/help"):
         payload: dict[str, Any] = {"chat_id": chat_id, "text": HELP_TEXT,
                                    "parse_mode": "HTML",
