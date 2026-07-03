@@ -188,7 +188,7 @@ def test_webhook_status_self_heals(monkeypatch):
         return {"ok": True}
 
     monkeypatch.setattr(bot, "tg_call", fake_tg)
-    bot._last_webhook_check[0] = 0.0
+    bot._last_webhook_check[0] = None
 
     assert bot.webhook_status(force=True) == "ok"
     set_calls = [kw for m, kw in calls if m == "setWebhook"]
@@ -229,9 +229,28 @@ def test_webhook_status_failure_not_cached(monkeypatch):
         return {"ok": True, "result": {"url": "https://kfp.example.com/tg/webhook"}}
 
     monkeypatch.setattr(bot, "tg_call", flaky_tg)
-    bot._last_webhook_check[0] = 0.0
+    bot._last_webhook_check[0] = None
 
     assert bot.webhook_status() == "unknown"
     # без force и без ожидания часа — повторный вызов сразу дёргает Telegram
     assert bot.webhook_status() == "ok"
     assert calls == ["getWebhookInfo", "getWebhookInfo"]
+
+
+def test_webhook_status_checks_on_fresh_boot(monkeypatch):
+    """На свежем контейнере (monotonic < часа) первый health-пинг реально дёргает Telegram."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://kfp.example.com")
+    monkeypatch.setattr(bot.time, "monotonic", lambda: 42.0)  # аптайм 42 секунды
+    calls = []
+
+    def fake_tg(method, **kw):
+        calls.append(method)
+        return {"ok": True, "result": {"url": "https://kfp.example.com/tg/webhook"}}
+
+    monkeypatch.setattr(bot, "tg_call", fake_tg)
+    bot._last_webhook_check[0] = None
+    bot._last_webhook_status[0] = "unknown"
+
+    assert bot.webhook_status() == "ok"
+    assert calls == ["getWebhookInfo"]

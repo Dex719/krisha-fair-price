@@ -524,7 +524,10 @@ def setup_webhook(retries: int = 3) -> bool:
 
 
 _WEBHOOK_CHECK_INTERVAL_S = 3600.0
-_last_webhook_check: list[float] = [0.0]  # list — чтобы мутировать без global
+# None = «ещё не проверяли». Нельзя использовать 0.0: time.monotonic() — это
+# секунды с загрузки машины, на свежем контейнере now < 3600 и «0.0» выглядит
+# как недавняя проверка — кэш отдаёт unknown, не дёргая Telegram вообще.
+_last_webhook_check: list[float | None] = [None]  # list — чтобы мутировать без global
 _last_webhook_status: list[str] = ["unknown"]
 
 
@@ -542,14 +545,15 @@ def webhook_status(force: bool = False) -> str:
     if not base:
         return "no_public_url"
     now = time.monotonic()
-    if not force and now - _last_webhook_check[0] < _WEBHOOK_CHECK_INTERVAL_S:
+    last = _last_webhook_check[0]
+    if not force and last is not None and now - last < _WEBHOOK_CHECK_INTERVAL_S:
         return _last_webhook_status[0]
     _last_webhook_check[0] = now
     data = tg_call("getWebhookInfo")
     if not data or not data.get("ok"):
         # сеть/Telegram моргнули — не кэшируем неудачу на час,
         # следующий же пинг /api/health попробует снова
-        _last_webhook_check[0] = 0.0
+        _last_webhook_check[0] = None
         _last_webhook_status[0] = "unknown"
         return "unknown"
     current = (data.get("result") or {}).get("url") or ""
