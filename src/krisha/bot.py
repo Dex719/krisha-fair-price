@@ -104,13 +104,28 @@ def webhook_secret(token: str) -> str:
     return hashlib.sha256(f"kfp:{token}".encode()).hexdigest()[:32]
 
 
+# На HF Spaces api.telegram.org не отвечает по IPv6 — TCP коннектится, а TLS
+# handshake виснет до таймаута ("The handshake operation timed out"). Форсим
+# IPv4 через local_address и добавляем ретраи на уровне транспорта.
+_tg_client: list[httpx.Client | None] = [None]
+
+
+def _get_tg_client() -> httpx.Client:
+    if _tg_client[0] is None:
+        _tg_client[0] = httpx.Client(
+            transport=httpx.HTTPTransport(local_address="0.0.0.0", retries=2),
+            timeout=httpx.Timeout(15.0, connect=10.0),
+        )
+    return _tg_client[0]
+
+
 def tg_call(method: str, **payload: Any) -> dict | None:
     """Вызов метода Telegram Bot API. Ошибки логируем, наружу не роняем."""
     token = bot_token()
     if not token:
         return None
     try:
-        resp = httpx.post(f"{TG_API}/bot{token}/{method}", json=payload, timeout=15.0)
+        resp = _get_tg_client().post(f"{TG_API}/bot{token}/{method}", json=payload)
         data = resp.json()
         if not data.get("ok"):
             logger.warning("Telegram %s: %s", method, data)
