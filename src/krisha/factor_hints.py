@@ -17,7 +17,11 @@ from krisha.db import get_conn
 
 logger = logging.getLogger(__name__)
 
-_PPSM_SQL = "SELECT price * 1.0 / area FROM listings WHERE price > 0 AND area > 0"
+# Только активные объявления: медианы должны отражать текущий рынок
+_PPSM_SQL = (
+    "SELECT price * 1.0 / area FROM listings "
+    "WHERE is_active = 1 AND price > 0 AND area > 0"
+)
 
 
 def _fmt_k(value: float) -> str:
@@ -49,7 +53,8 @@ def market_stats() -> dict[str, Any]:
                 r[0]: (r[1], r[2])
                 for r in conn.execute(
                     """SELECT district, price * 1.0 / area, COUNT(*) FROM listings
-                       WHERE price > 0 AND area > 0 AND district IS NOT NULL
+                       WHERE is_active = 1 AND price > 0 AND area > 0
+                         AND district IS NOT NULL
                        GROUP BY district"""
                 )
             }

@@ -97,9 +97,10 @@ def compute_stats(db_path: Path | str = DB_PATH) -> dict:
         raise FileNotFoundError(f"БД не найдена: {db_path}")
 
     with sqlite3.connect(db_path) as conn:
+        # Только активные: снятые/проданные лоты тянут медианы к прошлому рынку
         df = pd.read_sql(
             "SELECT price, area, rooms, district, category FROM listings "
-            "WHERE price IS NOT NULL AND area IS NOT NULL AND area > 0",
+            "WHERE is_active = 1 AND price IS NOT NULL AND area IS NOT NULL AND area > 0",
             conn,
         )
 
