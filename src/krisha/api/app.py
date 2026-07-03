@@ -43,7 +43,10 @@ CSP = (
     "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://telegram.org; "
     "connect-src 'self'; "
     "base-uri 'self'; "
-    "frame-ancestors 'self' https://huggingface.co; "  # iframe на странице Space
+    # iframe на странице Space + Telegram Mini App (web-клиенты и webview
+    # открывают сайт во фрейме — без этих origins браузер блокирует загрузку)
+    "frame-ancestors 'self' https://huggingface.co "
+    "https://telegram.org https://*.telegram.org; "
     "object-src 'none'"
 )
 
