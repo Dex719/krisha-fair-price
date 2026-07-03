@@ -3,6 +3,10 @@ name: Deploy to HF Space
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "data/subscriptions.json"
+      - "data/tracked.json"
+      - "data/usage_stats.json"
   workflow_dispatch:
 
 concurrency:
