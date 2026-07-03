@@ -272,7 +272,10 @@ def predict_from_listing(
 
     result["price_history"] = price_history_points(listing.get("id"))
     result["days_on_market"] = days_on_market(listing.get("id"))
-    result["liquidity"] = liquidity_estimate(listing.get("district"), listing.get("rooms"))
+    # diff_pct подмешивает «срок продажи» по ценовой полосе: похожие по цене
+    result["liquidity"] = liquidity_estimate(
+        listing.get("district"), listing.get("rooms"), result.get("diff_pct")
+    )
 
     # Скам-детектор: цена сильно ниже оценки + эвристики по объявлению
     from krisha.scam import assess_scam_risk

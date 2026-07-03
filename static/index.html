@@ -168,8 +168,24 @@
       }
       if (data.days_on_market != null && data.days_on_market > 0)
         rows.push({ label: "Дней на рынке", value: data.days_on_market });
-      if (data.liquidity)
-        rows.push({ label: "Похожие продаются за", value: `~${data.liquidity.median_days} дн.` });
+      /* срок продажи v1: медиана дней до снятия у похожих + ценовая полоса */
+      const liq = data.liquidity;
+      let liqNote = "";
+      if (liq) {
+        const scopeRu = liq.scope === "city" ? " (по городу)" : "";
+        rows.push({ label: `Похожие снимают за${scopeRu}`, value: `~${liq.median_days} дн. · ${liq.sample} снятых` });
+        if (liq.band_median_days != null) {
+          const BAND_RU = { below: "дешевле рынка", near: "в рынке", above: "дороже рынка" };
+          rows.push({
+            label: `Похожие по цене (${BAND_RU[liq.band] || ""})`,
+            value: `~${liq.band_median_days} дн. · ${liq.band_sample} снятых`,
+          });
+        }
+        liqNote = `
+          <p style="margin:8px 0 0;font-size:.78rem;color:var(--secondary)">
+            Срок — по снятым с публикации объявлениям: снятие ≠ продажа, история пока короткая.
+          </p>`;
+      }
       if (!rows.length) return "";
       return `
           <p class="title" style="display:flex;align-items:center;gap:10px;margin:22px 0 12px;font-size:.95rem">
@@ -181,7 +197,7 @@
                 <p class="d-label">${esc(d.label)}</p>
                 <p class="d-value">${esc(d.value)}</p>
               </div>`).join("")}
-          </div>`;
+          </div>${liqNote}`;
     }
 
     const diffBadge = (pct) => {

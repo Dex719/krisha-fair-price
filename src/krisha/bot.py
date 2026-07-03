@@ -148,6 +148,23 @@ def format_reply(result: dict[str, Any]) -> str:
             line += f" ({diff:+.1f}%)"
         lines.append(line)
 
+    # Срок продажи v1: медиана дней до снятия у похожих (снятие != продажа)
+    liq = result.get("liquidity")
+    if liq:
+        if liq.get("band_median_days") is not None:
+            band_ru = {"below": "дешевле рынка", "near": "в рынке", "above": "дороже рынка"}
+            lines.append(
+                f"⏳ Похожие по цене ({band_ru.get(liq.get('band'), '')}) "
+                f"снимают с продажи за ~<b>{liq['band_median_days']} дн.</b> "
+                f"(по {liq['band_sample']} снятым)"
+            )
+        else:
+            scope = " по городу" if liq.get("scope") == "city" else ""
+            lines.append(
+                f"⏳ Похожие{scope} снимают с продажи за ~<b>{liq['median_days']} дн.</b> "
+                f"(по {liq['sample']} снятым)"
+            )
+
     scam = result.get("scam_risk")
     if scam:
         mark = "🚨" if scam.get("level") == "high" else "⚠️"

@@ -46,8 +46,12 @@ class PricePoint(BaseModel):
 
 
 class Liquidity(BaseModel):
-    median_days: int  # медиана дней до снятия у похожих (район + комнаты)
+    median_days: int  # медиана дней до снятия у похожих (снятие != продажа)
     sample: int       # размер выборки снятых аналогов
+    scope: str = "district_rooms"        # уровень оценки: район+комнаты или city
+    band: str | None = None              # ценовая полоса объявления: below/near/above
+    band_median_days: int | None = None  # «похожие по цене уходят за ~N дней»
+    band_sample: int | None = None       # выборка снятых в этой полосе
 
 
 class TextFlag(BaseModel):

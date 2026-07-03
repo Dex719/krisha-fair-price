@@ -82,3 +82,126 @@ def test_upsert_revives_delisted(tmp_path):
     with get_conn(db) as conn:
         row = conn.execute("SELECT is_active, delisted_at FROM listings WHERE id = 7").fetchone()
     assert row["is_active"] == 1 and row["delisted_at"] is None
+
+
+# ---------- срок продажи v1: liquidity_estimate ----------
+
+from datetime import datetime, timedelta  # noqa: E402
+
+from krisha.market import liquidity_estimate  # noqa: E402
+
+DISTRICT = "Bostandykskiy_r-n"
+
+
+def _add_delisted(
+    db,
+    lid: int,
+    *,
+    district: str = DISTRICT,
+    rooms: int = 2,
+    price: int = 50_000_000,
+    area: float = 50.0,
+    first_seen: str = "2026-06-10 00:00:00",
+    days: float = 10.0,
+    active: bool = False,
+) -> None:
+    delisted = (
+        datetime.fromisoformat(first_seen) + timedelta(days=days)
+    ).strftime("%Y-%m-%d %H:%M:%S")
+    with get_conn(db) as conn:
+        conn.execute(
+            "INSERT INTO listings (id, url, price, rooms, area, district, first_seen, "
+            "last_seen, is_active, delisted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                lid,
+                f"https://krisha.kz/a/show/{lid}",
+                price,
+                rooms,
+                area,
+                district,
+                first_seen,
+                delisted,
+                0 if not active else 1,
+                delisted if not active else None,
+            ),
+        )
+
+
+def _anchor(db) -> None:
+    """Первая строка базы: задаёт MIN(first_seen) = старт скрейпа."""
+    _add_delisted(db, 999_999, first_seen="2026-06-01 00:00:00", days=1.0, active=True)
+
+
+def test_liquidity_none_without_data(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db)
+    assert liquidity_estimate(DISTRICT, 2, db_path=db) is None
+    assert liquidity_estimate(None, 2, db_path=db) is None
+    assert liquidity_estimate(DISTRICT, None, db_path=db) is None
+
+
+def test_liquidity_segment_median(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db)
+    _anchor(db)
+    for i, days in enumerate(range(5, 20)):  # 15 снятых, медиана 12
+        _add_delisted(db, 1000 + i, days=float(days))
+    est = liquidity_estimate(DISTRICT, 2, db_path=db)
+    assert est == {
+        "median_days": 12,
+        "sample": 15,
+        "scope": "district_rooms",
+        "band": None,
+        "band_median_days": None,
+        "band_sample": None,
+    }
+
+
+def test_liquidity_excludes_censored_and_bad_durations(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db)
+    _anchor(db)
+    for i in range(14):  # на одну меньше порога
+        _add_delisted(db, 1000 + i, days=10.0)
+    # шум, который не должен пройти фильтры:
+    _add_delisted(db, 2001, days=0.5)                                # < 1 дня
+    _add_delisted(db, 2002, days=-3.0)                               # отрицательная
+    _add_delisted(db, 2003, first_seen="2026-06-01 12:00:00", days=30.0)  # когорта старта
+    _add_delisted(db, 2004, days=10.0, active=True)                  # активное
+    assert liquidity_estimate(DISTRICT, 2, db_path=db) is None
+    _add_delisted(db, 2005, days=10.0)  # 15-е валидное → оценка появляется
+    est = liquidity_estimate(DISTRICT, 2, db_path=db)
+    assert est is not None and est["sample"] == 15
+
+
+def test_liquidity_city_fallback(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db)
+    _anchor(db)
+    for i in range(30):  # 30 снятых в других районах
+        _add_delisted(db, 3000 + i, district=f"r{i % 3}", rooms=1 + i % 3, days=20.0)
+    est = liquidity_estimate(DISTRICT, 2, db_path=db)
+    assert est is not None
+    assert est["scope"] == "city" and est["sample"] == 30 and est["median_days"] == 20
+    assert est["band"] is None  # ценовые полосы только внутри сегмента
+
+
+def test_liquidity_price_bands(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db)
+    _anchor(db)
+    # 60 снятых: дешёвые уходят за ~5 дн., в рынке ~10, дорогие ~30
+    for i in range(20):
+        _add_delisted(db, 4000 + i, price=40_000_000, days=5.0)   # ₸/м² −20%
+        _add_delisted(db, 4100 + i, price=50_000_000, days=10.0)  # медиана
+        _add_delisted(db, 4200 + i, price=60_000_000, days=30.0)  # ₸/м² +20%
+    over = liquidity_estimate(DISTRICT, 2, diff_pct=12.0, db_path=db)
+    assert over["band"] == "above"
+    assert over["band_median_days"] == 30 and over["band_sample"] == 20
+    under = liquidity_estimate(DISTRICT, 2, diff_pct=-12.0, db_path=db)
+    assert under["band"] == "below" and under["band_median_days"] == 5
+    fair = liquidity_estimate(DISTRICT, 2, diff_pct=0.0, db_path=db)
+    assert fair["band"] == "near" and fair["band_median_days"] == 10
+    assert fair["median_days"] == 10 and fair["sample"] == 60
+    # без diff_pct полосы не считаем
+    assert liquidity_estimate(DISTRICT, 2, db_path=db)["band"] is None

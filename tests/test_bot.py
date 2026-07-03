@@ -72,6 +72,24 @@ def test_format_reply_without_actual_price():
     assert "48 120 000 ₸" in text
 
 
+def test_format_reply_liquidity_band_and_segment():
+    liq = {"median_days": 18, "sample": 25, "scope": "district_rooms",
+           "band": "above", "band_median_days": 33, "band_sample": 21}
+    text = bot.format_reply(dict(SAMPLE_RESULT, liquidity=liq))
+    # есть полоса → показываем её, а не общий сегмент
+    assert "Похожие по цене (дороже рынка)" in text
+    assert "~<b>33 дн.</b>" in text and "по 21 снятым" in text
+
+    liq_seg = dict(liq, band=None, band_median_days=None, band_sample=None)
+    text = bot.format_reply(dict(SAMPLE_RESULT, liquidity=liq_seg))
+    assert "Похожие снимают с продажи за ~<b>18 дн.</b>" in text
+
+    text = bot.format_reply(dict(SAMPLE_RESULT, liquidity=dict(liq_seg, scope="city")))
+    assert "Похожие по городу снимают" in text
+
+    assert "снимают" not in bot.format_reply(dict(SAMPLE_RESULT, liquidity=None))
+
+
 def test_handle_update_start_sends_help(monkeypatch):
     calls = []
     monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
