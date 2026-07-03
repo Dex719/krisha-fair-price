@@ -30,11 +30,13 @@ jobs:
       - name: Download DB from release
         run: python -m krisha.db_release --require
 
-      - name: Snapshot current metrics
-        run: cp models/model_meta.json /tmp/old_meta.json
+      - name: Snapshot current metrics and model
+        run: |
+          cp models/model_meta.json /tmp/old_meta.json
+          cp models/model.cbm /tmp/old_model.cbm || true
 
       - name: Train
-        run: python scripts/train.py
+        run: python scripts/train.py --compare-old /tmp/old_model.cbm
 
       - name: Metric gate (не деплоим, если стало хуже)
         id: gate
