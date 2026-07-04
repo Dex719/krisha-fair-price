@@ -23,10 +23,11 @@
       "bot": 0,
       "bot_users": [],
       "hours": {
-        "5": 1
+        "5": 2,
+        "6": 1
       },
       "predict": 0,
-      "site": 1
+      "site": 3
     }
   }
 }
