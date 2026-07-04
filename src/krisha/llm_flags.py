@@ -28,7 +28,7 @@ GEMINI_API_KEY_ENV = "GEMINI_API_KEY"
 # flash-lite: у бесплатного тарифа лимит ~1000 запросов/день (у 2.5-flash — всего 20)
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
 GEMINI_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    "{{https://generativelanguage.googleapis.com/v1beta/models/{model}}}:generateContent"
 )
 REQUEST_TIMEOUT = 30.0
 MAX_RETRIES = 4
@@ -132,6 +132,45 @@ def get_cached_flags(listing_id: int, text: str) -> list[str] | None:
     return [f for f in flags if f in FLAGS_RU]
 
 
+def get_cached_flags_bulk(
+    items: list[tuple[int, str]],
+) -> dict[int, list[str] | None]:
+    """Кэш флагов пачкой: одно соединение и IN-запросы чанками вместо N+1.
+
+    Обучение раньше открывало соединение SQLite на каждую строку датасета
+    (7000+ connect'ов). Возвращает {id: flags | None}; None — актуального
+    кэша нет (не анализировали или описание изменилось).
+    """
+    out: dict[int, list[str] | None] = {int(lid): None for lid, _ in items}
+    if not out:
+        return out
+    hashes = {int(lid): desc_hash(text) for lid, text in items}
+    ids = list(out)
+    try:
+        with get_conn(DB_PATH) as conn:
+            _ensure_cache_table(conn)
+            for i in range(0, len(ids), 500):
+                chunk = ids[i : i + 500]
+                placeholders = ",".join("?" * len(chunk))
+                rows = conn.execute(
+                    "SELECT listing_id, desc_hash, flags FROM llm_flags "
+                    f"WHERE listing_id IN ({placeholders})",
+                    chunk,
+                ).fetchall()
+                for row in rows:
+                    lid = int(row["listing_id"])
+                    if row["desc_hash"] != hashes.get(lid):
+                        continue
+                    try:
+                        flags = json.loads(row["flags"])
+                    except json.JSONDecodeError:
+                        continue
+                    out[lid] = [f for f in flags if f in FLAGS_RU]
+    except (sqlite3.OperationalError, FileNotFoundError):
+        return out
+    return out
+
+
 def save_flags(listing_id: int, text: str, flags: list[str]) -> None:
     with get_conn(DB_PATH) as conn:
         _ensure_cache_table(conn)
@@ -166,12 +205,19 @@ def _parse_response(payload: dict[str, Any]) -> dict[int, list[str]]:
 
 
 def analyze_batch(
-    items: list[tuple[int, str]], api_key: str | None = None
+    items: list[tuple[int, str]],
+    api_key: str | None = None,
+    max_retries: int = MAX_RETRIES,
 ) -> dict[int, list[str]] | None:
-    """Один запрос к Gemini на пачку описаний. None — нет ключа или ошибка."""
+    """Один запрос к Gemini на пачку описаний. None — нет ключа или ошибка.
+
+    max_retries — бюджет попыток: батч-скрипт может ждать бэкоффы (дефолт),
+    веб-эндпоинт передаёт 1, чтобы не держать поток тредпула минутами.
+    """
     api_key = api_key or os.environ.get(GEMINI_API_KEY_ENV)
     if not api_key or not items:
         return None
+    max_retries = max(1, int(max_retries))
     blocks = "\n\n".join(
         f"[id={lid}]\n{text.strip()[:DESC_MAX_CHARS]}" for lid, text in items
     )
@@ -188,33 +234,39 @@ def analyze_batch(
     }
     url = GEMINI_URL.format(model=GEMINI_MODEL)
     headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
-    for attempt in range(1, MAX_RETRIES + 1):
+    for attempt in range(1, max_retries + 1):
         try:
             resp = httpx.post(url, json=body, headers=headers, timeout=REQUEST_TIMEOUT)
         except httpx.HTTPError as exc:
             logger.warning("Gemini: сетевая ошибка (%s), попытка %d", exc, attempt)
-            time.sleep(2 * attempt)
+            if attempt < max_retries:
+                time.sleep(2 * attempt)
             continue
         if resp.status_code == 200:
             return _parse_response(resp.json())
         if resp.status_code in (429, 500, 503):
             wait = min(60.0, 5.0 * 2 ** (attempt - 1))
             logger.warning("Gemini: HTTP %d, ждём %.0fs", resp.status_code, wait)
-            time.sleep(wait)
+            if attempt < max_retries:
+                time.sleep(wait)
             continue
         logger.error("Gemini: HTTP %d — %s", resp.status_code, resp.text[:300])
         return None
     return None
 
 
-def analyze_one(listing_id: int, text: str, api_key: str | None = None) -> list[str] | None:
-    res = analyze_batch([(int(listing_id), text)], api_key=api_key)
+def analyze_one(
+    listing_id: int, text: str, api_key: str | None = None, max_retries: int = MAX_RETRIES
+) -> list[str] | None:
+    res = analyze_batch([(int(listing_id), text)], api_key=api_key, max_retries=max_retries)
     if res is None:
         return None
     return res.get(int(listing_id), [])
 
 
-def get_flags_raw(listing: dict[str, Any], live: bool = True) -> list[str] | None:
+def get_flags_raw(
+    listing: dict[str, Any], live: bool = True, max_retries: int = MAX_RETRIES
+) -> list[str] | None:
     """Сырые ключи флагов для объявления: кэш, при live и ключе — один запрос.
 
     None — анализа не было (нет кэша и нет возможности спросить LLM).
@@ -225,7 +277,7 @@ def get_flags_raw(listing: dict[str, Any], live: bool = True) -> list[str] | Non
         return []
     flags = get_cached_flags(listing_id, text)
     if flags is None and live and os.environ.get(GEMINI_API_KEY_ENV):
-        flags = analyze_one(listing_id, text)
+        flags = analyze_one(listing_id, text, max_retries=max_retries)
         if flags is not None:
             try:
                 save_flags(listing_id, text, flags)
@@ -245,9 +297,11 @@ def flags_to_badges(flags: list[str] | None) -> list[dict[str, str]]:
     ]
 
 
-def build_text_flags(listing: dict[str, Any], live: bool = True) -> list[dict[str, str]]:
+def build_text_flags(
+    listing: dict[str, Any], live: bool = True, max_retries: int = MAX_RETRIES
+) -> list[dict[str, str]]:
     """Бейджи «Анализ описания» для карточки: [{kind, label}, ...].
 
     Берём из кэша; если нет и есть ключ — один живой запрос (fail-soft).
     """
-    return flags_to_badges(get_flags_raw(listing, live=live))
+    return flags_to_badges(get_flags_raw(listing, live=live, max_retries=max_retries))
