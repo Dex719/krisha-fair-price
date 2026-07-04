@@ -284,6 +284,10 @@ def telegram_webhook(
 def _startup() -> None:
     # База не хранится в git — при старте скачиваем её из GitHub Release.
     db_release.ensure_db()
+    # Модели пока коммитятся в main (переходный период issue #74) — скачиваем
+    # из model-latest только если локального models/model.cbm нет вообще
+    # (например, .gitignore уже включил models/*.cbm на будущем шаге).
+    db_release.ensure_models()
     if DB_PATH.exists():
         # Скачанная база могла не проходить init_db: догоняем миграции
         # и индексы (idx_listings_fingerprint для проверки дублей).
