@@ -74,5 +74,6 @@ jobs:
         run: |
           sqlite3 data/krisha_rent.db "VACUUM;" || true
           gzip -9 -c data/krisha_rent.db > /tmp/krisha_rent.db.gz
-          gh release upload db-latest /tmp/krisha_rent.db.gz --clobber
+          sha256sum /tmp/krisha_rent.db.gz | cut -d' ' -f1 > /tmp/krisha_rent.db.gz.sha256
+          gh release upload db-latest /tmp/krisha_rent.db.gz /tmp/krisha_rent.db.gz.sha256 --clobber
           echo "Размер арендной базы в релизе: $(du -h /tmp/krisha_rent.db.gz | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
