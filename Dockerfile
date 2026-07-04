@@ -15,6 +15,12 @@ COPY --chown=app data ./data
 COPY --chown=app static ./static
 
 USER app
-ENV PYTHONUNBUFFERED=1
+# HF free tier обычно даёт 2 vCPU: ограничиваем native-пулы потоков,
+# чтобы один predict не забивал весь Space и latency был стабильнее.
+ENV PYTHONUNBUFFERED=1 \
+    OMP_NUM_THREADS=2 \
+    OPENBLAS_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1
 EXPOSE 7860
 CMD ["uvicorn", "krisha.api.app:app", "--host", "0.0.0.0", "--port", "7860"]

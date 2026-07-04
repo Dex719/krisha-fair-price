@@ -248,7 +248,30 @@ def _startup() -> None:
         from krisha.db import init_db
 
         init_db()
+    _warmup_runtime_caches()
     bot.setup_webhook()
+
+
+def _warmup_runtime_caches() -> None:
+    """Прогревает тяжёлые runtime-кэши после cold start HF Space.
+
+    Первый пользовательский /api/predict иначе платит за загрузку CatBoost-моделей,
+    spatial/OSM JSON-снапшотов и построение KD-деревьев. Всё fail-soft: если
+    модель/снапшот недоступны, приложение всё равно стартует и отдаст понятную
+    ошибку уже на конкретном endpoint.
+    """
+    try:
+        from krisha.geo import load_poi_index
+        from krisha.predict import load_interval_models, load_model
+        from krisha.spatial import load_spatial_ref
+
+        load_model()
+        load_interval_models()
+        load_spatial_ref()
+        load_poi_index()
+        logger.info("runtime caches warmed up")
+    except Exception:  # noqa: BLE001 — warmup не должен валить запуск Space
+        logger.warning("runtime warmup failed", exc_info=True)
 
 
 @app.get("/", include_in_schema=False)

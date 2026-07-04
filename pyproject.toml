@@ -13,15 +13,20 @@ dependencies = [
     "h3>=4.0",
     "scipy>=1.11",
     "scikit-learn>=1.4",
-    "shap>=0.45",
-    "matplotlib>=3.8",
     "fastapi>=0.111",
     "uvicorn[standard]>=0.30",
     "pydantic>=2.7",
 ]
 
 [project.optional-dependencies]
+train = [
+    "shap>=0.45",
+    "matplotlib>=3.8",
+]
+
 dev = [
+    "shap>=0.45",
+    "matplotlib>=3.8",
     "pytest>=8.0",
     "ruff>=0.4",
 ]
