@@ -68,7 +68,9 @@ jobs:
         run: |
           sqlite3 data/krisha.db "VACUUM;" || true
           gzip -9 -c data/krisha.db > /tmp/krisha.db.gz
-          gh release upload db-latest /tmp/krisha.db.gz --clobber
+          # Контрольная сумма рядом с базой: db_release проверяет её при скачивании
+          sha256sum /tmp/krisha.db.gz | cut -d' ' -f1 > /tmp/krisha.db.gz.sha256
+          gh release upload db-latest /tmp/krisha.db.gz /tmp/krisha.db.gz.sha256 --clobber
           echo "Размер базы в релизе: $(du -h /tmp/krisha.db.gz | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Alerts
@@ -78,3 +80,16 @@ jobs:
           TG_CHANNEL_ID: ${{ secrets.TG_CHANNEL_ID }}
           TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
         run: python scripts/send_alerts.py
+
+      - name: Restart Space (подтянуть свежую базу)
+        if: success()
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "HF_TOKEN не задан — пропускаю рестарт Space"
+            exit 0
+          fi
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $HF_TOKEN" \
+            https://huggingface.co/api/spaces/Dex719/krisha-fair-price/restart
