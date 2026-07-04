@@ -6,6 +6,16 @@
 обновить подвалы `static/index.html` и `static/stats.html`, добавить запись сюда,
 после мержа повесить git-тег `vX.Y.Z`.
 
+## Unreleased
+
+- Производительность HF Spaces (#58): `shap`/`matplotlib` вынесены из
+  runtime-зависимостей в optional extras `train`/`dev`; в Dockerfile ограничены
+  native thread pools под 2 vCPU (OMP/OpenBLAS/MKL/NumExpr); на startup — fail-soft
+  прогрев runtime-кэшей (CatBoost-модель, interval-модели, spatial reference,
+  OSM POI index), чтобы первый `/api/predict` не платил за cold start
+- `.dockerignore`: из Docker build context исключены доки, ноутбуки, тесты,
+  кэши и локальные данные — быстрее билд, меньше риск утащить лишнее в образ
+
 ## 0.2.0 — 2026-07-03
 
 Переезд и большой апдейт.
