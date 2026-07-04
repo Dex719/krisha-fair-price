@@ -5,10 +5,15 @@ FROM python:3.11-slim
 RUN useradd -m -u 1000 app
 WORKDIR /app
 
-COPY --chown=app pyproject.toml README.md ./
+COPY --chown=app pyproject.toml README.md requirements.lock ./
+# Кэшируемый слой: сначала зафиксированные версии зависимостей (issue #67,
+# находка #3 аудита — плавающие `>=` без лока давали разъезд prod/train).
+RUN pip install --no-cache-dir -r requirements.lock
 COPY --chown=app src ./src
-# -e: пакет остаётся в /app/src, чтобы ROOT_DIR указывал на /app (модели, база, статика)
-RUN pip install --no-cache-dir -e .
+# -e --no-deps: пакет остаётся в /app/src, чтобы ROOT_DIR указывал на /app
+# (модели, база, статика); зависимости уже стоят из лока выше, повторно их
+# не резолвим.
+RUN pip install --no-cache-dir -e . --no-deps
 
 COPY --chown=app models ./models
 COPY --chown=app data ./data
