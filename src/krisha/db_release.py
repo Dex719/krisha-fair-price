@@ -1,4 +1,4 @@
-"""Хранение базы в GitHub Release (тег ``db-latest``) вместо git.
+"""Хранение базы и моделей в GitHub Release вместо git.
 
 База растёт с каждым рескрейпом, и держать её в git нельзя: GitHub не
 принимает файлы больше 100 МБ, а каждый ежедневный коммит записывает в
@@ -7,7 +7,15 @@
 а приложение (HF Space, Railway, локальная разработка) скачивает её при
 старте, если локального файла нет.
 
-CLI: ``python -m krisha.db_release [--force] [--require]``.
+По тому же принципу (аудит, находка #6) модельные артефакты публикуются
+в мутабельный релиз ``model-latest`` (asset ``models.tar.gz``) вместо
+еженедельного коммита ~15.5 МБ в main. Пока `models/` продолжают
+коммититься в main (переходный период — см. issue #74), приложение
+предпочитает уже лежащий локально `models/model.cbm` и скачивает из
+`model-latest` только если его нет.
+
+CLI: ``python -m krisha.db_release [--force] [--require]`` — база;
+``python -m krisha.db_release --models [--force] [--require]`` — модели.
 """
 
 from __future__ import annotations
@@ -19,12 +27,22 @@ import logging
 import os
 import shutil
 import sys
+import tarfile
 import tempfile
 from pathlib import Path
 
 import httpx
 
-from krisha.config import DB_PATH
+from krisha.config import (
+    COMPLEXES_SNAPSHOT_PATH,
+    DB_PATH,
+    MODEL_HI_PATH,
+    MODEL_LO_PATH,
+    MODEL_META_PATH,
+    MODEL_PATH,
+    MODELS_DIR,
+    SPATIAL_REF_PATH,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,12 +50,34 @@ GITHUB_REPO = os.environ.get("GITHUB_REPO", "Dex719/krisha-fair-price")
 RELEASE_TAG = "db-latest"
 ASSET_NAME = "krisha.db.gz"
 
+MODEL_RELEASE_TAG = "model-latest"
+MODEL_ASSET_NAME = "models.tar.gz"
+# Пути (относительно MODELS_DIR) внутри models.tar.gz — то, что реально
+# нужно рантайму для оценки; osm_pois.json/osm_zones.json/stats.json туда
+# не входят (не нужны для инференса, есть локально из репо/рескрейпа).
+MODEL_ARTIFACT_PATHS = [
+    MODEL_PATH,
+    MODEL_LO_PATH,
+    MODEL_HI_PATH,
+    MODEL_META_PATH,
+    SPATIAL_REF_PATH,
+    COMPLEXES_SNAPSHOT_PATH,
+]
+
 
 def db_url() -> str:
     """URL сжатой базы. Переопределяется через env ``KRISHA_DB_URL``."""
     return os.environ.get(
         "KRISHA_DB_URL",
         f"https://github.com/{GITHUB_REPO}/releases/download/{RELEASE_TAG}/{ASSET_NAME}",
+    )
+
+
+def model_url() -> str:
+    """URL архива моделей. Переопределяется через env ``KRISHA_MODEL_URL``."""
+    return os.environ.get(
+        "KRISHA_MODEL_URL",
+        f"https://github.com/{GITHUB_REPO}/releases/download/{MODEL_RELEASE_TAG}/{MODEL_ASSET_NAME}",
     )
 
 
@@ -108,13 +148,77 @@ def ensure_db(force: bool = False) -> bool:
         return False
 
 
+def download_models(models_dir: Path | str = MODELS_DIR) -> bool:
+    """Скачивает, проверяет checksum и распаковывает архив моделей атомарно.
+
+    Каждый файл архива распаковывается во временный каталог рядом с
+    ``models_dir`` и переносится на место через ``os.replace`` — частично
+    распакованный архив никогда не виден рантайму.
+    """
+    models_dir = Path(models_dir)
+    models_dir.mkdir(parents=True, exist_ok=True)
+    url = model_url()
+    logger.info("Скачиваю модели: %s", url)
+    with tempfile.TemporaryDirectory(dir=models_dir.parent) as tmpdir:
+        tar_path = Path(tmpdir) / MODEL_ASSET_NAME
+        with httpx.stream("GET", url, follow_redirects=True, timeout=300.0) as resp:
+            resp.raise_for_status()
+            with open(tar_path, "wb") as fh:
+                for chunk in resp.iter_bytes():
+                    fh.write(chunk)
+        _verify_checksum(tar_path, url)
+        extract_dir = Path(tmpdir) / "extracted"
+        extract_dir.mkdir()
+        with tarfile.open(tar_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                if not member.isfile() or member.name.startswith("/") or ".." in Path(member.name).parts:
+                    raise ValueError(f"Подозрительная запись в models.tar.gz: {member.name}")
+            tar.extractall(extract_dir)  # noqa: S202 — члены уже провалидированы выше
+        for name in os.listdir(extract_dir):
+            os.replace(extract_dir / name, models_dir / name)
+    logger.info("Модели скачаны в %s", models_dir)
+    return True
+
+
+def ensure_models(force: bool = False) -> bool:
+    """Скачивает модели из релиза ``model-latest``, если их нет локально.
+
+    Возвращает True, если модели были скачаны. Если ``models/model.cbm``
+    уже лежит локально (текущий снапшот в репо), скачивание пропускается —
+    ничего не меняется в поведении до отключения коммита моделей в main.
+    Ошибки сети/релиза не роняют приложение: fail-soft, как и для базы.
+    """
+    if os.environ.get("KRISHA_MODEL_AUTO", "1") == "0" and not force:
+        return False
+    model_path = Path(MODEL_PATH)
+    if model_path.exists() and model_path.stat().st_size > 0 and not force:
+        return False
+    try:
+        return download_models(MODELS_DIR)
+    except Exception:
+        logger.exception("Не удалось скачать модели из релиза %s", MODEL_RELEASE_TAG)
+        return False
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Скачать базу из GitHub Release")
+    parser = argparse.ArgumentParser(description="Скачать базу/модели из GitHub Release")
     parser.add_argument("--force", action="store_true", help="скачать, даже если файл уже есть")
     parser.add_argument(
-        "--require", action="store_true", help="выйти с ошибкой, если базы нет и скачать не удалось"
+        "--require", action="store_true", help="выйти с ошибкой, если ничего нет и скачать не удалось"
+    )
+    parser.add_argument(
+        "--models", action="store_true", help="скачать модели (model-latest) вместо базы"
     )
     args = parser.parse_args(argv)
+
+    if args.models:
+        downloaded = ensure_models(force=args.force)
+        present = Path(MODEL_PATH).exists() and Path(MODEL_PATH).stat().st_size > 0
+        if args.require and not present:
+            print("Модели отсутствуют и скачать их не удалось", file=sys.stderr)
+            return 1
+        print("модели скачаны" if downloaded else ("модели уже на месте" if present else "моделей нет"))
+        return 0
 
     downloaded = ensure_db(force=args.force)
     db_path = Path(DB_PATH)
