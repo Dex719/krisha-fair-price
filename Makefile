@@ -1,7 +1,11 @@
-.PHONY: install crawl crawl-full crawl-complexes rescrape train api test lint
+.PHONY: install crawl crawl-full crawl-complexes rescrape train api test lint lock
 
 install:        ## зависимости (venv создай заранее: python -m venv .venv && source .venv/bin/activate)
 	pip install -e ".[dev]"
+
+lock:           ## перегенерировать requirements.lock / requirements-train.lock из pyproject.toml
+	uv pip compile pyproject.toml -o requirements.lock --python-version 3.11
+	uv pip compile pyproject.toml --extra train -o requirements-train.lock --python-version 3.11
 
 crawl:          ## быстрая проба: 5 страниц, до 50 объявлений
 	python scripts/crawl.py --pages 5 --limit 50

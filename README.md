@@ -82,7 +82,13 @@ make api          # http://localhost:8000 — веб-интерфейс + API
 make test         # pytest
 ```
 
-Runtime-деплой (Docker/HF Spaces) ставит только `pip install -e .` — тяжёлые train-зависимости (`shap`, `matplotlib`) вынесены в optional extra `train` и нужны лишь для `make train` и SHAP-отчётов: `pip install -e ".[train]"`.
+Runtime-деплой (Docker/HF Spaces) ставит только `pip install -e .` — тяжёлые train-зависимости (`shap`, `matplotlib`, `scikit-learn`) вынесены в optional extra `train` и нужны лишь для `make train` и SHAP-отчётов: `pip install -e ".[train]"`.
+
+Версии зависимостей зафиксированы в `requirements.lock` (рантайм) и `requirements-train.lock` (обучение) — Docker ставит из `requirements.lock`, чтобы prod и Actions не разъезжались на разных версиях `catboost`/`pandas`/etc. После правки зависимостей в `pyproject.toml` перегенерируй оба лока и закоммить их в том же PR:
+
+```bash
+make lock
+```
 
 Сбор аренды (отдельная база `data/krisha_rent.db`):
 

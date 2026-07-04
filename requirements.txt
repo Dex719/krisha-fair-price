@@ -8,7 +8,6 @@ numpy>=1.26
 catboost>=1.2
 h3>=4.0
 scipy>=1.11
-scikit-learn>=1.4
 fastapi>=0.111
 uvicorn[standard]>=0.30
 pydantic>=2.7
