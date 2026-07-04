@@ -28,7 +28,7 @@ GEMINI_API_KEY_ENV = "GEMINI_API_KEY"
 # flash-lite: у бесплатного тарифа лимит ~1000 запросов/день (у 2.5-flash — всего 20)
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
 GEMINI_URL = (
-    "{{https://generativelanguage.googleapis.com/v1beta/models/{model}}}:generateContent"
+    "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
 REQUEST_TIMEOUT = 30.0
 MAX_RETRIES = 4
