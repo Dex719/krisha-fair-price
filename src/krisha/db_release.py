@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import hashlib
 import logging
 import os
 import shutil
@@ -40,8 +41,34 @@ def db_url() -> str:
     )
 
 
+def _verify_checksum(gz_path: Path, url: str) -> None:
+    """Сверяет sha256 архива с файлом `<asset>.sha256` из релиза (если он есть).
+
+    Рескрейп-workflow публикует контрольную сумму рядом с базой. Нет файла
+    (старый релиз, кастомный KRISHA_DB_URL) — пропускаем молча: проверка
+    появляется бесплатно, ничего не ломая. Не сошлось — ValueError.
+    """
+    try:
+        resp = httpx.get(f"{url}.sha256", follow_redirects=True, timeout=30.0)
+    except httpx.HTTPError:
+        return
+    if resp.status_code != 200:
+        return
+    expected = resp.text.split()[0].strip().lower() if resp.text.strip() else ""
+    if len(expected) != 64:
+        return
+    digest = hashlib.sha256()
+    with open(gz_path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    actual = digest.hexdigest()
+    if actual != expected:
+        raise ValueError(f"Checksum базы не сошёлся: ожидали {expected}, получили {actual}")
+    logger.info("Checksum базы сошёлся (sha256 %s…)", expected[:12])
+
+
 def download(db_path: Path | str = DB_PATH) -> bool:
-    """Скачивает и распаковывает базу атомарно (tmp-файл → rename)."""
+    """Скачивает, проверяет checksum и распаковывает базу атомарно (tmp → rename)."""
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     url = db_url()
@@ -53,6 +80,7 @@ def download(db_path: Path | str = DB_PATH) -> bool:
             with open(gz_path, "wb") as fh:
                 for chunk in resp.iter_bytes():
                     fh.write(chunk)
+        _verify_checksum(gz_path, url)
         tmp_db = Path(tmpdir) / "krisha.db"
         with gzip.open(gz_path, "rb") as src, open(tmp_db, "wb") as dst:
             shutil.copyfileobj(src, dst)
