@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,10 +29,10 @@ MAX_TRACKED_PER_CHAT = 10
 
 
 def load_tracked(path: Path | None = None) -> dict[str, dict[str, Any]]:
-    try:
-        return json.loads((path or TRACKED_PATH).read_text())
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    from krisha.subscriptions import load_json_state
+
+    data = load_json_state(path or TRACKED_PATH)
+    return data if isinstance(data, dict) else {}
 
 
 def _save(tracked: dict[str, Any], message: str, path: Path | None = None) -> None:
@@ -61,7 +60,8 @@ def add_tracked(
         "title": title,
         "since": datetime.now(timezone.utc).isoformat(),
     }
-    _save(tracked, f"track: {chat_id} следит за {listing_id}", path)
+    # Без chat_id/listing_id в message: история коммитов публична
+    _save(tracked, "track: обновление слежки", path)
     return True, None
 
 
@@ -81,7 +81,7 @@ def remove_tracked(chat_id: int, listing_id: int | None, path: Path | None = Non
         removed = 1
         if not chat:
             del tracked[str(chat_id)]
-    _save(tracked, f"track: {chat_id} отписка от {listing_id or 'всех'}", path)
+    _save(tracked, "track: обновление слежки", path)
     return removed
 
 

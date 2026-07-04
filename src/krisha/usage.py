@@ -91,7 +91,8 @@ def _prune(state: dict, now: datetime) -> None:
 def _flush(state: dict) -> None:
     from krisha.subscriptions import save_json_state
 
-    save_json_state(USAGE_PATH, state, "data: статистика использования")
+    # encrypt=False: id уже захэшированы, агрегаты полезно видеть в репо глазами
+    save_json_state(USAGE_PATH, state, "data: статистика использования", encrypt=False)
 
 
 def weekly_report(state: dict | None = None, now: datetime | None = None) -> str | None:

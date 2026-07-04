@@ -6,13 +6,24 @@
 приложение коммитит файл в GitHub через Contents API (нужен env GITHUB_PAT
 с правом contents:write; без него подписки живут до ближайшего деплоя).
 
-Формат: {"<chat_id>": {"rooms": 2|null, "max_price": 45000000|null,
-"district": "Bostandykskiy_r-n"|null, "since": iso}}
+Приватность: репозиторий публичный, а chat_id подписчиков — PII, поэтому
+содержимое файла шифруется целиком (Fernet). Ключ выводится из
+STATE_ENCRYPTION_KEY, а если её нет — из TELEGRAM_BOT_TOKEN (он и так есть
+и на сервере, и в GitHub Actions, где шлются алерты). Без ключа сохраняем
+как раньше открытым JSON — актуально только для локальной разработки.
+ВНИМАНИЕ: смена токена бота без STATE_ENCRYPTION_KEY делает старые данные
+нечитаемыми — подписки обнулятся (залогируем и продолжим).
+
+Формат (расшифрованный): {"<chat_id>": {"rooms": 2|null,
+"max_price": 45000000|null, "district": "Bostandykskiy_r-n"|null, "since": iso}}
+На диске: {"_encrypted": "<fernet-token>"} либо legacy plaintext-JSON
+(читается и перешифровывается при первом же сохранении).
 """
 
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 import os
@@ -30,6 +41,44 @@ logger = logging.getLogger(__name__)
 SUBSCRIPTIONS_PATH = DATA_DIR / "subscriptions.json"
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "Dex719/krisha-fair-price")
 _GH_API = "https://api.github.com"
+STATE_KEY_ENV = "STATE_ENCRYPTION_KEY"
+
+
+def _fernet():
+    """Fernet для state-файлов или None, если ключа нет (локальная разработка).
+
+    Ключ — SHA-256 от секрета с доменным префиксом: валидный 32-байтовый
+    urlsafe-base64, как требует Fernet.
+    """
+    secret = os.environ.get(STATE_KEY_ENV) or os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not secret:
+        return None
+    from cryptography.fernet import Fernet
+
+    key = base64.urlsafe_b64encode(hashlib.sha256(f"kfp-state:{secret}".encode()).digest())
+    return Fernet(key)
+
+
+def load_json_state(path):
+    """Читает state-файл: расшифровывает обёртку {"_encrypted": ...} или
+    отдаёт legacy plaintext-JSON. Нет файла/битый/нет ключа → None."""
+    try:
+        data = json.loads(path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+    if isinstance(data, dict) and "_encrypted" in data:
+        f = _fernet()
+        if f is None:
+            logger.warning("%s зашифрован, а ключа нет (STATE_ENCRYPTION_KEY/токен)", path.name)
+            return None
+        from cryptography.fernet import InvalidToken
+
+        try:
+            return json.loads(f.decrypt(str(data["_encrypted"]).encode()))
+        except (InvalidToken, json.JSONDecodeError):
+            logger.warning("Не удалось расшифровать %s — сменился ключ? Начинаем заново", path.name)
+            return None
+    return data
 
 # «2к», «2-к», «2комн» и просто «2» → комнаты; «45млн», «до 45» → бюджет
 _ROOMS_RE = re.compile(r"^([1-6])(?:-?к(?:омн\w*)?)?$", re.IGNORECASE)
@@ -37,10 +86,8 @@ _PRICE_RE = re.compile(r"^(\d{1,4}(?:[.,]\d+)?)(?:млн)?$", re.IGNORECASE)
 
 
 def load_subscriptions() -> dict[str, dict[str, Any]]:
-    try:
-        return json.loads(SUBSCRIPTIONS_PATH.read_text())
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    data = load_json_state(SUBSCRIPTIONS_PATH)
+    return data if isinstance(data, dict) else {}
 
 
 def parse_filters(text: str) -> dict[str, Any]:
@@ -85,7 +132,8 @@ def describe_filters(flt: dict[str, Any]) -> str:
 def set_subscription(chat_id: int, flt: dict[str, Any]) -> None:
     subs = load_subscriptions()
     subs[str(chat_id)] = {**flt, "since": datetime.now(timezone.utc).isoformat()}
-    _save(subs, f"alerts: подписка {chat_id}")
+    # Без chat_id в message: репозиторий публичный, история коммитов — тоже
+    _save(subs, "alerts: обновление подписок")
 
 
 def remove_subscription(chat_id: int) -> bool:
@@ -93,7 +141,7 @@ def remove_subscription(chat_id: int) -> bool:
     if str(chat_id) not in subs:
         return False
     del subs[str(chat_id)]
-    _save(subs, f"alerts: отписка {chat_id}")
+    _save(subs, "alerts: обновление подписок")
     return True
 
 
@@ -101,12 +149,25 @@ def _save(subs: dict[str, Any], message: str) -> None:
     save_json_state(SUBSCRIPTIONS_PATH, subs, message)
 
 
-def save_json_state(path, data: dict[str, Any], message: str) -> None:
+def save_json_state(path, data: Any, message: str, encrypt: bool = True) -> None:
     """Сохраняет JSON-состояние локально и коммитит в GitHub (см. докстринг модуля).
 
-    Общий механизм для subscriptions.json и tracked.json.
+    Общий механизм для subscriptions.json, tracked.json и др.
+    encrypt=True шифрует содержимое целиком (файлы с chat_id — PII в публичном
+    репо); usage-статистика и опубликованные id пишутся открыто (encrypt=False).
     """
     payload = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)
+    if encrypt:
+        f = _fernet()
+        if f is not None:
+            payload = json.dumps(
+                {"_encrypted": f.encrypt(payload.encode()).decode()}, indent=2
+            )
+        else:
+            logger.warning(
+                "%s: нет ключа шифрования (STATE_ENCRYPTION_KEY/TELEGRAM_BOT_TOKEN) — "
+                "сохраняю открытым текстом", path.name,
+            )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(payload)
     _push_to_github(path, payload, message)

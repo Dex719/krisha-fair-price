@@ -1,0 +1,18 @@
+# Автоматические PR с обновлениями зависимостей.
+# Версии в pyproject.toml плавающие (>=), поэтому главное здесь —
+# security-обновления и подсказки про новые мажоры, которые иначе
+# прилетели бы в Docker-сборку молча.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"

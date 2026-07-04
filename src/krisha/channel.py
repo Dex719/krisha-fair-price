@@ -82,6 +82,7 @@ def post_channel_digest(
         return None
     if persist:
         new_posted = (posted + [d["id"] for d in fresh])[-POSTED_KEEP:]
+        # encrypt=False: id публичных лотов и так опубликованы в канале
         save_json_state(POSTED_PATH, new_posted,
-                        "state: опубликованные в канал лоты")
+                        "state: опубликованные в канал лоты", encrypt=False)
     return text
