@@ -79,3 +79,13 @@ jobs:
           sha256sum /tmp/krisha_rent.db.gz | cut -d' ' -f1 > /tmp/krisha_rent.db.gz.sha256
           gh release upload db-latest /tmp/krisha_rent.db.gz /tmp/krisha_rent.db.gz.sha256 --clobber
           echo "Размер арендной базы в релизе: $(du -h /tmp/krisha_rent.db.gz | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Snapshot release
+        continue-on-error: true  # архив вторичен — не красит ран
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/publish_snapshot.py \
+            --db-gz /tmp/krisha_rent.db.gz --sha256 /tmp/krisha_rent.db.gz.sha256 \
+            --asset-name krisha_rent.db.gz --stats-json /tmp/rescrape_rent_stats.json \
+            --label "Аренда" --rotate-keep-days 0
