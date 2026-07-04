@@ -1,4 +1,5 @@
-# Зависимости для деплоя (Railway/Railpack). Источник истины — pyproject.toml.
+# Runtime-зависимости для деплоя (Railway/Railpack). Источник истины — pyproject.toml.
+# Для обучения/SHAP-отчётов: pip install -e ".[train]"
 httpx>=0.27
 beautifulsoup4>=4.12
 lxml>=5.0
@@ -8,8 +9,6 @@ catboost>=1.2
 h3>=4.0
 scipy>=1.11
 scikit-learn>=1.4
-shap>=0.45
-matplotlib>=3.8
 fastapi>=0.111
 uvicorn[standard]>=0.30
 pydantic>=2.7
