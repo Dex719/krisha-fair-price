@@ -72,7 +72,7 @@ pinned: false
 
 ```bash
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
+pip install -e ".[dev]"   # dev включает train-extras (shap, matplotlib)
 
 make crawl        # быстрая проба: ~50 объявлений в data/krisha.db
 make crawl-full   # полный обход Алматы (часы — вежливые задержки)
@@ -80,6 +80,8 @@ make train        # обучение CatBoost → models/model.cbm + SHAP-отч
 make api          # http://localhost:8000 — веб-интерфейс + API
 make test         # pytest
 ```
+
+Runtime-деплой (Docker/HF Spaces) ставит только `pip install -e .` — тяжёлые train-зависимости (`shap`, `matplotlib`) вынесены в optional extra `train` и нужны лишь для `make train` и SHAP-отчётов: `pip install -e ".[train]"`.
 
 Сбор аренды (отдельная база `data/krisha_rent.db`):
 
