@@ -4,7 +4,12 @@ from pydantic import BaseModel, Field
 
 
 class PredictRequest(BaseModel):
-    url: str = Field(..., description="Ссылка на объявление, например https://krisha.kz/a/show/123456789")
+    # max_length: URL объявления укладывается в ~60 символов, всё длиннее — мусор
+    url: str = Field(
+        ...,
+        max_length=500,
+        description="Ссылка на объявление, например https://krisha.kz/a/show/123456789",
+    )
 
 
 class Factor(BaseModel):
