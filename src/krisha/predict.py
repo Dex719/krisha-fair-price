@@ -22,6 +22,7 @@ from krisha.scraping.detail_parser import parse_detail
 logger = logging.getLogger(__name__)
 
 KRISHA_URL_RE = re.compile(r"krisha\.kz/a/show/(\d+)")
+KRISHA_SHOW_BASE = "https://krisha.kz/a/show/"
 VERDICT_THRESHOLD = 0.10  # ±10% — справедливая цена
 
 USER_TYPE_RU = {
@@ -328,7 +329,7 @@ def predict_from_url(url: str, flags_live: bool = True) -> dict[str, Any]:
     # Защита от SSRF: не ходим по сырому пользовательскому URL (можно подсунуть
     # http://169.254.169.254/krisha.kz/a/show/1 — подстрока пройдёт проверку).
     # Берём только id и собираем канонический адрес сами, как в боте.
-    url = f"{{https://krisha.kz/a/show/{match.group(1}})}"
+    url = KRISHA_SHOW_BASE + match.group(1)
     # Короткий бюджет: это пользовательский запрос, а не краулер — при 403/429
     # быстро сдаёмся (worst-case ~6 сек), не держим поток тредпула минутами
     with PoliteClient(delay_range=(0.5, 1.0), max_retries=2, throttle_wait_s=2.0) as client:
