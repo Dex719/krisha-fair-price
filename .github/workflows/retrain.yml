@@ -63,3 +63,18 @@ jobs:
           git commit -m "model: weekly retrain $(date -u +%F)"
           git pull --rebase origin main
           git push origin main
+
+      - name: Publish models release
+        continue-on-error: true  # публикация вторична, пока есть коммит в main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FILES=$(python -c "from krisha.db_release import MODEL_ARTIFACT_PATHS as P; import os; print(' '.join(os.path.basename(str(x)) for x in P))")
+          tar -czf /tmp/models.tar.gz -C models $FILES
+          sha256sum /tmp/models.tar.gz | cut -d' ' -f1 > /tmp/models.tar.gz.sha256
+          gh release upload model-latest /tmp/models.tar.gz /tmp/models.tar.gz.sha256 --clobber || \
+            gh release create model-latest /tmp/models.tar.gz /tmp/models.tar.gz.sha256 \
+              --title "model-latest" --notes "Актуальные веса модели (мутабельный релиз)"
+          TAG="model-$(date -u +%F)"
+          gh release create "$TAG" /tmp/models.tar.gz /tmp/models.tar.gz.sha256 \
+            --title "$TAG" --notes "Снапшот моделей $(date -u +%F)"
