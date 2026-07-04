@@ -73,16 +73,7 @@ jobs:
           gh release upload db-latest /tmp/krisha.db.gz /tmp/krisha.db.gz.sha256 --clobber
           echo "Размер базы в релизе: $(du -h /tmp/krisha.db.gz | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Alerts
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TG_CHANNEL_ID: ${{ secrets.TG_CHANNEL_ID }}
-          TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
-        run: python scripts/send_alerts.py
-
       - name: Restart Space (подтянуть свежую базу)
-        if: success()
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
@@ -93,3 +84,12 @@ jobs:
           curl -fsS -X POST \
             -H "Authorization: Bearer $HF_TOKEN" \
             https://huggingface.co/api/spaces/Dex719/krisha-fair-price/restart
+
+      - name: Alerts
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TG_CHANNEL_ID: ${{ secrets.TG_CHANNEL_ID }}
+          TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
+        run: python scripts/send_alerts.py
