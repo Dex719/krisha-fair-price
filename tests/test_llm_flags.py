@@ -90,7 +90,7 @@ def test_build_text_flags_no_description(tmp_db):
 
 def test_build_text_flags_live_saves_cache(tmp_db, monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
-    monkeypatch.setattr(llm_flags, "analyze_one", lambda lid, text, api_key=None: ["pledge"])
+    monkeypatch.setattr(llm_flags, "analyze_one", lambda lid, text, api_key=None, **kw: ["pledge"])
     text = "Квартира в залоге у банка."
     badges = build_text_flags({"id": 10, "description": text})
     assert badges == [{"kind": "warn", "label": FLAGS_RU["pledge"][1]}]

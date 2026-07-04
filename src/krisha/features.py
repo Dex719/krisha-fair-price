@@ -70,8 +70,17 @@ NUM_FEATURES = [
 EXTRA_FEATURES = ["district_mismatch", "knn_ppsm", "knn_n", "flags_known", *FLAG_FEATURES]
 ALL_FEATURES = NUM_FEATURES + CAT_FEATURES
 TARGET = "log_price"
-CURRENT_YEAR = 2026
 MISSING_CAT = "unknown"
+
+
+def current_year() -> int:
+    """Текущий год для building_age. Функция, а не константа: захардкоженный
+    год после Нового года тихо сдвигал бы возраст домов у модели и статистики.
+    Train и predict зовут одну функцию — сдвига train/serve не возникает
+    (модель переобучается еженедельно)."""
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).year
 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -162,9 +171,8 @@ def add_raw_param_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _row_flags(row: pd.Series) -> list[str] | None:
-    """Флаги строки: колонка llm_flags (list/JSON) или кэш llm_flags по id+тексту."""
-    val = row.get("llm_flags")
+def _parse_flags_value(val: Any) -> list[str] | None:
+    """Явное значение колонки llm_flags (list или JSON-строка) → list | None."""
     if isinstance(val, list):
         return val
     if isinstance(val, str) and val:
@@ -173,25 +181,39 @@ def _row_flags(row: pd.Series) -> list[str] | None:
             return parsed if isinstance(parsed, list) else None
         except json.JSONDecodeError:
             return None
-    from krisha.llm_flags import get_cached_flags
-
-    lid, text = row.get("id"), row.get("description")
-    if not lid or not isinstance(text, str) or len(text.strip()) < 20:
-        return None
-    try:
-        return get_cached_flags(int(lid), text)
-    except Exception:  # noqa: BLE001 — кэш недоступен → фичи по нулям
-        return None
+    return None
 
 
 def add_llm_flag_features(df: pd.DataFrame) -> pd.DataFrame:
     """LLM-флаги описания → бинарные фичи flag_* + индикатор flags_known.
 
     Источник: колонка `llm_flags` (predict кладёт свежие флаги) или кэш в БД
-    (train). Нет анализа → все нули и flags_known=0 — модель это различает.
+    (train) — кэш читается ПАЧКОЙ одним соединением, а не по строке (раньше
+    обучение делало 7000+ отдельных connect'ов к SQLite).
+    Нет анализа → все нули и flags_known=0 — модель это различает.
     """
     df = df.copy()
-    flags_list = [_row_flags(row) for _, row in df.iterrows()]
+    flags_list: list[list[str] | None] = [None] * len(df)
+    pending: list[tuple[int, int, str]] = []  # (позиция, listing_id, описание)
+    for pos, (_, row) in enumerate(df.iterrows()):
+        parsed = _parse_flags_value(row.get("llm_flags"))
+        if parsed is not None:
+            flags_list[pos] = parsed
+            continue
+        lid, text = row.get("id"), row.get("description")
+        if lid and isinstance(text, str) and len(text.strip()) >= 20:
+            pending.append((pos, int(lid), text))
+
+    if pending:
+        from krisha.llm_flags import get_cached_flags_bulk
+
+        try:
+            cached = get_cached_flags_bulk([(lid, text) for _, lid, text in pending])
+        except Exception:  # noqa: BLE001 — кэш недоступен → фичи по нулям
+            cached = {}
+        for pos, lid, _ in pending:
+            flags_list[pos] = cached.get(lid)
+
     df["flags_known"] = [int(f is not None) for f in flags_list]
     for col, key in zip(FLAG_FEATURES, FLAGS_RU):
         df[col] = [int(key in f) if f else 0 for f in flags_list]
@@ -256,7 +278,7 @@ def build_features(
     df["floor_ratio"] = df["floor"] / df["total_floors"]
     df["is_first_floor"] = (df["floor"] == 1).astype(int)
     df["is_last_floor"] = (df["floor"] == df["total_floors"]).astype(int)
-    df["building_age"] = (CURRENT_YEAR - df["year_built"]).clip(lower=-5)
+    df["building_age"] = (current_year() - df["year_built"]).clip(lower=-5)
     df["dist_center_km"] = [
         haversine_km(lat, lon, *ALMATY_CENTER) if pd.notna(lat) and pd.notna(lon) else np.nan
         for lat, lon in zip(df["lat"], df["lon"])

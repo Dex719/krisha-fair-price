@@ -18,7 +18,8 @@ pinned: false
 **FairPrice — справедливая цена квартиры в Алматы: вставь ссылку на объявление и узнай, выгодно это, в рынке или переплата**
 
 [![CI](https://github.com/Dex719/krisha-fair-price/actions/workflows/ci.yml/badge.svg)](https://github.com/Dex719/krisha-fair-price/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-147_passed-2ea44f)
+![tests](https://img.shields.io/badge/tests-174_passed-2ea44f)
+![license](https://img.shields.io/badge/license-MIT-green)
 ![python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
 ![CatBoost](https://img.shields.io/badge/CatBoost-MAPE_9.5%25-FFCC00)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
@@ -111,7 +112,7 @@ src/krisha/
 ├── api/            # FastAPI + статичный фронт
 └── db.py           # SQLite: схема, upsert по id, история цен
 static/             # Material 3 Expressive UI: оценка + дашборд рынка
-tests/              # 147 тестов: парсеры (фикстуры с реальной разметкой), фичи, БД, бот, API, train-smoke
+tests/              # 174 теста: парсеры (фикстуры с реальной разметкой), фичи, БД, бот, API, train-smoke
 ```
 
 ## 🏷 Версии

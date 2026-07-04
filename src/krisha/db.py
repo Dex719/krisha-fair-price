@@ -89,8 +89,10 @@ _UPSERT_ALWAYS = ["price", "title", "raw_params"]
 # Остальные поля обновляем только непустым значением: COALESCE не даёт
 # неполному парсу затереть хорошие данные NULL-ом, но подтягивает свежие
 # description/area/floor и т.д., если продавец отредактировал объявление.
+# source при конфликте НЕ трогаем: это происхождение первой записи
+# (scrape/user); пользовательский предикт не должен переписывать провенанс.
 _UPSERT_COALESCE = [
-    c for c in [*LISTING_COLUMNS, "source", "fingerprint"]
+    c for c in [*LISTING_COLUMNS, "fingerprint"]
     if c != "id" and c not in _UPSERT_ALWAYS
 ]
 

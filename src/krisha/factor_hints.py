@@ -74,10 +74,13 @@ def _market_stats_cached(db_mtime: float) -> dict[str, Any]:
             for d in list(stats["district"]):
                 m, n = med(" AND district = ?", (d,))
                 stats["district"][d] = (m, n)
+            from krisha.features import current_year
+
+            year_now = current_year()
             for name, lo, hi in [("new", 0, 5), ("mid_age", 5, 25), ("old", 25, 200)]:
                 stats[f"age_{name}"], _ = med(
-                    " AND year_built IS NOT NULL AND 2026 - year_built >= ? AND 2026 - year_built < ?",
-                    (lo, hi),
+                    " AND year_built IS NOT NULL AND ? - year_built >= ? AND ? - year_built < ?",
+                    (year_now, lo, year_now, hi),
                 )
             for name, lo, hi in [("small", 0, 40), ("mid", 40, 70), ("big", 70, 1000)]:
                 stats[f"area_{name}"], _ = med(" AND area >= ? AND area < ?", (lo, hi))
@@ -149,10 +152,12 @@ def _area_hint(listing: dict, s: dict) -> str | None:
 
 
 def _age_hint(listing: dict, s: dict) -> str | None:
+    from krisha.features import current_year
+
     year = listing.get("year_built")
     if not year:
         return None
-    age = 2026 - int(year)
+    age = current_year() - int(year)
     bucket = "new" if age < 5 else ("mid_age" if age < 25 else "old")
     label = {"new": "новостройки (до 5 лет)", "mid_age": "дома 5–25 лет", "old": "дома старше 25 лет"}[bucket]
     med = s.get(f"age_{bucket}")
@@ -198,7 +203,7 @@ def _generic_hints(listing: dict, s: dict) -> dict[str, str | None]:
         "knn_ppsm": "Медианная цена м² ближайших домов-соседей по карте.",
         "knn_n": "Сколько активных объявлений рядом — плотность локального предложения.",
         "is_new_building": "Новостройка или вторичка: новостройки в среднем дороже за м², но без отделки.",
-        "renovation": "Состояние ремонта напрямую конвертируется в цену: «евроремонт» против «черновой отделки» — разница в миллионы.",
+        "renovation": "Состояние ремонта напрямую конвертируется в цену: «евроремонт» против «черновой отделки» — разница в миллионах.",
         "furniture": "Мебель в придачу — небольшой, но реальный плюс к цене.",
         "parking": "Паркинг — дефицит в Алматы, заметная надбавка.",
         "balcony": "Балкон/лоджия добавляют полезной площади и света.",

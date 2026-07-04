@@ -70,6 +70,36 @@ def test_download_unpacks_gzip(tmp_path, monkeypatch):
         yield FakeResponse()
 
     monkeypatch.setattr(db_release.httpx, "stream", fake_stream)
+    # checksum-файла в релизе «нет» — проверка должна молча пропуститься
+    # (и юнит-тест не должен ходить в сеть за <asset>.sha256)
+    monkeypatch.setattr(
+        db_release, "_verify_checksum", lambda gz_path, url: None
+    )
     db = tmp_path / "krisha.db"
     assert db_release.download(db) is True
     assert db.read_bytes() == payload
+
+
+def test_verify_checksum_mismatch(tmp_path, monkeypatch):
+    """Несовпадение sha256 — ValueError; совпадение — тишина."""
+    gz = tmp_path / "krisha.db.gz"
+    gz.write_bytes(b"data")
+    import hashlib
+
+    good = hashlib.sha256(b"data").hexdigest()
+
+    class FakeResp:
+        def __init__(self, text):
+            self.status_code = 200
+            self.text = text
+
+    monkeypatch.setattr(
+        db_release.httpx, "get", lambda url, **kw: FakeResp(good)
+    )
+    db_release._verify_checksum(gz, "https://example/db.gz")  # не бросает
+
+    monkeypatch.setattr(
+        db_release.httpx, "get", lambda url, **kw: FakeResp("0" * 64)
+    )
+    with pytest.raises(ValueError):
+        db_release._verify_checksum(gz, "https://example/db.gz")

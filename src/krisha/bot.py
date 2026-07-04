@@ -144,7 +144,8 @@ def tg_call(method: str, **payload: Any) -> dict | None:
             logger.warning("Telegram %s: %s", method, data)
         return data
     except httpx.HTTPError as exc:
-        logger.warning("Telegram %s failed: %s", method, exc)
+        # Текст исключения может содержать URL с /bot<token>/ — вырезаем токен
+        logger.warning("Telegram %s failed: %s", method, str(exc).replace(token, "***"))
         return None
 
 
@@ -446,7 +447,8 @@ def _track_listing_meta(listing_id: int) -> tuple[int | None, str | None]:
         pass
 
     url = f"https://krisha.kz/a/show/{listing_id}"
-    with PoliteClient(delay_range=(0.5, 1.0)) as client:
+    # Тот же короткий бюджет, что в predict_from_url: пользователь ждёт ответа
+    with PoliteClient(delay_range=(0.5, 1.0), max_retries=2, throttle_wait_s=2.0) as client:
         page = client.get(url)
     listing = parse_detail(page, url) if page else None
     if listing is None:

@@ -7,9 +7,10 @@ import hmac
 import logging
 import time
 from collections import defaultdict, deque
+from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from krisha import __version__, bot, db_release, usage
@@ -27,7 +28,15 @@ from krisha.stats import get_stats, heatmap_points
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="FairPrice", version=__version__)
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """Startup (замена deprecated @app.on_event) + shutdown-точка расширения."""
+    _startup()
+    yield
+
+
+app = FastAPI(title="FairPrice", version=__version__, lifespan=_lifespan)
 
 STATIC_DIR = ROOT_DIR / "static"
 
@@ -51,8 +60,20 @@ CSP = (
 )
 
 
+# Лимит тела запроса: наш самый большой вход — короткий JSON с URL,
+# всё существенно большее — мусор или попытка занять память парсером.
+MAX_BODY_BYTES = 64 * 1024
+
+
 @app.middleware("http")
 async def _security_headers(request: Request, call_next):
+    length = request.headers.get("content-length")
+    if length is not None:
+        try:
+            if int(length) > MAX_BODY_BYTES:
+                return JSONResponse(status_code=413, content={"detail": "Слишком большой запрос"})
+        except ValueError:
+            return JSONResponse(status_code=400, content={"detail": "Некорректный Content-Length"})
     response = await call_next(request)
     response.headers.setdefault("Content-Security-Policy", CSP)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -112,14 +133,14 @@ def predict(req: PredictRequest, request: Request) -> PredictResponse:
         result = predict_from_url(req.url, flags_live=False)
     except ValueError as exc:
         # 422 — пользовательская валидация URL, текст безопасен и полезен
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except FileNotFoundError:
         # детали (пути и т.п.) — в лог, наружу обобщённо
         logger.exception("predict: модель/файл недоступны")
-        raise HTTPException(status_code=503, detail="Сервис временно недоступен")
+        raise HTTPException(status_code=503, detail="Сервис временно недоступен") from None
     except RuntimeError:
         logger.exception("predict: ошибка обработки объявления")
-        raise HTTPException(status_code=502, detail="Не удалось обработать объявление")
+        raise HTTPException(status_code=502, detail="Не удалось обработать объявление") from None
     usage.record_event("predict")
     return PredictResponse(**result)
 
@@ -136,7 +157,11 @@ def flags(listing_id: int, request: Request) -> FlagsResponse:
         ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Объявление не найдено")
-    text_flags = build_text_flags({"id": row["id"], "description": row["description"]})
+    # max_retries=1: ровно один живой запрос без sleep-бэкоффов — иначе
+    # ретраи Gemini держали бы поток тредпула до минут на один запрос
+    text_flags = build_text_flags(
+        {"id": row["id"], "description": row["description"]}, max_retries=1
+    )
     return FlagsResponse(listing_id=listing_id, text_flags=text_flags)
 
 
@@ -154,7 +179,7 @@ def stats() -> dict:
         data = get_stats()
     except FileNotFoundError:
         logger.exception("stats: данные недоступны")
-        raise HTTPException(status_code=503, detail="Статистика временно недоступна")
+        raise HTTPException(status_code=503, detail="Статистика временно недоступна") from None
     _stats_cache.update(data=data, ts=now)
     return data
 
@@ -172,7 +197,7 @@ def heatmap() -> list[dict]:
         data = heatmap_points()
     except FileNotFoundError:
         logger.exception("heatmap: база недоступна")
-        raise HTTPException(status_code=503, detail="Карта временно недоступна")
+        raise HTTPException(status_code=503, detail="Карта временно недоступна") from None
     _heatmap_cache.update(data=data, ts=now)
     return data
 
@@ -192,7 +217,7 @@ def forecast() -> dict:
         data = build_forecast()
     except FileNotFoundError:
         logger.exception("forecast: база недоступна")
-        raise HTTPException(status_code=503, detail="Прогноз временно недоступен")
+        raise HTTPException(status_code=503, detail="Прогноз временно недоступен") from None
     _forecast_cache.update(data=data, ts=now)
     return data
 
@@ -238,7 +263,6 @@ def telegram_webhook(
     return {"ok": True}
 
 
-@app.on_event("startup")
 def _startup() -> None:
     # База не хранится в git — при старте скачиваем её из GitHub Release.
     db_release.ensure_db()
