@@ -20,3 +20,8 @@ jobs:
         run: ruff check src tests scripts
       - name: Tests
         run: pytest -q
+      - name: Audit dependencies (pip-audit)
+        continue-on-error: true
+        run: |
+          pip install -q pip-audit
+          pip-audit --skip-editable
