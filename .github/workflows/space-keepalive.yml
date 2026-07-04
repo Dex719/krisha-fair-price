@@ -2,8 +2,7 @@ name: Space keep-alive
 
 on:
   schedule:
-    - cron: "30 */6 * * *" # пинг каждые 6 часов — Space не уходит в сон (лимит 48ч бездействия)
-    - cron: "0 8 * * *" # 13:00 Алматы — рестарт после ночного рескрейпа: Space подтянет свежую базу из релиза
+    - cron: "30 */6 * * *"
   workflow_dispatch:
     inputs:
       restart:
@@ -15,8 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Restart Space (подтянуть свежую базу)
-        if: github.event.schedule == '0 8 * * *' || github.event.inputs.restart == 'true'
+      - name: Restart Space (по ручному запросу)
+        if: github.event.inputs.restart == 'true'
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
