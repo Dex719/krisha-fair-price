@@ -38,10 +38,11 @@
       "bot": 0,
       "bot_users": [],
       "hours": {
-        "0": 3
+        "0": 3,
+        "1": 1
       },
       "predict": 0,
-      "site": 3
+      "site": 4
     }
   }
 }
