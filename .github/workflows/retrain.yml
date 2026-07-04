@@ -25,7 +25,9 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install -e ".[train]"
+        run: |
+          pip install -r requirements-train.lock
+          pip install -e . --no-deps
 
       - name: Download DB from release
         run: python -m krisha.db_release --require
