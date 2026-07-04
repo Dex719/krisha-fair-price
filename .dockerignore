@@ -1,0 +1,40 @@
+# Что НЕ попадает в Docker build context.
+# Dockerfile копирует только: pyproject.toml, README.md, src/, models/, data/, static/ —
+# их не исключаем. Остальное режем: быстрее билд на HF Spaces, меньше риск
+# случайно утащить в образ мусор или локальные секреты.
+
+# VCS и CI
+.git
+.github
+
+# Python-артефакты
+__pycache__
+*.py[cod]
+*.egg-info
+.venv
+venv
+build
+dist
+.pytest_cache
+.ruff_cache
+catboost_info
+
+# Train/доки/QA — не нужны в runtime-образе
+docs
+notebooks
+reports
+tests
+scripts
+Makefile
+CHANGELOG.md
+Dockerfile
+
+# Локальные данные: база скачивается на старте из GitHub Release (db_release.ensure_db)
+data/*.db
+data/*.csv
+
+# Окружение и IDE
+.env
+.DS_Store
+.idea
+.vscode
