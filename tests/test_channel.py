@@ -32,7 +32,7 @@ def test_post_digest_skips_posted_and_persists(monkeypatch, tmp_path):
                         lambda m, **kw: sent.update(kw) or {"ok": True})
     saved = {}
     monkeypatch.setattr(channel, "save_json_state",
-                        lambda path, data, msg: saved.update(data=data))
+                        lambda path, data, msg, **kw: saved.update(data=data))
     monkeypatch.setenv("TG_CHANNEL_ID", "@test_channel")
 
     text = channel.post_channel_digest(DEALS)
