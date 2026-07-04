@@ -87,6 +87,16 @@ jobs:
             -H "Authorization: Bearer $HF_TOKEN" \
             https://huggingface.co/api/spaces/Dex719/krisha-fair-price/restart
 
+      - name: Snapshot release
+        continue-on-error: true  # архив вторичен — не красит ран
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/publish_snapshot.py \
+            --db-gz /tmp/krisha.db.gz --sha256 /tmp/krisha.db.gz.sha256 \
+            --asset-name krisha.db.gz --stats-json /tmp/rescrape_stats.json \
+            --label "Продажа" --rotate-keep-days 14
+
       - name: Alerts
         if: always()
         env:
