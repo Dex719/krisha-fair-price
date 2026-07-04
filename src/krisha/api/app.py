@@ -62,7 +62,24 @@ CSP = (
 
 # Лимит тела запроса: наш самый большой вход — короткий JSON с URL,
 # всё существенно большее — мусор или попытка занять память парсером.
+#
+# Известное ограничение (осознанно принято): проверка идёт только по
+# заголовку Content-Length. Запрос с Transfer-Encoding: chunked и без
+# Content-Length пройдёт мимо этой проверки — чтобы ловить и его, нужно
+# читать тело потоково с подсчётом байт, что требует отдельного решения
+# (например ASGI-обёртки над request.stream()). Для нашего профиля риска
+# (внутренний API, максимум JSON с одним URL-полем) это принято как
+# допустимый компромисс и не реализуется здесь.
 MAX_BODY_BYTES = 64 * 1024
+
+
+def _apply_security_headers(response):
+    """Навешивает security-заголовки на любой ответ — и обычный, и ранний
+    413/400 из проверки размера тела (см. _security_headers ниже)."""
+    response.headers.setdefault("Content-Security-Policy", CSP)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    return response
 
 
 @app.middleware("http")
@@ -71,14 +88,15 @@ async def _security_headers(request: Request, call_next):
     if length is not None:
         try:
             if int(length) > MAX_BODY_BYTES:
-                return JSONResponse(status_code=413, content={"detail": "Слишком большой запрос"})
+                return _apply_security_headers(
+                    JSONResponse(status_code=413, content={"detail": "Слишком большой запрос"})
+                )
         except ValueError:
-            return JSONResponse(status_code=400, content={"detail": "Некорректный Content-Length"})
+            return _apply_security_headers(
+                JSONResponse(status_code=400, content={"detail": "Некорректный Content-Length"})
+            )
     response = await call_next(request)
-    response.headers.setdefault("Content-Security-Policy", CSP)
-    response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    return response
+    return _apply_security_headers(response)
 
 
 @app.get("/api/health", response_model=HealthResponse)
