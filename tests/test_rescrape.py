@@ -136,7 +136,7 @@ def test_sweep_skips_delist_if_shard_failed(tmp_path, monkeypatch):
     stats = sweep(max_pages=5, max_new_details=10, db_path=db)
 
     assert len(stats["failed_shards"]) == 32
-    assert stats["delisted"] == 0
+    assert stats["delisted"] is None
     with get_conn(db) as conn:  # объявление НЕ помечено снятым
         assert conn.execute("SELECT is_active FROM listings WHERE id=333").fetchone()[0] == 1
 

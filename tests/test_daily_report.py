@@ -49,10 +49,12 @@ def test_build_sale_report(monkeypatch, tmp_path):
 
 def test_failed_shards_flagged(monkeypatch, tmp_path):
     monkeypatch.setitem(daily_report._SCOPES, "rent", ("🌆 Вечерний отчёт: аренда", tmp_path / "no.db", tmp_path / "none.json"))
-    summary = _summary(tmp_path / "stats.json", failed_shards=["almaty-1"])
+    summary = _summary(tmp_path / "stats.json", delisted=None, failed_shards=["almaty-1"])
 
     text = build_daily_report("rent", summary)
 
+    assert "детект снятий: n/a" in text
+    assert "снято None" not in text
     assert "Сбойные шарды: almaty-1" in text
     assert "Модель" not in text  # для аренды блок модели не показываем
 

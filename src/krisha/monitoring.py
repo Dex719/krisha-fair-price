@@ -3,9 +3,9 @@
 Две части:
 1. история метрик — `models/metrics_history.jsonl`, по строке на переобучение
    (коммитится retrain-workflow вместе с моделью) → видно тренд MAE/MAPE;
-2. Telegram-отчёт после еженедельного retrain: метрики, дельта к прошлой
-   модели, вердикт гейта. Чат берётся из env `TG_ADMIN_CHAT_ID` — личный
-   чат владельца, не подписчики.
+2. Telegram-отчёт после еженедельного retrain: метрики, дельта к базе
+   сравнения гейта, вердикт гейта. Чат берётся из env `TG_ADMIN_CHAT_ID` —
+   личный чат владельца, не подписчики.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ def dataset_summary(db_path: Path | str | None = None) -> dict | None:
         ).fetchone()[0]
         gone_7d = conn.execute(
             "SELECT COUNT(*) FROM listings "
-            "WHERE is_active = 0 AND last_seen >= datetime('now', '-7 days')"
+            "WHERE is_active = 0 AND delisted_at >= datetime('now', '-7 days')"
         ).fetchone()[0]
         by_rooms: dict[str, int] = {}
         for rooms, cnt in conn.execute(
@@ -144,20 +144,28 @@ def format_retrain_report(
     dataset: dict | None = None,
 ) -> str:
     """HTML-сообщение для Telegram: метрики нового обучения и дельты."""
-    old, new = old_meta["metrics"]["model"], new_meta["metrics"]["model"]
-    mae_delta = (new["mae"] / old["mae"] - 1) * 100 if old["mae"] else 0.0
-    mape_delta = (new["mape"] - old["mape"]) * 100
+    previous, new = old_meta["metrics"]["model"], new_meta["metrics"]["model"]
+    same_test_old = new_meta["metrics"].get("old_model")
+    comparison = same_test_old or previous
+    delta_label = "на одном тесте" if same_test_old else "к прошлой"
+    mae_delta = (new["mae"] / comparison["mae"] - 1) * 100 if comparison["mae"] else 0.0
+    mape_delta = (new["mape"] - comparison["mape"]) * 100
 
     head = "✅ Модель обновлена" if gate_passed else "🚨 Гейт не пройден — осталась старая модель"
     lines = [
         f"<b>{head}</b> (еженедельный retrain)",
         "",
-        f"MAE: <b>{new['mae'] / 1e6:.2f} млн ₸</b> ({mae_delta:+.1f}% к прошлой)",
-        f"MAPE: <b>{new['mape']:.1%}</b> ({mape_delta:+.2f} п.п.)",
+        f"MAE: <b>{new['mae'] / 1e6:.2f} млн ₸</b> ({mae_delta:+.1f}% {delta_label})",
+        f"MAPE: <b>{new['mape']:.1%}</b> ({mape_delta:+.2f} п.п. {delta_label})",
         f"R²: <b>{new['r2']:.3f}</b>",
         f"Обучение: {new_meta['metrics'].get('n_train', '?')} лотов, "
         f"тест: {new_meta['metrics'].get('n_test', '?')}",
     ]
+    if same_test_old:
+        lines.append(
+            "Прошлая мета (другой test): "
+            f"MAE {previous['mae'] / 1e6:.2f} млн ₸ · MAPE {previous['mape']:.1%}"
+        )
     if history and len(history) >= 2:
         trend = " → ".join(f"{h['mae'] / 1e6:.2f}" for h in history)
         lines += ["", f"Тренд MAE (млн ₸): {trend}"]
