@@ -126,7 +126,7 @@ def sweep(
         # Помечаем снятые только после полного покрытия: если хоть один шард
         # не дообошли (блокировка/сеть), его объявления не получили last_seen,
         # и delisted был бы ложным.
-        delisted_count = 0
+        delisted_count: int | None = 0
         if not failed_shards:
             delisted = conn.execute(
                 "UPDATE listings SET is_active = 0, delisted_at = datetime('now') "
@@ -140,6 +140,7 @@ def sweep(
                 "Не полностью покрыты шарды: %s — пропускаем пометку delisted",
                 ", ".join(failed_shards),
             )
+            delisted_count = None
 
     stats = {
         "found_in_search": len(found),
@@ -152,6 +153,6 @@ def sweep(
     logger.info(
         "Рескрейп: в выдаче %(found_in_search)s, знакомых %(known_seen)s, "
         "новых %(new_listings)s, изменений цены %(price_changes)s, снято %(delisted)s",
-        stats,
+        {**stats, "delisted": stats["delisted"] if stats["delisted"] is not None else "n/a"},
     )
     return stats

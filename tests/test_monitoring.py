@@ -38,6 +38,24 @@ def test_format_retrain_report_deltas():
     assert "Тренд MAE (млн ₸): 4.00 → 4.40" in ok
 
 
+def test_format_retrain_report_uses_old_model_same_test_metrics():
+    new_meta = {
+        "metrics": {
+            "model": {"mae": 5_500_000, "mape": 0.13, "r2": 0.80},
+            "old_model": {"mae": 5_000_000, "mape": 0.12, "r2": 0.82},
+            "n_train": 31_000,
+            "n_test": 7_200,
+        }
+    }
+
+    text = monitoring.format_retrain_report(META_OLD, new_meta, gate_passed=False)
+
+    assert "+10.0% на одном тесте" in text
+    assert "+1.00 п.п. на одном тесте" in text
+    assert "Прошлая мета" in text
+    assert "+37.5% к прошлой" not in text
+
+
 def test_notify_retrain(monkeypatch):
     sent = {}
 
@@ -75,8 +93,13 @@ def _fill_stats_db(db):
     for row in rows:
         upsert_listing({**base, **row}, db_path=db)
     with get_conn(db) as conn:
-        # id=4 ушёл с рынка на этой неделе
-        conn.execute("UPDATE listings SET is_active = 0 WHERE id = 4")
+        # id=4 ушёл с рынка на этой неделе, но last_seen остался старым:
+        # именно так работает delist-детект рескрейпа.
+        conn.execute(
+            "UPDATE listings SET is_active = 0, "
+            "last_seen = datetime('now', '-30 days'), "
+            "delisted_at = datetime('now', '-2 days') WHERE id = 4"
+        )
         # id=1 «старый»: появился раньше недели назад
         conn.execute(
             "UPDATE listings SET first_seen = datetime('now', '-30 days') WHERE id = 1"

@@ -34,10 +34,12 @@ def test_human_summary_flags_failed_shards():
         "found_in_search": 10,
         "new_listings": 0,
         "price_changes": 0,
-        "delisted": 0,
+        "delisted": None,
         "failed_shards": ["Алатауский-1к"],
     }
     text = ps.human_summary("Аренда", stats)
+    assert "детект снятий: **n/a**" in text
+    assert "снято с продажи: **0**" not in text
     assert "не покрыты шарды: Алатауский-1к" in text
 
 
