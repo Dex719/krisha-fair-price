@@ -69,6 +69,15 @@ def _model_line() -> str | None:
     return "Модель: " + ", ".join(parts)
 
 
+def _delisted_fragment(stats: dict) -> str:
+    if "delisted" not in stats:
+        return "снято ?"
+    delisted = stats.get("delisted")
+    if delisted is None:
+        return "детект снятий: n/a"
+    return f"снято {delisted}"
+
+
 def _usage_lines(now: datetime | None = None) -> list[str]:
     """Событий/уникальных бота за сегодня, 7 и 30 дней из usage_stats."""
     state = load_state()
@@ -102,7 +111,7 @@ def build_daily_report(scope: str = "sale", summary_path: Path | str | None = No
             f"Проход: в выдаче <b>{stats.get('found_in_search', '?')}</b>, "
             f"новых <b>{stats.get('new_listings', '?')}</b>, "
             f"изменений цены {stats.get('price_changes', '?')}, "
-            f"снято {stats.get('delisted', '?')}"
+            f"{_delisted_fragment(stats)}"
         )
         if stats.get("failed_shards"):
             lines.append("⚠️ Сбойные шарды: " + ", ".join(stats["failed_shards"]))

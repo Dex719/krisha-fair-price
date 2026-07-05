@@ -48,13 +48,22 @@ def release_exists(tag: str) -> bool:
 
 def human_summary(label: str, stats: dict) -> str:
     """Читаемая сводка прохода + сырой JSON в details-блоке."""
+    if "delisted" not in stats:
+        delisted_line = "- снято с продажи: **?**"
+    else:
+        delisted = stats.get("delisted")
+        delisted_line = (
+            "- детект снятий: **n/a**"
+            if delisted is None
+            else f"- снято с продажи: **{delisted}**"
+        )
     lines = [
         f"## {label}",
         "",
         f"- в выдаче: **{stats.get('found_in_search', '?')}**",
         f"- новых объявлений: **{stats.get('new_listings', '?')}**",
         f"- изменений цены: **{stats.get('price_changes', '?')}**",
-        f"- снято с продажи: **{stats.get('delisted', '?')}**",
+        delisted_line,
     ]
     failed = stats.get("failed_shards") or []
     if failed:
