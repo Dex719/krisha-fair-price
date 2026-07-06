@@ -23,6 +23,7 @@ from typing import Any
 import httpx
 
 from krisha.predict import KRISHA_URL_RE, predict_from_url
+from krisha.stats import DISTRICT_RU
 
 logger = logging.getLogger(__name__)
 
@@ -95,17 +96,28 @@ VERDICT_RU = {
 }
 
 HELP_TEXT = (
-    "🏠 <b>FairPrice</b>\n\n"
-    "Пришли мне ссылку на объявление о продаже квартиры в Алматы "
-    "(вида <code>https://krisha.kz/a/show/…</code>) — я оценю справедливую цену "
-    "ML-моделью, обученной на тысячах реальных объявлений, и скажу, "
-    "выгодно это или переплата.\n"
-    "Можно и без ссылки: вставь текст объявления — оценю по описанию.\n\n"
-    "🔔 /alerts — ежедневные алерты о новых выгодных объявлениях\n"
-    "👀 /track <i>ссылка</i> — следить за лотом: пришлю алерт, если цена "
-    "изменится или объявление снимут\n"
+    "🏠 <b>baǵam</b> — Telegram-бот для оценки квартир в Алматы\n\n"
+    "1) Пришли ссылку на объявление "
+    "(<code>https://krisha.kz/a/show/…</code>) — покажу справедливую цену, "
+    "диапазон и факторы.\n"
+    "2) Нет ссылки? Вставь текст объявления — сделаю примерную оценку по описанию.\n"
+    "3) <code>/track ссылка</code> — слежка за лотом: пришлю алерт, если цена "
+    "изменится или объявление снимут.\n"
+    "4) <code>/alerts</code> — алерты о новых выгодных объявлениях с фильтрами; "
+    "<code>/alerts_on 2к до 45млн бостандыкский</code> включает комнаты, бюджет и район.\n\n"
     "Веб-версия: https://dex719-krisha-fair-price.hf.space"
 )
+
+MARKET_DISTRICT_SLUGS = {
+    "almalinskiy": "Almalinskiy_r-n",
+    "alatauskiy": "Alatauskiy_r-n",
+    "auezovskiy": "Auezovskiy_r-n",
+    "bostandykskiy": "Bostandykskiy_r-n",
+    "zhetysuskiy": "Zhetysuskiy_r-n",
+    "medeuskiy": "Medeuskiy_r-n",
+    "nauryzbayskiy": "Nauryzbayskiy_r-n",
+    "turksibskiy": "Turksibskiy_r-n",
+}
 
 
 def bot_token() -> str | None:
@@ -266,17 +278,15 @@ def handle_update(update: dict[str, Any]) -> None:
 
     record_event("bot", user_id=chat_id)
 
-    if text.startswith("/start") or text.startswith("/help"):
-        payload: dict[str, Any] = {"chat_id": chat_id, "text": HELP_TEXT,
-                                   "parse_mode": "HTML",
-                                   "disable_web_page_preview": True}
-        base = public_base_url()
-        if base and message.get("chat", {}).get("type") == "private":
-            # web_app-кнопки Telegram разрешает только в личных чатах
-            payload["reply_markup"] = {"inline_keyboard": [[
-                {"text": "📱 Открыть приложение", "web_app": {"url": base}}
-            ]]}
-        tg_call("sendMessage", **payload)
+    if text.startswith("/start"):
+        payload = _start_payload(text)
+        if payload and _handle_start_payload(chat_id, payload):
+            return
+        _send_help(chat_id, message)
+        return
+
+    if text.startswith("/help"):
+        _send_help(chat_id, message)
         return
 
     if text.startswith("/alerts"):
@@ -313,6 +323,56 @@ def handle_update(update: dict[str, Any]) -> None:
     if not photos or not (sent or {}).get("ok"):
         tg_call("sendMessage", chat_id=chat_id, text=reply,
                 parse_mode="HTML", disable_web_page_preview=True)
+
+
+def _send_help(chat_id: int, message: dict[str, Any]) -> None:
+    """Короткий общий help; payload deep-link обрабатывается отдельно."""
+    payload: dict[str, Any] = {"chat_id": chat_id, "text": HELP_TEXT,
+                               "parse_mode": "HTML",
+                               "disable_web_page_preview": True}
+    base = public_base_url()
+    if base and message.get("chat", {}).get("type") == "private":
+        # web_app-кнопки Telegram разрешает только в личных чатах
+        payload["reply_markup"] = {"inline_keyboard": [[
+            {"text": "📱 Открыть приложение", "web_app": {"url": base}}
+        ]]}
+    tg_call("sendMessage", **payload)
+
+
+def _start_payload(text: str) -> str:
+    cmd, _, payload = text.partition(" ")
+    if cmd.split("@")[0].lower() != "/start":
+        return ""
+    return payload.strip()
+
+
+def _handle_start_payload(chat_id: int, payload: str) -> bool:
+    """Deep-link payload из Telegram: track_<id> и market_<slug>."""
+    if payload.startswith("track_"):
+        listing_id = payload.removeprefix("track_").strip()
+        if listing_id.isdigit():
+            tg_call("sendMessage", chat_id=chat_id,
+                    text="Открываю слежку за этим объявлением…")
+            _handle_track_command(chat_id, f"/track https://krisha.kz/a/show/{listing_id}")
+            return True
+        return False
+
+    if payload.startswith("market_"):
+        slug = payload.removeprefix("market_").strip().lower()
+        district = MARKET_DISTRICT_SLUGS.get(slug)
+        if not district:
+            tg_call(
+                "sendMessage",
+                chat_id=chat_id,
+                parse_mode="HTML",
+                text="район не узнал. Подпишись вручную: "
+                     "<code>/alerts_on бостандыкский</code> "
+                     "или открой /alerts, чтобы посмотреть формат фильтров.",
+            )
+            return True
+        _handle_alerts_command(chat_id, f"/alerts_on {DISTRICT_RU[district]}")
+        return True
+    return False
 
 
 NO_URL_HINT = ("Не вижу ссылки на объявление 🤔\nПришли ссылку вида "

@@ -52,11 +52,9 @@ def test_market_page_keeps_live_data_endpoints_and_no_mock_numbers():
         assert fake not in html
     assert "без подстановок" in html
     assert "Источник всех чисел — /api/stats" in html
-    assert "Строка района открывает Telegram-бот" in html
-    assert "на подписку по району" not in html
-    assert "подписку именно на него" not in html
-    assert "строка района ведёт в подписку" not in html
-    assert "Подпишитесь на свой район" not in html
+    assert "подписка на район в один тап" in html
+    assert "market_'+districtSlug(name)" in html
+    assert "Строка района открывает Telegram-бот" not in html
 
 
 def test_market_page_has_skeletons_fail_soft_and_v24_chart_rules():
