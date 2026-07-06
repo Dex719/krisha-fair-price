@@ -25,6 +25,9 @@ def test_compute_stats(tmp_path):
     assert s["median_price"] > 0
     assert {d["district"] for d in s["by_district"]} == {"Бостандыкский", "Алатауский"}
     assert sum(b["count"] for b in s["price_hist"]) == 10
+    assert len(s["ppsm_hist"]) == stats.PPSM_HIST_BINS
+    assert sum(b["count"] for b in s["ppsm_hist"]) == 10
+    assert {"label", "count", "from_ppsm", "to_ppsm"} <= set(s["ppsm_hist"][0])
     assert s["by_category"]["novostroiki"] == 5
     assert s["source"] == "db"
 
