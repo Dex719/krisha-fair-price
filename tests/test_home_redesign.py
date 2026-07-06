@@ -143,6 +143,15 @@ def test_home_has_stats_loading_skeleton_and_button_unlock_paths():
     assert "document.getElementById('lot-legend')?.remove()" in html
 
 
+def test_home_chart_uses_whole_price_units_for_price_hist():
+    html = _static("index.html")
+
+    assert "Рынок сегодня · цены квартир, Алматы" in html
+    assert "Рынок сегодня · цена за м², Алматы" not in html
+    assert "box.dataset.medianLabel='медиана рынка — '+fmtMln(stats.median_price)" in html
+    assert "fmtPpsm(stats.median_ppsm):fmtMln(stats.median_price)" not in html
+
+
 def test_csp_keeps_fonts_self_hosted_only():
     assert "default-src 'self'" in CSP
     assert "font-src 'self'" in CSP
