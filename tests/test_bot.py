@@ -99,6 +99,53 @@ def test_handle_update_start_sends_help(monkeypatch):
     assert "krisha.kz" in calls[0][1]["text"]
 
 
+def test_start_track_payload_enables_tracking_without_full_help(tmp_path, monkeypatch):
+    from krisha import tracking
+
+    monkeypatch.setattr("krisha.subscriptions._push_to_github", lambda *a, **k: None)
+    monkeypatch.setattr(tracking, "TRACKED_PATH", tmp_path / "tracked.json")
+    monkeypatch.setattr(bot, "_track_listing_meta", lambda lid: (51_000_000, "Payload lot"))
+    calls = []
+    monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
+
+    bot.handle_update({"message": {"chat": {"id": 42}, "text": "/start track_123456789"}})
+
+    texts = [kw["text"] for method, kw in calls if method == "sendMessage"]
+    assert tracking.list_tracked(42) != {}
+    assert any("Слежу" in text and "Payload lot" in text for text in texts)
+    assert all("🏠 <b>FairPrice</b>" not in text for text in texts)
+
+
+def test_start_market_payload_subscribes_to_district_without_full_help(tmp_path, monkeypatch):
+    from krisha import subscriptions
+
+    monkeypatch.setattr("krisha.subscriptions._push_to_github", lambda *a, **k: None)
+    monkeypatch.setattr(subscriptions, "SUBSCRIPTIONS_PATH", tmp_path / "subscriptions.json")
+    calls = []
+    monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
+
+    bot.handle_update({"message": {"chat": {"id": 42}, "text": "/start market_bostandykskiy"}})
+
+    sub = subscriptions.load_subscriptions()["42"]
+    texts = [kw["text"] for method, kw in calls if method == "sendMessage"]
+    assert sub["district"] == "Bostandykskiy_r-n"
+    assert sub["rooms"] is None and sub["max_price"] is None
+    assert any("Бостандыкский" in text and "/alerts_off" in text for text in texts)
+    assert all("🏠 <b>FairPrice</b>" not in text for text in texts)
+
+
+def test_start_market_unknown_payload_explains_manual_subscription(monkeypatch):
+    calls = []
+    monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
+
+    bot.handle_update({"message": {"chat": {"id": 42}, "text": "/start market_unknown"}})
+
+    assert calls and calls[-1][0] == "sendMessage"
+    assert "район не узнал" in calls[-1][1]["text"]
+    assert "/alerts_on" in calls[-1][1]["text"]
+    assert "🏠 <b>FairPrice</b>" not in calls[-1][1]["text"]
+
+
 def test_handle_update_no_url_hint(monkeypatch):
     calls = []
     monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
