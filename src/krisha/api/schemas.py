@@ -103,6 +103,11 @@ class FlagsResponse(BaseModel):
     text_flags: list[TextFlag] = []
 
 
+class DemoResponse(BaseModel):
+    listing_id: int
+    url: str
+
+
 class HealthResponse(BaseModel):
     status: str
     model_loaded: bool
