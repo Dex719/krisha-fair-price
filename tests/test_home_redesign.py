@@ -144,12 +144,13 @@ def test_home_has_stats_loading_skeleton_and_button_unlock_paths():
     assert "document.getElementById('lot-legend')?.remove()" in html
 
 
-def test_home_chart_uses_whole_price_units_for_price_hist():
+def test_home_chart_uses_ppsm_units_for_ppsm_hist():
     html = _static("index.html")
 
-    assert "Рынок сегодня · цены квартир, Алматы" in html
-    assert "Рынок сегодня · цена за м², Алматы" not in html
-    assert "box.dataset.medianLabel='медиана рынка — '+fmtMln(stats.median_price)" in html
+    assert "Рынок сегодня · цена за м², Алматы" in html
+    assert "stats.ppsm_hist" in html
+    assert "stats.price_hist" not in html
+    assert "box.dataset.medianLabel='медиана рынка — '+fmtPpsm(stats.median_ppsm)" in html
     assert "fmtPpsm(stats.median_ppsm):fmtMln(stats.median_price)" not in html
 
 
