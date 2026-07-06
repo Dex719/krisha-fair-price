@@ -111,6 +111,7 @@ class DemoResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     model_loaded: bool
+    model_error_pct: float | None = None
     # Статус Telegram-webhook: ok | unset | mismatch | no_token | no_public_url |
     # unknown (не удалось спросить Telegram). Позволяет диагностировать бота
     # снаружи, без доступа к логам хостинга.

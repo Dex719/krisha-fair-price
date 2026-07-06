@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Как мы считаем справедливую цену квартиры │ baǵam</title>
+<meta name="description" content="Как baǵam оценивает квартиры в Алматы: источники данных, факторы модели, точность, ограничения и честные правила работы с объявлениями.">
+<link rel="stylesheet" href="/static/design.css">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+
+<header class="topbar" id="topbar">
+<div class="nav">
+<a class="logo" href="/">baǵam</a>
+<nav class="links">
+<a class="nl" href="/">Оценка</a>
+<a class="nl" href="/stats">Рынок</a>
+<a class="nl on" href="/about">О проекте</a>
+</nav>
+<span class="soc">
+<a class="pill" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg><span class="pl">Telegram-бот</span></a>
+<a class="pill pill-th" href="https://www.threads.net/@bagam.kz" target="_blank" rel="noopener"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg><span class="pl">Threads</span></a>
+<button class="theme-btn" aria-label="Сменить тему"><svg class="i sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.3 17.7-1.4 1.4"/><path d="m19.1 4.9-1.4 1.4"/></svg><svg class="i moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button>
+</span>
+</div>
+</header>
+
+<div class="band about-band">
+<div class="wrap">
+<h1>Оценка, которую можно проверить</h1>
+<p class="lead sub-hero" id="about-lead">baǵam сравнивает квартиру с живой базой объявлений Алматы и показывает не только цену, но и причины: район, дом, этаж, ремонт, окружение и похожие лоты.</p>
+</div>
+</div>
+
+<main class="wrap">
+<div class="sheet about-sheet">
+<div class="receipt about-receipt" id="about-receipt" aria-busy="true">
+<div class="r-head"><span><b>О проекте</b> · <span id="about-updated">загружаем дату обновления</span></span><span id="about-model-state">проверяем модель</span></div>
+
+<section class="sec">
+<h2>Зачем это нужно</h2>
+<div class="prose">
+<p>На krisha.kz видно, сколько продавец <b>хочет</b> за квартиру. Сложнее понять, сколько она стоит на фоне похожих лотов: района, года дома, этажа, ремонта, площади и инфраструктуры рядом.</p>
+<p>baǵam даёт расчёт, которому можно возразить: показывает диапазон справедливой цены, факторы, похожие объявления и честно отмечает, когда данных недостаточно.</p>
+</div>
+</section>
+
+<section class="sec">
+<h2>Что сейчас в базе</h2>
+<div class="about-live">
+<div class="summary-card"><span class="eyebrow">Активные объявления</span><b id="about-market-size"><span class="sk" style="width:120px;height:26px"></span></b><p>Берём из `/api/stats`, без числа из макета.</p></div>
+<div class="summary-card"><span class="eyebrow">Точность модели</span><b id="about-model-error"><span class="sk" style="width:120px;height:26px"></span></b><p>Берём из `/api/health`, если метрика опубликована.</p></div>
+<div class="summary-card"><span class="eyebrow">Медиана рынка</span><b id="about-market-median"><span class="sk" style="width:120px;height:26px"></span></b><p>Ориентир по активным объявлениям, не итоговая оценка лота.</p></div>
+</div>
+<p class="expl" id="about-source-note">Живые значения появятся после ответа API. Если источник недоступен, страница не подставляет устаревшие числа.</p>
+</section>
+
+<section class="sec">
+<h2>Как считает модель</h2>
+<div class="grid2 about-steps">
+<div class="step"><span class="n">1</span><h3>Собираем рынок</h3><p>Используем открытые объявления Алматы: цену, параметры квартиры, дом, район и историю изменений.</p></div>
+<div class="step"><span class="n">2</span><h3>Чистим данные</h3><p>Убираем дубли, неполные карточки и очевидный мусор. Снятые объявления не смешиваются с активным рынком.</p></div>
+<div class="step"><span class="n">3</span><h3>Сравниваем похожие лоты</h3><p>Модель двигает цену от рыночной медианы к конкретной квартире: площадь, этаж, дом, ремонт, окружение и продавец.</p></div>
+<div class="step"><span class="n">4</span><h3>Показываем диапазон</h3><p>Один точный ответ был бы нечестным. Поэтому отчёт показывает справедливую цену, нижнюю и верхнюю границу.</p></div>
+</div>
+</section>
+
+<section class="sec">
+<h2>Принципы</h2>
+<ul class="plist about-list">
+<li><b>Диапазон вместо магического числа.</b> Цена квартиры зависит от деталей, поэтому итог всегда сопровождается границами и факторами.</li>
+<li><b>Нейтральность.</b> baǵam не продаёт квартиры и не работает на продавца конкретного лота.</li>
+<li><b>Проверяемость.</b> В отчёте есть похожие объявления и факторы, чтобы пользователь видел, почему цена сдвинулась.</li>
+<li><b>Ограничения видны сразу.</b> Если аналогов мало или лот нестандартный, диапазон расширяется, а текст не делает вид, что точность высокая.</li>
+</ul>
+</section>
+
+<section class="sec">
+<h2>Честные ограничения</h2>
+<div class="prose">
+<p>Оценка — ориентир, не оферта и не юридическое заключение. Модель не видит состояние квартиры изнутри, документы, мотивацию продавца и будущий торг.</p>
+<p>Для редких объектов — пентхаусов, квартир с необычной планировкой, первых этажей под бизнес — похожих лотов меньше. В таких случаях честный широкий диапазон лучше, чем красивая, но выдуманная точность.</p>
+</div>
+</section>
+</div>
+</div>
+
+<div class="how">
+<div class="faq">
+<details>
+<summary>Откуда данные и законно ли это? <span class="chev">▾</span></summary>
+<p>Мы используем открытые объявления и не выдаём их за свои. Данные принадлежат владельцам и площадкам-источникам.</p>
+</details>
+<details>
+<summary>Почему результат может отличаться от цены сделки? <span class="chev">▾</span></summary>
+<p>Сделка зависит от торга, срочности, документов и состояния квартиры при просмотре. baǵam оценивает рыночный ориентир по доступным данным.</p>
+</details>
+<details>
+<summary>Что делать после оценки? <span class="chev">▾</span></summary>
+<p>Сравните диапазон с ценой продавца, откройте похожие лоты и проверьте факторы, которые сильнее всего двигают цену.</p>
+</details>
+</div>
+<div class="cta-band">
+<div><h3>Проверьте реальный лот</h3><p>Вставьте ссылку с krisha.kz — отчёт появится через несколько секунд.</p></div>
+<a class="btn btn-primary" href="/">Оценить квартиру</a>
+</div>
+</div>
+
+<footer>
+<span class="fbrand">baǵam</span>
+<span class="fl">
+<a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>Telegram-бот</a>
+<a href="https://www.threads.net/@bagam.kz" target="_blank" rel="noopener"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>Threads</a>
+</span>
+<span>данные принадлежат их владельцам</span>
+</footer>
+</main>
+
+<script>
+const fmtCount=n=>new Intl.NumberFormat('ru-RU').format(Math.round(+n||0));
+const fmtK=n=>n==null||Number.isNaN(+n)?'—':Math.round(+n/1000)+' тыс ₸/м²';
+const fmtPct=n=>n==null||Number.isNaN(+n)?null:'±'+(+n).toFixed(1).replace('.',',').replace(',0','')+'%';
+const fmtDate=value=>{try{return new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',year:'numeric'}).format(new Date(value))}catch(e){return 'дата недоступна'}};
+function setText(id,text){const el=document.getElementById(id);if(el)el.textContent=text}
+function initTelegramMiniApp(){const tg=window.Telegram&&window.Telegram.WebApp;if(!tg||!tg.initData)return;document.documentElement.classList.add('in-telegram','tg-miniapp');document.body.classList.toggle('dark',tg.colorScheme==='dark');try{tg.ready();tg.expand()}catch(e){}}
+function initTheme(){const themeBtn=document.querySelector('.theme-btn');try{const saved=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme');if(saved==='dark'||(!saved&&matchMedia('(prefers-color-scheme:dark)').matches))document.body.classList.add('dark')}catch(e){}themeBtn?.addEventListener('click',function(){document.body.classList.add('theme-anim');document.body.classList.toggle('dark');clearTimeout(themeBtn._t);themeBtn._t=setTimeout(()=>document.body.classList.remove('theme-anim'),450);try{const v=document.body.classList.contains('dark')?'dark':'light';localStorage.setItem('bagam-theme',v);localStorage.setItem('kfp-theme',v)}catch(e){}})}
+function initTopbar(){const tb=document.getElementById('topbar');let lastY=scrollY,acc=0;addEventListener('scroll',function(){const y=scrollY,d=y-lastY;lastY=y;tb?.classList.toggle('scrolled',y>24);acc=d>0?Math.max(acc,0)+d:Math.min(acc,0)+d;if(y<=150||acc<-24)tb?.classList.remove('hid');else if(acc>24)tb?.classList.add('hid')},{passive:true})}
+async function loadAboutFacts(){let statsOk=false,healthOk=false;try{const resp=await fetch('/api/stats');const stats=await resp.json();if(!resp.ok)throw new Error('stats unavailable');statsOk=true;setText('about-market-size',fmtCount(stats.total_listings));setText('about-market-median',fmtK(stats.median_ppsm));setText('about-updated','обновлено '+fmtDate(stats.updated_at));setText('about-lead','baǵam сравнивает квартиру с '+fmtCount(stats.total_listings)+' активными объявлениями Алматы и показывает не только цену, но и причины: район, дом, этаж, ремонт, окружение и похожие лоты.')}catch(e){setText('about-market-size','недоступно');setText('about-market-median','недоступно');setText('about-updated','данные временно недоступны')}
+try{const resp=await fetch('/api/health');const health=await resp.json();if(!resp.ok)throw new Error('health unavailable');healthOk=true;const err=fmtPct(health.model_error_pct);setText('about-model-error',err||'недоступно');setText('about-model-state',health.model_loaded?'модель загружена':'модель временно недоступна')}catch(e){setText('about-model-error','недоступно');setText('about-model-state','health недоступен')}
+document.getElementById('about-receipt')?.removeAttribute('aria-busy');setText('about-source-note',statsOk||healthOk?'Все числа в этом блоке пришли из API; устаревшие значения макета не используются.':'Живые источники временно недоступны; устаревшие числа не подставлены.')}
+initTelegramMiniApp();initTheme();initTopbar();loadAboutFacts();
+</script>
+</body>
+</html>
