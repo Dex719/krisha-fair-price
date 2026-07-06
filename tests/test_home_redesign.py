@@ -26,6 +26,7 @@ def test_home_uses_bagam_meta_design_css_and_local_favicon():
     assert '<meta name="description"' in html
     assert 'href="/static/design.css"' in html
     assert 'rel="icon" type="image/svg+xml" href="/static/favicon.svg"' in html
+    assert '<a class="nl" href="/about">О проекте</a>' in html
     assert "fonts.googleapis.com" not in html
     assert "fonts.gstatic.com" not in html
 
