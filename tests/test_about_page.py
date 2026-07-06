@@ -58,10 +58,33 @@ def test_about_page_has_no_mock_numbers_for_live_metrics():
         "±9.5%",
         "23 факторам",
         "данные обновляются каждое утро",
+        "без числа из макета",
+        "устаревшие значения макета",
+        "`/api/stats`",
+        "`/api/health`",
+        "health недоступен",
+        "Все числа в этом блоке пришли из API",
     ):
         assert fake not in html
-    assert "без числа из макета" in html
-    assert "устаревшие значения макета не используются" in html
+    assert "Считается по активным объявлениям базы" in html
+    assert "Медианная ошибка последней опубликованной модели" in html
+    assert "Живые значения появятся через пару секунд" in html
+    assert "данные о модели временно недоступны" in html
+
+
+def test_about_faq_matches_mockup_with_live_trust_metric():
+    html = _static("about.html")
+
+    assert "Откуда данные и законно ли это?" in html
+    assert "Мы собираем только открытые объявления" in html
+    assert "Почему бесплатно?" in html
+    assert "Это независимый проект. Если когда-нибудь появятся платные функции" in html
+    assert "Насколько можно доверять оценке?" in html
+    assert "about-trust-answer" in html
+    assert "На проверочной выборке медианная ошибка — '+err" in html
+    assert "Данные о точности модели временно недоступны" in html
+    assert "Почему результат может отличаться от цены сделки?" not in html
+    assert "Что делать после оценки?" not in html
 
 
 def test_about_css_and_nav_are_connected():
