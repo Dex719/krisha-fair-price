@@ -54,6 +54,10 @@ def test_design_css_contains_master_tokens_and_components():
         ".zone",
         ".pin",
         ".receipt-skeleton",
+        ".r-empty",
+        ".skchart",
+        ".loadnote",
+        ".sk",
     ):
         assert component in css
 
@@ -84,16 +88,21 @@ def test_home_keeps_api_flow_flags_theme_and_delayed_skeleton():
     assert "spinner" not in html
 
 
-def test_home_uses_live_stats_demo_endpoint_and_honest_example_copy():
+def test_home_uses_live_stats_demo_endpoint_and_empty_first_visit():
     html = _static("index.html")
 
     assert "/api/stats" in html
     assert "/api/demo" in html
     assert "telegram-web-app.js" in html
     assert "tg.ready" in html and "tg.expand" in html
-    assert "Пример отчёта" in html
+    assert "r-empty" in html
+    assert "Здесь появится отчёт об оценке" in html
+    assert "оценка ещё не выполнялась" in html
+    assert "re-ghost" in html
+    assert "Показать на примере" in html
     assert "hasRealReceipt" in html
     assert "scam-note" in html
+    assert "Пример отчёта" not in html
     for fake in (
         "11 357",
         "1 214",
@@ -101,8 +110,37 @@ def test_home_uses_live_stats_demo_endpoint_and_honest_example_copy():
         "760000000",
         "5 июля 2026",
         "данные обновлены сегодня утром",
+        "33 700 000",
+        "33,7 млн",
+        "38,5 млн",
+        "36,2",
+        "41,1",
+        "Мамыр-4",
+        "Мамыр-1",
+        "Аксай-3",
+        "692 тыс",
+        "705 тыс",
+        "689 тыс",
     ):
         assert fake not in html
+
+
+def test_home_has_stats_loading_skeleton_and_button_unlock_paths():
+    html = _static("index.html")
+
+    assert "skchart" in html
+    assert "market-skeleton" in html
+    assert 'aria-busy="true"' in html
+    assert "Загружаем свежие данные рынка — обычно это пара секунд" in html
+    assert 'disabled aria-disabled="true"' in html
+    assert "setMarketLoading(true)" in html
+    assert "setMarketLoading(false)" in html
+    assert "Статистика рынка временно недоступна — оценку можно запустить" in html
+    assert "showMarketStatsError" in html
+    assert "renderEmptyReceipt" in html
+    assert "initChartTips()" in html
+    assert 'id="lot-legend"' in html
+    assert "document.getElementById('lot-legend')?.remove()" in html
 
 
 def test_csp_keeps_fonts_self_hosted_only():
@@ -141,6 +179,9 @@ def test_demo_endpoint_returns_active_listing_url_and_is_rate_limited(tmp_path, 
 
     app_module._rate.clear()
     for _ in range(app_module.RATE_LIMIT):
-        assert client.get("/api/demo", headers={"x-forwarded-for": "203.0.113.80"}).status_code == 200
+        assert (
+            client.get("/api/demo", headers={"x-forwarded-for": "203.0.113.80"}).status_code
+            == 200
+        )
     limited = client.get("/api/demo", headers={"x-forwarded-for": "203.0.113.80"})
     assert limited.status_code == 429
