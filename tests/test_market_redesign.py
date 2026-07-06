@@ -52,6 +52,11 @@ def test_market_page_keeps_live_data_endpoints_and_no_mock_numbers():
         assert fake not in html
     assert "без подстановок" in html
     assert "Источник всех чисел — /api/stats" in html
+    assert "Строка района открывает Telegram-бот" in html
+    assert "на подписку по району" not in html
+    assert "подписку именно на него" not in html
+    assert "строка района ведёт в подписку" not in html
+    assert "Подпишитесь на свой район" not in html
 
 
 def test_market_page_has_skeletons_fail_soft_and_v24_chart_rules():
@@ -70,6 +75,8 @@ def test_market_page_has_skeletons_fail_soft_and_v24_chart_rules():
     assert ".ylab" in css
     assert ".mrow" in css
     assert ".map-legend" in css
+    assert "border:1px dashed var(--rule2)" in css
+    assert ".band .chart-empty" in css
 
 
 def test_market_map_preserves_leaflet_and_required_zoom_controls():

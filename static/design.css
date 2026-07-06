@@ -356,7 +356,8 @@ body.dark .btn-sec:hover{background:rgba(87,161,130,.14)}
 @media(max-width:600px){.cr{display:block}.cr .lead-dots{display:none}.cr>b,.cr>span:last-child{display:block;margin-top:2px}.receipt-skeleton .sk-body{grid-template-columns:1fr;gap:22px;padding:24px 20px}}
 
 
-.chart-empty{min-height:190px;display:flex;align-items:center;justify-content:center;color:var(--on2);font-size:13.5px;border:1px dashed rgba(255,255,255,.24);border-radius:12px}
+.chart-empty{min-height:190px;display:flex;align-items:center;justify-content:center;color:var(--ink2);font-size:13.5px;border:1px dashed var(--rule2);border-radius:12px;background:rgba(255,255,255,.16)}
+.band .chart-empty{color:var(--on2);border-color:rgba(255,255,255,.24);background:transparent}
 .scam-note{margin-top:10px;color:var(--ink2);font-size:13.5px;line-height:1.5}
 
 
