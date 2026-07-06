@@ -4,6 +4,7 @@
 """
 
 import hmac
+import json
 import logging
 import time
 from collections import defaultdict, deque
@@ -21,7 +22,7 @@ from krisha.api.schemas import (
     PredictRequest,
     PredictResponse,
 )
-from krisha.config import DB_PATH, MODEL_PATH, ROOT_DIR
+from krisha.config import DB_PATH, MODEL_META_PATH, MODEL_PATH, ROOT_DIR
 from krisha.db import get_conn
 from krisha.predict import predict_from_url
 from krisha.stats import get_stats, heatmap_points
@@ -105,8 +106,26 @@ def health() -> HealthResponse:
     # webhook_status() заодно самолечит webhook (не чаще раза в час):
     # keepalive-пинг каждые 6 часов держит бота живым без ручных действий
     return HealthResponse(
-        status="ok", model_loaded=MODEL_PATH.exists(), tg_webhook=bot.webhook_status()
+        status="ok",
+        model_loaded=MODEL_PATH.exists(),
+        model_error_pct=_model_error_pct(),
+        tg_webhook=bot.webhook_status(),
     )
+
+
+def _model_error_pct() -> float | None:
+    """Процентная ошибка модели из models/model_meta.json для публичных страниц."""
+    if not MODEL_META_PATH.exists():
+        return None
+    try:
+        meta = json.loads(MODEL_META_PATH.read_text(encoding="utf-8"))
+        mape = meta.get("metrics", {}).get("model", {}).get("mape")
+        if mape is None:
+            return None
+        return round(float(mape) * 100, 1)
+    except (OSError, ValueError, TypeError):
+        logger.warning("health: не удалось прочитать model_error_pct", exc_info=True)
+        return None
 
 
 # Анти-спам: скользящее окно запросов на IP (живём в одном процессе — хватает)
@@ -354,6 +373,12 @@ def index() -> FileResponse:
 def stats_page() -> FileResponse:
     usage.record_event("site")
     return FileResponse(STATIC_DIR / "stats.html")
+
+
+@app.get("/about", include_in_schema=False)
+def about_page() -> FileResponse:
+    usage.record_event("site")
+    return FileResponse(STATIC_DIR / "about.html")
 
 
 if STATIC_DIR.exists():

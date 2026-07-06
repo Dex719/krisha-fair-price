@@ -20,7 +20,7 @@ def test_market_page_uses_bagam_chrome_meta_and_design_css():
     assert 'href="/static/design.css"' in html
     assert 'rel="icon" type="image/svg+xml" href="/static/favicon.svg"' in html
     assert '<a class="nl on" href="/stats">Рынок</a>' in html
-    assert '<a class="nl" href="/#how">О проекте</a>' in html
+    assert '<a class="nl" href="/about">О проекте</a>' in html
     assert "m3.css" not in html
     assert "FairPrice" not in html
     assert "Manrope" not in html

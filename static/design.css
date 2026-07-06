@@ -459,3 +459,17 @@ body.dark .leaflet-control-attribution{background:rgba(36,44,37,.84)!important;c
 @media(max-width:880px){.grid2{grid-template-columns:1fr}.summary-grid{grid-template-columns:1fr}.map-legend{grid-template-columns:1fr 1fr}.mhead{display:none}.mrow{grid-template-columns:minmax(0,1fr) auto;gap:4px 12px}.mbar{grid-column:1/-1;order:3}.mval{text-align:right}.msub{grid-column:1;white-space:normal}.mrow .go{grid-row:2;grid-column:2;align-self:center;justify-self:end;color:var(--green)}}
 @media(max-width:768px){.market-band{padding-bottom:110px}.market-sheet{margin-top:-66px}.sec{padding:24px}.sec-head{display:block}.map-controls{margin:10px 0 0}.price-map{height:360px}.map-legend{grid-template-columns:1fr}.summary-card b{font-size:22px}}
 @media(max-width:420px){.sec{padding:22px 20px}.price-map{height:330px}.map-controls button{width:46px;height:46px}.stat-table{min-width:560px}.summary-card{padding:16px}.map-skeleton{padding:20px}}
+
+/* ===== issue #81 about page ===== */
+.about-band{padding-bottom:126px}
+.about-sheet{margin-top:-84px}
+.about-receipt{overflow:visible}
+.prose{max-width:700px;color:var(--ink2);line-height:1.68}
+.prose b{color:var(--ink);font-weight:600}
+.prose p+p{margin-top:10px}
+.about-live{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.about-live .summary-card p{margin-top:8px;color:var(--ink2);font-size:13.5px;line-height:1.45}
+.about-steps .step{background:color-mix(in srgb,var(--surface),var(--paper) 34%)}
+.about-list{max-width:760px}
+@media(max-width:880px){.about-live{grid-template-columns:1fr}.about-band{padding-bottom:110px}.about-sheet{margin-top:-66px}}
+@media(max-width:420px){.about-live .summary-card{padding:16px}}
