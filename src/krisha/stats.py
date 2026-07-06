@@ -32,6 +32,41 @@ DISTRICT_RU = {
 
 # Границы корзин гистограммы цен (₸)
 PRICE_BINS = [0, 20, 30, 40, 50, 60, 80, 100, 150, 250, 10_000]  # млн ₸
+PPSM_HIST_BINS = 38  # 36–40 узких бинов: плотность как в макете, без кирпичей
+
+
+def _ppsm_hist(df: pd.DataFrame, bins: int = PPSM_HIST_BINS) -> list[dict]:
+    """Гистограмма цены за м² по активным лотам, с отсечением выбросов p1–p99."""
+    ppsm = df["ppsm"].dropna()
+    if ppsm.empty:
+        return []
+    lo = float(ppsm.quantile(0.01))
+    hi = float(ppsm.quantile(0.99))
+    if hi <= lo:
+        lo = float(ppsm.min()) * 0.99
+        hi = float(ppsm.max()) * 1.01
+    if hi <= lo:
+        hi = lo + 1.0
+
+    step = (hi - lo) / bins
+    edges = [lo + step * i for i in range(bins + 1)]
+    clipped = ppsm.clip(lower=lo, upper=hi)
+    hist = pd.cut(clipped, bins=edges, include_lowest=True).value_counts(sort=False)
+
+    out = []
+    for i, (iv, cnt) in enumerate(hist.items()):
+        left = int(round(iv.left))
+        right = int(round(iv.right))
+        left_k = int(round(left / 1000))
+        right_k = int(round(right / 1000))
+        label = f"{left_k}–{right_k} тыс" if i < len(hist) - 1 else f"{left_k}+ тыс"
+        out.append({
+            "label": label,
+            "count": int(cnt),
+            "from_ppsm": left,
+            "to_ppsm": right,
+        })
+    return out
 
 
 def _weekly_trend(
@@ -142,6 +177,7 @@ def compute_stats(db_path: Path | str = DB_PATH) -> dict:
         "median_ppsm": int(df["ppsm"].median()),
         "by_district": by_district,
         "price_hist": price_hist,
+        "ppsm_hist": _ppsm_hist(df),
         "by_rooms": by_rooms,
         "trend": trend,
         "by_category": {
