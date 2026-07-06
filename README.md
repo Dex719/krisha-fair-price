@@ -1,5 +1,5 @@
 ---
-title: FairPrice
+title: baǵam
 emoji: 🏠
 colorFrom: indigo
 colorTo: green
@@ -12,10 +12,10 @@ pinned: false
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
-  <img src="docs/logo-light.png" alt="FairPrice" width="440" />
+  <img src="docs/logo-light.png" alt="baǵam" width="440" />
 </picture>
 
-**FairPrice — справедливая цена квартиры в Алматы: вставь ссылку на объявление и узнай, выгодно это, в рынке или переплата**
+**baǵam — справедливая цена квартиры в Алматы: вставьте ссылку на объявление и проверьте, цена выгодная, рыночная или завышенная**
 
 [![CI](https://github.com/Dex719/krisha-fair-price/actions/workflows/ci.yml/badge.svg)](https://github.com/Dex719/krisha-fair-price/actions/workflows/ci.yml)
 ![tests](https://img.shields.io/badge/tests-174_passed-2ea44f)
@@ -25,7 +25,7 @@ pinned: false
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![version](https://img.shields.io/badge/version-0.2.0-blue)
 
-**[🚀 Сайт](https://dex719-krisha-fair-price.hf.space)** · **[📊 Рынок Алматы](https://dex719-krisha-fair-price.hf.space/stats)** · **[🤖 Telegram-бот](https://t.me/fairprice_kzbot)** · **[🧵 Threads](https://www.threads.com/@fairprice_kz)**
+**[🚀 Сайт](https://dex719-krisha-fair-price.hf.space)** · **[📊 Рынок Алматы](https://dex719-krisha-fair-price.hf.space/stats)** · **[🤖 Telegram-бот](https://t.me/fairprice_kzbot)** · **[🧵 Threads](https://www.threads.net/@bagam.kz)**
 
 <img src="docs/screenshot-light.png" alt="Вердикт по объявлению" width="800" />
 
@@ -43,7 +43,7 @@ pinned: false
 
 ## 🤖 Telegram-бот и Mini App
 
-Тот же сервис доступен как **[@fairprice_kzbot](https://t.me/fairprice_kzbot)**: кидаешь ссылку — получаешь вердикт прямо в чате (фото, справедливая цена, факторы), плюс Mini App с полноценным интерфейсом сайта.
+Тот же сервис доступен как **Telegram-бот [@fairprice_kzbot](https://t.me/fairprice_kzbot)**: отправьте ссылку или текст объявления, включите /track для слежки за ценой и /alerts для выгодных лотов по фильтрам. Mini App открывает полноценный интерфейс сайта.
 
 Бот работает на том же FastAPI через webhook (`POST /tg/webhook`) — отдельный сервер не нужен. Для своего деплоя достаточно задать `TELEGRAM_BOT_TOKEN`; webhook регистрируется при старте автоматически, а health-пинг раз в час проверяет его и чинит, если слетел.
 
@@ -84,7 +84,7 @@ make test         # pytest
 
 Runtime-деплой (Docker/HF Spaces) ставит только `pip install -e .` — тяжёлые train-зависимости (`shap`, `matplotlib`, `scikit-learn`) вынесены в optional extra `train` и нужны лишь для `make train` и SHAP-отчётов: `pip install -e ".[train]"`.
 
-Версии зависимостей зафиксированы в `requirements.lock` (рантайм) и `requirements-train.lock` (обучение) — Docker ставит из `requirements.lock`, чтобы prod и Actions не разъезжались на разных версиях `catboost`/`pandas`/etc. После правки зависимостей в `pyproject.toml` перегенерируй оба лока и закоммить их в том же PR:
+`requirements*.lock` собраны под Linux (CI/Docker); локальная разработка на Windows/macOS — `pip install -e ".[dev]"`. Docker ставит из `requirements.lock`, чтобы prod и Actions не разъезжались на разных версиях `catboost`/`pandas`/etc. После правки зависимостей в `pyproject.toml` перегенерируй оба лока и закоммить их в том же PR:
 
 ```bash
 make lock
