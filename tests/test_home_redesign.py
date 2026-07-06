@@ -154,6 +154,15 @@ def test_home_chart_uses_ppsm_units_for_ppsm_hist():
     assert "fmtPpsm(stats.median_ppsm):fmtMln(stats.median_price)" not in html
 
 
+def test_home_result_tracking_button_uses_listing_deeplink():
+    html = _static("index.html")
+
+    assert "function trackHref(data)" in html
+    assert "?start=track_" in html
+    assert 'href="${esc(trackHref(data))}"' in html
+    assert 'href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">${ICONS.bell}' not in html
+
+
 def test_csp_keeps_fonts_self_hosted_only():
     assert "default-src 'self'" in CSP
     assert "font-src 'self'" in CSP
