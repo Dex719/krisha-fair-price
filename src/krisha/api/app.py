@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from krisha import __version__, bot, db_release, usage
 from krisha.api.schemas import (
+    DemoResponse,
     FlagsResponse,
     HealthResponse,
     PredictRequest,
@@ -47,8 +48,8 @@ STATIC_DIR = ROOT_DIR / "static"
 CSP = (
     "default-src 'self'; "
     "img-src 'self' data: https://*.kcdn.online https://*.basemaps.cartocdn.com; "
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "
-    "font-src 'self' https://fonts.gstatic.com; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "font-src 'self'; "
     "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://telegram.org; "
     "connect-src 'self'; "
     "base-uri 'self'; "
@@ -181,6 +182,29 @@ def flags(listing_id: int, request: Request) -> FlagsResponse:
         {"id": row["id"], "description": row["description"]}, max_retries=1
     )
     return FlagsResponse(listing_id=listing_id, text_flags=text_flags)
+
+
+@app.get("/api/demo", response_model=DemoResponse)
+def demo(request: Request) -> DemoResponse:
+    """URL живого активного объявления для кнопки «Показать на примере»."""
+    _check_rate_limit(request)
+    if not DB_PATH.exists():
+        raise HTTPException(status_code=503, detail="Демо-объявление временно недоступно")
+    with get_conn(DB_PATH) as conn:
+        row = conn.execute(
+            """
+            SELECT id, url
+            FROM listings
+            WHERE is_active = 1
+              AND url IS NOT NULL
+              AND url LIKE '%krisha.kz/a/show/%'
+            ORDER BY RANDOM()
+            LIMIT 1
+            """
+        ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=503, detail="Демо-объявление временно недоступно")
+    return DemoResponse(listing_id=int(row["id"]), url=str(row["url"]))
 
 
 _stats_cache: dict = {"data": None, "ts": 0.0}
