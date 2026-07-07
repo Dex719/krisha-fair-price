@@ -1,0 +1,56 @@
+name: Prod smoke
+
+on:
+  workflow_run:
+    workflows: ["Deploy to HF Space"]
+    types:
+      - completed
+  schedule:
+    - cron: "17 3,15 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prod-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install smoke dependencies
+        run: python -m pip install "httpx>=0.27"
+
+      - name: Run prod smoke
+        run: python scripts/smoke_prod.py
+
+      - name: Notify Telegram on failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TG_ADMIN_CHAT_ID" ]; then
+            echo "TELEGRAM_BOT_TOKEN or TG_ADMIN_CHAT_ID is not set; skip Telegram notification"
+            exit 0
+          fi
+
+          text="🚨 baǵam prod smoke failed
+          Repo: ${GITHUB_REPOSITORY}
+          Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          curl -fsS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${TG_ADMIN_CHAT_ID}" \
+            --data-urlencode "text=${text}"
