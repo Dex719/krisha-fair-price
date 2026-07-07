@@ -6,9 +6,11 @@
 import hmac
 import json
 import logging
+import sqlite3
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -73,6 +75,7 @@ CSP = (
 # (внутренний API, максимум JSON с одним URL-полем) это принято как
 # допустимый компромисс и не реализуется здесь.
 MAX_BODY_BYTES = 64 * 1024
+DATA_STALE_AFTER_HOURS = 30.0
 
 
 def _apply_security_headers(response):
@@ -105,12 +108,56 @@ async def _security_headers(request: Request, call_next):
 def health() -> HealthResponse:
     # webhook_status() заодно самолечит webhook (не чаще раза в час):
     # keepalive-пинг каждые 6 часов держит бота живым без ручных действий
+    data_age_hours, freshness = _data_freshness()
     return HealthResponse(
         status="ok",
         model_loaded=MODEL_PATH.exists(),
         model_error_pct=_model_error_pct(),
+        data_age_hours=data_age_hours,
+        freshness=freshness,
         tg_webhook=bot.webhook_status(),
     )
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _data_freshness() -> tuple[float | None, str]:
+    """Возраст данных по максимальному реальному last_seen в базе."""
+    if not DB_PATH.exists():
+        return None, "stale"
+    try:
+        with get_conn(DB_PATH) as conn:
+            row = conn.execute(
+                "SELECT MAX(last_seen) FROM listings WHERE last_seen IS NOT NULL"
+            ).fetchone()
+    except sqlite3.Error:
+        logger.warning("health: не удалось прочитать freshness из базы", exc_info=True)
+        return None, "stale"
+
+    observed_at = row[0] if row else None
+    if not observed_at:
+        return None, "stale"
+
+    observed_dt = _parse_db_datetime(str(observed_at))
+    if observed_dt is None:
+        return None, "stale"
+
+    age_hours = max(0.0, (_utcnow() - observed_dt).total_seconds() / 3600)
+    freshness = "ok" if age_hours <= DATA_STALE_AFTER_HOURS else "stale"
+    return round(age_hours, 2), freshness
+
+
+def _parse_db_datetime(value: str) -> datetime | None:
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        logger.warning("health: некорректный last_seen в базе: %r", value)
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def _model_error_pct() -> float | None:

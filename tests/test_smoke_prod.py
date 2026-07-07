@@ -50,7 +50,14 @@ def _ok_client():
             "/": FakeResponse(text=page),
             "/stats": FakeResponse(text='<a class="logo">baǵam</a>Медиана по районам /api/stats'),
             "/about": FakeResponse(text='<a class="logo">baǵam</a>О проекте Как считает модель'),
-            "/api/health": FakeResponse(json_data={"status": "ok", "model_error_pct": 9.5}),
+            "/api/health": FakeResponse(
+                json_data={
+                    "status": "ok",
+                    "model_error_pct": 9.5,
+                    "data_age_hours": 2.0,
+                    "freshness": "ok",
+                }
+            ),
             "/api/demo": FakeResponse(json_data={"url": "https://krisha.kz/a/show/123"}),
             "/api/stats": FakeResponse(
                 json_data={"total_listings": 10, "by_district": [{"district": "Бостандыкский"}]}
@@ -91,4 +98,19 @@ def test_run_smoke_fails_on_empty_api_data():
     client.get_map["/api/heatmap"] = FakeResponse(json_data=[])
 
     with pytest.raises(smoke_prod.SmokeError, match="/api/heatmap"):
+        smoke_prod.run_smoke("https://prod.example", client=client)
+
+
+def test_run_smoke_fails_on_stale_health():
+    client = _ok_client()
+    client.get_map["/api/health"] = FakeResponse(
+        json_data={
+            "status": "ok",
+            "model_error_pct": 9.5,
+            "data_age_hours": 31.2,
+            "freshness": "stale",
+        }
+    )
+
+    with pytest.raises(smoke_prod.SmokeError, match="freshness"):
         smoke_prod.run_smoke("https://prod.example", client=client)

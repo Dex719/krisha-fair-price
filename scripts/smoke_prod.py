@@ -57,6 +57,13 @@ def _run_with_client(base_url: str, client: httpx.Client | Any) -> list[str]:
     health = _get_json(client, base_url, "/api/health", "GET /api/health")
     if not isinstance(health, dict) or "model_error_pct" not in health:
         raise SmokeError("GET /api/health: response must include model_error_pct")
+    if health.get("freshness") != "ok":
+        raise SmokeError(
+            "GET /api/health: freshness must be ok "
+            f"(freshness={health.get('freshness')!r}, data_age_hours={health.get('data_age_hours')!r})"
+        )
+    if not isinstance(health.get("data_age_hours"), int | float):
+        raise SmokeError("GET /api/health: data_age_hours must be a number when freshness is ok")
     checks.append("GET /api/health")
 
     demo = _get_json(client, base_url, "/api/demo", "GET /api/demo")
