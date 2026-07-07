@@ -160,6 +160,8 @@ body.dark .gzone{background:rgba(87,161,130,.3)}
 .cr b{font-variant-numeric:tabular-nums;white-space:nowrap}
 .cr .sub{color:var(--ink2);font-size:13px;white-space:nowrap}
 .cols{display:grid;grid-template-columns:1.1fr 1fr;gap:44px;padding:28px 34px;border-bottom:1px solid var(--rule)}
+.price-history{grid-template-columns:1fr}
+.price-history .expl{margin:0 0 8px}
 .st{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--ink2);margin-bottom:10px}
 .st svg.i{width:15px;height:15px}
 .fr{position:relative;display:flex;align-items:baseline;gap:12px;padding:10px;margin:0 -10px;border-radius:9px;font-size:15px;transition:background .2s ease}
