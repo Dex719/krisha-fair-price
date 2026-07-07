@@ -163,6 +163,21 @@ def test_home_result_tracking_button_uses_listing_deeplink():
     assert 'href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">${ICONS.bell}' not in html
 
 
+def test_home_result_price_history_uses_real_history_only():
+    html = _static("index.html")
+
+    assert "function renderPriceHistory(data)" in html
+    assert "const hist=(data.price_history||[])" in html
+    assert "if(hist.length<2)return ''" in html
+    assert "История цены" in html
+    assert "продавец снизил цену" in html
+    assert "продавец поднял цену" in html
+    assert "lead-dots" in html
+    assert "${renderPriceHistory(data)}" in html
+    assert "mockPriceHistory" not in html
+    assert "синтетическая история" not in html
+
+
 def test_csp_keeps_fonts_self_hosted_only():
     assert "default-src 'self'" in CSP
     assert "font-src 'self'" in CSP
