@@ -84,10 +84,10 @@
       "bot": 0,
       "bot_users": [],
       "hours": {
-        "0": 1
+        "0": 8
       },
-      "predict": 0,
-      "site": 1
+      "predict": 2,
+      "site": 6
     }
   }
 }
