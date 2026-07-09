@@ -94,13 +94,16 @@
       "site": 23
     },
     "2026-07-09": {
-      "bot": 0,
-      "bot_users": [],
+      "bot": 4,
+      "bot_users": [
+        "6b50a0cd2c"
+      ],
       "hours": {
-        "1": 1
+        "1": 8,
+        "9": 1
       },
-      "predict": 0,
-      "site": 1
+      "predict": 1,
+      "site": 4
     }
   }
 }
