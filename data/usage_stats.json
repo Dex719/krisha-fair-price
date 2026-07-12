@@ -78,25 +78,14 @@
       "predict": 0,
       "site": 19
     },
-    "2026-07-11": {
-      "bot": 0,
-      "bot_users": [],
-      "hours": {
-        "21": 4
-      },
-      "predict": 1,
-      "site": 3
-    },
     "2026-07-12": {
       "bot": 0,
       "bot_users": [],
       "hours": {
-        "11": 4,
-        "12": 2,
-        "6": 1
+        "21": 1
       },
-      "predict": 1,
-      "site": 6
+      "predict": 0,
+      "site": 1
     }
   }
 }
