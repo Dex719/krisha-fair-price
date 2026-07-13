@@ -1,9 +1,12 @@
 """Смоук-тест обучения: синтетика, мало итераций, без сохранения на диск."""
 
+import sqlite3
+
 import numpy as np
 import pandas as pd
 
-from krisha.train import train
+from krisha.db import init_db, upsert_listing
+from krisha.train import load_dataset, train
 
 rng = np.random.default_rng(42)
 
@@ -38,3 +41,42 @@ def test_train_pipeline_runs(monkeypatch):
     assert metrics["model"]["mape"] < 0.2
     assert metrics["baseline"]["mae"] > 0
     assert metrics["n_train"] + metrics["n_test"] == 400
+
+
+def test_load_dataset_excludes_user_predicts(tmp_path):
+    """issue #117 (доп.): source="user" — не источник истины для train, лоты,
+    добавленные через predict_from_url, не должны попадать в датасет."""
+    db = tmp_path / "test.db"
+    init_db(db)
+    upsert_listing(
+        {"id": 1, "url": "https://krisha.kz/a/show/1", "price": 40_000_000, "area": 60.0},
+        db,
+    )
+    upsert_listing(
+        {
+            "id": 2,
+            "url": "https://krisha.kz/a/show/2",
+            "price": 41_000_000,
+            "area": 61.0,
+            "source": "user",
+        },
+        db,
+    )
+
+    df = load_dataset(db)
+
+    assert set(df["id"]) == {1}
+
+
+def test_load_dataset_handles_missing_source_column(tmp_path):
+    """Старая БД без колонки source (до миграции) не должна ронять load_dataset."""
+    db = tmp_path / "legacy.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE listings (id INTEGER PRIMARY KEY, price INTEGER, area REAL)")
+    conn.execute("INSERT INTO listings VALUES (1, 40000000, 60.0)")
+    conn.commit()
+    conn.close()
+
+    df = load_dataset(db)
+
+    assert list(df["id"]) == [1]

@@ -27,6 +27,7 @@ from krisha.db import (
     get_conn,
     init_db,
     known_ids,
+    record_sighting,
     upsert_listing,
 )
 from krisha.scraping.client import PoliteClient
@@ -172,14 +173,35 @@ def sweep(
             if not _sweep_shard(client, label, base_url, max_pages, found):
                 failed_shards.append(label)
 
-        new_ids = [lid for lid in found if lid not in seen_in_db][:max_new_details]
-        new_count = 0
+        # issue #127: раньше в базу шли только первые max_new_details новых id
+        # (в порядке обхода шардов) — остальные найденные теряли даже
+        # first_seen. Теперь sighting пишем для ВСЕХ новых id сразу (дёшево,
+        # без похода на детальную страницу); полный detail fetch остаётся
+        # отдельной лимитированной очередью.
+        new_ids = [lid for lid in found if lid not in seen_in_db]
         for lid in new_ids:
+            record_sighting(lid, f"https://krisha.kz/a/show/{lid}", found[lid], db_path)
+
+        # Очередь detail fetch — самые старые ещё не докачанные лоты первыми
+        # (title IS NULL — сентинел «есть только sighting, детали ещё нет»),
+        # а не «что нашли в этом проходе первым» (смещение по шардам).
+        with get_conn(db_path) as conn:
+            backlog_ids = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT id FROM listings WHERE title IS NULL ORDER BY first_seen ASC"
+                ).fetchall()
+            ]
+        queue_size_before = len(backlog_ids)
+        to_fetch = backlog_ids[:max_new_details]
+        new_count = 0
+        for lid in to_fetch:
             detail_html = client.get(f"https://krisha.kz/a/show/{lid}")
             listing = parse_detail(detail_html, f"https://krisha.kz/a/show/{lid}") if detail_html else None
             if listing is not None:
                 upsert_listing(listing, db_path)
                 new_count += 1
+        queue_size_after = queue_size_before - new_count
 
     price_changes = 0
     known_seen = [lid for lid in found if lid in seen_in_db]
@@ -269,10 +291,16 @@ def sweep(
         "active_in_db_before": active_in_db,
         "parse_rate_median_7": parse_rate_median,
         "suspicious": suspicious,
+        # issue #127: сколько лотов ждут detail fetch (sighting есть, деталей
+        # ещё нет) — растущая очередь сигналит, что max_new_details мал
+        # относительно притока новых объявлений.
+        "detail_queue_before": queue_size_before,
+        "detail_queue_after": queue_size_after,
     }
     logger.info(
         "Рескрейп: в выдаче %(found_in_search)s, знакомых %(known_seen)s, "
-        "новых %(new_listings)s, изменений цены %(price_changes)s, снято %(delisted)s",
+        "новых %(new_listings)s, изменений цены %(price_changes)s, снято %(delisted)s, "
+        "очередь деталей %(detail_queue_after)s",
         {**stats, "delisted": stats["delisted"] if stats["delisted"] is not None else "n/a"},
     )
     return stats
