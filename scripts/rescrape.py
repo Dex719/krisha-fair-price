@@ -36,8 +36,17 @@ def main() -> None:
     parser.add_argument(
         "--fail-empty",
         action="store_true",
-        help="Выйти с кодом 1, если выдача пуста (блокировка/сетевая ошибка) — "
-        "чтобы CI-запуск был явно красным, а не тихо закоммитил пустой проход",
+        help="Выйти с кодом 1, если выдача пуста, помечена подозрительной (просевший "
+        "parse-rate против медианы последних 7 проходов) или ниже --fail-below — "
+        "чтобы CI-запуск был явно красным (и не заливал db-latest поверх релиза), "
+        "а не тихо закоммитил битый/пустой проход",
+    )
+    parser.add_argument(
+        "--fail-below",
+        type=int,
+        default=0,
+        help="Абсолютный минимум найденных в выдаче объявлений (например 20000): "
+        "ниже — та же обработка, что и --fail-empty. 0 — проверка выключена",
     )
     args = parser.parse_args()
 
@@ -48,9 +57,25 @@ def main() -> None:
     if args.summary_json:
         Path(args.summary_json).write_text(json.dumps(stats, ensure_ascii=False, indent=2))
 
-    if args.fail_empty and stats["found_in_search"] == 0:
-        logging.error("Выдача пуста — вероятно, блокировка по IP или разметка изменилась")
+    if args.fail_below and stats["found_in_search"] < args.fail_below:
+        logging.error(
+            "В выдаче %s объявлений — ниже порога --fail-below %s",
+            stats["found_in_search"],
+            args.fail_below,
+        )
         sys.exit(1)
+
+    if args.fail_empty:
+        if stats["found_in_search"] == 0:
+            logging.error("Выдача пуста — вероятно, блокировка по IP или разметка изменилась")
+            sys.exit(1)
+        if stats.get("suspicious"):
+            logging.error(
+                "Проход помечен подозрительным (parse-rate просел против медианы %s "
+                "последних) — не заливаем db-latest",
+                stats.get("parse_rate_median_7"),
+            )
+            sys.exit(1)
 
 
 if __name__ == "__main__":

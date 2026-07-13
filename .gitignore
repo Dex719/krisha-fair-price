@@ -12,6 +12,7 @@ dist/
 # Данные и артефакты (не коммитим — большие)
 data/*.db
 data/*.csv
+data/rescrape_history_*.json
 # модель и метаданные коммитим — нужны деплою на Railway
 
 # reports/*.png — SHAP-график коммитим, он нужен README

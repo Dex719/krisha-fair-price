@@ -15,9 +15,12 @@
 Запуск: `python scripts/rescrape.py` (по расписанию — ежедневно).
 """
 
+import json
 import logging
+import statistics
+from pathlib import Path
 
-from krisha.config import ALMATY_DISTRICT_SLUGS, BASE_URL, ROOM_SHARDS
+from krisha.config import ALMATY_DISTRICT_SLUGS, BASE_URL, DATA_DIR, ROOM_SHARDS
 from krisha.db import (
     DB_PATH,
     _record_price_if_changed,
@@ -33,6 +36,58 @@ from krisha.scraping.listing_parser import has_next_page, parse_listing_prices
 logger = logging.getLogger(__name__)
 
 DELIST_AFTER_DAYS = 3  # не видели в выдаче N дней → считаем снятым
+
+# Сигнатуры анти-бот/капча-страниц (нижний регистр) — сервер отдал HTTP 200,
+# но это не выдача. Проверяются только на первой странице шарда, чтобы не
+# гонять re.search по мегабайтам HTML на каждой странице.
+_ANTIBOT_SIGNS = (
+    "captcha",
+    "recaptcha",
+    "attention required",
+    "cf-browser-verification",
+    "доступ ограничен",
+    "подтвердите, что вы не робот",
+)
+
+# История found_in_search последних проходов — вспомогательный сигнал ТОЛЬКО
+# для локальных/долгоживущих запусков. В GitHub Actions раннер каждый раз
+# чистый и файл в .gitignore, так что в проде история никогда не наберёт
+# порог и не сработает — это самостоятельно не проверка, а бонус поверх
+# основной, которая опирается на БД (см. ACTIVE_IN_DB_DROP_RATIO ниже).
+PARSE_RATE_HISTORY_LEN = 7
+PARSE_RATE_DROP_RATIO = 0.5  # алерт, если текущий проход < 50% медианы истории
+
+# Основной прод-детект (issue #97, ревью Декса на PR #125): в отличие от
+# файла истории, состояние БД приходит с раннером (скачивается перед
+# рескрейпом) — сравниваем found_in_search с числом активных объявлений
+# в БД ДО этого прохода. Порог count'а — если самих активных совсем мало
+# (холодная/тестовая БД), сравнение ничего не даёт и его пропускаем.
+ACTIVE_IN_DB_DROP_RATIO = 0.5
+MIN_ACTIVE_IN_DB_FOR_CHECK = 100
+
+
+def _history_path(deal: str) -> Path:
+    return DATA_DIR / f"rescrape_history_{deal}.json"
+
+
+def _load_history(deal: str) -> list[int]:
+    path = _history_path(deal)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return [int(x) for x in data] if isinstance(data, list) else []
+    except (OSError, json.JSONDecodeError, ValueError):
+        return []
+
+
+def _save_history(deal: str, history: list[int]) -> None:
+    path = _history_path(deal)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(history[-PARSE_RATE_HISTORY_LEN:]), encoding="utf-8")
+
+
+def _looks_like_antibot(html: str) -> bool:
+    lower = html.lower()
+    return any(sign in lower for sign in _ANTIBOT_SIGNS)
 
 
 def shard_urls(deal: str = "prodazha") -> list[tuple[str, str]]:
@@ -63,8 +118,11 @@ def _sweep_shard(
 ) -> bool:
     """Обходит пагинацию одного шарда, дописывает id→цена в found.
 
-    Возвращает False, если какая-то страница так и не загрузилась
-    (сеть/блокировка) — шард покрыт не полностью.
+    Возвращает False, если шард не покрыт: страница не загрузилась
+    (сеть/блокировка), похожа на анти-бот/капчу, или первая страница дала
+    0 валидных id (сервер отдал 200, но не выдачу — изменённая вёрстка и
+    т.п.). Пустой/анти-бот шард НЕ считается покрытием — иначе живые
+    объявления рискуют быть ложно помечены delisted (issue #96).
     """
     before = len(found)
     for page in range(1, max_pages + 1):
@@ -73,7 +131,17 @@ def _sweep_shard(
         if html is None:
             logger.error("Шард «%s»: стр. %s не загрузилась — стоп шарда", label, page)
             return False
-        found.update(parse_listing_prices(html))
+        if page == 1 and _looks_like_antibot(html):
+            logger.error("Шард «%s»: похоже на анти-бот/капча страницу — стоп шарда", label)
+            return False
+        page_prices = parse_listing_prices(html)
+        if page == 1 and not page_prices:
+            logger.warning(
+                "Шард «%s»: 0 валидных id на первой странице — подозрительно, шард не покрыт",
+                label,
+            )
+            return False
+        found.update(page_prices)
         if not has_next_page(html, page):
             break
     logger.info("Шард «%s»: +%s объявлений (всего %s)", label, len(found) - before, len(found))
@@ -92,6 +160,10 @@ def sweep(
     """
     init_db(db_path)
     seen_in_db = known_ids(db_path)
+    with get_conn(db_path) as conn:
+        active_in_db = conn.execute(
+            "SELECT COUNT(*) FROM listings WHERE is_active = 1"
+        ).fetchone()[0]
     found: dict[int, int | None] = {}
     failed_shards: list[str] = []
 
@@ -142,6 +214,51 @@ def sweep(
             )
             delisted_count = None
 
+    # Тихая деградация (сервер отвечает, шарды формально покрыты, но
+    # объявлений в разы меньше обычного) не ловится через failed_shards —
+    # сравниваем found_in_search с базлайном (issue #97).
+    #
+    # Основной прод-детект (ревью Декса на PR #125): количество активных
+    # объявлений в БД ДО этого прохода — БД приходит артефактом с раннером,
+    # так что работает и на чистой машине без своего состояния. Порог не
+    # проверяем, если самих активных в БД слишком мало (холодная/тестовая
+    # база — сравнение только шумит).
+    suspicious_db = (
+        active_in_db >= MIN_ACTIVE_IN_DB_FOR_CHECK
+        and len(found) < active_in_db * ACTIVE_IN_DB_DROP_RATIO
+    )
+    if suspicious_db:
+        logger.error(
+            "Parse-rate просел: в выдаче %s против %s активных в БД до прохода "
+            "(порог %.0f%%) — проход помечен подозрительным",
+            len(found),
+            active_in_db,
+            ACTIVE_IN_DB_DROP_RATIO * 100,
+        )
+
+    # Доп. сигнал по локальной истории проходов — файл в .gitignore, на
+    # чистом раннере GitHub Actions недоступен, поэтому это дополнение
+    # только для локальных/долгоживущих запусков, не основная защита.
+    history = _load_history(deal)
+    parse_rate_median = (
+        statistics.median(history[-PARSE_RATE_HISTORY_LEN:]) if len(history) >= 3 else None
+    )
+    suspicious_history = (
+        parse_rate_median is not None and len(found) < parse_rate_median * PARSE_RATE_DROP_RATIO
+    )
+    if suspicious_history and not suspicious_db:
+        logger.error(
+            "Parse-rate просел: в выдаче %s против медианы %s последних проходов "
+            "(порог %.0f%%) — проход помечен подозрительным",
+            len(found),
+            parse_rate_median,
+            PARSE_RATE_DROP_RATIO * 100,
+        )
+    history.append(len(found))
+    _save_history(deal, history)
+
+    suspicious = suspicious_db or suspicious_history
+
     stats = {
         "found_in_search": len(found),
         "known_seen": len(known_seen),
@@ -149,6 +266,9 @@ def sweep(
         "price_changes": price_changes,
         "delisted": delisted_count,
         "failed_shards": failed_shards,
+        "active_in_db_before": active_in_db,
+        "parse_rate_median_7": parse_rate_median,
+        "suspicious": suspicious,
     }
     logger.info(
         "Рескрейп: в выдаче %(found_in_search)s, знакомых %(known_seen)s, "
