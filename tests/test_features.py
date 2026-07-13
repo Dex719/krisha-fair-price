@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -99,3 +100,90 @@ def test_listing_to_frame_with_raw_params():
                            "raw_params": RAW_PARAMS_JSON})
     assert df.iloc[0]["renovation"] == "свежий ремонт"
     assert set(ALL_FEATURES) <= set(df.columns)
+
+
+# ---------- issue #108: санитарный контракт числовых полей ----------
+
+
+def test_floor_ratio_nan_when_total_floors_zero():
+    """Раньше total_floors=0 давал floor_ratio=inf (битый парсинг этажности)."""
+    df = build_features(pd.DataFrame([
+        {"price": 30_000_000, "area": 50, "floor": 5, "total_floors": 0},
+    ]))
+    row = df.iloc[0]
+    assert pd.isna(row["floor_ratio"])
+    assert not np.isinf(row["floor_ratio"])
+    assert pd.isna(row["total_floors"])
+
+
+def test_floor_exceeding_total_floors_becomes_nan():
+    df = build_features(pd.DataFrame([
+        {"price": 30_000_000, "area": 50, "floor": 15, "total_floors": 9},
+    ]))
+    row = df.iloc[0]
+    assert pd.isna(row["floor"])
+    assert row["total_floors"] == 9
+    assert pd.isna(row["floor_ratio"])
+    assert row["is_last_floor"] == 0
+
+
+def test_year_built_typo_does_not_fake_new_building():
+    """issue #108: year_built=2109 раньше клипался в building_age=-5 → ложный is_new_building."""
+    df = build_features(pd.DataFrame([
+        {"price": 30_000_000, "area": 50, "year_built": 2109},
+    ]))
+    row = df.iloc[0]
+    assert pd.isna(row["year_built"])
+    assert pd.isna(row["building_age"])
+    assert row["is_new_building"] == 0
+
+
+def test_year_built_zero_sanitized_to_nan():
+    df = build_features(pd.DataFrame([
+        {"price": 30_000_000, "area": 50, "year_built": 0},
+    ]))
+    assert pd.isna(df.iloc[0]["year_built"])
+
+
+def test_ceiling_out_of_range_sanitized_to_nan():
+    df = build_features(pd.DataFrame([
+        {"price": 30_000_000, "area": 50, "ceiling": 10.0},
+    ]))
+    assert pd.isna(df.iloc[0]["ceiling"])
+
+
+def test_rooms_out_of_range_sanitized_to_nan():
+    df = build_features(pd.DataFrame([
+        {"price": 30_000_000, "area": 50, "rooms": 25},
+    ]))
+    assert pd.isna(df.iloc[0]["rooms"])
+
+
+def test_coords_outside_almaty_bbox_sanitized_to_nan():
+    """issue #104/#108: координаты чужого города (Астана) → NaN, не портят dist_center_km."""
+    df = build_features(pd.DataFrame([
+        {"price": 30_000_000, "area": 50, "lat": 51.169392, "lon": 71.449074},
+    ]))
+    row = df.iloc[0]
+    assert pd.isna(row["lat"])
+    assert pd.isna(row["lon"])
+    assert pd.isna(row["dist_center_km"])
+
+
+def test_coords_inside_almaty_bbox_kept():
+    df = build_features(pd.DataFrame([
+        {"price": 30_000_000, "area": 50, "lat": 43.2284, "lon": 76.9123},
+    ]))
+    row = df.iloc[0]
+    assert row["lat"] == pytest.approx(43.2284)
+    assert row["lon"] == pytest.approx(76.9123)
+
+
+def test_build_features_no_inf_leaks_through():
+    """Страховка в конце build_features: любой inf в числовых фичах → NaN."""
+    df = build_features(pd.DataFrame([
+        {"price": 30_000_000, "area": 50, "floor": 5, "total_floors": 0,
+         "year_built": 20250, "ceiling": -3},
+    ]))
+    num_cols = [c for c in ALL_FEATURES if pd.api.types.is_numeric_dtype(df[c])]
+    assert not np.isinf(df[num_cols].to_numpy(dtype=float)).any()

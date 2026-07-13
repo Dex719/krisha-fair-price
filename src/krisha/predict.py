@@ -16,6 +16,7 @@ from catboost import CatBoostRegressor, Pool
 from krisha.config import MODEL_HI_PATH, MODEL_LO_PATH, MODEL_META_PATH, MODEL_PATH
 from krisha.features import listing_to_frame
 from krisha.geo import build_location_details
+from krisha.interval import MIN_INTERVAL_WIDTH_LOG, finalize_interval
 from krisha.scraping.client import PoliteClient
 from krisha.scraping.detail_parser import parse_detail
 
@@ -232,14 +233,21 @@ def predict_from_listing(
     interval = load_interval_models()
     if interval is not None:
         lo_model, hi_model = interval
-        offset = float(meta.get("metrics", {}).get("interval", {}).get("cqr_offset_log", 0.0))
-        fair_low = float(np.expm1(lo_model.predict(pool)[0] - offset))
-        fair_high = float(np.expm1(hi_model.predict(pool)[0] + offset))
-        if fair_low > fair_high:  # числовая страховка
-            fair_low, fair_high = fair_high, fair_low
-        # точка-оценка всегда внутри интервала (только расширяем, не сужаем)
-        fair_low = min(fair_low, fair_price)
-        fair_high = max(fair_high, fair_price)
+        # issue #105: масштаб нормированного CQR — расширяет [lo, hi] на
+        # scale * (hi - lo), а не на фиксированный лог-сдвиг (адаптивная
+        # ширина: точки, которым модель изначально даёт широкий интервал,
+        # не штрафуются так же, как узкие). finalize_interval() — тот же
+        # код, что train.py использует при подсчёте coverage_test, так что
+        # метрика гейта совпадает с тем, что реально видит пользователь.
+        scale = float(meta.get("metrics", {}).get("interval", {}).get("cqr_scale", 0.0))
+        lo_raw = float(lo_model.predict(pool)[0])
+        hi_raw = float(hi_model.predict(pool)[0])
+        width = max(hi_raw - lo_raw, MIN_INTERVAL_WIDTH_LOG)
+        log_lo = max(min(lo_raw - scale * width, 30.0), -30.0)
+        log_hi = max(min(hi_raw + scale * width, 30.0), -30.0)
+        fair_low = float(np.expm1(log_lo))
+        fair_high = float(np.expm1(log_hi))
+        fair_low, fair_high = finalize_interval(fair_price, fair_low, fair_high)
 
     actual = listing.get("price")
     if actual and interval is not None:

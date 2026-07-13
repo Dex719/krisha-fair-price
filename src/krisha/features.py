@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from krisha.config import (
+    ALMATY_BBOX,
     ALMATY_CENTER,
     AREA_MAX,
     AREA_MIN,
@@ -72,6 +73,15 @@ ALL_FEATURES = NUM_FEATURES + CAT_FEATURES
 TARGET = "log_price"
 MISSING_CAT = "unknown"
 
+# issue #108: санитарный контракт сырых числовых полей — вне диапазона
+# считается битым парсингом/опечаткой и превращается в NaN, а не клипается
+# (клип маскирует мусор под легитимное значение: 2109 → «через 3 года»,
+# а не «дом ещё не построен»). CatBoost переваривает NaN нативно.
+TOTAL_FLOORS_RANGE = (1, 100)
+YEAR_BUILT_MIN = 1930          # верхняя граница — current_year() + 3, динамически
+CEILING_RANGE = (2.0, 5.0)
+ROOMS_RANGE = (1, 10)
+
 
 def current_year() -> int:
     """Текущий год для building_age. Функция, а не константа: захардкоженный
@@ -81,6 +91,45 @@ def current_year() -> int:
     from datetime import datetime, timezone
 
     return datetime.now(timezone.utc).year
+
+
+def _sanitize_raw_numeric(df: pd.DataFrame) -> pd.DataFrame:
+    """Битые сырые значения → NaN, до расчёта производных фичей.
+
+    issue #108: `total_floors=0` давал `floor_ratio=inf`; `floor > total_floors`
+    и опечатки в `year_built` (1200, 20250, 2109) проходили без валидации и
+    портили `is_last_floor`/`building_age`/`is_new_building`. Правило —
+    невалидное значение превращаем в NaN, никогда не клипаем к границе.
+    """
+    df = df.copy()
+
+    total_floors = df["total_floors"]
+    bad_total = ~total_floors.between(*TOTAL_FLOORS_RANGE)
+    df.loc[bad_total, "total_floors"] = np.nan
+
+    floor = df["floor"]
+    bad_floor = (floor < 1) | (floor > df["total_floors"])
+    df.loc[bad_floor.fillna(False), "floor"] = np.nan
+
+    year_max = current_year() + 3
+    bad_year = ~df["year_built"].between(YEAR_BUILT_MIN, year_max)
+    df.loc[bad_year, "year_built"] = np.nan
+
+    bad_ceiling = ~df["ceiling"].between(*CEILING_RANGE)
+    df.loc[bad_ceiling, "ceiling"] = np.nan
+
+    bad_rooms = ~df["rooms"].between(*ROOMS_RANGE)
+    df.loc[bad_rooms, "rooms"] = np.nan
+
+    lat, lon = df["lat"], df["lon"]
+    in_bbox = lat.between(ALMATY_BBOX["lat_min"], ALMATY_BBOX["lat_max"]) & lon.between(
+        ALMATY_BBOX["lon_min"], ALMATY_BBOX["lon_max"]
+    )
+    had_coords = lat.notna() | lon.notna()
+    bad_coords = ~in_bbox.fillna(False) & had_coords
+    df.loc[bad_coords, ["lat", "lon"]] = np.nan
+
+    return df
 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -274,6 +323,7 @@ def build_features(
         if col not in df:
             df[col] = np.nan
         df[col] = pd.to_numeric(df[col], errors="coerce")
+    df = _sanitize_raw_numeric(df)  # issue #108: битые значения → NaN до фичей
 
     df["floor_ratio"] = df["floor"] / df["total_floors"]
     df["is_first_floor"] = (df["floor"] == 1).astype(int)
@@ -313,6 +363,12 @@ def build_features(
 
     if "price" in df:
         df["log_price"] = np.log1p(df["price"])
+
+    # issue #108: страховка в конце пайплайна — любой inf, просочившийся через
+    # деление/производные фичи (сейчас их не должно быть после сантизации выше,
+    # но новые фичи неизбежно добавятся), не должен молча портить обучение.
+    num_cols = [c for c in ALL_FEATURES if c in df.columns and c not in CAT_FEATURES]
+    df[num_cols] = df[num_cols].replace([np.inf, -np.inf], np.nan)
     return df
 
 

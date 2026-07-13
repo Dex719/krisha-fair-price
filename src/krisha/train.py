@@ -18,7 +18,9 @@ from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error,
 from sklearn.model_selection import GroupShuffleSplit
 
 from krisha.config import (
+    ALMATY_BBOX,
     DB_PATH,
+    MODEL_GATE_SAMPLES_PATH,
     MODEL_HI_PATH,
     MODEL_LO_PATH,
     MODEL_META_PATH,
@@ -26,6 +28,7 @@ from krisha.config import (
     MODELS_DIR,
     RANDOM_STATE,
     REPORTS_DIR,
+    STALE_DELISTED_DAYS,
 )
 from krisha.features import (
     ALL_FEATURES,
@@ -35,8 +38,47 @@ from krisha.features import (
     clean,
     compute_ppsm_maps,
 )
+from krisha.interval import MIN_INTERVAL_WIDTH_LOG, finalize_interval
 
 logger = logging.getLogger(__name__)
+
+# issue #104: доля датасета, отводимая под test при недостатке данных для
+# фиксированного окна в TEST_WINDOW_DAYS (ранний этап проекта / БД маленькая).
+TEST_WINDOW_DAYS = 14
+TEST_MIN_FRACTION = 0.10
+
+
+def _filter_stale_and_out_of_area(df: pd.DataFrame) -> pd.DataFrame:
+    """issue #104: снятые месяцы назад лоты и чужие города не должны учить модель.
+
+    - is_active=1 ИЛИ delisted_at не старше STALE_DELISTED_DAYS дней: лот, снятый
+      давно, обучается на своей последней цене с first_seen из прошлого — цена
+      успела устареть сильнее, чем «висел активным».
+    - координаты вне bbox Алматы: чужой город в базе (битый парсинг/ручной ввод)
+      портит ppsm_maps и hex-референсы. Лоты без координат не трогаем — их чинит
+      resolve_zones/district дальше по пайплайну.
+    """
+    before = len(df)
+    if {"is_active", "delisted_at"}.issubset(df.columns):
+        delisted_at = pd.to_datetime(df["delisted_at"], errors="coerce", utc=True)
+        cutoff = pd.Timestamp.now(tz="utc") - pd.Timedelta(days=STALE_DELISTED_DAYS)
+        recently_delisted = delisted_at >= cutoff
+        is_active = pd.to_numeric(df["is_active"], errors="coerce").fillna(1) == 1
+        df = df[is_active | recently_delisted]
+    if {"lat", "lon"}.issubset(df.columns):
+        lat = pd.to_numeric(df["lat"], errors="coerce")
+        lon = pd.to_numeric(df["lon"], errors="coerce")
+        in_bbox = lat.between(ALMATY_BBOX["lat_min"], ALMATY_BBOX["lat_max"]) & lon.between(
+            ALMATY_BBOX["lon_min"], ALMATY_BBOX["lon_max"]
+        )
+        no_coords = lat.isna() | lon.isna()
+        df = df[in_bbox | no_coords]
+    dropped = before - len(df)
+    if dropped:
+        logger.info(
+            "issue #104: отфильтровано %s устаревших/иногородних объявлений из train", dropped
+        )
+    return df.reset_index(drop=True)
 
 
 def load_dataset(db_path=DB_PATH) -> pd.DataFrame:
@@ -53,16 +95,13 @@ def load_dataset(db_path=DB_PATH) -> pd.DataFrame:
         dropped = before - len(df)
         if dropped:
             logger.info("Исключено %s пользовательских предиктов (issue #117) из train", dropped)
+    df = _filter_stale_and_out_of_area(df)
     logger.info("Загружено %s объявлений", len(df))
     return df
 
 
-def dedup_relistings(df: pd.DataFrame) -> pd.DataFrame:
-    """Убирает перезалитые объявления: одна квартира под разными id.
-
-    Отпечаток — район + комнаты + площадь + этаж/этажность + координаты
-    (как krisha.db.listing_fingerprint). Оставляем самую свежую запись.
-    """
+def _fingerprints(df: pd.DataFrame) -> pd.Series:
+    """Отпечаток каждой строки (krisha.db.listing_fingerprint), None → уникальный."""
     from krisha.db import listing_fingerprint
 
     def _fp(row: pd.Series) -> str | None:
@@ -71,7 +110,16 @@ def dedup_relistings(df: pd.DataFrame) -> pd.DataFrame:
         return listing_fingerprint(d)
 
     fp = df.apply(_fp, axis=1)
-    fp = fp.fillna(pd.Series((f"solo:{i}" for i in df.index), index=df.index))
+    return fp.fillna(pd.Series((f"solo:{i}" for i in df.index), index=df.index))
+
+
+def dedup_relistings(df: pd.DataFrame) -> pd.DataFrame:
+    """Убирает перезалитые объявления: одна квартира под разными id.
+
+    Отпечаток — район + комнаты + площадь + этаж/этажность + координаты
+    (как krisha.db.listing_fingerprint). Оставляем самую свежую запись.
+    """
+    fp = _fingerprints(df)
     order_col = next(
         (c for c in ("last_seen", "scraped_at", "id") if c in df), None
     )
@@ -92,6 +140,70 @@ def building_groups(df: pd.DataFrame) -> pd.Series:
         return f"id:{row.get('id', row.name)}"
 
     return df.apply(key, axis=1)
+
+
+def time_based_split(
+    df: pd.DataFrame,
+    window_days: int = TEST_WINDOW_DAYS,
+    min_fraction: float = TEST_MIN_FRACTION,
+) -> tuple[np.ndarray, np.ndarray]:
+    """issue #104: test = самые свежие объявления по first_seen, а не случайный сплит.
+
+    Случайный (пусть и по зданиям) сплит смешивает train и test по времени —
+    объявления с обеих сторон видели один и тот же ценовой уровень, метрики
+    оптимистичны, в проде модель на самом деле экстраполирует в будущее.
+
+    Окно — последние window_days дней по first_seen; если это меньше
+    min_fraction от датасета (мало истории / БД маленькая), берём последние
+    min_fraction по времени вместо фиксированного окна.
+    Нет first_seen вообще (старая БД/тесты) — весь датасет в train, test
+    пустой, вызывающий код (train() ниже) на это рассчитывает.
+    """
+    if "first_seen" not in df.columns:
+        return df.index.to_numpy(), np.array([], dtype=int)
+
+    ts = pd.to_datetime(df["first_seen"], errors="coerce", utc=True)
+    if ts.notna().sum() == 0:
+        return df.index.to_numpy(), np.array([], dtype=int)
+
+    order = ts.rank(method="first")  # стабильный порядок и для NaT (в конец)
+    max_ts = ts.max()
+    cutoff = max_ts - pd.Timedelta(days=window_days)
+    test_mask = (ts >= cutoff).fillna(False)
+
+    min_test_n = max(1, int(min_fraction * ts.notna().sum()))
+    if test_mask.sum() < min_test_n:
+        thresh = order.quantile(1 - min_fraction)
+        test_mask = order > thresh
+
+    train_idx = df.index[~test_mask].to_numpy()
+    test_idx = df.index[test_mask].to_numpy()
+    return train_idx, test_idx
+
+
+def purge_leaked_train_rows(
+    raw_train: pd.DataFrame, raw_test: pd.DataFrame
+) -> tuple[pd.DataFrame, int]:
+    """issue #104 (доп.): чистит train от строк, «протекающих» из test.
+
+    Временной сплит режет по дате, но объявление могло быть перевыставлено
+    (тот же fingerprint) или относится к тому же зданию — тогда почти
+    идентичная квартира лежит и в train, и в «будущем» test, и метрики снова
+    оптимистичны. Убираем из train любую строку с fingerprint или building-
+    группой, встречающейся в test (test как «будущее» не трогаем).
+    """
+    if len(raw_test) == 0:
+        return raw_train, 0
+    test_fp = set(_fingerprints(raw_test))
+    test_groups = set(building_groups(raw_test))
+    train_fp = _fingerprints(raw_train)
+    train_groups = building_groups(raw_train)
+    leak_mask = train_fp.isin(test_fp) | train_groups.isin(test_groups)
+    purged = raw_train.loc[~leak_mask].reset_index(drop=True)
+    n_purged = int(leak_mask.sum())
+    if n_purged:
+        logger.info("issue #104: purge %d строк train, протекающих в test", n_purged)
+    return purged, n_purged
 
 
 def baseline_predict(train: pd.DataFrame, test: pd.DataFrame) -> np.ndarray:
@@ -118,11 +230,30 @@ def evaluate(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
     }
 
 
+def _save_gate_samples(
+    y_true: np.ndarray, y_new: np.ndarray, y_old: np.ndarray,
+    path: Path | str = MODEL_GATE_SAMPLES_PATH,
+) -> None:
+    """issue #106: пары APE (новая/старая модель) по каждой test-строке.
+
+    Нужны model_gate.py для парного бутстрепа разницы MAPE — точнее плоского
+    допуска ±0.5 п.п., который на ~1400 строках теста и пропускает деградации,
+    и блокирует реальные улучшения (шум ~1.5-2σ на одном сплите).
+    """
+    ape_new = (np.abs(y_new - y_true) / np.maximum(y_true, 1.0)).tolist()
+    ape_old = (np.abs(y_old - y_true) / np.maximum(y_true, 1.0)).tolist()
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).write_text(
+        json.dumps({"ape_new": ape_new, "ape_old": ape_old}, separators=(",", ":"))
+    )
+
+
 # --- Доверительный интервал цены: квантильные модели + CQR ----------------
 QUANTILE_ALPHA_LO = 0.10  # нижний квантиль log(price)
 QUANTILE_ALPHA_HI = 0.90  # верхний квантиль log(price)
 INTERVAL_TARGET_COVERAGE = 0.80  # целевая доля цен, попавших в интервал
 QUANTILE_ITERATIONS = 800  # квантильным моделям хватает меньше — CQR чинит покрытие
+CQR_SCALE_MAX = 10.0  # защита от переполнения expm1 при аномальном scale (см. MIN_INTERVAL_WIDTH_LOG)
 
 
 def _fit_quantile(pool: Pool, alpha: float, iterations: int) -> CatBoostRegressor:
@@ -140,51 +271,85 @@ def _fit_quantile(pool: Pool, alpha: float, iterations: int) -> CatBoostRegresso
 
 def train_quantile_interval(
     raw_train: pd.DataFrame,
-    ppsm_maps: dict,
-    spatial_ref: dict,
     test_df: pd.DataFrame,
+    point_pred: np.ndarray,
     iterations: int = QUANTILE_ITERATIONS,
 ) -> tuple[CatBoostRegressor, CatBoostRegressor, dict]:
     """Квантильные модели q10/q90 + конформная калибровка интервала (CQR).
 
-    Метод (Conformalized Quantile Regression, Romano et al. 2019):
+    Метод (Conformalized Quantile Regression, Romano et al. 2019; вариант с
+    нормировкой ширины — adaptive/normalized CQR):
     1. квантильные модели обучаем на fit-части train;
-    2. на отложенной calib-части считаем conformity score
-       E_i = max(lo_i - y_i, y_i - hi_i) в лог-шкале;
-    3. сдвиг Q (квантиль E уровня ⌈(n+1)·c⌉/n) расширяет интервал так, чтобы
-       покрытие было ≥ целевого с конечно-выборочной гарантией — независимо
-       от того, насколько точны сами квантильные модели.
+    2. на отложенной calib-части считаем conformity score, нормированный на
+       ширину предсказанного интервала: E_i = max(lo_i - y_i, y_i - hi_i) / (hi_i - lo_i) —
+       точки с изначально широким интервалом не наказываются сильнее узких;
+    3. масштаб Q (квантиль E уровня ⌈(n+1)·c⌉/n) расширяет [lo, hi] на Q·(hi-lo)
+       с каждой стороны так, чтобы покрытие было ≥ целевого с конечно-
+       выборочной гарантией — независимо от точности квантильных моделей.
 
-    fit/calib делим по «зданиям» (как основной сплит) — иначе квартиры одного
-    дома по обе стороны делают conformity-скоры оптимистичными.
-    Покрытие/ширину меряем на holdout test_df, он в калибровке не участвует.
+    issue #105: fit/calib раньше делились случайно (GroupShuffleSplit), и
+    ppsm_maps/spatial_ref для ОБОИХ строились на полном raw_train, т.е. цены
+    calib-строк были вшиты в их же district_ppsm/hex_ppsm/knn — conformity-
+    скоры были занижены, реальное покрытие ниже заявленного (coverage_test
+    0.789 при цели 0.80). Фикс:
+    - calib = последние 2 недели train по времени (не случайный кусок) —
+      согласовано с общим временным сплитом (issue #104);
+    - ppsm_maps/spatial_ref для fit и calib строятся ТОЛЬКО по fit-части —
+      calib в этот референс не входит вообще, так что self-leak в KNN для
+      calib-строк снимается автоматически (не нужно даже передавать
+      knn_self_indices для cal_df — их там просто нет).
+
+    Покрытие/ширину меряем на holdout test_df через общий finalize_interval()
+    (issue #105 доп.: раньше predict.py свопал/растягивал границы интервала,
+    а train.py при подсчёте coverage_test — нет, метрики не совпадали с тем,
+    что реально видит пользователь).
     """
-    groups = building_groups(raw_train)
-    splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=RANDOM_STATE)
-    fit_idx, cal_idx = next(splitter.split(raw_train, groups=groups))
+    fit_idx, cal_idx = time_based_split(raw_train, window_days=TEST_WINDOW_DAYS)
+    if len(cal_idx) == 0:  # нет first_seen (тесты/старая БД) — фолбэк на группы
+        groups = building_groups(raw_train)
+        splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=RANDOM_STATE)
+        fit_idx, cal_idx = next(splitter.split(raw_train, groups=groups))
     fit_raw = raw_train.iloc[fit_idx].reset_index(drop=True)
     cal_raw = raw_train.iloc[cal_idx].reset_index(drop=True)
-    fit_df = build_features(fit_raw, ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)
-    cal_df = build_features(cal_raw, ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)
+
+    from krisha.spatial import build_spatial_ref, self_indices_for
+
+    ppsm_maps_fit = compute_ppsm_maps(fit_raw)
+    spatial_ref_fit = build_spatial_ref(fit_raw)
+    fit_df = build_features(
+        fit_raw, ppsm_maps=ppsm_maps_fit, spatial_ref=spatial_ref_fit,
+        knn_self_indices=self_indices_for(fit_raw),
+    )
+    cal_df = build_features(cal_raw, ppsm_maps=ppsm_maps_fit, spatial_ref=spatial_ref_fit)
     fit_pool = Pool(fit_df[ALL_FEATURES], fit_df[TARGET], cat_features=CAT_FEATURES)
     cal_pool = Pool(cal_df[ALL_FEATURES], cat_features=CAT_FEATURES)
 
     model_lo = _fit_quantile(fit_pool, QUANTILE_ALPHA_LO, iterations)
     model_hi = _fit_quantile(fit_pool, QUANTILE_ALPHA_HI, iterations)
 
-    # CQR-сдвиг в лог-шкале на калибровочной части
+    # Conformity score на calib, нормированный на ширину предсказанного интервала
     y_cal = cal_df[TARGET].to_numpy()
     lo_cal = model_lo.predict(cal_pool)
     hi_cal = model_hi.predict(cal_pool)
-    scores = np.maximum(lo_cal - y_cal, y_cal - hi_cal)
+    width_cal = np.maximum(hi_cal - lo_cal, MIN_INTERVAL_WIDTH_LOG)
+    scores = np.maximum(lo_cal - y_cal, y_cal - hi_cal) / width_cal
     n = len(scores)
     level = min(1.0, np.ceil((n + 1) * INTERVAL_TARGET_COVERAGE) / n)
-    offset = max(float(np.quantile(scores, level, method="higher")), 0.0)
+    scale = min(max(float(np.quantile(scores, level, method="higher")), 0.0), CQR_SCALE_MAX)
 
     # Оценка покрытия и ширины на holdout (expm1 монотонна → сохраняет квантили)
     test_pool = Pool(test_df[ALL_FEATURES], cat_features=CAT_FEATURES)
-    price_lo = np.expm1(model_lo.predict(test_pool) - offset)
-    price_hi = np.expm1(model_hi.predict(test_pool) + offset)
+    lo_test = model_lo.predict(test_pool)
+    hi_test = model_hi.predict(test_pool)
+    width_test = np.maximum(hi_test - lo_test, MIN_INTERVAL_WIDTH_LOG)
+    # клип лог-границ до expm1: даже с CQR_SCALE_MAX очень широкий
+    # предсказанный интервал не должен переполнять float (overflow → NaN
+    # ниже по цепочке при вычислении width_pct).
+    log_lo = np.clip(lo_test - scale * width_test, -30.0, 30.0)
+    log_hi = np.clip(hi_test + scale * width_test, -30.0, 30.0)
+    price_lo = np.expm1(log_lo)
+    price_hi = np.expm1(log_hi)
+    price_lo, price_hi = finalize_interval(point_pred, price_lo, price_hi)
     y_true = test_df["price"].to_numpy()
     covered = (y_true >= price_lo) & (y_true <= price_hi)
     mid = np.maximum((price_lo + price_hi) / 2.0, 1.0)
@@ -194,7 +359,7 @@ def train_quantile_interval(
         "alpha_lo": QUANTILE_ALPHA_LO,
         "alpha_hi": QUANTILE_ALPHA_HI,
         "target_coverage": INTERVAL_TARGET_COVERAGE,
-        "cqr_offset_log": offset,
+        "cqr_scale": scale,  # множитель ширины интервала (нормированный CQR)
         "coverage_test": float(np.mean(covered)),
         "median_width_pct": float(np.median(width_pct)),
         "n_fit": len(fit_df),
@@ -224,17 +389,25 @@ def train(
     from krisha.zones import resolve_zones
 
     df = resolve_zones(df)
-    # Честная схема валидации:
+    # Честная схема валидации (issue #104):
     # 1) дедуп перезалитых объявлений (одна квартира под разными id);
-    # 2) сплит по «зданиям» (координаты), а не по строкам — иначе почти
-    #    одинаковые квартиры из одного дома попадают и в train, и в test,
-    #    и метрики выглядят лучше, чем работает модель на новых домах.
+    # 2) временной holdout — test — самые свежие объявления по first_seen, train —
+    #    всё раньше (случайный сплит смешивал train/test по времени, метрики
+    #    были оптимистичны, в проде модель на самом деле экстраполирует вперёд);
+    # 3) purge — из train убираем строки, протекающие в test через fingerprint
+    #    (перевыставление) или ту же «группу-здание» (issue #104 доп.).
     df = dedup_relistings(df)
-    groups = building_groups(df)
-    splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=RANDOM_STATE)
-    train_idx, test_idx = next(splitter.split(df, groups=groups))
-    raw_train = df.iloc[train_idx].reset_index(drop=True)
+    train_idx, test_idx = time_based_split(df)
+    if len(test_idx) == 0:
+        # Нет first_seen вообще (старая БД / ручной DataFrame без него) —
+        # временной сплит невозможен, фолбэк на прежний случайный по зданиям.
+        logger.warning("first_seen недоступен — фолбэк на group_shuffle-сплит по зданиям")
+        groups = building_groups(df)
+        splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=RANDOM_STATE)
+        train_idx, test_idx = next(splitter.split(df, groups=groups))
+    raw_train_all = df.iloc[train_idx].reset_index(drop=True)
     raw_test = df.iloc[test_idx].reset_index(drop=True)
+    raw_train, n_purged = purge_leaked_train_rows(raw_train_all, raw_test)
 
     # ₸/м²-статистику считаем только на train, чтобы не было утечки в метрики
     ppsm_maps = compute_ppsm_maps(raw_train)
@@ -250,19 +423,32 @@ def train(
     train_pool = Pool(train_df[ALL_FEATURES], train_df[TARGET], cat_features=CAT_FEATURES)
     test_pool = Pool(test_df[ALL_FEATURES], test_df[TARGET], cat_features=CAT_FEATURES)
 
-    # Early stopping — по val-сплиту из train (тоже по «зданиям»), а не по
-    # test: иначе число деревьев подгоняется под тестовую выборку и метрики
-    # чуть оптимистичнее реальности. Схема: probe-модель находит оптимальное
-    # число итераций на val, финальная переобучается на всём train.
+    # Early stopping — по val-сплиту из train (по «зданиям»), а не по test:
+    # иначе число деревьев подгоняется под тестовую выборку и метрики чуть
+    # оптимистичнее реальности. Схема: probe-модель находит оптимальное число
+    # итераций на val, финальная переобучается на всём train.
+    #
+    # issue #104 (доп.): ppsm_maps/spatial_ref для fit/val СВОИ, построенные
+    # только на fit-части — раньше probe.fit использовал train_df, чьи
+    # district_ppsm/hex_ppsm/knn считались по ВСЕМУ raw_train, включая val —
+    # val-строки видели собственную цену в своих же референсных статистиках,
+    # best_iterations выбирался по оценке, которая уже частично «списала».
     es_splitter = GroupShuffleSplit(n_splits=1, test_size=0.15, random_state=RANDOM_STATE)
     fit_idx, val_idx = next(es_splitter.split(raw_train, groups=building_groups(raw_train)))
+    fit_raw_es = raw_train.iloc[fit_idx].reset_index(drop=True)
+    val_raw_es = raw_train.iloc[val_idx].reset_index(drop=True)
+    ppsm_maps_es = compute_ppsm_maps(fit_raw_es)
+    spatial_ref_es = build_spatial_ref(fit_raw_es)
+    fit_df_es = build_features(
+        fit_raw_es, ppsm_maps=ppsm_maps_es, spatial_ref=spatial_ref_es,
+        knn_self_indices=self_indices_for(fit_raw_es),
+    )
+    val_df_es = build_features(val_raw_es, ppsm_maps=ppsm_maps_es, spatial_ref=spatial_ref_es)
     fit_pool = Pool(
-        train_df.iloc[fit_idx][ALL_FEATURES], train_df.iloc[fit_idx][TARGET],
-        cat_features=CAT_FEATURES,
+        fit_df_es[ALL_FEATURES], fit_df_es[TARGET], cat_features=CAT_FEATURES,
     )
     val_pool = Pool(
-        train_df.iloc[val_idx][ALL_FEATURES], train_df.iloc[val_idx][TARGET],
-        cat_features=CAT_FEATURES,
+        val_df_es[ALL_FEATURES], val_df_es[TARGET], cat_features=CAT_FEATURES,
     )
     probe = CatBoostRegressor(
         iterations=iterations,
@@ -292,7 +478,7 @@ def train(
     y_base = baseline_predict(train_df, test_df)
 
     model_lo, model_hi, interval_meta = train_quantile_interval(
-        raw_train, ppsm_maps, spatial_ref, test_df
+        raw_train, test_df, point_pred=y_model
     )
 
     metrics = {
@@ -301,14 +487,19 @@ def train(
         "interval": interval_meta,
         "n_train": len(train_df),
         "n_test": len(test_df),
+        "n_purged": n_purged,
         "best_iterations": best_iterations,
-        "split": "group_shuffle_by_building + dedup relistings",
+        "split": f"time_based (test = first_seen >= last {TEST_WINDOW_DAYS}d) + purge + dedup relistings",
         "trained_at": datetime.now(timezone.utc).isoformat(),
     }
 
     # Прошлая модель на этом же test-сплите — честная база для гейта:
     # сравнение по метрикам из старого meta страдает от дрейфа данных
     # (test-выборки разных недель не совпадают).
+    #
+    # issue #106: если сравнение не удалось (feature-set поменялся и т.п.),
+    # явно помечаем ошибку в meta вместо тихого пропуска — гейт (model_gate.py)
+    # блокирует публикацию в этом случае, а не молча падает в слабый fallback.
     if old_model_path and Path(old_model_path).exists():
         try:
             old_model = CatBoostRegressor()
@@ -316,7 +507,10 @@ def train(
             y_old = np.expm1(old_model.predict(test_pool))
             metrics["old_model"] = evaluate(y_true, y_old)
             logger.info("Старая модель на новом test: %s", json.dumps(metrics["old_model"]))
-        except Exception as exc:  # набор фичей мог измениться — гейт уйдёт в fallback
+            if save:
+                _save_gate_samples(y_true, y_model, y_old)
+        except Exception as exc:  # набор фичей мог измениться — гейт уходит в fail-closed
+            metrics["old_model_error"] = str(exc)
             logger.warning("Не удалось оценить старую модель (%s): %s", old_model_path, exc)
     logger.info("Метрики: %s", json.dumps(metrics, indent=2))
 
