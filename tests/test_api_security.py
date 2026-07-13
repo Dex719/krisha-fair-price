@@ -9,6 +9,7 @@ issue #68).
 
 from fastapi.testclient import TestClient
 
+from krisha.api import app as app_module
 from krisha.api.app import MAX_BODY_BYTES, app
 
 
@@ -18,6 +19,26 @@ def _assert_security_headers(resp):
     assert "frame-ancestors 'self' https://huggingface.co" in csp
     assert resp.headers.get("x-content-type-options") == "nosniff"
     assert resp.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
+
+
+def test_forwarded_for_ignored_unless_proxy_is_trusted(monkeypatch):
+    from starlette.requests import Request
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/api/demo",
+        "headers": [(b"x-forwarded-for", b"203.0.113.10")],
+        "client": ("198.51.100.5", 1234),
+        "server": ("testserver", 80),
+        "scheme": "http",
+        "query_string": b"",
+    }
+    request = Request(scope)
+    monkeypatch.delenv("TRUST_PROXY_HEADERS", raising=False)
+    assert app_module._client_ip(request) == "198.51.100.5"
+    monkeypatch.setenv("TRUST_PROXY_HEADERS", "1")
+    assert app_module._client_ip(request) == "203.0.113.10"
 
 
 def test_security_headers_present():

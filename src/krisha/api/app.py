@@ -4,8 +4,10 @@
 """
 
 import hmac
+import ipaddress
 import json
 import logging
+import os
 import sqlite3
 import time
 from collections import defaultdict, deque
@@ -182,13 +184,16 @@ _rate: dict[str, deque] = defaultdict(deque)
 
 
 def _client_ip(request: Request) -> str:
-    # ВНИМАНИЕ: X-Forwarded-For легко подделать, поэтому это НЕ строгая защита —
-    # лимит можно обойти сменой заголовка. За доверенным прокси сюда
-    # стоит подставлять реальный client IP. Пока — best-effort анти-спам.
+    """IP для rate-limit; proxy-заголовок доверяем только при явной настройке."""
     ip = (request.client.host if request.client else None) or "?"
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        ip = fwd.split(",")[0].strip()
+    if os.environ.get("TRUST_PROXY_HEADERS", "0") == "1":
+        fwd = request.headers.get("x-forwarded-for")
+        if fwd:
+            candidate = fwd.split(",")[0].strip()
+            try:
+                ip = str(ipaddress.ip_address(candidate))
+            except ValueError:
+                pass
     return ip
 
 

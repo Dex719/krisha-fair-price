@@ -28,6 +28,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 from datetime import datetime, timezone
 from typing import Any
 
@@ -157,20 +158,37 @@ def save_json_state(path, data: Any, message: str, encrypt: bool = True) -> None
     репо); usage-статистика и опубликованные id пишутся открыто (encrypt=False).
     """
     payload = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)
+    encrypted = False
     if encrypt:
         f = _fernet()
         if f is not None:
             payload = json.dumps(
                 {"_encrypted": f.encrypt(payload.encode()).decode()}, indent=2
             )
+            encrypted = True
         else:
             logger.warning(
                 "%s: нет ключа шифрования (STATE_ENCRYPTION_KEY/TELEGRAM_BOT_TOKEN) — "
-                "сохраняю открытым текстом", path.name,
+                "сохраняю только локально открытым текстом", path.name,
             )
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(payload)
-    _push_to_github(path, payload, message)
+    # tmp + replace защищает от обрезанного JSON при остановке процесса во время записи.
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent, text=True)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(payload)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.chmod(tmp_name, 0o600)
+        os.replace(tmp_name, path)
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+    # PII-состояние без ключа никогда не публикуем в репозиторий.
+    if not encrypt or encrypted:
+        _push_to_github(path, payload, message)
 
 
 def _push_to_github(path, payload: str, message: str) -> None:
