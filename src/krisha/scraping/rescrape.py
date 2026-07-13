@@ -185,11 +185,18 @@ def sweep(
         # Очередь detail fetch — самые старые ещё не докачанные лоты первыми
         # (title IS NULL — сентинел «есть только sighting, детали ещё нет»),
         # а не «что нашли в этом проходе первым» (смещение по шардам).
+        # is_active = 1 обязателен: лот может получить sighting и быть снят
+        # с продажи (is_active=0) раньше, чем очередь до него дойдёт — без
+        # фильтра такой «труп» навсегда остаётся с title IS NULL (детальная
+        # страница отдаёт 404 → parse_detail() -> None → title не
+        # заполняется) и застревает в голове FIFO, съедая бюджет докачки на
+        # каждом проходе.
         with get_conn(db_path) as conn:
             backlog_ids = [
                 r[0]
                 for r in conn.execute(
-                    "SELECT id FROM listings WHERE title IS NULL ORDER BY first_seen ASC"
+                    "SELECT id FROM listings WHERE title IS NULL AND is_active = 1 "
+                    "ORDER BY first_seen ASC"
                 ).fetchall()
             ]
         queue_size_before = len(backlog_ids)
