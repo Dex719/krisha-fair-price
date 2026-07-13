@@ -49,11 +49,21 @@ _ANTIBOT_SIGNS = (
     "подтвердите, что вы не робот",
 )
 
-# История found_in_search последних проходов — для детекта проседания
-# parse-rate (issue #97). Отдельный файл на deal, чтобы продажа и аренда
-# не путали друг другу медиану.
+# История found_in_search последних проходов — вспомогательный сигнал ТОЛЬКО
+# для локальных/долгоживущих запусков. В GitHub Actions раннер каждый раз
+# чистый и файл в .gitignore, так что в проде история никогда не наберёт
+# порог и не сработает — это самостоятельно не проверка, а бонус поверх
+# основной, которая опирается на БД (см. ACTIVE_IN_DB_DROP_RATIO ниже).
 PARSE_RATE_HISTORY_LEN = 7
 PARSE_RATE_DROP_RATIO = 0.5  # алерт, если текущий проход < 50% медианы истории
+
+# Основной прод-детект (issue #97, ревью Декса на PR #125): в отличие от
+# файла истории, состояние БД приходит с раннером (скачивается перед
+# рескрейпом) — сравниваем found_in_search с числом активных объявлений
+# в БД ДО этого прохода. Порог count'а — если самих активных совсем мало
+# (холодная/тестовая БД), сравнение ничего не даёт и его пропускаем.
+ACTIVE_IN_DB_DROP_RATIO = 0.5
+MIN_ACTIVE_IN_DB_FOR_CHECK = 100
 
 
 def _history_path(deal: str) -> Path:
@@ -150,6 +160,10 @@ def sweep(
     """
     init_db(db_path)
     seen_in_db = known_ids(db_path)
+    with get_conn(db_path) as conn:
+        active_in_db = conn.execute(
+            "SELECT COUNT(*) FROM listings WHERE is_active = 1"
+        ).fetchone()[0]
     found: dict[int, int | None] = {}
     failed_shards: list[str] = []
 
@@ -200,17 +214,39 @@ def sweep(
             )
             delisted_count = None
 
-    # Parse-rate история: тихая деградация (сервер отвечает, шарды формально
-    # покрыты, но объявлений в разы меньше обычного) не ловится через
-    # failed_shards — сравниваем found_in_search с медианой последних проходов
-    # (issue #97). Суспишн не считаем при < 3 прошлых точках (нет базы для
-    # сравнения — типично для первых запусков/новых deal).
+    # Тихая деградация (сервер отвечает, шарды формально покрыты, но
+    # объявлений в разы меньше обычного) не ловится через failed_shards —
+    # сравниваем found_in_search с базлайном (issue #97).
+    #
+    # Основной прод-детект (ревью Декса на PR #125): количество активных
+    # объявлений в БД ДО этого прохода — БД приходит артефактом с раннером,
+    # так что работает и на чистой машине без своего состояния. Порог не
+    # проверяем, если самих активных в БД слишком мало (холодная/тестовая
+    # база — сравнение только шумит).
+    suspicious_db = (
+        active_in_db >= MIN_ACTIVE_IN_DB_FOR_CHECK
+        and len(found) < active_in_db * ACTIVE_IN_DB_DROP_RATIO
+    )
+    if suspicious_db:
+        logger.error(
+            "Parse-rate просел: в выдаче %s против %s активных в БД до прохода "
+            "(порог %.0f%%) — проход помечен подозрительным",
+            len(found),
+            active_in_db,
+            ACTIVE_IN_DB_DROP_RATIO * 100,
+        )
+
+    # Доп. сигнал по локальной истории проходов — файл в .gitignore, на
+    # чистом раннере GitHub Actions недоступен, поэтому это дополнение
+    # только для локальных/долгоживущих запусков, не основная защита.
     history = _load_history(deal)
     parse_rate_median = (
         statistics.median(history[-PARSE_RATE_HISTORY_LEN:]) if len(history) >= 3 else None
     )
-    suspicious = parse_rate_median is not None and len(found) < parse_rate_median * PARSE_RATE_DROP_RATIO
-    if suspicious:
+    suspicious_history = (
+        parse_rate_median is not None and len(found) < parse_rate_median * PARSE_RATE_DROP_RATIO
+    )
+    if suspicious_history and not suspicious_db:
         logger.error(
             "Parse-rate просел: в выдаче %s против медианы %s последних проходов "
             "(порог %.0f%%) — проход помечен подозрительным",
@@ -221,6 +257,8 @@ def sweep(
     history.append(len(found))
     _save_history(deal, history)
 
+    suspicious = suspicious_db or suspicious_history
+
     stats = {
         "found_in_search": len(found),
         "known_seen": len(known_seen),
@@ -228,6 +266,7 @@ def sweep(
         "price_changes": price_changes,
         "delisted": delisted_count,
         "failed_shards": failed_shards,
+        "active_in_db_before": active_in_db,
         "parse_rate_median_7": parse_rate_median,
         "suspicious": suspicious,
     }

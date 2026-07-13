@@ -259,3 +259,57 @@ def test_sweep_marks_run_suspicious_on_parse_rate_drop(tmp_path, monkeypatch):
     assert stats["found_in_search"] == 0
     assert stats["parse_rate_median_7"] == 32
     assert stats["suspicious"] is True
+
+
+def test_sweep_marks_suspicious_via_active_db_baseline(tmp_path, monkeypatch):
+    """issue #97 (ревью Декса на PR #125): прод-детект не может опираться на
+    файл истории — GitHub Actions раннер каждый запуск чистый, файл в
+    .gitignore, история никогда не наберёт 3 точки. Основная защита должна
+    сработать по количеству активных объявлений в самой БД (приходит с
+    раннером как артефакт), даже с абсолютно пустой историей проходов."""
+    db = tmp_path / "test.db"
+    init_db(db)
+    with get_conn(db) as conn:
+        conn.executemany(
+            "INSERT INTO listings (id, url, price, is_active) VALUES (?, ?, ?, 1)",
+            [(i, f"https://krisha.kz/a/show/{i}", 10_000_000) for i in range(1, 201)],
+        )
+
+    class DegradedClient(FakeClient):
+        def get(self, url: str) -> str | None:
+            self.requested.append(url)
+            return "<html></html>"  # все шарды пустые → 0 found
+
+    client = DegradedClient({})
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+
+    stats = sweep(max_pages=1, max_new_details=0, db_path=db, deal="prodazha")
+
+    assert stats["active_in_db_before"] == 200
+    assert stats["parse_rate_median_7"] is None  # история пустая — «раннер чистый»
+    assert stats["suspicious"] is True  # но DB-базлайн всё равно сработал
+
+
+def test_sweep_not_suspicious_when_too_few_active_in_db(tmp_path, monkeypatch):
+    """Холодная/тестовая БД с << MIN_ACTIVE_IN_DB_FOR_CHECK активных объявлений
+    не должна давать ложных suspicious — сравнивать не с чем."""
+    db = tmp_path / "test.db"
+    init_db(db)
+    with get_conn(db) as conn:
+        conn.executemany(
+            "INSERT INTO listings (id, url, price, is_active) VALUES (?, ?, ?, 1)",
+            [(i, f"https://krisha.kz/a/show/{i}", 10_000_000) for i in range(1, 6)],
+        )
+
+    class DegradedClient(FakeClient):
+        def get(self, url: str) -> str | None:
+            self.requested.append(url)
+            return "<html></html>"
+
+    client = DegradedClient({})
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+
+    stats = sweep(max_pages=1, max_new_details=0, db_path=db, deal="prodazha")
+
+    assert stats["active_in_db_before"] == 5
+    assert stats["suspicious"] is False

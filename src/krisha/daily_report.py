@@ -116,11 +116,16 @@ def build_daily_report(scope: str = "sale", summary_path: Path | str | None = No
         if stats.get("failed_shards"):
             lines.append("⚠️ Сбойные шарды: " + ", ".join(stats["failed_shards"]))
         if stats.get("suspicious"):
+            active_before = stats.get("active_in_db_before")
             median = stats.get("parse_rate_median_7")
+            baseline = (
+                f"{active_before} активных в БД до прохода"
+                if active_before is not None
+                else f"медианы {median if median is not None else '?'} последних 7 проходов"
+            )
             lines.append(
                 "🚨 Parse-rate просел: в выдаче "
-                f"{stats.get('found_in_search', '?')} против медианы "
-                f"{median if median is not None else '?'} последних 7 проходов — "
+                f"{stats.get('found_in_search', '?')} против {baseline} — "
                 "проверьте вёрстку/блокировку, db-latest не обновлён"
             )
     else:
