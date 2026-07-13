@@ -313,3 +313,114 @@ def test_sweep_not_suspicious_when_too_few_active_in_db(tmp_path, monkeypatch):
 
     assert stats["active_in_db_before"] == 5
     assert stats["suspicious"] is False
+
+
+# ---------- issue #127: sighting для всех найденных id + backlog по приоритету ----------
+
+
+def test_sweep_records_sighting_for_ids_beyond_detail_limit(tmp_path, monkeypatch):
+    """Раньше id за пределами max_new_details не получали даже first_seen —
+    теперь sighting пишется для КАЖДОГО найденного id, независимо от лимита
+    на детальный fetch."""
+    db = tmp_path / "test.db"
+    init_db(db)
+
+    shards = shard_urls()
+    first_url = shards[0][1]
+    # 3 новых id на первой странице первого шарда
+    pages = {first_url: _card(1, 10_000_000) + _card(2, 20_000_000) + _card(3, 30_000_000)}
+    client = FakeClient(pages)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "parse_detail", lambda html, url: _listing(int(url.rsplit("/", 1)[-1])))
+
+    stats = sweep(max_pages=1, max_new_details=1, db_path=db)  # лимит детали — только 1
+
+    assert stats["found_in_search"] == 3
+    assert stats["new_listings"] == 1  # детали докачали только для одного
+    with get_conn(db) as conn:
+        # но sighting-строки есть у ВСЕХ трёх (первым делом — first_seen/цена)
+        assert conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0] == 3
+        titles = {
+            r[0]: r[1]
+            for r in conn.execute("SELECT id, title FROM listings").fetchall()
+        }
+    detailed = [lid for lid, title in titles.items() if title is not None]
+    sighting_only = [lid for lid, title in titles.items() if title is None]
+    assert len(detailed) == 1
+    assert len(sighting_only) == 2
+    # backlog виден в stats — есть ещё недокачанные детали
+    assert stats["detail_queue_after"] == 2
+
+
+def test_sweep_detail_queue_prioritizes_oldest_backlog_first(tmp_path, monkeypatch):
+    """Приоритет очереди — самые старые sighting-only лоты, а не то, что нашли
+    первым в текущем проходе (чтобы шард, идущий первым в обходе, не всегда
+    «съедал» весь лимит детального fetch)."""
+    db = tmp_path / "test.db"
+    init_db(db)
+    from krisha.db import record_sighting
+
+    # backlog из "прошлого" прохода: 2 старых непрокачанных лота
+    record_sighting(100, "https://krisha.kz/a/show/100", 1, db)
+    record_sighting(101, "https://krisha.kz/a/show/101", 1, db)
+    # backdate явно: datetime('now') в schema — секундная точность, тест
+    # должен быть детерминирован независимо от скорости выполнения.
+    with get_conn(db) as conn:
+        conn.execute(
+            "UPDATE listings SET first_seen = '2020-01-01 00:00:00' WHERE id IN (100, 101)"
+        )
+
+    shards = shard_urls()
+    first_url = shards[0][1]
+    # в текущем проходе шард сразу находит новый id 999 первым
+    pages = {first_url: _card(999, 5_000_000) + _card(100, 1) + _card(101, 1)}
+    client = FakeClient(pages)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "parse_detail", lambda html, url: _listing(int(url.rsplit("/", 1)[-1])))
+
+    stats = sweep(max_pages=1, max_new_details=2, db_path=db)  # хватит на 2 из 3
+
+    with get_conn(db) as conn:
+        titles = {r[0]: r[1] for r in conn.execute("SELECT id, title FROM listings").fetchall()}
+    # старые 100/101 обработаны раньше нового 999 (FIFO по first_seen)
+    assert titles[100] is not None
+    assert titles[101] is not None
+    assert titles[999] is None  # ещё в очереди
+    assert stats["detail_queue_after"] == 1
+
+
+def test_sweep_detail_queue_skips_delisted_sighting(tmp_path, monkeypatch):
+    """Лот получил sighting, но был снят с продажи до того, как очередь
+    деталей до него дошла (is_active=0, title навсегда NULL) — такой
+    "труп" не должен застревать в голове FIFO и съедать бюджет докачки на
+    каждом проходе."""
+    db = tmp_path / "test.db"
+    init_db(db)
+    from krisha.db import record_sighting
+
+    record_sighting(100, "https://krisha.kz/a/show/100", 1, db)
+    with get_conn(db) as conn:
+        conn.execute(
+            "UPDATE listings SET first_seen = '2020-01-01 00:00:00', is_active = 0 "
+            "WHERE id = 100"
+        )
+
+    shards = shard_urls()
+    first_url = shards[0][1]
+    pages = {first_url: _card(999, 5_000_000)}
+    client = FakeClient(pages)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "parse_detail", lambda html, url: _listing(int(url.rsplit("/", 1)[-1])))
+
+    stats = sweep(max_pages=1, max_new_details=5, db_path=db)
+
+    with get_conn(db) as conn:
+        titles = {r[0]: r[1] for r in conn.execute("SELECT id, title FROM listings").fetchall()}
+    # делистнутый 100 не попал в to_fetch (title всё ещё NULL), а бюджет
+    # ушёл на реально живой новый лот 999
+    assert titles[100] is None
+    assert titles[999] is not None
+    # очередь до фетча — только живой 999 (свежий sighting), мёртвый 100 не
+    # учитывается; после фетча очередь пуста
+    assert stats["detail_queue_before"] == 1
+    assert stats["detail_queue_after"] == 0

@@ -42,6 +42,17 @@ logger = logging.getLogger(__name__)
 def load_dataset(db_path=DB_PATH) -> pd.DataFrame:
     with sqlite3.connect(db_path) as conn:
         df = pd.read_sql("SELECT * FROM listings", conn)
+    # issue #117 (доп. по итогам аудитов): predict_from_url делает upsert с
+    # любым id с krisha.kz — включая другие города, без валидации города/типа
+    # сделки. Один пользователь, проверяющий квартиры в Астане, портит
+    # ppsm_maps и хвосты распределений следующего ретрейна. source="user"
+    # полностью исключаем из train-выборки.
+    if "source" in df.columns:
+        before = len(df)
+        df = df[df["source"] != "user"].reset_index(drop=True)
+        dropped = before - len(df)
+        if dropped:
+            logger.info("Исключено %s пользовательских предиктов (issue #117) из train", dropped)
     logger.info("Загружено %s объявлений", len(df))
     return df
 
