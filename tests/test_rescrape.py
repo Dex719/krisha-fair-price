@@ -17,7 +17,7 @@ def _isolate_parse_rate_history(tmp_path, monkeypatch):
 
 def _card(lid: int, price: int) -> str:
     return (
-        f'<div data-id="{lid}"><a href="/a/show/{lid}">x</a>'
+        f'<div data-id="{lid}" class="a-card"><a href="/a/show/{lid}">x</a>'
         f'<span class="a-card__price">{price:,} ₸</span></div>'.replace(",", " ")
     )
 
