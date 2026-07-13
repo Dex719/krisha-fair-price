@@ -25,7 +25,7 @@ class Factor(BaseModel):
 class ScamRisk(BaseModel):
     level: str  # medium / high
     score: int
-    reasons: list[str] = []
+    reasons: list[str] = Field(default_factory=list)
 
 
 class Analog(BaseModel):
@@ -84,25 +84,25 @@ class PredictResponse(BaseModel):
     verdict: str | None  # GOOD_DEAL / FAIR / OVERPRICED
     diff_pct: float | None
     top_factors: list[Factor]
-    details: list[DetailItem] = []          # характеристики объявления (этаж, год, ремонт...)
-    complex_details: list[DetailItem] = []  # этап 2: блок «О доме» из справочника ЖК
-    location_details: list[DetailItem] = [] # этап 3: блок «Локация» (walk score, POI)
-    price_history: list[PricePoint] = []    # этап 4: точки истории цены
+    details: list[DetailItem] = Field(default_factory=list)          # характеристики объявления (этаж, год, ремонт...)
+    complex_details: list[DetailItem] = Field(default_factory=list)  # этап 2: блок «О доме» из справочника ЖК
+    location_details: list[DetailItem] = Field(default_factory=list) # этап 3: блок «Локация» (walk score, POI)
+    price_history: list[PricePoint] = Field(default_factory=list)    # этап 4: точки истории цены
     days_on_market: int | None = None       # этап 4: дней в выдаче
     liquidity: Liquidity | None = None      # этап 4: за сколько продаются аналоги
-    text_flags: list[TextFlag] = []         # этап 5: LLM-анализ описания
+    text_flags: list[TextFlag] = Field(default_factory=list)         # этап 5: LLM-анализ описания
     flags_pending: bool = False             # кэша нет — фронт догрузит /api/flags/{id}
     duplicate_of: int | None = None         # возможный дубль (тот же «отпечаток» квартиры)
-    photos: list[str] = []                  # URL фото с krisha-photos.kcdn.online
+    photos: list[str] = Field(default_factory=list)                  # URL фото с krisha-photos.kcdn.online
     description: str | None = None
-    analogs: list[Analog] = []              # похожие активные объявления (kNN)
+    analogs: list[Analog] = Field(default_factory=list)              # похожие активные объявления (kNN)
     scam_risk: ScamRisk | None = None       # бейдж «подозрительно дёшево»
     renovation: Renovation | None = None    # оценка ремонта по фото (Gemini)
 
 
 class FlagsResponse(BaseModel):
     listing_id: int
-    text_flags: list[TextFlag] = []
+    text_flags: list[TextFlag] = Field(default_factory=list)
 
 
 class DemoResponse(BaseModel):

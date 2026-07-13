@@ -32,6 +32,18 @@ def test_compute_stats(tmp_path):
     assert s["source"] == "db"
 
 
+def test_compute_stats_empty_db(tmp_path):
+    path = tmp_path / "empty.db"
+    db.init_db(path)
+
+    result = stats.compute_stats(path)
+
+    assert result["total_listings"] == 0
+    assert result["median_price"] == 0
+    assert result["median_ppsm"] == 0
+    assert result["by_district"] == []
+
+
 def test_compute_stats_missing_db(tmp_path):
     import pytest
     with pytest.raises(FileNotFoundError):

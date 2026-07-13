@@ -25,6 +25,19 @@ def test_plaintext_without_key(tmp_path, monkeypatch):
     assert load_json_state(path) == {"123": {"rooms": 2}}
 
 
+def test_plaintext_pii_is_not_pushed(tmp_path, monkeypatch):
+    monkeypatch.delenv("STATE_ENCRYPTION_KEY", raising=False)
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    pushed = []
+    monkeypatch.setattr(subs_mod, "_push_to_github", lambda *args: pushed.append(args))
+    path = tmp_path / "state.json"
+
+    save_json_state(path, {"123": {"rooms": 2}}, "msg", encrypt=True)
+
+    assert pushed == []
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
 def test_encrypted_roundtrip(tmp_path, monkeypatch):
     """С ключом файл на диске не содержит chat_id, а load расшифровывает."""
     monkeypatch.setenv("STATE_ENCRYPTION_KEY", "test-secret")
