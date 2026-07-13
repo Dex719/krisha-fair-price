@@ -28,8 +28,85 @@ def test_parse_listing_prices():
     assert prices == {111: 45_000_000, 222: 94_930_000, 333: None}
 
 
+def test_parse_listing_prices_promo_card_between_id_and_price():
+    """issue #98: промо-блок (баннер, без своей цены) МЕЖДУ карточкой и её
+    ценой раньше «съезжал» позиционный матчинг — цена доставалась соседу.
+    Структурный DOM-парсинг ищет цену внутри своего узла .a-card, промо-блок
+    вообще не задевает."""
+    html = """
+    <a href="/a/show/111"></a><a href="/a/show/222"></a>
+    <div data-id="111" class="a-card">
+      <div class="promo-banner">Реклама без цены и без .a-card__price</div>
+      <div class="a-card__price">50&nbsp;000&nbsp;000</div>
+    </div>
+    <div data-id="222" class="a-card">
+      <div class="a-card__price">60&nbsp;000&nbsp;000</div>
+    </div>
+    """
+    assert parse_listing_prices(html) == {111: 50_000_000, 222: 60_000_000}
+
+
+def test_parse_listing_prices_extra_data_id_on_nested_button():
+    """issue #98: доп. data-id у кнопки «избранное» внутри карточки (позиционно
+    между id карточки и её ценой) раньше сдвигал бы привязку — теперь цена
+    ищется структурно внутри самого узла .a-card независимо от вложенных
+    элементов с собственным data-id."""
+    html = """
+    <a href="/a/show/111"></a><a href="/a/show/999"></a>
+    <div data-id="111" class="a-card">
+      <button class="favorite-btn" data-id="999" aria-label="В избранное"></button>
+      <div class="a-card__price">33&nbsp;000&nbsp;000</div>
+    </div>
+    """
+    assert parse_listing_prices(html) == {111: 33_000_000}
+
+
+def test_parse_listing_prices_reordered_blocks_dont_bleed():
+    """issue #98: карточка с ценой ПЕРЕД блоком с id (нестандартный порядок
+    внутри узла) — позиционный подход по всей странице был бы не при делах,
+    структурный корректно находит цену внутри своего .a-card независимо от
+    внутреннего порядка тегов."""
+    html = """
+    <a href="/a/show/111"></a>
+    <div data-id="111" class="a-card">
+      <div class="a-card__price">70&nbsp;000&nbsp;000</div>
+      <div class="a-card__title">Заголовок после цены</div>
+    </div>
+    """
+    assert parse_listing_prices(html) == {111: 70_000_000}
+
+
 def _listing(lid: int, price: int) -> dict:
     return {"id": lid, "url": f"https://krisha.kz/a/show/{lid}", "price": price}
+
+
+def test_record_price_jump_warns_but_still_records(tmp_path, caplog):
+    """issue #98 (second-line defence): скачок цены >60% пишется в history
+    (не блокируется), но логируется как подозрительный."""
+    import logging
+    import time
+
+    db = tmp_path / "test.db"
+    init_db(db)
+    with get_conn(db) as conn:
+        assert _record_price_if_changed(conn, 1, 100_000_000)
+        time.sleep(0.01)  # разные observed_at (PK price_history — listing_id+observed_at)
+        with caplog.at_level(logging.WARNING):
+            assert _record_price_if_changed(conn, 1, 30_000_000)  # -70%
+        assert any("подозрительный скачок цены" in r.message for r in caplog.records)
+    assert [p["price"] for p in get_price_history(1, db)] == [100_000_000, 30_000_000]
+
+
+def test_record_price_small_change_no_warning(tmp_path, caplog):
+    import logging
+
+    db = tmp_path / "test.db"
+    init_db(db)
+    with get_conn(db) as conn:
+        assert _record_price_if_changed(conn, 1, 100_000_000)
+        with caplog.at_level(logging.WARNING):
+            assert _record_price_if_changed(conn, 1, 95_000_000)  # -5%
+        assert not any("подозрительный скачок цены" in r.message for r in caplog.records)
 
 
 def test_upsert_creates_history_and_tracks_changes(tmp_path):

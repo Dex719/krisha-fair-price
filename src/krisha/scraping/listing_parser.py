@@ -2,6 +2,8 @@
 
 import re
 
+from bs4 import BeautifulSoup
+
 LISTING_LINK_RE = re.compile(r'href="/a/show/(\d+)"')
 
 
@@ -17,30 +19,34 @@ def parse_listing_ids(html: str) -> list[int]:
     return ids
 
 
-CARD_ID_RE = re.compile(r'data-id="(\d+)"')
-CARD_PRICE_RE = re.compile(r'class="a-card__price"[^>]*>([^<]+)<')
-
-
 def parse_listing_prices(html: str) -> dict[int, int | None]:
     """id → цена (₸) по карточкам выдачи. Цена не нашлась → None.
 
     Используется рескрейпом (этап 4): даёт актуальные цены всей выдачи
     без захода на детальные страницы.
+
+    Структурный DOM-парсинг (issue #98): цена ищется ВНУТРИ узла карточки
+    (`.a-card`), а не по позиции id/цены в сыром тексте страницы. Раньше
+    матчинг был позиционный («цена — первая, что встретилась между текущим
+    data-id и следующим»): промо-карточка, переставленные блоки или лишний
+    data-id (например, у кнопки избранного) молча сдвигали цену на соседнее
+    объявление — и это записывалось в price_history как «изменение цены».
     """
     valid = set(parse_listing_ids(html))  # data-id бывает и у баннеров — фильтруем
-    ids = [(m.start(), int(m.group(1))) for m in CARD_ID_RE.finditer(html) if int(m.group(1)) in valid]
-    prices = [(m.start(), m.group(1)) for m in CARD_PRICE_RE.finditer(html)]
+    soup = BeautifulSoup(html, "lxml")
     out: dict[int, int | None] = {}
-    pi = 0
-    for idx, (pos, lid) in enumerate(ids):
-        end = ids[idx + 1][0] if idx + 1 < len(ids) else len(html)
+    for card in soup.find_all(class_="a-card"):
+        raw_id = card.get("data-id")
+        if raw_id is None or not str(raw_id).isdigit():
+            continue
+        lid = int(raw_id)
+        if lid not in valid:
+            continue
+        price_el = card.find(class_="a-card__price")
         price = None
-        while pi < len(prices) and prices[pi][0] < pos:
-            pi += 1
-        if pi < len(prices) and prices[pi][0] < end:
-            digits = re.sub(r"\D", "", prices[pi][1])
+        if price_el is not None:
+            digits = re.sub(r"\D", "", price_el.get_text())
             price = int(digits) if digits else None
-            pi += 1
         out[lid] = price
     return out
 

@@ -1,12 +1,22 @@
 """SQLite-хранилище объявлений. Одна таблица `listings`, upsert по id."""
 
 import hashlib
+import logging
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
 from krisha.config import DB_PATH
+
+logger = logging.getLogger(__name__)
+
+# Скачок цены > этой доли за одну точку истории — подозрительно (issue #98:
+# структурный парсинг убрал основной источник, но sanity-фильтр как второй
+# рубеж защиты от съехавших/битых данных). Пишем в history и логируем
+# warning, но НЕ блокируем запись — иначе легитимный резкий дисконт навсегда
+# застрянет и не обновится.
+PRICE_JUMP_ALERT_RATIO = 0.6
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS listings (
@@ -250,13 +260,30 @@ def upsert_listing(listing: dict[str, Any], db_path: Path | str = DB_PATH) -> No
 
 
 def _record_price_if_changed(conn: sqlite3.Connection, listing_id: int, price: int) -> bool:
-    """Дописывает точку в price_history, если цена изменилась. True = записали."""
+    """Дописывает точку в price_history, если цена изменилась. True = записали.
+
+    Скачок цены > PRICE_JUMP_ALERT_RATIO за одну точку — логируется как
+    подозрительный (issue #98, second-line defence), но точка всё равно
+    пишется: это может быть легитимный дисконт/ошибка объявления, а не только
+    съехавший парсинг, и постоянно блокировать обновление — свой источник
+    порчи данных (цена навсегда «зависнет» на устаревшем значении).
+    """
     last = conn.execute(
         "SELECT price FROM price_history WHERE listing_id = ? ORDER BY observed_at DESC LIMIT 1",
         (listing_id,),
     ).fetchone()
     if last is not None and int(last[0]) == price:
         return False
+    if last is not None and int(last[0]) > 0:
+        jump = abs(price - int(last[0])) / int(last[0])
+        if jump > PRICE_JUMP_ALERT_RATIO:
+            logger.warning(
+                "listing %s: подозрительный скачок цены %s → %s (%.0f%%)",
+                listing_id,
+                last[0],
+                price,
+                jump * 100,
+            )
     conn.execute(
         "INSERT OR REPLACE INTO price_history (listing_id, price) VALUES (?, ?)",
         (listing_id, price),
