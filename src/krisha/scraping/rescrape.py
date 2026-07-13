@@ -15,9 +15,12 @@
 Запуск: `python scripts/rescrape.py` (по расписанию — ежедневно).
 """
 
+import json
 import logging
+import statistics
+from pathlib import Path
 
-from krisha.config import ALMATY_DISTRICT_SLUGS, BASE_URL, ROOM_SHARDS
+from krisha.config import ALMATY_DISTRICT_SLUGS, BASE_URL, DATA_DIR, ROOM_SHARDS
 from krisha.db import (
     DB_PATH,
     _record_price_if_changed,
@@ -33,6 +36,48 @@ from krisha.scraping.listing_parser import has_next_page, parse_listing_prices
 logger = logging.getLogger(__name__)
 
 DELIST_AFTER_DAYS = 3  # не видели в выдаче N дней → считаем снятым
+
+# Сигнатуры анти-бот/капча-страниц (нижний регистр) — сервер отдал HTTP 200,
+# но это не выдача. Проверяются только на первой странице шарда, чтобы не
+# гонять re.search по мегабайтам HTML на каждой странице.
+_ANTIBOT_SIGNS = (
+    "captcha",
+    "recaptcha",
+    "attention required",
+    "cf-browser-verification",
+    "доступ ограничен",
+    "подтвердите, что вы не робот",
+)
+
+# История found_in_search последних проходов — для детекта проседания
+# parse-rate (issue #97). Отдельный файл на deal, чтобы продажа и аренда
+# не путали друг другу медиану.
+PARSE_RATE_HISTORY_LEN = 7
+PARSE_RATE_DROP_RATIO = 0.5  # алерт, если текущий проход < 50% медианы истории
+
+
+def _history_path(deal: str) -> Path:
+    return DATA_DIR / f"rescrape_history_{deal}.json"
+
+
+def _load_history(deal: str) -> list[int]:
+    path = _history_path(deal)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return [int(x) for x in data] if isinstance(data, list) else []
+    except (OSError, json.JSONDecodeError, ValueError):
+        return []
+
+
+def _save_history(deal: str, history: list[int]) -> None:
+    path = _history_path(deal)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(history[-PARSE_RATE_HISTORY_LEN:]), encoding="utf-8")
+
+
+def _looks_like_antibot(html: str) -> bool:
+    lower = html.lower()
+    return any(sign in lower for sign in _ANTIBOT_SIGNS)
 
 
 def shard_urls(deal: str = "prodazha") -> list[tuple[str, str]]:
@@ -63,8 +108,11 @@ def _sweep_shard(
 ) -> bool:
     """Обходит пагинацию одного шарда, дописывает id→цена в found.
 
-    Возвращает False, если какая-то страница так и не загрузилась
-    (сеть/блокировка) — шард покрыт не полностью.
+    Возвращает False, если шард не покрыт: страница не загрузилась
+    (сеть/блокировка), похожа на анти-бот/капчу, или первая страница дала
+    0 валидных id (сервер отдал 200, но не выдачу — изменённая вёрстка и
+    т.п.). Пустой/анти-бот шард НЕ считается покрытием — иначе живые
+    объявления рискуют быть ложно помечены delisted (issue #96).
     """
     before = len(found)
     for page in range(1, max_pages + 1):
@@ -73,7 +121,17 @@ def _sweep_shard(
         if html is None:
             logger.error("Шард «%s»: стр. %s не загрузилась — стоп шарда", label, page)
             return False
-        found.update(parse_listing_prices(html))
+        if page == 1 and _looks_like_antibot(html):
+            logger.error("Шард «%s»: похоже на анти-бот/капча страницу — стоп шарда", label)
+            return False
+        page_prices = parse_listing_prices(html)
+        if page == 1 and not page_prices:
+            logger.warning(
+                "Шард «%s»: 0 валидных id на первой странице — подозрительно, шард не покрыт",
+                label,
+            )
+            return False
+        found.update(page_prices)
         if not has_next_page(html, page):
             break
     logger.info("Шард «%s»: +%s объявлений (всего %s)", label, len(found) - before, len(found))
@@ -142,6 +200,27 @@ def sweep(
             )
             delisted_count = None
 
+    # Parse-rate история: тихая деградация (сервер отвечает, шарды формально
+    # покрыты, но объявлений в разы меньше обычного) не ловится через
+    # failed_shards — сравниваем found_in_search с медианой последних проходов
+    # (issue #97). Суспишн не считаем при < 3 прошлых точках (нет базы для
+    # сравнения — типично для первых запусков/новых deal).
+    history = _load_history(deal)
+    parse_rate_median = (
+        statistics.median(history[-PARSE_RATE_HISTORY_LEN:]) if len(history) >= 3 else None
+    )
+    suspicious = parse_rate_median is not None and len(found) < parse_rate_median * PARSE_RATE_DROP_RATIO
+    if suspicious:
+        logger.error(
+            "Parse-rate просел: в выдаче %s против медианы %s последних проходов "
+            "(порог %.0f%%) — проход помечен подозрительным",
+            len(found),
+            parse_rate_median,
+            PARSE_RATE_DROP_RATIO * 100,
+        )
+    history.append(len(found))
+    _save_history(deal, history)
+
     stats = {
         "found_in_search": len(found),
         "known_seen": len(known_seen),
@@ -149,6 +228,8 @@ def sweep(
         "price_changes": price_changes,
         "delisted": delisted_count,
         "failed_shards": failed_shards,
+        "parse_rate_median_7": parse_rate_median,
+        "suspicious": suspicious,
     }
     logger.info(
         "Рескрейп: в выдаче %(found_in_search)s, знакомых %(known_seen)s, "

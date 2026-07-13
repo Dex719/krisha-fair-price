@@ -59,6 +59,25 @@ def test_failed_shards_flagged(monkeypatch, tmp_path):
     assert "Модель" not in text  # для аренды блок модели не показываем
 
 
+def test_suspicious_parse_rate_flagged(monkeypatch, tmp_path):
+    """issue #97: проход помечен suspicious → в отчёте видно алерт с медианой."""
+    monkeypatch.setitem(
+        daily_report._SCOPES, "rent", ("🌆 Вечерний отчёт: аренда", tmp_path / "no.db", tmp_path / "none.json")
+    )
+    summary = _summary(
+        tmp_path / "stats.json",
+        found_in_search=8000,
+        suspicious=True,
+        parse_rate_median_7=40000,
+    )
+
+    text = build_daily_report("rent", summary)
+
+    assert "Parse-rate просел" in text
+    assert "8000" in text
+    assert "40000" in text
+
+
 def test_missing_summary_mentioned(monkeypatch, tmp_path):
     monkeypatch.setitem(daily_report._SCOPES, "rent", ("🌆 Вечерний отчёт: аренда", tmp_path / "no.db", tmp_path / "none.json"))
     text = build_daily_report("rent")

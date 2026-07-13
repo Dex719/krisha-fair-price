@@ -115,6 +115,14 @@ def build_daily_report(scope: str = "sale", summary_path: Path | str | None = No
         )
         if stats.get("failed_shards"):
             lines.append("⚠️ Сбойные шарды: " + ", ".join(stats["failed_shards"]))
+        if stats.get("suspicious"):
+            median = stats.get("parse_rate_median_7")
+            lines.append(
+                "🚨 Parse-rate просел: в выдаче "
+                f"{stats.get('found_in_search', '?')} против медианы "
+                f"{median if median is not None else '?'} последних 7 проходов — "
+                "проверьте вёрстку/блокировку, db-latest не обновлён"
+            )
     else:
         lines.append("Проход: счётчики не найдены (summary-json отсутствует)")
 
