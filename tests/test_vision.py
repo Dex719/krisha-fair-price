@@ -10,6 +10,34 @@ def test_no_photos_or_id():
     assert vision.assess_renovation({"photos": ["https://x/1.jpg"]}) is None
 
 
+def test_photo_url_allowlist_blocks_ssrf():
+    assert vision._allowed_photo_url("https://krisha-photos.kcdn.online/aa/1.jpg")
+    assert not vision._allowed_photo_url("http://krisha-photos.kcdn.online/aa/1.jpg")
+    assert not vision._allowed_photo_url("https://127.0.0.1/admin")
+    assert not vision._allowed_photo_url("https://kcdn.online.evil.example/1.jpg")
+    assert not vision._allowed_photo_url("https://user@krisha-photos.kcdn.online/1.jpg")
+
+
+def test_photo_download_stops_at_byte_limit(monkeypatch):
+    class FakeResponse:
+        status_code = 200
+        headers = {"content-type": "image/jpeg"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def iter_bytes(self):
+            yield b"x" * vision.MAX_PHOTO_BYTES
+            yield b"overflow"
+
+    monkeypatch.setattr(vision.httpx, "stream", lambda *args, **kwargs: FakeResponse())
+    urls = ["https://krisha-photos.kcdn.online/aa/1.jpg"]
+    assert vision._download_photos(urls) == []
+
+
 def test_cache_roundtrip(tmp_path, monkeypatch):
     db = tmp_path / "krisha.db"
     monkeypatch.setattr(vision, "DB_PATH", db)

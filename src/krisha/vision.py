@@ -20,6 +20,7 @@ import logging
 import os
 import sqlite3
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 MAX_PHOTOS = 3
 PHOTO_TIMEOUT = 10.0
 MAX_PHOTO_BYTES = 4_000_000
+ALLOWED_PHOTO_HOST_SUFFIX = ".kcdn.online"
 
 LEVELS_RU = {
     "rough": "черновая отделка",
@@ -119,22 +121,57 @@ def save_cache(listing_id: int, photos: list[str], level: str, comment: str) -> 
         logger.warning("vision: не удалось сохранить кэш для %s", listing_id)
 
 
+def _allowed_photo_url(url: str) -> bool:
+    """Принимает только HTTPS-фото из CDN Krisha, без credentials/нестандартного порта."""
+    try:
+        parsed = urlsplit(url)
+        host = (parsed.hostname or "").lower()
+        return (
+            parsed.scheme == "https"
+            and parsed.username is None
+            and parsed.password is None
+            and parsed.port in (None, 443)
+            and host.endswith(ALLOWED_PHOTO_HOST_SUFFIX)
+            and host != ALLOWED_PHOTO_HOST_SUFFIX.removeprefix(".")
+        )
+    except ValueError:
+        return False
+
+
 def _download_photos(photos: list[str]) -> list[tuple[str, bytes]]:
-    """Скачивает до MAX_PHOTOS фото; битые молча пропускаем."""
+    """Скачивает до MAX_PHOTOS фото с allowlist CDN и жёстким лимитом размера."""
     out: list[tuple[str, bytes]] = []
     for url in photos[:MAX_PHOTOS]:
-        if not url.startswith("https://"):
+        if not _allowed_photo_url(url):
             continue
         try:
-            resp = httpx.get(url, timeout=PHOTO_TIMEOUT, follow_redirects=True)
+            # Редиректы запрещены: иначе доверенный CDN мог бы перенаправить запрос
+            # на приватный адрес. Потоковое чтение не даёт огромному ответу занять память.
+            with httpx.stream("GET", url, timeout=PHOTO_TIMEOUT, follow_redirects=False) as resp:
+                ctype = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+                if resp.status_code != 200 or not ctype.startswith("image/"):
+                    continue
+                declared = resp.headers.get("content-length")
+                if declared:
+                    try:
+                        if int(declared) > MAX_PHOTO_BYTES:
+                            continue
+                    except ValueError:
+                        continue
+                chunks: list[bytes] = []
+                size = 0
+                too_large = False
+                for chunk in resp.iter_bytes():
+                    size += len(chunk)
+                    if size > MAX_PHOTO_BYTES:
+                        too_large = True
+                        break
+                    chunks.append(chunk)
+                if too_large:
+                    continue
+                out.append((ctype, b"".join(chunks)))
         except httpx.HTTPError:
             continue
-        ctype = resp.headers.get("content-type", "").split(";")[0].strip()
-        if resp.status_code != 200 or not ctype.startswith("image/"):
-            continue
-        if len(resp.content) > MAX_PHOTO_BYTES:
-            continue
-        out.append((ctype, resp.content))
     return out
 
 

@@ -101,7 +101,7 @@ def _weekly_trend(
     ph["observed_at"] = pd.to_datetime(ph["observed_at"], format="mixed")
     ph = ph.sort_values("observed_at")
 
-    end = pd.Timestamp.utcnow().tz_localize(None)
+    end = pd.Timestamp.now(tz="UTC").tz_localize(None)
     week_end = (end - pd.offsets.Week(weekday=6)).normalize() + pd.Timedelta(days=1)
     trend = []
     for i in range(max_weeks - 1, -1, -1):
@@ -173,8 +173,8 @@ def compute_stats(db_path: Path | str = DB_PATH) -> dict:
 
     return {
         "total_listings": int(len(df)),
-        "median_price": int(df["price"].median()),
-        "median_ppsm": int(df["ppsm"].median()),
+        "median_price": int(df["price"].median()) if not df.empty else 0,
+        "median_ppsm": int(df["ppsm"].median()) if not df.empty else 0,
         "by_district": by_district,
         "price_hist": price_hist,
         "ppsm_hist": _ppsm_hist(df),
