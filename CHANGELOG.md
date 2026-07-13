@@ -6,8 +6,11 @@
 обновить подвалы `static/index.html` и `static/stats.html`, добавить запись сюда,
 после мержа повесить git-тег `vX.Y.Z`.
 
-## Unreleased
+## 0.5.0 — 2026-07-13
 
+- Ребрендинг: продукт теперь называется **baǵam**, мост сайт→бот и обновлённый
+  дизайн (редизайн интерфейса)
+- Лицензия: добавлен `LICENSE` с текстом Elastic License 2.0 (ELv2)
 - Производительность HF Spaces (#58): `shap`/`matplotlib` вынесены из
   runtime-зависимостей в optional extras `train`/`dev`; в Dockerfile ограничены
   native thread pools под 2 vCPU (OMP/OpenBLAS/MKL/NumExpr); на startup — fail-soft
@@ -33,7 +36,7 @@
   пачкой вместо 7000+ отдельных connect'ов к SQLite
 - **Код**: deprecated `@app.on_event` заменён на lifespan (с сохранением warmup из #58);
   токен бота вырезается из логов ошибок Telegram; ruff-правила `B` (bugbear)
-- **Проект**: LICENSE (MIT), `.env.example` со всеми переменными окружения,
+- **Проект**: LICENSE (ELv2), `.env.example` со всеми переменными окружения,
   Dependabot (pip + actions), тесты на шифрование состояния
 
 ## 0.2.0 — 2026-07-03
