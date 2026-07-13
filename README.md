@@ -12,7 +12,8 @@
 ![python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
 ![CatBoost](https://img.shields.io/badge/CatBoost-MAPE_9.5%25-FFCC00)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
-![version](https://img.shields.io/badge/version-0.2.0-blue)
+![version](https://img.shields.io/badge/version-0.5.0-blue)
+![license](https://img.shields.io/badge/license-ELv2-lightgrey)
 
 **[🚀 Сайт](https://dex719-krisha-fair-price.hf.space)** · **[📊 Рынок Алматы](https://dex719-krisha-fair-price.hf.space/stats)** · **[ℹ️ О проекте](https://dex719-krisha-fair-price.hf.space/about)** · **[🤖 Telegram-бот](https://t.me/fairprice_kzbot)** · **[🧵 Threads](https://www.threads.net/@bagam.kz)**
 
