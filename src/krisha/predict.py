@@ -319,6 +319,24 @@ def predict_from_listing(
         and raw_flags is None
         and os.environ.get(GEMINI_API_KEY_ENV)
     )
+
+    # issue #128: логируем каждый предикт (пользовательский через
+    # predict_from_url, канальный через alerts.find_good_deals — оба
+    # заходят сюда) — без этого нельзя проверить, работают ли вердикты:
+    # через месяц сравниваем price drift/days-on-market по verdict.
+    from krisha.db import log_prediction
+
+    try:
+        log_prediction(
+            listing.get("id"),
+            result.get("fair_price"),
+            result.get("fair_price_low"),
+            result.get("fair_price_high"),
+            result.get("verdict"),
+            meta.get("metrics", {}).get("trained_at"),
+        )
+    except Exception:  # noqa: BLE001 — лог предикта не должен ломать оценку
+        logger.exception("log_prediction failed")
     return result
 
 

@@ -115,6 +115,11 @@ def build_daily_report(scope: str = "sale", summary_path: Path | str | None = No
         )
         if stats.get("failed_shards"):
             lines.append("⚠️ Сбойные шарды: " + ", ".join(stats["failed_shards"]))
+        # issue #127: очередь detail fetch — сколько лотов уже есть (sighting),
+        # но детали ещё не докачаны. Растущая очередь = приток обгоняет лимит.
+        queue_after = stats.get("detail_queue_after")
+        if queue_after:
+            lines.append(f"📥 Очередь деталей: {queue_after}")
         if stats.get("suspicious"):
             active_before = stats.get("active_in_db_before")
             median = stats.get("parse_rate_median_7")

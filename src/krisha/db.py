@@ -63,6 +63,20 @@ CREATE TABLE IF NOT EXISTS price_history (
 );
 CREATE INDEX IF NOT EXISTS idx_price_history_listing ON price_history(listing_id);
 
+-- issue #128: лог каждого предикта (пользовательского и канального/алертов).
+-- Без этого нельзя проверить продуктовую метрику — совпадает ли вердикт
+-- с последующей судьбой лота (снижение цены / срок на рынке).
+CREATE TABLE IF NOT EXISTS predictions (
+    listing_id    INTEGER,
+    predicted_at  TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
+    fair_price    REAL,
+    fair_low      REAL,
+    fair_high     REAL,
+    verdict       TEXT,
+    model_version TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_predictions_listing ON predictions(listing_id);
+
 CREATE TABLE IF NOT EXISTS complexes (
     id                  INTEGER PRIMARY KEY,      -- id ЖК на Krisha
     url                 TEXT,
@@ -125,6 +139,35 @@ ON CONFLICT(id) DO UPDATE SET
     is_active = 1,
     delisted_at = NULL,
     scraped_at = datetime('now');
+"""
+
+# issue #117: пользовательский предикт (predict.py:predict_from_url,
+# source="user") не источник истины по цене/параметрам лота — устаревшая
+# или закэшированная страница, открытая пользователем, не должна затирать
+# свежие данные рескрейпа. На INSERT (лот встречен впервые) пишем всё как
+# обычно; разница — только для ON CONFLICT: price/title/raw_params не
+# трогаем вовсе (остаются данные последнего скрейпа). Остальные поля ведут
+# себя как в обычном скрейп-upsert'е — COALESCE(excluded, старое): свежий
+# парс перезаписывает, а NULL из неполного парса не затирает хорошие данные.
+_USER_UPSERT_SET = ", ".join(
+    f"{c} = COALESCE(excluded.{c}, listings.{c})"
+    for c in [*LISTING_COLUMNS, "fingerprint"]
+    if c not in ("id", "price", "title", "raw_params")
+)
+
+UPSERT_SQL_USER = f"""
+INSERT INTO listings (
+    {", ".join(LISTING_COLUMNS)},
+    source, fingerprint, first_seen, last_seen, is_active
+) VALUES (
+    {", ".join(":" + c for c in LISTING_COLUMNS)},
+    :source, :fingerprint, datetime('now'), datetime('now'), 1
+)
+ON CONFLICT(id) DO UPDATE SET
+    {_USER_UPSERT_SET},
+    last_seen = datetime('now'),
+    is_active = 1,
+    delisted_at = NULL;
 """
 
 
@@ -247,16 +290,88 @@ def upsert_listing(listing: dict[str, Any], db_path: Path | str = DB_PATH) -> No
     row = {col: listing.get(col) for col in LISTING_COLUMNS}
     row["source"] = listing.get("source") or "scrape"
     row["fingerprint"] = listing_fingerprint(listing)
+    is_user = row["source"] == "user"
+    sql = UPSERT_SQL_USER if is_user else UPSERT_SQL
     with get_conn(db_path) as conn:
         try:
-            conn.execute(UPSERT_SQL, row)
+            conn.execute(sql, row)
         except sqlite3.OperationalError:
             # старая база без новых колонок — мигрируем и пробуем ещё раз
             conn.executescript(SCHEMA)
             _migrate(conn)
-            conn.execute(UPSERT_SQL, row)
-        if row.get("price") is not None:
+            conn.execute(sql, row)
+        # issue #117: пользовательский предикт не пишет точку в price_history
+        # вовсе — иначе устаревшая/закэшированная страница ляжет в историю
+        # как «изменение цены» и даст ложный алерт подписчикам /track.
+        if not is_user and row.get("price") is not None:
             _record_price_if_changed(conn, row["id"], int(row["price"]))
+
+
+SIGHTING_UPSERT_SQL = """
+INSERT INTO listings (id, url, price, source, first_seen, last_seen, is_active)
+VALUES (:id, :url, :price, 'scrape', datetime('now'), datetime('now'), 1)
+ON CONFLICT(id) DO UPDATE SET
+    last_seen = datetime('now'),
+    is_active = 1,
+    delisted_at = NULL;
+"""
+
+
+def record_sighting(
+    listing_id: int, url: str, price: int | None, db_path: Path | str = DB_PATH
+) -> None:
+    """Дешёвая запись «видели лот в выдаче» — без похода на детальную страницу.
+
+    issue #127: рескрейп раньше писал в базу только первые `max_new_details`
+    новых id за проход (в порядке обхода шардов) — остальные не получали
+    даже `first_seen`, при притоке ~1000/день это накапливающийся backlog и
+    смещение выборки. Теперь sighting пишется для КАЖДОГО найденного id сразу
+    (этот вызов), а полный detail fetch остаётся отдельной лимитированной
+    очередью, приоритет которой — самые старые ещё не докачанные лоты
+    (`title IS NULL` — сентинел «сайтинг без детали», см. sweep()).
+    """
+    with get_conn(db_path) as conn:
+        try:
+            conn.execute(SIGHTING_UPSERT_SQL, {"id": listing_id, "url": url, "price": price})
+        except sqlite3.OperationalError:
+            conn.executescript(SCHEMA)
+            _migrate(conn)
+            conn.execute(SIGHTING_UPSERT_SQL, {"id": listing_id, "url": url, "price": price})
+        if price is not None:
+            _record_price_if_changed(conn, listing_id, int(price))
+
+
+def log_prediction(
+    listing_id: Any,
+    fair_price: float | None,
+    fair_low: float | None,
+    fair_high: float | None,
+    verdict: str | None,
+    model_version: str | None,
+    db_path: Path | str = DB_PATH,
+) -> None:
+    """Пишет строку в predictions (issue #128) — и для пользовательских, и для
+    канальных (алерты) предиктов, единая точка входа `predict_from_listing`.
+    """
+    if listing_id is None:
+        return
+    with get_conn(db_path) as conn:
+        try:
+            conn.execute(
+                "INSERT INTO predictions "
+                "(listing_id, fair_price, fair_low, fair_high, verdict, model_version) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (int(listing_id), fair_price, fair_low, fair_high, verdict, model_version),
+            )
+        except sqlite3.OperationalError:
+            conn.executescript(SCHEMA)
+            _migrate(conn)
+            conn.execute(
+                "INSERT INTO predictions "
+                "(listing_id, fair_price, fair_low, fair_high, verdict, model_version) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (int(listing_id), fair_price, fair_low, fair_high, verdict, model_version),
+            )
 
 
 def _record_price_if_changed(conn: sqlite3.Connection, listing_id: int, price: int) -> bool:
