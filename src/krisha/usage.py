@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 
 from krisha.config import DATA_DIR
@@ -39,8 +40,27 @@ _state: dict | None = None
 _last_flush: datetime | None = None
 
 
+def _usage_salt() -> str:
+    """Секрет для соли хэша chat_id — тот же источник, что и шифрование
+    state-файлов (см. subscriptions.py): STATE_ENCRYPTION_KEY, иначе
+    TELEGRAM_BOT_TOKEN. Без обоих (голая локальная разработка без бота)
+    используем фиксированную заглушку — в этом режиме usage_stats.json с
+    реальными chat_id никогда не публикуется, деанонимизация неактуальна.
+    """
+    return (
+        os.environ.get("STATE_ENCRYPTION_KEY")
+        or os.environ.get("TELEGRAM_BOT_TOKEN")
+        or "krisha-usage-local-dev"
+    )
+
+
 def _hash_user(user_id: int | str) -> str:
-    return hashlib.sha256(f"krisha-usage:{user_id}".encode()).hexdigest()[:10]
+    # issue #116: без соли sha256(chat_id)[:10] обратим перебором — chat_id
+    # телеграма лежит в известном небольшом диапазоне, а схема хэша видна в
+    # этом же публичном репозитории. Соль из секрета (не в репо) делает
+    # перебор без ключа непрактичным; агрегатные счётчики остаются читаемыми.
+    salt = _usage_salt()
+    return hashlib.sha256(f"krisha-usage:{salt}:{user_id}".encode()).hexdigest()[:10]
 
 
 def load_state() -> dict:

@@ -70,3 +70,108 @@ def test_security_headers_present_on_early_400_malformed_content_length():
     )
     assert resp.status_code == 400
     _assert_security_headers(resp)
+
+
+def _run_chunked_middleware(chunks, max_bytes):
+    """Прогоняет _ChunkedBodyLimitMiddleware напрямую на ASGI-уровне с телом,
+    приходящим несколькими сообщениями (как при Transfer-Encoding: chunked —
+    без единого Content-Length, который видела бы _security_headers)."""
+    import asyncio
+
+    async def inner_app(scope, receive, send):
+        # Наивный хендлер, читающий тело целиком (как FastAPI под капотом).
+        while True:
+            message = await receive()
+            if not message.get("more_body", False):
+                break
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok", "more_body": False})
+
+    mw = app_module._ChunkedBodyLimitMiddleware(inner_app, max_bytes=max_bytes)
+
+    messages = list(chunks)
+    sent = []
+
+    async def receive():
+        return messages.pop(0)
+
+    async def send(message):
+        sent.append(message)
+
+    scope = {"type": "http", "method": "POST", "path": "/api/predict", "headers": []}
+    asyncio.run(mw(scope, receive, send))
+    return sent
+
+
+def test_chunked_body_without_content_length_over_limit_is_rejected():
+    """issue #113: Transfer-Encoding: chunked без Content-Length раньше обходил
+    64KB-лимит целиком (проверка была только по заголовку) — теперь стриминговый
+    подсчёт байт ловит его независимо от заголовков."""
+    chunk = b"x" * 40
+    sent = _run_chunked_middleware(
+        [
+            {"type": "http.request", "body": chunk, "more_body": True},
+            {"type": "http.request", "body": chunk, "more_body": True},
+            {"type": "http.request", "body": chunk, "more_body": False},  # 120 > 100
+        ],
+        max_bytes=100,
+    )
+    assert sent[0]["type"] == "http.response.start"
+    assert sent[0]["status"] == 413
+    headers = {k.decode(): v.decode() for k, v in sent[0]["headers"]}
+    assert headers.get("x-content-type-options") == "nosniff"
+    assert headers.get("content-security-policy", "").startswith("default-src 'self'")
+
+
+def test_chunked_body_without_content_length_under_limit_passes_through():
+    chunk = b"x" * 30
+    sent = _run_chunked_middleware(
+        [
+            {"type": "http.request", "body": chunk, "more_body": True},
+            {"type": "http.request", "body": chunk, "more_body": False},  # 60 <= 100
+        ],
+        max_bytes=100,
+    )
+    assert sent[0]["type"] == "http.response.start"
+    assert sent[0]["status"] == 200
+
+
+def test_rate_limit_survives_concurrent_access(monkeypatch):
+    """issue #113: _check_rate_limit мутирует общий словарь (del при вычистке,
+    вставка нового ключа через defaultdict) — без блокировки конкурентные
+    потоки threadpool'а могут словить RuntimeError на итерации словаря."""
+    import concurrent.futures
+
+    from starlette.requests import Request
+
+    monkeypatch.setattr(app_module, "MAX_RATE_KEYS", 5)  # форсируем путь вычистки
+    app_module._rate.clear()
+
+    def make_request(ip: str) -> Request:
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/predict",
+            "headers": [],
+            "client": (ip, 1234),
+            "server": ("testserver", 80),
+            "scheme": "http",
+            "query_string": b"",
+        }
+        return Request(scope)
+
+    errors = []
+
+    def worker(i):
+        try:
+            for _ in range(200):
+                app_module._check_rate_limit(make_request(f"10.0.0.{i % 50}"))
+        except app_module.HTTPException:
+            pass  # 429 ожидаемо при повторных запросах с одного IP
+        except Exception as exc:  # noqa: BLE001 — именно это ловим (регрессия)
+            errors.append(exc)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=32) as pool:
+        list(pool.map(worker, range(64)))
+
+    assert errors == []
