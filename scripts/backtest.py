@@ -55,13 +55,20 @@ from krisha.config import DB_PATH, RANDOM_STATE, REPORTS_DIR
 from krisha.features import (
     ALL_FEATURES,
     CAT_FEATURES,
-    TARGET,
     build_features,
     clean,
     compute_ppsm_maps,
 )
 from krisha.interval import MIN_INTERVAL_WIDTH_LOG, finalize_interval
 from krisha.spatial import build_spatial_ref, self_indices_for
+from krisha.targets import (
+    TARGET_MODES,
+    add_target_column,
+    build_city_index,
+    freshness_weight,
+    predict_price,
+    target_col,
+)
 from krisha.train import (
     CQR_SCALE_MAX,
     INTERVAL_TARGET_COVERAGE,
@@ -215,14 +222,38 @@ def run_fold(
     test_raw: pd.DataFrame,
     point_iterations: int = POINT_ITERATIONS_DEFAULT,
     quantile_iterations: int = QUANTILE_ITERATIONS_DEFAULT,
+    target_mode: str = "price",
+    freshness_half_life_days: float | None = None,
+    train_window_weeks: int | None = None,
+    as_of: pd.Timestamp | None = None,
 ) -> pd.DataFrame | None:
     """Обучает point + quantile модели на train_raw (референсы — только по
     train_raw, не train+calib — issue #130 требование), калибрует интервал по
     calib_raw, предсказывает test_raw. Возвращает per-row DataFrame или None,
     если фолд недостаточно полон (мало train/calib/test) для честной оценки.
+
+    issue #131 — три доп. режима эксперимента (ALL_FEATURES не меняются):
+    - target_mode: "price" (прод, log1p(price)) | "ppsm" (log(price/area)) |
+      "index_residual" (log(price/area) минус лог city_index недели, см.
+      krisha.targets). Оценка/coverage всегда в ₸ (обратный переход перед
+      метриками), поэтому сравнение режимов честное.
+    - freshness_half_life_days: вес train-строк 0.5**(age_days/half_life) —
+      age_days относительно `as_of` (граница фолда). None — веса не заданы
+      (все строки равны, как раньше).
+    - train_window_weeks: обрезает train_raw до последних N недель перед
+      `as_of` (None — вся доступная история, как раньше).
     """
     if len(train_raw) < 30 or len(calib_raw) < 5 or len(test_raw) < 5:
         return None
+    if as_of is None:
+        as_of = pd.to_datetime(train_raw["first_seen"], utc=True, errors="coerce").max()
+
+    if train_window_weeks is not None:
+        cutoff = pd.Timestamp(as_of) - pd.Timedelta(weeks=train_window_weeks)
+        fs = pd.to_datetime(train_raw["first_seen"], utc=True, errors="coerce")
+        train_raw = train_raw[fs >= cutoff].reset_index(drop=True)
+        if len(train_raw) < 30:
+            return None
 
     ppsm_maps = compute_ppsm_maps(train_raw)
     spatial_ref = build_spatial_ref(train_raw)
@@ -233,7 +264,18 @@ def run_fold(
     calib_df = build_features(calib_raw, ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)
     test_df = build_features(test_raw, ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)
 
-    train_pool = Pool(train_df[ALL_FEATURES], train_df[TARGET], cat_features=CAT_FEATURES)
+    index_ref = build_city_index(train_raw) if target_mode == "index_residual" else None
+    tcol = target_col(target_mode)
+    train_df, _ = add_target_column(train_df, target_mode, index_ref=index_ref)
+    calib_df, _ = add_target_column(calib_df, target_mode, index_ref=index_ref)
+
+    weight = None
+    if freshness_half_life_days is not None:
+        weight = freshness_weight(train_df["first_seen"], as_of, freshness_half_life_days)
+
+    train_pool = Pool(
+        train_df[ALL_FEATURES], train_df[tcol], cat_features=CAT_FEATURES, weight=weight,
+    )
     calib_pool = Pool(calib_df[ALL_FEATURES], cat_features=CAT_FEATURES)
     test_pool = Pool(test_df[ALL_FEATURES], cat_features=CAT_FEATURES)
 
@@ -242,14 +284,16 @@ def run_fold(
         loss_function="RMSE", random_seed=RANDOM_STATE, verbose=False,
     )
     point_model.fit(train_pool)
-    y_point_test = np.expm1(point_model.predict(test_pool))
+    y_point_test = predict_price(
+        point_model.predict(test_pool), test_df["area"], target_mode, index_ref=index_ref,
+    )
     y_base_test = baseline_predict(train_df, test_df)
 
     # issue #132: одна MultiQuantile-модель вместо model_lo/model_hi — тот же
     # метод, что и прод train.py, чтобы стенд честно сравнивал будущий прод.
     quantile_model = _fit_multiquantile(train_pool, quantile_iterations)
 
-    y_cal = calib_df[TARGET].to_numpy()
+    y_cal = calib_df[tcol].to_numpy()
     preds_cal = quantile_model.predict(calib_pool)
     lo_cal, hi_cal = preds_cal[:, 0], preds_cal[:, 1]
     width_cal = np.maximum(hi_cal - lo_cal, MIN_INTERVAL_WIDTH_LOG)
@@ -261,10 +305,16 @@ def run_fold(
     preds_test = quantile_model.predict(test_pool)
     lo_test, hi_test = preds_test[:, 0], preds_test[:, 1]
     width_test = np.maximum(hi_test - lo_test, MIN_INTERVAL_WIDTH_LOG)
-    log_lo = np.clip(lo_test - scale * width_test, -30.0, 30.0)
-    log_hi = np.clip(hi_test + scale * width_test, -30.0, 30.0)
-    price_lo = np.expm1(log_lo)
-    price_hi = np.expm1(log_hi)
+    log_lo = lo_test - scale * width_test
+    log_hi = hi_test + scale * width_test
+    # issue #131: клип теперь в пространстве таргета (может быть log_price ИЛИ
+    # log_ppsm[-index]) — граница +-30 остаётся безопасной для expm1/exp в
+    # predict_price (все три режима — плавные монотонные функции без насыщения
+    # ниже этого диапазона).
+    log_lo = np.clip(log_lo, -30.0, 30.0)
+    log_hi = np.clip(log_hi, -30.0, 30.0)
+    price_lo = predict_price(log_lo, test_df["area"], target_mode, index_ref=index_ref)
+    price_hi = predict_price(log_hi, test_df["area"], target_mode, index_ref=index_ref)
     price_lo, price_hi = finalize_interval(y_point_test, price_lo, price_hi)
 
     y_true = test_df["price"].to_numpy()
@@ -360,7 +410,12 @@ def run_backtest(
     window_days: int = FOLD_WINDOW_DAYS,
     point_iterations: int = POINT_ITERATIONS_DEFAULT,
     quantile_iterations: int = QUANTILE_ITERATIONS_DEFAULT,
+    target_mode: str = "price",
+    freshness_half_life_days: float | None = None,
+    train_window_weeks: int | None = None,
 ) -> tuple[pd.DataFrame, dict]:
+    if target_mode not in TARGET_MODES:
+        raise ValueError(f"target_mode должен быть один из {TARGET_MODES}, получено {target_mode!r}")
     listings, price_history = load_raw_with_history(db_path)
     max_ts = listings["first_seen"].max()
     folds = make_folds(max_ts, n_folds=n_folds, window_days=window_days)
@@ -373,6 +428,8 @@ def run_backtest(
         preds = run_fold(
             train_raw, calib_raw, test_raw,
             point_iterations=point_iterations, quantile_iterations=quantile_iterations,
+            target_mode=target_mode, freshness_half_life_days=freshness_half_life_days,
+            train_window_weeks=train_window_weeks, as_of=fold.calib_start,
         )
         if preds is None:
             skipped += 1
@@ -400,6 +457,11 @@ def run_backtest(
     report["per_fold"] = fold_summaries
     report["n_folds_run"] = len(all_preds)
     report["n_folds_skipped"] = skipped
+    report["config"] = {
+        "target_mode": target_mode,
+        "freshness_half_life_days": freshness_half_life_days,
+        "train_window_weeks": train_window_weeks,
+    }
     return combined, report
 
 
@@ -492,6 +554,18 @@ def main() -> None:
     parser.add_argument("--point-iterations", type=int, default=POINT_ITERATIONS_DEFAULT)
     parser.add_argument("--quantile-iterations", type=int, default=QUANTILE_ITERATIONS_DEFAULT)
     parser.add_argument(
+        "--target-mode", choices=TARGET_MODES, default="price",
+        help="issue #131: таргет точечной/квантильной модели (см. krisha.targets)",
+    )
+    parser.add_argument(
+        "--freshness-half-life-days", type=float, default=None,
+        help="issue #131: вес train-строк 0.5**(age_days/half_life); по умолчанию без весов",
+    )
+    parser.add_argument(
+        "--train-window-weeks", type=int, default=None,
+        help="issue #131: обрезать train до последних N недель перед фолдом; по умолчанию вся история",
+    )
+    parser.add_argument(
         "--compare", nargs=2, metavar=("CSV_A", "CSV_B"),
         help="Сравнить два готовых *_predictions.csv вместо нового прогона",
     )
@@ -512,6 +586,8 @@ def main() -> None:
     combined, report = run_backtest(
         db_path=args.db, n_folds=args.n_folds, window_days=args.window_days,
         point_iterations=args.point_iterations, quantile_iterations=args.quantile_iterations,
+        target_mode=args.target_mode, freshness_half_life_days=args.freshness_half_life_days,
+        train_window_weeks=args.train_window_weeks,
     )
     csv_path = out_dir / f"{args.label}_predictions.csv"
     combined.to_csv(csv_path, index=False)
