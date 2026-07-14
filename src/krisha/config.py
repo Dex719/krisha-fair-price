@@ -16,6 +16,11 @@ MODEL_PATH = MODELS_DIR / "model.cbm"
 MODEL_LO_PATH = MODELS_DIR / "model_lo.cbm"  # квантиль q10 для интервала цены
 MODEL_HI_PATH = MODELS_DIR / "model_hi.cbm"  # квантиль q90 для интервала цены
 MODEL_META_PATH = MODELS_DIR / "model_meta.json"
+# issue #106: APE-пары (новая/старая модель на одном test-сплите) для
+# парного бутстрепа в scripts/model_gate.py — пишется только когда есть
+# честное сравнение (train() запущен с --compare-old и старая модель
+# оценилась без ошибок).
+MODEL_GATE_SAMPLES_PATH = MODELS_DIR / "model_gate_samples.json"
 COMPLEXES_SNAPSHOT_PATH = MODELS_DIR / "complexes.json"
 OSM_POIS_SNAPSHOT_PATH = MODELS_DIR / "osm_pois.json"
 OSM_ZONES_SNAPSHOT_PATH = MODELS_DIR / "osm_zones.json"
@@ -72,5 +77,20 @@ AREA_MIN = 10.0              # м²
 AREA_MAX = 500.0             # м²
 PPSM_MIN = 100_000           # ₸/м² — ниже почти наверняка мусор
 PPSM_MAX = 5_000_000         # ₸/м²
+
+# issue #104/#108: грубый bbox Алматы (город + пригороды с запасом) — координаты
+# за его пределами почти всегда чужой город (Астана, Шымкент...) в базе из-за
+# битого парсинга/ручного ввода, а не реальный Алматы.
+ALMATY_BBOX = {
+    "lat_min": 42.95,
+    "lat_max": 43.50,
+    "lon_min": 76.55,
+    "lon_max": 77.25,
+}
+
+# issue #104: сколько дней после delisted_at ещё доверяем последней цене в
+# train (лот снят с продажи недавно — цена ещё рыночная; снят месяцы назад —
+# устарела, но is_active было бы слишком строго и выкинуло бы половину истории).
+STALE_DELISTED_DAYS = 90
 
 RANDOM_STATE = 42
