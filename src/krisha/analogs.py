@@ -14,6 +14,7 @@ import sqlite3
 from typing import Any
 
 from krisha.config import DB_PATH
+from krisha.db import use_conn
 
 logger = logging.getLogger(__name__)
 
@@ -51,16 +52,24 @@ def _distance(subject: dict[str, Any], cand: sqlite3.Row) -> float:
 
 
 def find_analogs(
-    subject: dict[str, Any], db_path=DB_PATH, k: int = MAX_ANALOGS
+    subject: dict[str, Any],
+    db_path=DB_PATH,
+    k: int = MAX_ANALOGS,
+    conn: sqlite3.Connection | None = None,
 ) -> list[dict[str, Any]]:
-    """Топ-k активных объявлений, похожих на subject. Ошибки → [] (fail-soft)."""
+    """Топ-k активных объявлений, похожих на subject. Ошибки → [] (fail-soft).
+
+    issue #110/#115: `get_conn`/`use_conn` вместо голого `sqlite3.connect` —
+    получает WAL/busy_timeout (не гоняется мимо них на самом горячем пути,
+    вызывается на каждый /api/predict) и переиспользует соединение,
+    открытое на весь запрос, если оно передано вызывающим кодом.
+    """
     rooms, area = subject.get("rooms"), subject.get("area")
     if not rooms or not area:
         return []
     try:
-        with sqlite3.connect(db_path) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(
+        with use_conn(conn, db_path) as c:
+            rows = c.execute(
                 "SELECT id, url, title, price, area, rooms, floor, total_floors, "
                 "year_built, district, lat, lon FROM listings "
                 "WHERE is_active = 1 AND price > 0 AND area > 0 AND rooms = ? "

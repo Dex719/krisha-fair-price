@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from krisha.config import DB_PATH
-from krisha.db import get_conn, get_price_history
+from krisha.db import get_price_history, use_conn
 
 MIN_DELISTED_SAMPLE = 15  # меньше снятых аналогов → оценку не показываем
 MIN_BAND_SAMPLE = 20      # ценовые полосы — только на приличной выборке
@@ -43,21 +43,25 @@ def _parse_dt(value: str | None) -> datetime | None:
     return dt.replace(tzinfo=dt.tzinfo or timezone.utc)
 
 
-def price_history_points(listing_id: int | None) -> list[dict[str, Any]]:
+def price_history_points(
+    listing_id: int | None, conn: sqlite3.Connection | None = None
+) -> list[dict[str, Any]]:
     """Точки истории цены для графика. Объявления нет в базе → []."""
     if listing_id is None:
         return []
     try:
-        return get_price_history(int(listing_id))
+        return get_price_history(int(listing_id), conn=conn)
     except (sqlite3.OperationalError, FileNotFoundError):
         return []
 
 
-def days_on_market(listing_id: int | None) -> int | None:
+def days_on_market(
+    listing_id: int | None, conn: sqlite3.Connection | None = None
+) -> int | None:
     """Сколько дней объявление в выдаче (first_seen → last_seen/now)."""
     if listing_id is None:
         return None
-    with get_conn(DB_PATH) as conn:
+    with use_conn(conn, DB_PATH) as conn:
         try:
             row = conn.execute(
                 "SELECT first_seen, is_active, delisted_at, last_seen "
@@ -123,6 +127,7 @@ def liquidity_estimate(
     rooms: int | None,
     diff_pct: float | None = None,
     db_path: Path | str = DB_PATH,
+    conn: sqlite3.Connection | None = None,
 ) -> dict[str, Any] | None:
     """«Срок продажи» v1: медианные дни до снятия у похожих объявлений.
 
@@ -139,7 +144,7 @@ def liquidity_estimate(
     """
     if not district or rooms is None:
         return None
-    with get_conn(db_path) as conn:
+    with use_conn(conn, db_path) as conn:
         rows = _delisted_rows(conn, district, rooms)
         result: dict[str, Any] | None = None
         if len(rows) >= MIN_DELISTED_SAMPLE:
