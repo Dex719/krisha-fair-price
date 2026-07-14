@@ -15,8 +15,15 @@ RENT_DB_PATH = DATA_DIR / "krisha_rent.db"
 MODEL_PATH = MODELS_DIR / "model.cbm"
 # issue #132: одна MultiQuantile-модель (q10+q90 разом) вместо двух
 # отдельных Quantile-моделей — квантили гарантированно не пересекаются,
-# обучение быстрее. Заменяет прежние MODEL_LO_PATH/MODEL_HI_PATH.
+# обучение быстрее. train.py больше НЕ пишет MODEL_LO_PATH/MODEL_HI_PATH.
 MODEL_QUANTILE_PATH = MODELS_DIR / "model_quantile.cbm"
+# Легаси-пути (до issue #132) — держим только как источник для миграционного
+# фолбэка в predict.load_interval_models(): model_quantile.cbm появится лишь
+# после ближайшего retrain, а до этого прод должен продолжать отдавать
+# интервал по уже опубликованным старым моделям, а не падать на плоский
+# ±10%. Удалить вместе с фолбэком, когда retrain подтвердит новую модель.
+MODEL_LO_PATH = MODELS_DIR / "model_lo.cbm"
+MODEL_HI_PATH = MODELS_DIR / "model_hi.cbm"
 MODEL_META_PATH = MODELS_DIR / "model_meta.json"
 # issue #106: APE-пары (новая/старая модель на одном test-сплите) для
 # парного бутстрепа в scripts/model_gate.py — пишется только когда есть
