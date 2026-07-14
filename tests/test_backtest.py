@@ -203,6 +203,49 @@ def test_run_backtest_end_to_end(tmp_path, monkeypatch):
         assert col in combined.columns
 
 
+@pytest.mark.parametrize("target_mode", ["price", "ppsm", "index_residual"])
+def test_run_backtest_end_to_end_all_target_modes(tmp_path, monkeypatch, target_mode):
+    """issue #131: все три режима таргета должны честно прогонять стенд и
+    возвращать метрики в ₸ (обратный переход применяется всегда)."""
+    monkeypatch.setattr("krisha.zones.load_zone_index", lambda *a, **k: None)
+    db = tmp_path / f"big_{target_mode}.db"
+    _synthetic_db(db)
+    combined, report = bt.run_backtest(
+        db_path=db, n_folds=2, window_days=7, point_iterations=30, quantile_iterations=30,
+        target_mode=target_mode,
+    )
+    assert report["n_folds_run"] >= 1
+    o = report["overall"]
+    assert o["n"] == len(combined)
+    assert 0 <= o["coverage"] <= 1
+    assert o["mape"] > 0
+    assert np.isfinite(o["mape"])
+    assert (combined["price_pred"] > 0).all()
+    assert report["config"]["target_mode"] == target_mode
+
+
+def test_run_backtest_with_freshness_weight_and_train_window(tmp_path, monkeypatch):
+    monkeypatch.setattr("krisha.zones.load_zone_index", lambda *a, **k: None)
+    db = tmp_path / "big_fresh.db"
+    _synthetic_db(db, weeks=20)
+    combined, report = bt.run_backtest(
+        db_path=db, n_folds=2, window_days=7, point_iterations=30, quantile_iterations=30,
+        target_mode="ppsm", freshness_half_life_days=90, train_window_weeks=8,
+    )
+    assert report["n_folds_run"] >= 1
+    assert report["config"]["freshness_half_life_days"] == 90
+    assert report["config"]["train_window_weeks"] == 8
+    assert (combined["price_pred"] > 0).all()
+
+
+def test_run_backtest_rejects_unknown_target_mode(tmp_path, monkeypatch):
+    monkeypatch.setattr("krisha.zones.load_zone_index", lambda *a, **k: None)
+    db = tmp_path / "big_bad.db"
+    _synthetic_db(db)
+    with pytest.raises(ValueError):
+        bt.run_backtest(db_path=db, n_folds=2, target_mode="bogus")
+
+
 def test_run_fold_returns_none_when_too_small():
     empty = pd.DataFrame()
     assert bt.run_fold(empty, empty, empty) is None
