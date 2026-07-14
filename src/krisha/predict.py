@@ -13,7 +13,13 @@ from typing import Any
 import numpy as np
 from catboost import CatBoostRegressor, Pool
 
-from krisha.config import MODEL_HI_PATH, MODEL_LO_PATH, MODEL_META_PATH, MODEL_PATH
+from krisha.config import (
+    MODEL_HI_PATH,
+    MODEL_LO_PATH,
+    MODEL_META_PATH,
+    MODEL_PATH,
+    MODEL_QUANTILE_PATH,
+)
 from krisha.features import listing_to_frame
 from krisha.geo import build_location_details
 from krisha.interval import MIN_INTERVAL_WIDTH_LOG, finalize_interval
@@ -119,17 +125,47 @@ def load_model() -> tuple[CatBoostRegressor, dict]:
     return model, meta
 
 
+class _LegacyQuantilePair:
+    """Миграционный фолбэк (issue #132): до следующего retrain на проде ещё
+    может лежать старая пара model_lo/model_hi (раздельные Quantile-модели),
+    а не новая MODEL_QUANTILE_PATH. Обёртка имитирует интерфейс
+    MultiQuantile-модели (`.predict(pool)` → `(n, 2)`), чтобы остальной код
+    (predict_from_listing/_apply_cqr) не знал о разнице форматов."""
+
+    def __init__(self, model_lo: CatBoostRegressor, model_hi: CatBoostRegressor) -> None:
+        self._lo = model_lo
+        self._hi = model_hi
+
+    def predict(self, pool: Pool) -> np.ndarray:
+        lo = np.asarray(self._lo.predict(pool))
+        hi = np.asarray(self._hi.predict(pool))
+        return np.column_stack([lo, hi])
+
+
 @lru_cache(maxsize=1)
-def load_interval_models() -> tuple[CatBoostRegressor, CatBoostRegressor] | None:
-    """Квантильные модели нижней/верхней границы цены. None — если их нет
-    (старая модель без интервала): тогда вердикт падает на плоский ±10%."""
-    if not (MODEL_LO_PATH.exists() and MODEL_HI_PATH.exists()):
-        return None
-    lo = CatBoostRegressor()
-    lo.load_model(str(MODEL_LO_PATH))
-    hi = CatBoostRegressor()
-    hi.load_model(str(MODEL_HI_PATH))
-    return lo, hi
+def load_interval_models() -> CatBoostRegressor | _LegacyQuantilePair | None:
+    """MultiQuantile-модель (issue #132: одна модель q10+q90 вместо
+    model_lo/model_hi) для доверительного интервала цены. `model.predict(pool)`
+    возвращает `(n, 2)`: столбец 0 = q10 (lo), столбец 1 = q90 (hi).
+
+    Пока model_quantile.cbm не появился (ждём ближайший еженедельный
+    retrain — issue #132 меняет только пайплайн обучения, старые
+    опубликованные веса остаются на диске до тех пор), используем старую
+    пару model_lo/model_hi через `_LegacyQuantilePair`, чтобы прод не терял
+    доверительный интервал и не падал на плоский вердикт ±10%. None — только
+    если вообще нет ни новой, ни старой модели (совсем свежий деплой без
+    интервала)."""
+    if MODEL_QUANTILE_PATH.exists():
+        quantile_model = CatBoostRegressor()
+        quantile_model.load_model(str(MODEL_QUANTILE_PATH))
+        return quantile_model
+    if MODEL_LO_PATH.exists() and MODEL_HI_PATH.exists():
+        model_lo = CatBoostRegressor()
+        model_lo.load_model(str(MODEL_LO_PATH))
+        model_hi = CatBoostRegressor()
+        model_hi.load_model(str(MODEL_HI_PATH))
+        return _LegacyQuantilePair(model_lo, model_hi)
+    return None
 
 
 def _verdict(actual: float, fair: float) -> str:
@@ -257,21 +293,20 @@ def predict_from_listing(
     pool = Pool(df[features], cat_features=meta["cat_features"])
     fair_price = float(np.expm1(model.predict(pool)[0]))
 
-    # Доверительный интервал: квантильные модели + CQR-сдвиг из меты.
+    # Доверительный интервал: MultiQuantile-модель (issue #132) + CQR-сдвиг из меты.
     fair_low = fair_high = None
-    interval = load_interval_models()
-    if interval is not None:
-        lo_model, hi_model = interval
+    quantile_model = load_interval_models()
+    if quantile_model is not None:
         interval_meta = meta.get("metrics", {}).get("interval", {})
-        lo_raw = float(lo_model.predict(pool)[0])
-        hi_raw = float(hi_model.predict(pool)[0])
+        quantile_pred = quantile_model.predict(pool)[0]
+        lo_raw, hi_raw = float(quantile_pred[0]), float(quantile_pred[1])
         log_lo, log_hi = _apply_cqr(lo_raw, hi_raw, interval_meta)
         fair_low = float(np.expm1(log_lo))
         fair_high = float(np.expm1(log_hi))
         fair_low, fair_high = finalize_interval(fair_price, fair_low, fair_high)
 
     actual = listing.get("price")
-    if actual and interval is not None:
+    if actual and quantile_model is not None:
         verdict = _verdict_interval(actual, fair_low, fair_high)
     elif actual:
         verdict = _verdict(actual, fair_price)
