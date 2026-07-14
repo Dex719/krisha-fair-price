@@ -36,10 +36,9 @@ import httpx
 from krisha.config import (
     COMPLEXES_SNAPSHOT_PATH,
     DB_PATH,
-    MODEL_HI_PATH,
-    MODEL_LO_PATH,
     MODEL_META_PATH,
     MODEL_PATH,
+    MODEL_QUANTILE_PATH,
     MODELS_DIR,
     SPATIAL_REF_PATH,
 )
@@ -57,8 +56,7 @@ MODEL_ASSET_NAME = "models.tar.gz"
 # не входят (не нужны для инференса, есть локально из репо/рескрейпа).
 MODEL_ARTIFACT_PATHS = [
     MODEL_PATH,
-    MODEL_LO_PATH,
-    MODEL_HI_PATH,
+    MODEL_QUANTILE_PATH,
     MODEL_META_PATH,
     SPATIAL_REF_PATH,
     COMPLEXES_SNAPSHOT_PATH,
