@@ -25,7 +25,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from krisha.config import DB_PATH
-from krisha.db import get_conn
+from krisha.db import use_conn
 from krisha.llm_flags import (
     GEMINI_API_KEY_ENV,
     GEMINI_MODEL,
@@ -85,9 +85,11 @@ def _photos_hash(photos: list[str]) -> str:
     return hashlib.sha256("|".join(photos[:MAX_PHOTOS]).encode()).hexdigest()[:16]
 
 
-def get_cached(listing_id: int, photos: list[str]) -> dict[str, str] | None:
+def get_cached(
+    listing_id: int, photos: list[str], conn: sqlite3.Connection | None = None
+) -> dict[str, str] | None:
     try:
-        with get_conn(DB_PATH) as conn:
+        with use_conn(conn, DB_PATH) as conn:
             conn.executescript(CACHE_SCHEMA)
             row = conn.execute(
                 "SELECT photos_hash, level, comment FROM vision_renovation "
@@ -104,9 +106,18 @@ def get_cached(listing_id: int, photos: list[str]) -> dict[str, str] | None:
             "comment": row["comment"] or ""}
 
 
-def save_cache(listing_id: int, photos: list[str], level: str, comment: str) -> None:
+def save_cache(
+    listing_id: int,
+    photos: list[str],
+    level: str,
+    comment: str,
+    conn: sqlite3.Connection | None = None,
+) -> None:
+    # conn.commit() ниже — намеренно даже когда conn общий на весь запрос
+    # (issue #110): фото-анализ стоит реального вызова к Gemini, кэш не
+    # должен теряться из-за отката, если что-то дальше в том же запросе упадёт.
     try:
-        with get_conn(DB_PATH) as conn:
+        with use_conn(conn, DB_PATH) as conn:
             conn.executescript(CACHE_SCHEMA)
             conn.execute(
                 "INSERT INTO vision_renovation (listing_id, photos_hash, model, level, comment) "
@@ -209,14 +220,16 @@ def _gemini_assess(images: list[tuple[str, bytes]], api_key: str) -> dict | None
     return parsed
 
 
-def assess_renovation(listing: dict[str, Any], live: bool = True) -> dict[str, str] | None:
+def assess_renovation(
+    listing: dict[str, Any], live: bool = True, conn: sqlite3.Connection | None = None
+) -> dict[str, str] | None:
     """Оценка ремонта по фото: кэш, при live=True — живой запрос к Gemini."""
     listing_id = listing.get("id")
     photos = [p for p in (listing.get("photos") or []) if isinstance(p, str)]
     if not listing_id or not photos:
         return None
 
-    cached = get_cached(listing_id, photos)
+    cached = get_cached(listing_id, photos, conn=conn)
     if cached is not None:
         return cached
     if not live:
@@ -232,6 +245,6 @@ def assess_renovation(listing: dict[str, Any], live: bool = True) -> dict[str, s
     if parsed is None:
         return None
     comment = (parsed.get("comment") or "").strip()[:200]
-    save_cache(listing_id, photos, parsed["level"], comment)
+    save_cache(listing_id, photos, parsed["level"], comment, conn=conn)
     return {"level": parsed["level"], "label": LEVELS_RU[parsed["level"]],
             "comment": comment}

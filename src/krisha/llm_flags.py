@@ -20,7 +20,7 @@ from typing import Any
 import httpx
 
 from krisha.config import DB_PATH
-from krisha.db import get_conn
+from krisha.db import get_conn, use_conn
 
 logger = logging.getLogger(__name__)
 
@@ -112,10 +112,12 @@ def _ensure_cache_table(conn: sqlite3.Connection) -> None:
     conn.executescript(CACHE_SCHEMA)
 
 
-def get_cached_flags(listing_id: int, text: str) -> list[str] | None:
+def get_cached_flags(
+    listing_id: int, text: str, conn: sqlite3.Connection | None = None
+) -> list[str] | None:
     """Флаги из кэша; None — не анализировали (или описание изменилось)."""
     try:
-        with get_conn(DB_PATH) as conn:
+        with use_conn(conn, DB_PATH) as conn:
             _ensure_cache_table(conn)
             row = conn.execute(
                 "SELECT desc_hash, flags FROM llm_flags WHERE listing_id = ?",
@@ -171,8 +173,14 @@ def get_cached_flags_bulk(
     return out
 
 
-def save_flags(listing_id: int, text: str, flags: list[str]) -> None:
-    with get_conn(DB_PATH) as conn:
+def save_flags(
+    listing_id: int, text: str, flags: list[str], conn: sqlite3.Connection | None = None
+) -> None:
+    # Явный conn.commit() ниже — намеренно, даже когда conn общий на весь
+    # /api/predict запрос (issue #110): кэш LLM-флагов долговечен независимо
+    # от того, упадёт ли что-то дальше в том же запросе (иначе откат в
+    # finally отменил бы уже потраченный вызов к Gemini).
+    with use_conn(conn, DB_PATH) as conn:
         _ensure_cache_table(conn)
         conn.execute(
             "INSERT INTO llm_flags (listing_id, desc_hash, model, flags) "
@@ -265,7 +273,10 @@ def analyze_one(
 
 
 def get_flags_raw(
-    listing: dict[str, Any], live: bool = True, max_retries: int = MAX_RETRIES
+    listing: dict[str, Any],
+    live: bool = True,
+    max_retries: int = MAX_RETRIES,
+    conn: sqlite3.Connection | None = None,
 ) -> list[str] | None:
     """Сырые ключи флагов для объявления: кэш, при live и ключе — один запрос.
 
@@ -275,12 +286,12 @@ def get_flags_raw(
     listing_id, text = listing.get("id"), listing.get("description")
     if not listing_id or not text or len(text.strip()) < 20:
         return []
-    flags = get_cached_flags(listing_id, text)
+    flags = get_cached_flags(listing_id, text, conn=conn)
     if flags is None and live and os.environ.get(GEMINI_API_KEY_ENV):
         flags = analyze_one(listing_id, text, max_retries=max_retries)
         if flags is not None:
             try:
-                save_flags(listing_id, text, flags)
+                save_flags(listing_id, text, flags, conn=conn)
             except sqlite3.OperationalError:  # read-only FS и т.п. — не страшно
                 logger.warning("llm_flags: не удалось сохранить кэш")
     return flags
@@ -298,10 +309,15 @@ def flags_to_badges(flags: list[str] | None) -> list[dict[str, str]]:
 
 
 def build_text_flags(
-    listing: dict[str, Any], live: bool = True, max_retries: int = MAX_RETRIES
+    listing: dict[str, Any],
+    live: bool = True,
+    max_retries: int = MAX_RETRIES,
+    conn: sqlite3.Connection | None = None,
 ) -> list[dict[str, str]]:
     """Бейджи «Анализ описания» для карточки: [{kind, label}, ...].
 
     Берём из кэша; если нет и есть ключ — один живой запрос (fail-soft).
     """
-    return flags_to_badges(get_flags_raw(listing, live=live, max_retries=max_retries))
+    return flags_to_badges(
+        get_flags_raw(listing, live=live, max_retries=max_retries, conn=conn)
+    )

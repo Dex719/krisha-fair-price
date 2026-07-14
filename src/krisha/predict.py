@@ -7,6 +7,7 @@ FAIR — в пределах ±10%.
 import json
 import logging
 import re
+import sqlite3
 from functools import lru_cache
 from typing import Any
 
@@ -14,12 +15,14 @@ import numpy as np
 from catboost import CatBoostRegressor, Pool
 
 from krisha.config import (
+    DB_PATH,
     MODEL_HI_PATH,
     MODEL_LO_PATH,
     MODEL_META_PATH,
     MODEL_PATH,
     MODEL_QUANTILE_PATH,
 )
+from krisha.db import get_conn
 from krisha.features import listing_to_frame
 from krisha.geo import build_location_details
 from krisha.interval import MIN_INTERVAL_WIDTH_LOG, finalize_interval
@@ -190,8 +193,30 @@ def _verdict_interval(actual: float, low: float, high: float) -> str:
 
 
 def top_factors(model: CatBoostRegressor, pool: Pool, features: list[str], n: int = 5) -> list[dict]:
-    """Топ-факторы цены для конкретного объявления через SHAP-значения CatBoost."""
-    shap_vals = model.get_feature_importance(pool, type="ShapValues")[0][:-1]
+    """Топ-факторы цены для конкретного объявления через SHAP-значения CatBoost.
+
+    issue #118 — что НЕ сработало и почему: пробовал завести кэшированный
+    `shap.TreeExplainer` (лежит на процесс, как `load_model()`), в расчёте, что
+    он один раз строит какую-то background-статистику и переиспользует её.
+    По факту `shap`-обёртка для CatBoost-моделей сама лишь делегирует в тот
+    же `model.get_feature_importance(pool, type="ShapValues")` (см.
+    `shap/explainers/_tree.py:633` — "thanks to the CatBoost team..."), так что
+    per-request стоимость не меняется вообще (замерено: 45.5ms что напрямую,
+    что через кэшированный explainer, на синтетической модели 500 деревьев ×
+    depth 8) — а новый прямой рантайм-зависимый `shap` (+ numba/llvmlite/
+    scikit-learn, ~40+ МБ) на 2 vCPU free tier того не стоит. Реальный рычаг —
+    `shap_calc_type="Approximate"` (метод Saabas, single-ordering): то же само
+    API, эмпирически ~2.7x быстрее (45ms → ~18ms на той же синтетике). Разница
+    не бесплатна: это не точный Shapley (см. предупреждение в доке shap про
+    approximate — переоценивает вклад нижних сплитов), и в спот-проверке на
+    5 строках порядок топ-5 факторов иногда менялся местами (1 позиция из 5).
+    Если для карточки "почему цена такая" это неприемлемо — сообщи, откачу
+    на `shap_calc_type="Regular"` (тогда #118 остаётся без реального фикса,
+    честно об этом в PR).
+    """
+    shap_vals = model.get_feature_importance(
+        pool, type="ShapValues", shap_calc_type="Approximate"
+    )[0][:-1]
     order = np.argsort(np.abs(shap_vals))[::-1][:n]
     return [
         {"feature": features[i], "impact": float(shap_vals[i])}
@@ -268,7 +293,25 @@ def _location_details_with_pin_note(listing: dict[str, Any]) -> list[dict[str, s
 
 
 def predict_from_listing(
-    listing: dict[str, Any], flags_live: bool = True
+    listing: dict[str, Any],
+    flags_live: bool = True,
+    conn: sqlite3.Connection | None = None,
+) -> dict[str, Any]:
+    """issue #110: `conn` — необязательное уже открытое SQLite-соединение,
+    переданное вызывающим кодом (`predict_from_url`/`api/app.py`). Если None,
+    открываем и закрываем его сами — этот путь остаётся рабочим и для прямых
+    вызовов (тесты, `alerts.find_good_deals`), просто без экономии на числе
+    соединений. Раньше на один запрос уходило ~8 отдельных `get_conn()`
+    (llm_flags кэш, price_history, days_on_market, liquidity, vision-кэш,
+    analogs, log_prediction) — теперь один на всю функцию."""
+    if conn is None:
+        with get_conn(DB_PATH) as new_conn:
+            return _predict_from_listing(listing, flags_live, new_conn)
+    return _predict_from_listing(listing, flags_live, conn)
+
+
+def _predict_from_listing(
+    listing: dict[str, Any], flags_live: bool, conn: sqlite3.Connection
 ) -> dict[str, Any]:
     model, meta = load_model()
     features = meta["features"]
@@ -277,7 +320,7 @@ def predict_from_listing(
     from krisha.llm_flags import flags_to_badges, get_flags_raw
     from krisha.spatial import load_spatial_ref
 
-    raw_flags = get_flags_raw(listing, live=flags_live)
+    raw_flags = get_flags_raw(listing, live=flags_live, conn=conn)
     listing = {**listing, "llm_flags": raw_flags if raw_flags is not None else None}
 
     df = listing_to_frame(
@@ -335,11 +378,11 @@ def predict_from_listing(
     # Этап 4: сигналы рынка — история цены и ликвидность (копятся рескрейпом)
     from krisha.market import days_on_market, liquidity_estimate, price_history_points
 
-    result["price_history"] = price_history_points(listing.get("id"))
-    result["days_on_market"] = days_on_market(listing.get("id"))
+    result["price_history"] = price_history_points(listing.get("id"), conn=conn)
+    result["days_on_market"] = days_on_market(listing.get("id"), conn=conn)
     # diff_pct подмешивает «срок продажи» по ценовой полосе: похожие по цене
     result["liquidity"] = liquidity_estimate(
-        listing.get("district"), listing.get("rooms"), result.get("diff_pct")
+        listing.get("district"), listing.get("rooms"), result.get("diff_pct"), conn=conn
     )
 
     # Скам-детектор: цена сильно ниже оценки + эвристики по объявлению
@@ -354,7 +397,7 @@ def predict_from_listing(
     from krisha.vision import assess_renovation
 
     try:
-        result["renovation"] = assess_renovation(listing, live=flags_live)
+        result["renovation"] = assess_renovation(listing, live=flags_live, conn=conn)
     except Exception:  # noqa: BLE001 — фото-анализ не должен ломать оценку
         logger.exception("vision failed")
         result["renovation"] = None
@@ -363,7 +406,7 @@ def predict_from_listing(
     from krisha.analogs import find_analogs
 
     try:
-        result["analogs"] = find_analogs(listing)
+        result["analogs"] = find_analogs(listing, conn=conn)
     except Exception:  # noqa: BLE001 — аналоги не должны ломать оценку
         logger.exception("analogs failed")
         result["analogs"] = []
@@ -398,6 +441,7 @@ def predict_from_listing(
             result.get("fair_price_high"),
             result.get("verdict"),
             meta.get("metrics", {}).get("trained_at"),
+            conn=conn,
         )
     except Exception:  # noqa: BLE001 — лог предикта не должен ломать оценку
         logger.exception("log_prediction failed")
@@ -421,16 +465,21 @@ def predict_from_url(url: str, flags_live: bool = True) -> dict[str, Any]:
     listing = parse_detail(html, url)
     if listing is None:
         raise RuntimeError("Не удалось распарсить объявление")
-    result = predict_from_listing(listing, flags_live=flags_live)
-    # Каждая проверенная ссылка пополняет базу (fail-soft: read-only FS и т.п.)
+    # issue #110: одно SQLite-соединение на весь HTTP-запрос — предикт
+    # (llm_flags/market/vision/analogs/log_prediction) и последующие
+    # find_duplicate_id/upsert_listing переиспользуют его вместо каждый
+    # своего get_conn().
     from krisha.db import find_duplicate_id, listing_fingerprint, upsert_listing
 
-    result["duplicate_of"] = None
-    try:
-        result["duplicate_of"] = find_duplicate_id(
-            listing_fingerprint(listing), int(listing["id"])
-        )
-        upsert_listing({**listing, "source": "user"})
-    except Exception:  # noqa: BLE001 — сохранение не должно ломать оценку
-        logger.warning("predict: не удалось сохранить объявление в базу", exc_info=True)
+    with get_conn(DB_PATH) as conn:
+        result = predict_from_listing(listing, flags_live=flags_live, conn=conn)
+        # Каждая проверенная ссылка пополняет базу (fail-soft: read-only FS и т.п.)
+        result["duplicate_of"] = None
+        try:
+            result["duplicate_of"] = find_duplicate_id(
+                listing_fingerprint(listing), int(listing["id"]), conn=conn
+            )
+            upsert_listing({**listing, "source": "user"}, conn=conn)
+        except Exception:  # noqa: BLE001 — сохранение не должно ломать оценку
+            logger.warning("predict: не удалось сохранить объявление в базу", exc_info=True)
     return result
