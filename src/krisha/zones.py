@@ -22,9 +22,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from krisha.config import OSM_ZONES_SNAPSHOT_PATH
+from krisha.config import OSM_ZONES_SNAPSHOT_PATH, SHARED_PIN_MIN  # noqa: F401 (реэкспорт)
 
-SHARED_PIN_MIN = 5        # объявлений на одной точке → это метка ЖК, не дом
 MICRO_CENTROID_MAX_KM = 1.2  # дальше центроида метку не присваиваем
 MICRO_CENTROID_MIN_N = 3     # центроид по <3 объявлениям не используем
 _ROUND = 5                # округление координат при сверке с shared_pins

@@ -29,11 +29,14 @@ def test_init_and_upsert(tmp_path):
 def test_upsert_updates_price(tmp_path):
     db = tmp_path / "test.db"
     init_db(db)
-    upsert_listing(make_listing(1, price=10), db)
-    upsert_listing(make_listing(1, price=20), db)
+    # issue #103: цены проверяются на PRICE_MIN..PRICE_MAX при upsert — берём
+    # реалистичные значения, а не произвольные заглушки 10/20 (те теперь
+    # попадают в карантин как аномалия и не меняют price, см. test_db_anomalies.py).
+    upsert_listing(make_listing(1, price=30_000_000), db)
+    upsert_listing(make_listing(1, price=35_000_000), db)
     assert count_listings(db) == 1
     with get_conn(db) as conn:
-        assert conn.execute("SELECT price FROM listings WHERE id=1").fetchone()[0] == 20
+        assert conn.execute("SELECT price FROM listings WHERE id=1").fetchone()[0] == 35_000_000
 
 
 # ---------- issue #117: user-предикт не должен затирать скрейп-данные ----------
