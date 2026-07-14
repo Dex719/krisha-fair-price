@@ -109,6 +109,11 @@ def _weekly_trend(
         w_start = w_end - pd.Timedelta(weeks=1)
         if i == 0:
             w_end = end  # текущая (неполная) неделя — до «сейчас»
+        # Календарный номер недели от начала окна (0..max_weeks-1), растёт
+        # монотонно со временем и НЕ переиспользуется соседями при пропуске
+        # недели ниже — так экстраполяция (forecast.py) видит реальный
+        # разрыв, а не считает пропущенную неделю смежной с предыдущей.
+        week_t = (max_weeks - 1) - i
         active = listings[(listings["first_seen"] < w_end) & (listings["last_seen"] >= w_start)]
         if len(active) < min_n:
             continue
@@ -119,6 +124,7 @@ def _weekly_trend(
             continue
         trend.append({
             "week": w_start.strftime("%d.%m"),
+            "t": week_t,
             "median_ppsm": int((grp["price"] / grp["area"]).median()),
             "n": int(len(grp)),
         })
