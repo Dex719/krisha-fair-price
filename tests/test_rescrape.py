@@ -103,8 +103,9 @@ def test_sweep_walks_shards_and_updates_db(tmp_path, monkeypatch):
     shards = shard_urls()
     first_url = shards[0][1]
     pages = {
-        # шард 1: две страницы (page=2 в html → есть следующая)
-        first_url: _card(111, 12_000_000) + '<a href="?page=2">2</a>',
+        # шард 1: две страницы (структурный пагинатор → есть следующая, issue #99)
+        first_url: _card(111, 12_000_000)
+        + '<a class="paginator__btn--next" href="?page=2">2</a>',
         f"{first_url}&page=2": _card(222, 20_000_000),
     }
     client = FakeClient(pages)
@@ -424,3 +425,32 @@ def test_sweep_detail_queue_skips_delisted_sighting(tmp_path, monkeypatch):
     # учитывается; после фетча очередь пуста
     assert stats["detail_queue_before"] == 1
     assert stats["detail_queue_after"] == 0
+
+
+def test_sweep_aborts_early_on_ban_and_skips_delist(tmp_path, monkeypatch):
+    """issue #101: BanDetected из клиента должен прервать проход досрочно —
+    остальные шарды не обходятся, delisted пропускается (как при failed_shards),
+    stats["banned"] выставлен, и алерт отправлен ровно один раз."""
+    from krisha.scraping.client import BanDetected
+
+    db = tmp_path / "test.db"
+    init_db(db)
+    upsert_listing(_listing(333), db)
+
+    class BannedClient(FakeClient):
+        def get(self, url: str) -> str | None:
+            self.requested.append(url)
+            raise BanDetected("3 URL подряд получили только HTTP 403")
+
+    client = BannedClient({})
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    alerts = []
+    monkeypatch.setattr(rescrape, "_alert_ban", lambda exc: alerts.append(str(exc)))
+
+    stats = sweep(max_pages=5, max_new_details=10, db_path=db)
+
+    assert stats["banned"] is True
+    assert stats["delisted"] is None  # как при неполном покрытии — не помечаем снятые
+    assert len(alerts) == 1
+    # прервались на первом же шарде — не обошли оставшиеся 31
+    assert len(client.requested) == 1
