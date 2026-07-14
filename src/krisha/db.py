@@ -197,6 +197,10 @@ def get_conn(db_path: Path | str = DB_PATH) -> Iterator[sqlite3.Connection]:
     try:
         conn.execute("PRAGMA busy_timeout = 5000")
         conn.execute("PRAGMA journal_mode = WAL")
+        # issue #115: synchronous=NORMAL безопасен вместе с WAL (риск потерять
+        # committed-транзакции — только при крэше ОС/питания, не самого процесса)
+        # и заметно быстрее дефолтного FULL на каждый fsync при частых upsert'ах.
+        conn.execute("PRAGMA synchronous = NORMAL")
     except sqlite3.OperationalError:
         pass  # read-only ФС и т.п. — работаем как раньше
     try:
@@ -204,6 +208,24 @@ def get_conn(db_path: Path | str = DB_PATH) -> Iterator[sqlite3.Connection]:
         conn.commit()
     finally:
         conn.close()
+
+
+@contextmanager
+def use_conn(
+    conn: sqlite3.Connection | None, db_path: Path | str = DB_PATH
+) -> Iterator[sqlite3.Connection]:
+    """issue #110: переиспользовать уже открытое на запрос соединение вместо
+    нового `get_conn()` на каждый внутренний вызов (analogs/market/llm_flags/
+    vision в цепочке `predict_from_listing` открывали ~8 отдельных SQLite-
+    соединений на один HTTP-запрос). Если `conn` передан — просто отдаём его
+    (коммит/закрытие — забота вызывающего, который его открыл); если нет —
+    ведём себя как раньше: открываем через `get_conn` и коммитим/закрываем сами.
+    """
+    if conn is not None:
+        yield conn
+    else:
+        with get_conn(db_path) as new_conn:
+            yield new_conn
 
 
 # Этап 4: новые колонки listings для старых баз (CREATE IF NOT EXISTS их не добавит)
@@ -269,12 +291,15 @@ def listing_fingerprint(listing: dict[str, Any]) -> str | None:
 
 
 def find_duplicate_id(
-    fingerprint: str | None, exclude_id: int, db_path: Path | str = DB_PATH
+    fingerprint: str | None,
+    exclude_id: int,
+    db_path: Path | str = DB_PATH,
+    conn: sqlite3.Connection | None = None,
 ) -> int | None:
     """id другого объявления с тем же отпечатком (свежее — первым)."""
     if not fingerprint:
         return None
-    with get_conn(db_path) as conn:
+    with use_conn(conn, db_path) as conn:
         try:
             row = conn.execute(
                 "SELECT id FROM listings WHERE fingerprint = ? AND id != ? "
@@ -286,13 +311,17 @@ def find_duplicate_id(
     return int(row[0]) if row else None
 
 
-def upsert_listing(listing: dict[str, Any], db_path: Path | str = DB_PATH) -> None:
+def upsert_listing(
+    listing: dict[str, Any],
+    db_path: Path | str = DB_PATH,
+    conn: sqlite3.Connection | None = None,
+) -> None:
     row = {col: listing.get(col) for col in LISTING_COLUMNS}
     row["source"] = listing.get("source") or "scrape"
     row["fingerprint"] = listing_fingerprint(listing)
     is_user = row["source"] == "user"
     sql = UPSERT_SQL_USER if is_user else UPSERT_SQL
-    with get_conn(db_path) as conn:
+    with use_conn(conn, db_path) as conn:
         try:
             conn.execute(sql, row)
         except sqlite3.OperationalError:
@@ -349,13 +378,14 @@ def log_prediction(
     verdict: str | None,
     model_version: str | None,
     db_path: Path | str = DB_PATH,
+    conn: sqlite3.Connection | None = None,
 ) -> None:
     """Пишет строку в predictions (issue #128) — и для пользовательских, и для
     канальных (алерты) предиктов, единая точка входа `predict_from_listing`.
     """
     if listing_id is None:
         return
-    with get_conn(db_path) as conn:
+    with use_conn(conn, db_path) as conn:
         try:
             conn.execute(
                 "INSERT INTO predictions "
@@ -406,9 +436,13 @@ def _record_price_if_changed(conn: sqlite3.Connection, listing_id: int, price: i
     return True
 
 
-def get_price_history(listing_id: int, db_path: Path | str = DB_PATH) -> list[dict[str, Any]]:
+def get_price_history(
+    listing_id: int,
+    db_path: Path | str = DB_PATH,
+    conn: sqlite3.Connection | None = None,
+) -> list[dict[str, Any]]:
     """История цены объявления: [{price, observed_at}, ...] по возрастанию времени."""
-    with get_conn(db_path) as conn:
+    with use_conn(conn, db_path) as conn:
         try:
             rows = conn.execute(
                 "SELECT price, observed_at FROM price_history "

@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from krisha.config import DB_PATH, MODEL_META_PATH, RENT_DB_PATH
+from krisha.db import get_conn
 from krisha.monitoring import ADMIN_CHAT_ENV
 from krisha.usage import ALMATY_TZ, load_state
 
@@ -46,7 +47,9 @@ def _db_counts(db_path: Path) -> tuple[int, int] | None:
     if not Path(db_path).exists():
         return None
     try:
-        with sqlite3.connect(db_path) as conn:
+        # issue #115: get_conn (WAL/busy_timeout) вместо голого sqlite3.connect —
+        # отчёт читает базу сразу после рескрейпа, пока тот ещё может дописывать.
+        with get_conn(db_path) as conn:
             active = conn.execute("SELECT COUNT(*) FROM listings WHERE is_active = 1").fetchone()[0]
             total = conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
         return active, total

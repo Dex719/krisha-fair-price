@@ -3,6 +3,7 @@
 Запуск: `uvicorn krisha.api.app:app --reload`
 """
 
+import functools
 import hmac
 import ipaddress
 import json
@@ -14,6 +15,7 @@ from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
+import anyio
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -197,6 +199,15 @@ def _client_ip(request: Request) -> str:
     return ip
 
 
+# issue #110: /api/predict раньше был sync def → крутился в общем anyio
+# threadpool (default ~40 потоков) вместе со всеми остальными sync-хендлерами.
+# Внутри одного запроса — PoliteClient (сон + сеть/ретраи), CatBoost-инференс,
+# SQLite; 40-50 конкурентных predict исчерпывали весь пул, включая
+# /api/health (keepalive считал бы Space мёртвым). Явный CapacityLimiter
+# ограничивает конкурентность именно тяжёлого пути (predict/flags), не трогая
+# лимит остальных (быстрых) sync-хендлеров.
+_PREDICT_LIMITER = anyio.CapacityLimiter(10)
+
 MAX_RATE_KEYS = 10_000  # потолок против разрастания памяти (в т.ч. от подделки XFF)
 
 
@@ -216,11 +227,16 @@ def _check_rate_limit(request: Request) -> None:
 
 
 @app.post("/api/predict", response_model=PredictResponse)
-def predict(req: PredictRequest, request: Request) -> PredictResponse:
+async def predict(req: PredictRequest, request: Request) -> PredictResponse:
     _check_rate_limit(request)
     try:
-        # flags_live=False: отвечаем сразу, LLM-флаги фронт догружает отдельно
-        result = predict_from_url(req.url, flags_live=False)
+        # flags_live=False: отвечаем сразу, LLM-флаги фронт догружает отдельно.
+        # issue #110: явный CapacityLimiter вместо дефолтного sync-threadpool —
+        # тяжёлый путь (скрейп + CatBoost + SQLite) не делит пул с health/site.
+        result = await anyio.to_thread.run_sync(
+            functools.partial(predict_from_url, req.url, flags_live=False),
+            limiter=_PREDICT_LIMITER,
+        )
     except ValueError as exc:
         # 422 — пользовательская валидация URL, текст безопасен и полезен
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -235,23 +251,37 @@ def predict(req: PredictRequest, request: Request) -> PredictResponse:
     return PredictResponse(**result)
 
 
-@app.get("/api/flags/{listing_id}", response_model=FlagsResponse)
-def flags(listing_id: int, request: Request) -> FlagsResponse:
-    """Догрузка LLM-бейджей: из кэша или один живой запрос к Gemini."""
-    _check_rate_limit(request)
+def _fetch_and_build_flags(listing_id: int) -> list[dict[str, str]] | None:
+    """Синхронная часть /api/flags — исполняется в threadpool (см. ниже).
+
+    issue #110: одно соединение на запрос (SELECT + кэш/запись флагов внутри
+    build_text_flags), а не отдельный get_conn() для чтения листинга и ещё
+    один внутри llm_flags.
+    """
     from krisha.llm_flags import build_text_flags
 
     with get_conn(DB_PATH) as conn:
         row = conn.execute(
             "SELECT id, description FROM listings WHERE id = ?", (listing_id,)
         ).fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail="Объявление не найдено")
-    # max_retries=1: ровно один живой запрос без sleep-бэкоффов — иначе
-    # ретраи Gemini держали бы поток тредпула до минут на один запрос
-    text_flags = build_text_flags(
-        {"id": row["id"], "description": row["description"]}, max_retries=1
+        if row is None:
+            return None
+        # max_retries=1: ровно один живой запрос без sleep-бэкоффов — иначе
+        # ретраи Gemini держали бы поток тредпула до минут на один запрос
+        return build_text_flags(
+            {"id": row["id"], "description": row["description"]}, max_retries=1, conn=conn
+        )
+
+
+@app.get("/api/flags/{listing_id}", response_model=FlagsResponse)
+async def flags(listing_id: int, request: Request) -> FlagsResponse:
+    """Догрузка LLM-бейджей: из кэша или один живой запрос к Gemini."""
+    _check_rate_limit(request)
+    text_flags = await anyio.to_thread.run_sync(
+        functools.partial(_fetch_and_build_flags, listing_id), limiter=_PREDICT_LIMITER
     )
+    if text_flags is None:
+        raise HTTPException(status_code=404, detail="Объявление не найдено")
     return FlagsResponse(listing_id=listing_id, text_flags=text_flags)
 
 

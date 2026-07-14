@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import html
 import logging
-import sqlite3
 from pathlib import Path
 from typing import Any
 
 from krisha.config import DB_PATH
+from krisha.db import get_conn
 from krisha.stats import DISTRICT_RU
 
 logger = logging.getLogger(__name__)
@@ -35,8 +35,9 @@ def match_filters(listing: dict[str, Any], flt: dict[str, Any]) -> bool:
 
 def new_listings(db_path: Path | str = DB_PATH, hours: int = ALERT_WINDOW_HOURS) -> list[dict]:
     """Активные объявления, впервые увиденные за последние `hours` часов."""
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
+    # issue #115: get_conn (WAL/busy_timeout) вместо голого sqlite3.connect —
+    # рассылка идёт рядом по времени с рескрейпом, который активно пишет в базу.
+    with get_conn(db_path) as conn:
         rows = conn.execute(
             "SELECT * FROM listings WHERE is_active = 1 AND price > 0 AND area > 0 "
             "AND first_seen >= datetime('now', ?)",
