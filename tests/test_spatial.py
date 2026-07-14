@@ -97,6 +97,50 @@ def test_dedup_relistings():
     assert sorted(out["id"]) == [2, 3, 4]
 
 
+def test_dedup_relistings_keeps_distinct_newbuild_units_by_price():
+    """issue #129: тот же fingerprint (пин на ЖК) + разная цена → не дубль."""
+    base = {"district": "X", "rooms": 2, "area": 55.0, "floor": 3,
+            "total_floors": 9, "lat": 43.2401, "lon": 76.8901,
+            "complex_name": "ЖК Novy"}
+    df = pd.DataFrame([
+        {"id": 1, "last_seen": "2026-06-01", "price": 30_000_000, **base},  # relist 2 (старее)
+        {"id": 2, "last_seen": "2026-06-10", "price": 30_100_000, **base},  # relist 1 (+0.3%, свежее)
+        {"id": 3, "last_seen": "2026-06-05", "price": 34_000_000, **base},  # другая квартира, тот же fp
+        {"id": 4, "last_seen": "2026-06-07", "price": 34_100_000, **base},  # relist 3 (+0.3%, свежее)
+    ])
+    out = dedup_relistings(df)
+    # Обе «настоящие» квартиры (разные цены) остаются, каждая — свежей записью
+    assert sorted(out["id"]) == [2, 4]
+    stats = out.attrs["dedup_stats"]
+    assert stats["dropped"] == 2
+    assert stats["fingerprint_dup_groups"] == 1
+    assert stats["new_building_share_of_dup_groups"] == 1.0
+
+
+def test_dedup_relistings_still_collapses_true_relist_by_price():
+    """Тот же fingerprint + цена в пределах ~2% — обычный перезалив, дубль."""
+    base = {"district": "X", "rooms": 3, "area": 80.0, "floor": 5,
+            "total_floors": 12, "lat": 43.25, "lon": 76.90}
+    df = pd.DataFrame([
+        {"id": 1, "last_seen": "2026-06-01", "price": 50_000_000, **base},
+        {"id": 2, "last_seen": "2026-06-15", "price": 50_500_000, **base},  # +1% — тот же лот
+    ])
+    out = dedup_relistings(df)
+    assert list(out["id"]) == [2]
+    assert out.attrs["dedup_stats"]["dropped"] == 1
+
+
+def test_dedup_relistings_no_price_column_falls_back_to_legacy_behavior():
+    base = {"district": "X", "rooms": 2, "area": 55.0, "floor": 3,
+            "total_floors": 9, "lat": 43.2401, "lon": 76.8901}
+    df = pd.DataFrame([
+        {"id": 1, "last_seen": "2026-06-01", **base},
+        {"id": 2, "last_seen": "2026-06-10", **base},
+    ])
+    out = dedup_relistings(df)
+    assert list(out["id"]) == [2]
+
+
 def test_building_groups():
     df = pd.DataFrame({
         "id": [1, 2, 3],

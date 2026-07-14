@@ -113,22 +113,120 @@ def _fingerprints(df: pd.DataFrame) -> pd.Series:
     return fp.fillna(pd.Series((f"solo:{i}" for i in df.index), index=df.index))
 
 
+DEDUP_PRICE_TOLERANCE = 0.02  # issue #129: fingerprint-совпадение — дубль только при близкой цене
+
+
+def _cluster_by_price(prices: pd.Series, tolerance: float = DEDUP_PRICE_TOLERANCE) -> dict:
+    """Кластеризует цены одной fingerprint-группы по близости (цепочкой).
+
+    Сортирует цены по возрастанию и режет на новый кластер там, где сосед
+    отличается больше чем на `tolerance` (по умолчанию ~2%). Возвращает
+    {index_label: cluster_id}. Это цепочная (chain-linkage) кластеризация:
+    внутри кластера соседние цены близки, но крайние могут разойтись
+    больше tolerance — приемлемо для простой эвристики «перезалив почти
+    не меняет цену».
+    """
+    order = prices.sort_values().index
+    clusters: dict = {}
+    cluster_id = -1
+    prev = None
+    for i in order:
+        p = prices[i]
+        if prev is None or prev == 0 or abs(p - prev) > tolerance * abs(prev):
+            cluster_id += 1
+        clusters[i] = cluster_id
+        prev = p
+    return clusters
+
+
 def dedup_relistings(df: pd.DataFrame) -> pd.DataFrame:
     """Убирает перезалитые объявления: одна квартира под разными id.
 
     Отпечаток — район + комнаты + площадь + этаж/этажность + координаты
     (как krisha.db.listing_fingerprint). Оставляем самую свежую запись.
+
+    issue #129: в новостройках пин часто ставится на ЖК, а не на конкретный
+    дом/квартиру — десятки реально разных квартир одной планировки на одном
+    этаже соседних блоков получают тот же fingerprint и раньше выкидывались
+    целиком как «дубли» (в train доходила лишь половина базы). Теперь
+    совпадение fingerprint считаем дублем, только если у строк группы ещё и
+    цена совпадает в пределах ~`DEDUP_PRICE_TOLERANCE`: реальный перезалив
+    почти не меняет цену, а разные квартиры одной планировки в новостройке —
+    почти всегда меняют. Строки без цены внутри группы, где у остальных
+    цена есть, перестраховываемся консервативно — считаем дублем (как
+    раньше), т.к. проверить их нечем.
+
+    Диагностика (распределение размеров fingerprint-групп и доля таких
+    строк в новостройках) кладётся в `df.attrs["dedup_stats"]` для отчёта
+    обучения.
     """
     fp = _fingerprints(df)
     order_col = next(
         (c for c in ("last_seen", "scraped_at", "id") if c in df), None
     )
     before = len(df)
+    has_price = "price" in df.columns
+
+    # --- диагностика: распределение размеров fingerprint-групп (issue #129) ---
+    group_sizes = fp.value_counts()
+    dup_groups = group_sizes[
+        (group_sizes > 1) & (~group_sizes.index.astype(str).str.startswith("solo:"))
+    ]
+    size_hist: dict[str, int] = {}
+    for size in dup_groups.to_numpy():
+        bucket = "2" if size == 2 else "3-5" if size <= 5 else "6-10" if size <= 10 else "11+"
+        size_hist[bucket] = size_hist.get(bucket, 0) + 1
+    rows_in_dup_groups = fp.isin(dup_groups.index)
+    new_building_share = None
+    if "complex_name" in df.columns and rows_in_dup_groups.any():
+        new_building_share = round(
+            float(df.loc[rows_in_dup_groups, "complex_name"].notna().mean()), 3
+        )
+
     if order_col is not None:
         df = df.sort_values(order_col, na_position="first")
-    df = df.loc[~fp.reindex(df.index).duplicated(keep="last")]
-    logger.info("Дедуп перезалитых: %d → %d строк", before, len(df))
-    return df.reset_index(drop=True)
+    fp = fp.reindex(df.index)
+    # позиция строки в уже отсортированном df — больше = свежее
+    pos = pd.Series(range(len(df)), index=df.index)
+
+    if has_price:
+        keep = pd.Series(True, index=df.index)
+        for _, members in fp.groupby(fp).groups.items():
+            if len(members) < 2:
+                continue
+            prices = df.loc[members, "price"]
+            priced = prices[prices.notna()]
+            keep.loc[members] = False
+            if len(priced) >= 2:
+                clusters = _cluster_by_price(priced)
+                for cid in set(clusters.values()):
+                    cluster_members = [i for i, c in clusters.items() if c == cid]
+                    keep.loc[max(cluster_members, key=lambda i: pos[i])] = True
+                # без цены внутри группы, где у остальных цена есть —
+                # консервативно считаем дублем (уже False выше)
+            else:
+                # цены почти нет — нечем разбивать по цене, старое поведение
+                keep.loc[max(members, key=lambda i: pos[i])] = True
+        df = df.loc[keep]
+    else:
+        df = df.loc[~fp.duplicated(keep="last")]
+
+    dropped = before - len(df)
+    logger.info(
+        "Дедуп перезалитых (issue #129, price tolerance %.0f%%): %d → %d строк",
+        DEDUP_PRICE_TOLERANCE * 100, before, len(df),
+    )
+    out = df.reset_index(drop=True)
+    out.attrs["dedup_stats"] = {
+        "rows_before": before,
+        "rows_after": len(out),
+        "dropped": dropped,
+        "dropped_pct": round(100 * dropped / before, 2) if before else 0.0,
+        "fingerprint_dup_groups": int(len(dup_groups)),
+        "fingerprint_group_size_histogram": size_hist,
+        "new_building_share_of_dup_groups": new_building_share,
+    }
+    return out
 
 
 def building_groups(df: pd.DataFrame) -> pd.Series:
@@ -400,6 +498,16 @@ def train(
     # 3) purge — из train убираем строки, протекающие в test через fingerprint
     #    (перевыставление) или ту же «группу-здание» (issue #104 доп.).
     df = dedup_relistings(df)
+    dedup_stats = df.attrs.get("dedup_stats", {})
+    if dedup_stats:
+        logger.info(
+            "issue #129: выброшено дедупом %d строк (%.2f%%) — fingerprint-групп: %d, "
+            "доля новостроек в них: %s",
+            dedup_stats.get("dropped", 0),
+            dedup_stats.get("dropped_pct", 0.0),
+            dedup_stats.get("fingerprint_dup_groups", 0),
+            dedup_stats.get("new_building_share_of_dup_groups"),
+        )
     train_idx, test_idx = time_based_split(df)
     if len(test_idx) == 0:
         # Нет first_seen вообще (старая БД / ручной DataFrame без него) —
@@ -491,6 +599,7 @@ def train(
         "n_train": len(train_df),
         "n_test": len(test_df),
         "n_purged": n_purged,
+        "dedup": dedup_stats,
         "best_iterations": best_iterations,
         "split": f"time_based (test = first_seen >= last {TEST_WINDOW_DAYS}d) + purge + dedup relistings",
         "trained_at": datetime.now(timezone.utc).isoformat(),
