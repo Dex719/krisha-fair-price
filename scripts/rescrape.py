@@ -26,6 +26,21 @@ def main() -> None:
     parser.add_argument("--pages", type=int, default=250, help="Максимум страниц выдачи на один шард")
     parser.add_argument("--max-new", type=int, default=300, help="Максимум новых детальных страниц")
     parser.add_argument(
+        "--refresh-stale-days",
+        type=int,
+        default=30,
+        help="issue #102: активные лоты с деталями старше N дней с последнего "
+        "scraped_at докачиваются повторно (площадь/этаж/описание/координаты, "
+        "отредактированные продавцом, иначе никогда не обновляются)",
+    )
+    parser.add_argument(
+        "--max-refresh",
+        type=int,
+        default=300,
+        help="Максимум повторных детальных докачек устаревших активных лотов за проход "
+        "(0 — выключить обновление устаревших деталей)",
+    )
+    parser.add_argument(
         "--deal",
         choices=["prodazha", "arenda"],
         default="prodazha",
@@ -52,7 +67,14 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     db_path = RENT_DB_PATH if args.deal == "arenda" else DB_PATH
-    stats = sweep(max_pages=args.pages, max_new_details=args.max_new, db_path=db_path, deal=args.deal)
+    stats = sweep(
+        max_pages=args.pages,
+        max_new_details=args.max_new,
+        db_path=db_path,
+        deal=args.deal,
+        refresh_stale_days=args.refresh_stale_days,
+        max_refresh=args.max_refresh,
+    )
 
     if args.summary_json:
         Path(args.summary_json).write_text(json.dumps(stats, ensure_ascii=False, indent=2))

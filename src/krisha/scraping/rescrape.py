@@ -6,7 +6,10 @@
 - знакомое объявление: last_seen=now, цена изменилась → точка в price_history;
 - новое объявление: детальная страница → upsert + стартовая точка истории;
 - знакомое, но давно не виденное (DELIST_AFTER_DAYS): is_active=0 —
-  считаем проданным/снятым, разница last_seen-first_seen = дни на рынке.
+  считаем проданным/снятым, разница last_seen-first_seen = дни на рынке;
+- знакомое активное с деталями старше refresh_stale_days: детальная
+  страница докачивается повторно (issue #102) — иначе отредактированные
+  продавцом площадь/этаж/описание/координаты не обновляются, пока лот жив.
 
 Выдача шардируется по фильтрам «район × комнаты» (см. shard_urls):
 общая выдача Алматы обрезается пагинацией и отдаёт только «популярные»
@@ -27,7 +30,9 @@ from krisha.db import (
     _record_price_if_changed,
     get_conn,
     init_db,
+    is_valid_price,
     known_ids,
+    record_parse_anomaly,
     record_sighting,
     upsert_listing,
 )
@@ -174,7 +179,12 @@ def _sweep_shard(
 
 
 def sweep(
-    max_pages: int = 250, max_new_details: int = 300, db_path=DB_PATH, deal: str = "prodazha"
+    max_pages: int = 250,
+    max_new_details: int = 300,
+    db_path=DB_PATH,
+    deal: str = "prodazha",
+    refresh_stale_days: int = 30,
+    max_refresh: int = 300,
 ) -> dict:
     """Один проход рескрейпа по всем шардам. Возвращает счётчики для лога/отчёта.
 
@@ -182,6 +192,14 @@ def sweep(
     ≈ 200 страниц, так что 250 хватает с запасом).
     deal="arenda" — тот же проход по арендной выдаче (обычно в отдельную базу,
     см. RENT_DB_PATH), price = ₸/месяц.
+
+    issue #102: карточка выдачи (found) обновляет только last_seen/цену — до
+    этой правки площадь/этаж/описание/координаты, отредактированные продавцом,
+    никогда не обновлялись, пока объявление живёт (детальная страница
+    докачивалась только один раз, для новых id). refresh_stale_days/max_refresh
+    — отдельная лимитированная очередь: активные лоты с детальными данными,
+    у которых scraped_at старше refresh_stale_days, докачиваются повторно
+    (самые старые — первыми), max_refresh за проход. max_refresh=0 выключает.
     """
     init_db(db_path)
     seen_in_db = known_ids(db_path)
@@ -253,6 +271,44 @@ def sweep(
                 new_count += 1
         queue_size_after = queue_size_before - new_count
 
+        # issue #102: отдельная лимитированная очередь — активные лоты,
+        # уже имеющие детали (title IS NOT NULL), но не докачанные дольше
+        # refresh_stale_days. Без этого отредактированные продавцом
+        # площадь/этаж/описание/координаты никогда не подтягиваются, пока
+        # объявление живёт — рескрейп по карточке обновляет только цену.
+        # Самые давно не докачанные — первыми (ORDER BY scraped_at ASC).
+        refresh_queue_size = 0
+        refreshed_count = 0
+        if not banned and max_refresh > 0:
+            with get_conn(db_path) as conn:
+                refresh_ids = [
+                    r[0]
+                    for r in conn.execute(
+                        "SELECT id FROM listings WHERE title IS NOT NULL AND is_active = 1 "
+                        "AND julianday('now') - julianday(scraped_at) > ? "
+                        "ORDER BY scraped_at ASC LIMIT ?",
+                        (refresh_stale_days, max_refresh),
+                    ).fetchall()
+                ]
+            refresh_queue_size = len(refresh_ids)
+            for lid in refresh_ids:
+                try:
+                    detail_html = client.get(f"https://krisha.kz/a/show/{lid}")
+                except BanDetected as exc:
+                    logger.critical("%s — прерываем обновление устаревших деталей", exc)
+                    if not banned:
+                        _alert_ban(exc)
+                    banned = True
+                    break
+                listing = (
+                    parse_detail(detail_html, f"https://krisha.kz/a/show/{lid}")
+                    if detail_html
+                    else None
+                )
+                if listing is not None:
+                    upsert_listing(listing, db_path)
+                    refreshed_count += 1
+
     price_changes = 0
     known_seen = [lid for lid in found if lid in seen_in_db]
     with get_conn(db_path) as conn:
@@ -263,7 +319,16 @@ def sweep(
                 (lid,),
             )
             price = found[lid]
-            if price is not None and _record_price_if_changed(conn, lid, price):
+            if price is None:
+                continue
+            # issue #103: карточка выдачи не проходит парсер детальной
+            # страницы (нет upsert_listing/_validate_and_quarantine) — тот же
+            # data-contract на цену нужен и здесь, иначе битый парс карточки
+            # (не upsert) свободно пишется в listings.price/price_history.
+            if not is_valid_price(price):
+                record_parse_anomaly(conn, lid, "price", "out_of_range", price)
+                continue
+            if _record_price_if_changed(conn, lid, price):
                 conn.execute("UPDATE listings SET price = ? WHERE id = ?", (price, lid))
                 price_changes += 1
 
@@ -349,11 +414,16 @@ def sweep(
         # относительно притока новых объявлений.
         "detail_queue_before": queue_size_before,
         "detail_queue_after": queue_size_after,
+        # issue #102: сколько активных лотов с устаревшими деталями
+        # (>refresh_stale_days с последнего scraped_at) стояло в очереди на
+        # этот проход, и сколько реально докачали в рамках max_refresh.
+        "stale_refresh_queue": refresh_queue_size,
+        "stale_refreshed": refreshed_count,
     }
     logger.info(
         "Рескрейп: в выдаче %(found_in_search)s, знакомых %(known_seen)s, "
         "новых %(new_listings)s, изменений цены %(price_changes)s, снято %(delisted)s, "
-        "очередь деталей %(detail_queue_after)s",
+        "очередь деталей %(detail_queue_after)s, обновлено устаревших %(stale_refreshed)s",
         {**stats, "delisted": stats["delisted"] if stats["delisted"] is not None else "n/a"},
     )
     return stats
