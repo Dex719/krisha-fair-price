@@ -15,9 +15,10 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
+from krisha.scraping.json_window import extract_window_json
+
 logger = logging.getLogger(__name__)
 
-WINDOW_DATA_RE = re.compile(r"window\.data\s*=\s*(\{.*?\});", re.S)
 FLOOR_TITLE_RE = re.compile(r"(\d+)/(\d+)\s*этаж")  # "4/5 этаж" в title
 FLOOR_PARAM_RE = re.compile(r"(\d+)\s*из\s*(\d+)")  # "4 из 5" в параметрах
 FIRST_NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)?")
@@ -31,14 +32,10 @@ def _first_number(text: str | None) -> float | None:
 
 
 def extract_window_data(html: str) -> dict[str, Any] | None:
-    m = WINDOW_DATA_RE.search(html)
-    if not m:
-        return None
-    try:
-        return json.loads(m.group(1))
-    except json.JSONDecodeError:
+    data = extract_window_json(html, "data")
+    if data is None and "window.data" in html:
         logger.warning("window.data найден, но JSON не парсится")
-        return None
+    return data
 
 
 def extract_params(soup: BeautifulSoup) -> dict[str, str]:

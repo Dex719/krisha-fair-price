@@ -17,6 +17,7 @@
 
 import json
 import logging
+import os
 import statistics
 from pathlib import Path
 
@@ -30,7 +31,8 @@ from krisha.db import (
     record_sighting,
     upsert_listing,
 )
-from krisha.scraping.client import PoliteClient
+from krisha.monitoring import ADMIN_CHAT_ENV
+from krisha.scraping.client import BanDetected, PoliteClient
 from krisha.scraping.detail_parser import parse_detail
 from krisha.scraping.listing_parser import has_next_page, parse_listing_prices
 
@@ -65,6 +67,28 @@ PARSE_RATE_DROP_RATIO = 0.5  # алерт, если текущий проход 
 # (холодная/тестовая БД), сравнение ничего не даёт и его пропускаем.
 ACTIVE_IN_DB_DROP_RATIO = 0.5
 MIN_ACTIVE_IN_DB_FOR_CHECK = 100
+
+
+def _alert_ban(exc: BanDetected) -> None:
+    """Телеграм-алерт админу при early-abort по бану (issue #101).
+
+    Тот же паттерн ленивого импорта `tg_call`, что в monitoring.py/usage.py —
+    `bot.py` тянет более тяжёлые зависимости, не грузим их, если чат не задан.
+    """
+    chat_id = os.environ.get(ADMIN_CHAT_ENV)
+    if not chat_id:
+        logger.info("%s не задан — алерт о бане не отправлен", ADMIN_CHAT_ENV)
+        return
+    from krisha.bot import tg_call
+
+    try:
+        tg_call(
+            "sendMessage",
+            chat_id=int(chat_id),
+            text=f"🚫 Krisha rescrape: {exc}\nПроход прерван досрочно (early-abort).",
+        )
+    except Exception as e:  # noqa: BLE001 — алерт не должен уронить сам проход
+        logger.warning("Не удалось отправить алерт о бане: %s", e)
 
 
 def _history_path(deal: str) -> Path:
@@ -167,11 +191,23 @@ def sweep(
         ).fetchone()[0]
     found: dict[int, int | None] = {}
     failed_shards: list[str] = []
+    banned = False
 
     with PoliteClient() as client:
         for label, base_url in shard_urls(deal):
-            if not _sweep_shard(client, label, base_url, max_pages, found):
+            try:
+                if not _sweep_shard(client, label, base_url, max_pages, found):
+                    failed_shards.append(label)
+            except BanDetected as exc:
+                logger.critical(
+                    "%s — прерываем проход на шарде «%s», остальные шарды не обходим",
+                    exc,
+                    label,
+                )
                 failed_shards.append(label)
+                banned = True
+                _alert_ban(exc)
+                break
 
         # issue #127: раньше в базу шли только первые max_new_details новых id
         # (в порядке обхода шардов) — остальные найденные теряли даже
@@ -200,10 +236,17 @@ def sweep(
                 ).fetchall()
             ]
         queue_size_before = len(backlog_ids)
-        to_fetch = backlog_ids[:max_new_details]
+        to_fetch = [] if banned else backlog_ids[:max_new_details]
         new_count = 0
         for lid in to_fetch:
-            detail_html = client.get(f"https://krisha.kz/a/show/{lid}")
+            try:
+                detail_html = client.get(f"https://krisha.kz/a/show/{lid}")
+            except BanDetected as exc:
+                logger.critical("%s — прерываем докачку деталей", exc)
+                if not banned:
+                    _alert_ban(exc)
+                banned = True
+                break
             listing = parse_detail(detail_html, f"https://krisha.kz/a/show/{lid}") if detail_html else None
             if listing is not None:
                 upsert_listing(listing, db_path)
@@ -298,6 +341,9 @@ def sweep(
         "active_in_db_before": active_in_db,
         "parse_rate_median_7": parse_rate_median,
         "suspicious": suspicious,
+        # issue #101: early-abort по серии 403 (см. BanDetected) — проход
+        # прерван до конца шардов/очереди докачки, а не тихо неполный.
+        "banned": banned,
         # issue #127: сколько лотов ждут detail fetch (sighting есть, деталей
         # ещё нет) — растущая очередь сигналит, что max_new_details мал
         # относительно притока новых объявлений.

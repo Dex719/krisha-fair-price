@@ -15,9 +15,10 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
+from krisha.scraping.json_window import extract_window_json
+
 logger = logging.getLogger(__name__)
 
-WINDOW_DATA_RE = re.compile(r"window\.data\s*=\s*(\{.*?\});", re.S)
 YEAR_RE = re.compile(r"(20\d{2})")
 FLOORS_RE = re.compile(r"(\d+)(?:\s*-\s*(\d+))?\s*этаж")
 
@@ -33,14 +34,12 @@ PARAM_MAP = {
 
 
 def _extract_window_complex(html: str) -> dict[str, Any]:
-    m = WINDOW_DATA_RE.search(html)
-    if not m:
+    data = extract_window_json(html, "data")
+    if data is None:
+        if "window.data" in html:
+            logger.warning("window.data на странице ЖК не парсится")
         return {}
-    try:
-        return json.loads(m.group(1)).get("complex") or {}
-    except json.JSONDecodeError:
-        logger.warning("window.data на странице ЖК не парсится")
-        return {}
+    return data.get("complex") or {}
 
 
 def _extract_params(soup: BeautifulSoup) -> dict[str, str]:

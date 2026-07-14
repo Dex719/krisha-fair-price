@@ -52,5 +52,25 @@ def parse_listing_prices(html: str) -> dict[int, int | None]:
 
 
 def has_next_page(html: str, current_page: int) -> bool:
-    """Есть ли ссылка на следующую страницу в пагинаторе."""
-    return f"page={current_page + 1}" in html
+    """Есть ли следующая страница — по структурному пагинатору, не по подстроке.
+
+    issue #99: раньше проверялось `f"page={current_page + 1}" in html` —
+    подстрока во ВСЁМ документе, а не в пагинаторе. `page=N+1` встречается и
+    в JS-стейте, canonical/og-ссылках, аналитике — даже когда результатов
+    больше нет. Sweep докручивал каждый такой пустой хвост шарда до
+    max_pages впустую (десятки минут лишних запросов ежедневно).
+
+    Теперь ищем реальный контрол пагинации: `<link rel="next">` в head, либо
+    активную (не disabled) кнопку `.paginator__btn--next` в теле страницы.
+    `current_page` больше не участвует в решении — оставлен в сигнатуре
+    только чтобы не трогать вызывающий код (crawler.py/rescrape.py).
+    """
+    soup = BeautifulSoup(html, "lxml")
+    if soup.find("link", rel="next"):
+        return True
+    for el in soup.select(".paginator__btn--next"):
+        classes = el.get("class") or []
+        if any("disabled" in c for c in classes):
+            continue
+        return True
+    return False
