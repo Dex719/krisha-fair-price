@@ -21,10 +21,9 @@ from krisha.config import (
     ALMATY_BBOX,
     DB_PATH,
     MODEL_GATE_SAMPLES_PATH,
-    MODEL_HI_PATH,
-    MODEL_LO_PATH,
     MODEL_META_PATH,
     MODEL_PATH,
+    MODEL_QUANTILE_PATH,
     MODELS_DIR,
     RANDOM_STATE,
     REPORTS_DIR,
@@ -349,24 +348,42 @@ def _save_gate_samples(
     )
 
 
-# --- Доверительный интервал цены: квантильные модели + CQR ----------------
+# --- Доверительный интервал цены: MultiQuantile-модель + CQR --------------
 QUANTILE_ALPHA_LO = 0.10  # нижний квантиль log(price)
 QUANTILE_ALPHA_HI = 0.90  # верхний квантиль log(price)
 INTERVAL_TARGET_COVERAGE = 0.80  # целевая доля цен, попавших в интервал
-QUANTILE_ITERATIONS = 800  # квантильным моделям хватает меньше — CQR чинит покрытие
+QUANTILE_ITERATIONS = 800  # верхний потолок итераций — реально режется early stopping (issue #132)
+QUANTILE_EARLY_STOPPING_ROUNDS = 100  # как у точечной RMSE-модели ниже
 CQR_SCALE_MAX = 10.0  # защита от переполнения expm1 при аномальном scale (см. MIN_INTERVAL_WIDTH_LOG)
 
 
-def _fit_quantile(pool: Pool, alpha: float, iterations: int) -> CatBoostRegressor:
+def _fit_multiquantile(
+    pool: Pool, iterations: int, eval_pool: Pool | None = None
+) -> CatBoostRegressor:
+    """Одна модель на оба квантиля разом (issue #132) вместо двух отдельных
+    Quantile-моделей (model_lo/model_hi): `MultiQuantile:alpha=lo,hi` растит
+    общие деревья на обе целевые квантили — они не могут пересечься (в
+    отличие от двух независимо обученных моделей), и обучение почти вдвое
+    быстрее двух отдельных `fit()`.
+
+    `model.predict(pool)` возвращает массив `(n, 2)`: столбец 0 — квантиль
+    QUANTILE_ALPHA_LO, столбец 1 — QUANTILE_ALPHA_HI (порядок совпадает с
+    alpha-списком в loss_function).
+
+    `eval_pool`, если задан, включает early stopping (issue #132: раньше
+    квантильная модель училась вслепую фиксированные QUANTILE_ITERATIONS
+    итераций без eval-set).
+    """
     model = CatBoostRegressor(
         iterations=iterations,
         learning_rate=0.05,
         depth=8,
-        loss_function=f"Quantile:alpha={alpha}",
+        loss_function=f"MultiQuantile:alpha={QUANTILE_ALPHA_LO},{QUANTILE_ALPHA_HI}",
         random_seed=RANDOM_STATE,
+        early_stopping_rounds=QUANTILE_EARLY_STOPPING_ROUNDS if eval_pool is not None else None,
         verbose=False,
     )
-    model.fit(pool)
+    model.fit(pool, eval_set=eval_pool)
     return model
 
 
@@ -375,18 +392,23 @@ def train_quantile_interval(
     test_df: pd.DataFrame,
     point_pred: np.ndarray,
     iterations: int = QUANTILE_ITERATIONS,
-) -> tuple[CatBoostRegressor, CatBoostRegressor, dict]:
-    """Квантильные модели q10/q90 + конформная калибровка интервала (CQR).
+) -> tuple[CatBoostRegressor, dict]:
+    """MultiQuantile-модель q10+q90 (issue #132) + конформная калибровка (CQR).
 
     Метод (Conformalized Quantile Regression, Romano et al. 2019; вариант с
     нормировкой ширины — adaptive/normalized CQR):
-    1. квантильные модели обучаем на fit-части train;
+    1. одна MultiQuantile-модель обучается на fit-части train (issue #132:
+       раньше — две независимые Quantile-модели model_lo/model_hi; общее
+       дерево гарантирует lo<=hi и обучается быстрее);
     2. на отложенной calib-части считаем conformity score, нормированный на
        ширину предсказанного интервала: E_i = max(lo_i - y_i, y_i - hi_i) / (hi_i - lo_i) —
-       точки с изначально широким интервалом не наказываются сильнее узких;
+       точки с изначально широким интервалом не наказываются сильнее узких.
+       Сегментацию (Mondrian по району/типу) сознательно не делаем: на
+       текущем объёме calib (~тысяча строк) — лотерея, добавлять только по
+       результатам walk-forward стенда (issue #130);
     3. масштаб Q (квантиль E уровня ⌈(n+1)·c⌉/n) расширяет [lo, hi] на Q·(hi-lo)
        с каждой стороны так, чтобы покрытие было ≥ целевого с конечно-
-       выборочной гарантией — независимо от точности квантильных моделей.
+       выборочной гарантией — независимо от точности квантильной модели.
 
     issue #105: fit/calib раньше делились случайно (GroupShuffleSplit), и
     ppsm_maps/spatial_ref для ОБОИХ строились на полном raw_train, т.е. цены
@@ -399,6 +421,16 @@ def train_quantile_interval(
       calib в этот референс не входит вообще, так что self-leak в KNN для
       calib-строк снимается автоматически (не нужно даже передавать
       knn_self_indices для cal_df — их там просто нет).
+
+    issue #132: квантильная модель раньше училась вслепую фиксированные
+    QUANTILE_ITERATIONS итераций без eval-set. Добавлен ещё один временной
+    под-сплит — внутри fit-части выделяется её же самый свежий кусок как
+    val (та же time_based_split-логика, что и общий train/test и fit/calib,
+    согласованно продолжает её «назад по времени»): probe-модель находит
+    best_iterations через early stopping, финальная MultiQuantile-модель
+    переобучается на ВСЕЙ fit-части с этим числом итераций — тот же паттерн,
+    что и у точечной RMSE-модели в train() (probe → best_iterations → финал
+    на полном train).
 
     Покрытие/ширину меряем на holdout test_df через общий finalize_interval()
     (issue #105 доп.: раньше predict.py свопал/растягивал границы интервала,
@@ -425,13 +457,37 @@ def train_quantile_interval(
     fit_pool = Pool(fit_df[ALL_FEATURES], fit_df[TARGET], cat_features=CAT_FEATURES)
     cal_pool = Pool(cal_df[ALL_FEATURES], cat_features=CAT_FEATURES)
 
-    model_lo = _fit_quantile(fit_pool, QUANTILE_ALPHA_LO, iterations)
-    model_hi = _fit_quantile(fit_pool, QUANTILE_ALPHA_HI, iterations)
+    # issue #132: early stopping для квантильной модели — временной
+    # под-сплит внутри fit-части (самый свежий кусок fit = val), а не
+    # групповой по зданиям: должен быть согласован с уже отрезанным по
+    # времени calib-окном, а не мешать train/val по времени случайно.
+    es_fit_idx, es_val_idx = time_based_split(fit_raw, window_days=TEST_WINDOW_DAYS)
+    if len(es_val_idx) == 0:
+        groups_es = building_groups(fit_raw)
+        splitter_es = GroupShuffleSplit(n_splits=1, test_size=0.15, random_state=RANDOM_STATE)
+        es_fit_idx, es_val_idx = next(splitter_es.split(fit_raw, groups=groups_es))
+    es_fit_raw = fit_raw.iloc[es_fit_idx].reset_index(drop=True)
+    es_val_raw = fit_raw.iloc[es_val_idx].reset_index(drop=True)
+    ppsm_maps_es = compute_ppsm_maps(es_fit_raw)
+    spatial_ref_es = build_spatial_ref(es_fit_raw)
+    es_fit_df = build_features(
+        es_fit_raw, ppsm_maps=ppsm_maps_es, spatial_ref=spatial_ref_es,
+        knn_self_indices=self_indices_for(es_fit_raw),
+    )
+    es_val_df = build_features(es_val_raw, ppsm_maps=ppsm_maps_es, spatial_ref=spatial_ref_es)
+    es_fit_pool = Pool(es_fit_df[ALL_FEATURES], es_fit_df[TARGET], cat_features=CAT_FEATURES)
+    es_val_pool = Pool(es_val_df[ALL_FEATURES], es_val_df[TARGET], cat_features=CAT_FEATURES)
+
+    probe = _fit_multiquantile(es_fit_pool, iterations, eval_pool=es_val_pool)
+    best_iterations = max(int(probe.tree_count_), 1)
+    logger.info("Квантильная модель: early stopping по val — %s деревьев", best_iterations)
+
+    model = _fit_multiquantile(fit_pool, best_iterations)
 
     # Conformity score на calib, нормированный на ширину предсказанного интервала
     y_cal = cal_df[TARGET].to_numpy()
-    lo_cal = model_lo.predict(cal_pool)
-    hi_cal = model_hi.predict(cal_pool)
+    preds_cal = model.predict(cal_pool)
+    lo_cal, hi_cal = preds_cal[:, 0], preds_cal[:, 1]
     width_cal = np.maximum(hi_cal - lo_cal, MIN_INTERVAL_WIDTH_LOG)
     scores = np.maximum(lo_cal - y_cal, y_cal - hi_cal) / width_cal
     n = len(scores)
@@ -440,8 +496,8 @@ def train_quantile_interval(
 
     # Оценка покрытия и ширины на holdout (expm1 монотонна → сохраняет квантили)
     test_pool = Pool(test_df[ALL_FEATURES], cat_features=CAT_FEATURES)
-    lo_test = model_lo.predict(test_pool)
-    hi_test = model_hi.predict(test_pool)
+    preds_test = model.predict(test_pool)
+    lo_test, hi_test = preds_test[:, 0], preds_test[:, 1]
     width_test = np.maximum(hi_test - lo_test, MIN_INTERVAL_WIDTH_LOG)
     # клип лог-границ до expm1: даже с CQR_SCALE_MAX очень широкий
     # предсказанный интервал не должен переполнять float (overflow → NaN
@@ -465,9 +521,10 @@ def train_quantile_interval(
         "median_width_pct": float(np.median(width_pct)),
         "n_fit": len(fit_df),
         "n_calib": len(cal_df),
+        "quantile_best_iterations": best_iterations,  # issue #132: early stopping
     }
     logger.info("Интервал (CQR): %s", json.dumps(interval_meta))
-    return model_lo, model_hi, interval_meta
+    return model, interval_meta
 
 
 def train(
@@ -588,7 +645,7 @@ def train(
     y_model = np.expm1(model.predict(test_pool))
     y_base = baseline_predict(train_df, test_df)
 
-    model_lo, model_hi, interval_meta = train_quantile_interval(
+    quantile_model, interval_meta = train_quantile_interval(
         raw_train, test_df, point_pred=y_model
     )
 
@@ -629,8 +686,7 @@ def train(
     if save:
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
         model.save_model(str(MODEL_PATH))
-        model_lo.save_model(str(MODEL_LO_PATH))
-        model_hi.save_model(str(MODEL_HI_PATH))
+        quantile_model.save_model(str(MODEL_QUANTILE_PATH))
         from krisha.spatial import save_spatial_ref
 
         save_spatial_ref(spatial_ref)

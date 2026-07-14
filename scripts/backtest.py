@@ -65,9 +65,7 @@ from krisha.spatial import build_spatial_ref, self_indices_for
 from krisha.train import (
     CQR_SCALE_MAX,
     INTERVAL_TARGET_COVERAGE,
-    QUANTILE_ALPHA_HI,
-    QUANTILE_ALPHA_LO,
-    _fit_quantile,
+    _fit_multiquantile,
     baseline_predict,
     dedup_relistings,
     purge_leaked_train_rows,
@@ -247,20 +245,21 @@ def run_fold(
     y_point_test = np.expm1(point_model.predict(test_pool))
     y_base_test = baseline_predict(train_df, test_df)
 
-    model_lo = _fit_quantile(train_pool, QUANTILE_ALPHA_LO, quantile_iterations)
-    model_hi = _fit_quantile(train_pool, QUANTILE_ALPHA_HI, quantile_iterations)
+    # issue #132: одна MultiQuantile-модель вместо model_lo/model_hi — тот же
+    # метод, что и прод train.py, чтобы стенд честно сравнивал будущий прод.
+    quantile_model = _fit_multiquantile(train_pool, quantile_iterations)
 
     y_cal = calib_df[TARGET].to_numpy()
-    lo_cal = model_lo.predict(calib_pool)
-    hi_cal = model_hi.predict(calib_pool)
+    preds_cal = quantile_model.predict(calib_pool)
+    lo_cal, hi_cal = preds_cal[:, 0], preds_cal[:, 1]
     width_cal = np.maximum(hi_cal - lo_cal, MIN_INTERVAL_WIDTH_LOG)
     scores = np.maximum(lo_cal - y_cal, y_cal - hi_cal) / width_cal
     n = len(scores)
     level = min(1.0, np.ceil((n + 1) * INTERVAL_TARGET_COVERAGE) / n)
     scale = min(max(float(np.quantile(scores, level, method="higher")), 0.0), CQR_SCALE_MAX)
 
-    lo_test = model_lo.predict(test_pool)
-    hi_test = model_hi.predict(test_pool)
+    preds_test = quantile_model.predict(test_pool)
+    lo_test, hi_test = preds_test[:, 0], preds_test[:, 1]
     width_test = np.maximum(hi_test - lo_test, MIN_INTERVAL_WIDTH_LOG)
     log_lo = np.clip(lo_test - scale * width_test, -30.0, 30.0)
     log_hi = np.clip(hi_test + scale * width_test, -30.0, 30.0)
