@@ -190,6 +190,35 @@ def _with_hints(listing: dict[str, Any], factors: list[dict]) -> list[dict]:
         return factors
 
 
+def _apply_cqr(lo_raw: float, hi_raw: float, interval_meta: dict[str, Any]) -> tuple[float, float]:
+    """Расширяет сырой квантильный интервал [lo_raw, hi_raw] (log-цена) по CQR
+    и возвращает (log_lo, log_hi).
+
+    Два формата меты, оба должны поддерживаться (issue #105 доработка,
+    обратная совместимость с уже опубликованной прод-моделью):
+    - новый, нормированный: `cqr_scale` — множитель ширины интервала,
+      `[lo, hi] -> [lo - scale*width, hi + scale*width]`. Тот же расчёт, что
+      train.py использует при подсчёте `coverage_test`, так что метрика
+      гейта совпадает с тем, что реально видит пользователь.
+    - старый, у уже опубликованной модели (до ближайшего retrain её meta
+      этот PR не переписывает): `cqr_offset_log` — фиксированный лог-сдвиг,
+      `[lo, hi] -> [lo - offset, hi + offset]`. Если считать отсутствие
+      `cqr_scale` как `scale=0`, интервал резко сузится и вердикты станут
+      агрессивнее сразу после деплоя, до ближайшего retrain — поэтому явно
+      откатываемся на старую формулу, а не молчаливый scale=0.
+    """
+    if "cqr_scale" in interval_meta:
+        scale = float(interval_meta["cqr_scale"])
+        width = max(hi_raw - lo_raw, MIN_INTERVAL_WIDTH_LOG)
+        log_lo = lo_raw - scale * width
+        log_hi = hi_raw + scale * width
+    else:
+        offset = float(interval_meta.get("cqr_offset_log", 0.0))
+        log_lo = lo_raw - offset
+        log_hi = hi_raw + offset
+    return max(min(log_lo, 30.0), -30.0), max(min(log_hi, 30.0), -30.0)
+
+
 def _location_details_with_pin_note(listing: dict[str, Any]) -> list[dict[str, str]]:
     """Блок «Локация» + бейдж «координаты примерные», если точка — метка ЖК."""
     from krisha.zones import approximate_pin_note
@@ -233,18 +262,10 @@ def predict_from_listing(
     interval = load_interval_models()
     if interval is not None:
         lo_model, hi_model = interval
-        # issue #105: масштаб нормированного CQR — расширяет [lo, hi] на
-        # scale * (hi - lo), а не на фиксированный лог-сдвиг (адаптивная
-        # ширина: точки, которым модель изначально даёт широкий интервал,
-        # не штрафуются так же, как узкие). finalize_interval() — тот же
-        # код, что train.py использует при подсчёте coverage_test, так что
-        # метрика гейта совпадает с тем, что реально видит пользователь.
-        scale = float(meta.get("metrics", {}).get("interval", {}).get("cqr_scale", 0.0))
+        interval_meta = meta.get("metrics", {}).get("interval", {})
         lo_raw = float(lo_model.predict(pool)[0])
         hi_raw = float(hi_model.predict(pool)[0])
-        width = max(hi_raw - lo_raw, MIN_INTERVAL_WIDTH_LOG)
-        log_lo = max(min(lo_raw - scale * width, 30.0), -30.0)
-        log_hi = max(min(hi_raw + scale * width, 30.0), -30.0)
+        log_lo, log_hi = _apply_cqr(lo_raw, hi_raw, interval_meta)
         fair_low = float(np.expm1(log_lo))
         fair_high = float(np.expm1(log_hi))
         fair_low, fair_high = finalize_interval(fair_price, fair_low, fair_high)

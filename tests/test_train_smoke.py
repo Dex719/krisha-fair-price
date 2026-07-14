@@ -157,3 +157,22 @@ def test_purge_leaked_train_rows_noop_on_empty_test():
     purged, n_purged = purge_leaked_train_rows(df, df.iloc[0:0])
     assert n_purged == 0
     assert len(purged) == len(df)
+
+
+def test_purge_leaked_train_rows_keeps_other_units_in_same_building():
+    """issue #104 доработка после ревью: purge по зданиям убрали — другая
+    квартира того же дома в train легитимна (модель в проде всегда видит
+    соседние лоты того же здания), это не утечка, только перевыставление
+    (тот же fingerprint) — утечка."""
+    df = synthetic_df(50)
+    raw_test = df.iloc[:5].copy()
+    other_unit = raw_test.iloc[[0]].copy()
+    # Тот же дом (координаты совпадают на ~10 м), но другая квартира:
+    # другие комнаты/площадь/этаж -> другой fingerprint.
+    other_unit["rooms"] = other_unit["rooms"] + 1
+    other_unit["area"] = other_unit["area"] + 15
+    other_unit["floor"] = (other_unit["floor"] % 9) + 1
+    raw_train = pd.concat([df.iloc[10:], other_unit], ignore_index=True)
+    purged, n_purged = purge_leaked_train_rows(raw_train, raw_test)
+    assert n_purged == 0
+    assert len(purged) == len(raw_train)

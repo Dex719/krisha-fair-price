@@ -187,22 +187,25 @@ def purge_leaked_train_rows(
     """issue #104 (доп.): чистит train от строк, «протекающих» из test.
 
     Временной сплит режет по дате, но объявление могло быть перевыставлено
-    (тот же fingerprint) или относится к тому же зданию — тогда почти
-    идентичная квартира лежит и в train, и в «будущем» test, и метрики снова
-    оптимистичны. Убираем из train любую строку с fingerprint или building-
-    группой, встречающейся в test (test как «будущее» не трогаем).
+    (тот же fingerprint) — тогда почти идентичная квартира лежит и в train,
+    и в «будущем» test, и метрики снова оптимистичны. Убираем из train любую
+    строку с fingerprint, встречающимся в test (test как «будущее» не трогаем).
+
+    Осознанно НЕ чистим по building-группе (issue #104 доработка после
+    ревью): другие квартиры того же дома в train — легитимная информация,
+    которая у модели в проде есть всегда (предикт нового лота в знакомом
+    доме — основной кейс, не утечка). Purge по зданиям делал test
+    искусственно сложнее прода и выкидывал из train лишние строки.
     """
     if len(raw_test) == 0:
         return raw_train, 0
     test_fp = set(_fingerprints(raw_test))
-    test_groups = set(building_groups(raw_test))
     train_fp = _fingerprints(raw_train)
-    train_groups = building_groups(raw_train)
-    leak_mask = train_fp.isin(test_fp) | train_groups.isin(test_groups)
+    leak_mask = train_fp.isin(test_fp)
     purged = raw_train.loc[~leak_mask].reset_index(drop=True)
     n_purged = int(leak_mask.sum())
     if n_purged:
-        logger.info("issue #104: purge %d строк train, протекающих в test", n_purged)
+        logger.info("issue #104: purge %d строк train, протекающих в test (fingerprint)", n_purged)
     return purged, n_purged
 
 
