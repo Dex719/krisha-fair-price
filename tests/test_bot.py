@@ -329,3 +329,28 @@ def test_tg_call_uses_api_base_override(monkeypatch):
     monkeypatch.setattr(bot, "_get_tg_client", lambda: FakeClient())
     assert bot.tg_call("getMe") == {"ok": True}
     assert urls == ["https://tg-proxy.example.workers.dev/bot123:abc/getMe"]
+
+
+def test_tg_call_swallows_json_decode_error(monkeypatch, caplog):
+    """issue #114: resp.json() бросает json.JSONDecodeError (не httpx.HTTPError) —
+    раньше это не ловилось tg_call и всплывало наверх (до немаскированного
+    logger.exception в вебхуке, если сообщение содержит /bot<token>/)."""
+    import json as json_mod
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:supersecrettoken")
+
+    class FakeClient:
+        def post(self, url, json=None):
+            class R:
+                @staticmethod
+                def json():
+                    raise json_mod.JSONDecodeError("Expecting value", "<html>not json</html>", 0)
+
+            return R()
+
+    monkeypatch.setattr(bot, "_get_tg_client", lambda: FakeClient())
+    with caplog.at_level("WARNING"):
+        # Раньше это падало наружу с json.JSONDecodeError; должно тихо вернуть None.
+        assert bot.tg_call("getMe") is None
+    assert "supersecrettoken" not in caplog.text
+    assert "getMe failed" in caplog.text

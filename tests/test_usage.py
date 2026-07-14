@@ -84,3 +84,28 @@ def test_weekly_report_empty(monkeypatch, tmp_path):
 def test_record_event_never_raises(monkeypatch, tmp_path):
     _reset(monkeypatch, tmp_path)
     usage.record_event("unknown-kind")  # не бросает
+
+
+def test_hash_user_salted_by_state_encryption_key(monkeypatch):
+    """issue #116: несолёный sha256(chat_id)[:10] обратим перебором по известному
+    диапазону chat_id — хэш должен зависеть от секрета, не только от chat_id."""
+    monkeypatch.delenv("STATE_ENCRYPTION_KEY", raising=False)
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    unsalted_style = __import__("hashlib").sha256(b"krisha-usage:12345").hexdigest()[:10]
+    assert usage._hash_user(12345) != unsalted_style
+
+    monkeypatch.setenv("STATE_ENCRYPTION_KEY", "secret-a")
+    hash_a = usage._hash_user(12345)
+    monkeypatch.setenv("STATE_ENCRYPTION_KEY", "secret-b")
+    hash_b = usage._hash_user(12345)
+    assert hash_a != hash_b  # разные секреты → разные хэши для того же chat_id
+
+    # тот же секрет + тот же chat_id → детерминированно (нужно для дедупа bot_users)
+    monkeypatch.setenv("STATE_ENCRYPTION_KEY", "secret-a")
+    assert usage._hash_user(12345) == hash_a
+
+    # без STATE_ENCRYPTION_KEY падаем на TELEGRAM_BOT_TOKEN, как subscriptions.py
+    monkeypatch.delenv("STATE_ENCRYPTION_KEY", raising=False)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    hash_token = usage._hash_user(12345)
+    assert hash_token not in (hash_a, hash_b, unsalted_style)

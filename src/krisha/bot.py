@@ -155,8 +155,12 @@ def tg_call(method: str, **payload: Any) -> dict | None:
         if not data.get("ok"):
             logger.warning("Telegram %s: %s", method, data)
         return data
-    except httpx.HTTPError as exc:
-        # Текст исключения может содержать URL с /bot<token>/ — вырезаем токен
+    except (httpx.HTTPError, ValueError) as exc:
+        # Текст исключения может содержать URL с /bot<token>/ — вырезаем токен.
+        # ValueError тоже ловим: resp.json() бросает json.JSONDecodeError
+        # (подкласс ValueError) на не-JSON ответе, а это не httpx.HTTPError —
+        # без этого немаскированное исключение всплывало бы наверх до
+        # logger.exception() в вебхуке (issue #114).
         logger.warning("Telegram %s failed: %s", method, str(exc).replace(token, "***"))
         return None
 

@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import sqlite3
+import threading
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
@@ -71,13 +72,12 @@ CSP = (
 # Лимит тела запроса: наш самый большой вход — короткий JSON с URL,
 # всё существенно большее — мусор или попытка занять память парсером.
 #
-# Известное ограничение (осознанно принято): проверка идёт только по
-# заголовку Content-Length. Запрос с Transfer-Encoding: chunked и без
-# Content-Length пройдёт мимо этой проверки — чтобы ловить и его, нужно
-# читать тело потоково с подсчётом байт, что требует отдельного решения
-# (например ASGI-обёртки над request.stream()). Для нашего профиля риска
-# (внутренний API, максимум JSON с одним URL-полем) это принято как
-# допустимый компромисс и не реализуется здесь.
+# Быстрый путь — по заголовку Content-Length (ниже, в _security_headers).
+# Он не ловит Transfer-Encoding: chunked без Content-Length — такое тело
+# проходит мимо проверки заголовка и парсится целиком (memory-DoS вектор,
+# issue #113). Ниже это отдельно закрыто потоковым подсчётом байт в
+# _ChunkedBodyLimitMiddleware, которая считает тело по мере поступления
+# независимо от заголовков.
 MAX_BODY_BYTES = 64 * 1024
 DATA_STALE_AFTER_HOURS = 30.0
 
@@ -89,6 +89,56 @@ def _apply_security_headers(response):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     return response
+
+
+class _MaxBodySizeExceeded(Exception):
+    pass
+
+
+class _ChunkedBodyLimitMiddleware:
+    """Рав-ASGI мидлварь (не BaseHTTPMiddleware — нужен доступ к сырому
+    ``receive``): считает байты тела запроса по мере их поступления, а не
+    по заголовку. Ловит Transfer-Encoding: chunked без Content-Length,
+    который обходит проверку заголовка в _security_headers (issue #113).
+
+    Работает независимо от порядка регистрации относительно
+    _security_headers: где бы эта мидлварь ни оказалась в стеке, она сама
+    ловит исключение из собственного вызова ``self.app(...)`` и отвечает
+    413 до того, как оно всплывёт наружу — при условии, что до превышения
+    лимита обработчик ещё не начал слать ответ (верно для всех текущих
+    JSON-эндпоинтов: они сперва целиком читают/валидируют тело).
+    """
+
+    def __init__(self, app, max_bytes: int):
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        total = 0
+
+        async def counted_receive():
+            nonlocal total
+            message = await receive()
+            if message["type"] == "http.request":
+                total += len(message.get("body") or b"")
+                if total > self.max_bytes:
+                    raise _MaxBodySizeExceeded()
+            return message
+
+        try:
+            await self.app(scope, counted_receive, send)
+        except _MaxBodySizeExceeded:
+            response = _apply_security_headers(
+                JSONResponse(status_code=413, content={"detail": "Слишком большой запрос"})
+            )
+            await response(scope, receive, send)
+
+
+app.add_middleware(_ChunkedBodyLimitMiddleware, max_bytes=MAX_BODY_BYTES)
 
 
 @app.middleware("http")
@@ -183,6 +233,12 @@ def _model_error_pct() -> float | None:
 RATE_LIMIT = 15  # запросов
 RATE_WINDOW_S = 60.0
 _rate: dict[str, deque] = defaultdict(deque)
+# /api/predict — async def, но _check_rate_limit сам по себе синхронный и
+# вызывается из разных потоков threadpool'а (остальные sync-хендлеры вроде
+# /api/flags), поэтому мутации _rate (del при вычистке, вставка нового ключа
+# через defaultdict) из двух потоков одновременно могут пересечься —
+# issue #113: "dictionary changed size during iteration" под нагрузкой.
+_rate_lock = threading.Lock()
 
 
 def _client_ip(request: Request) -> str:
@@ -214,16 +270,17 @@ MAX_RATE_KEYS = 10_000  # потолок против разрастания п�
 def _check_rate_limit(request: Request) -> None:
     ip = _client_ip(request)
     now = time.monotonic()
-    # Вытесняем протухшие ключи, чтобы словарь не рос бесконечно.
-    if len(_rate) > MAX_RATE_KEYS:
-        for key in [k for k, dq in _rate.items() if not dq or now - dq[-1] > RATE_WINDOW_S]:
-            del _rate[key]
-    q = _rate[ip]
-    while q and now - q[0] > RATE_WINDOW_S:
-        q.popleft()
-    if len(q) >= RATE_LIMIT:
-        raise HTTPException(status_code=429, detail="Слишком много запросов, подожди минуту")
-    q.append(now)
+    with _rate_lock:
+        # Вытесняем протухшие ключи, чтобы словарь не рос бесконечно.
+        if len(_rate) > MAX_RATE_KEYS:
+            for key in [k for k, dq in _rate.items() if not dq or now - dq[-1] > RATE_WINDOW_S]:
+                del _rate[key]
+        q = _rate[ip]
+        while q and now - q[0] > RATE_WINDOW_S:
+            q.popleft()
+        if len(q) >= RATE_LIMIT:
+            raise HTTPException(status_code=429, detail="Слишком много запросов, подожди минуту")
+        q.append(now)
 
 
 @app.post("/api/predict", response_model=PredictResponse)
