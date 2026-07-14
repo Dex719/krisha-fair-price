@@ -69,6 +69,12 @@ def main() -> None:
         if stats["found_in_search"] == 0:
             logging.error("Выдача пуста — вероятно, блокировка по IP или разметка изменилась")
             sys.exit(1)
+        if stats.get("banned"):
+            logging.error(
+                "Проход прерван досрочно — похоже на бан (серия HTTP 403) — "
+                "не заливаем db-latest"
+            )
+            sys.exit(1)
         if stats.get("suspicious"):
             logging.error(
                 "Проход помечен подозрительным (parse-rate просел против медианы %s "
