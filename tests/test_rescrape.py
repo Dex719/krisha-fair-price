@@ -22,14 +22,14 @@ def _card(lid: int, price: int) -> str:
     )
 
 
-def _listing(lid: int, price: int = 10_000_000) -> dict:
+def _listing(lid: int, price: int = 10_000_000, area: float = 60.0) -> dict:
     return {
         "id": lid,
         "url": f"https://krisha.kz/a/show/{lid}",
         "price": price,
         "title": "test",
         "rooms": 2,
-        "area": 60.0,
+        "area": area,
     }
 
 
@@ -425,6 +425,112 @@ def test_sweep_detail_queue_skips_delisted_sighting(tmp_path, monkeypatch):
     # учитывается; после фетча очередь пуста
     assert stats["detail_queue_before"] == 1
     assert stats["detail_queue_after"] == 0
+
+
+# ---------- issue #102: повторная докачка устаревших активных деталей ----------
+
+
+def test_sweep_refreshes_stale_active_listing_details(tmp_path, monkeypatch):
+    """Рескрейп по карточке обновляет только цену — площадь/этаж/описание/
+    координаты, отредактированные продавцом, без этой очереди никогда не
+    подтягивались, пока лот жил (issue #102)."""
+    db = tmp_path / "test.db"
+    init_db(db)
+    upsert_listing(_listing(500, price=10_000_000), db)
+    with get_conn(db) as conn:
+        # "докачано" 60 дней назад — старше дефолтного refresh_stale_days=30
+        conn.execute(
+            "UPDATE listings SET scraped_at = '2020-01-01 00:00:00', area = 55.0 "
+            "WHERE id = 500"
+        )
+
+    shards = shard_urls()
+    first_url = shards[0][1]
+    # в выдаче лот не встретился в этот проход (шард пуст) — обновление
+    # устаревших деталей не должно зависеть от found в текущем проходе
+    pages = {first_url: _card(999, 5_000_000)}
+    client = FakeClient(pages)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(
+        rescrape,
+        "parse_detail",
+        lambda html, url: _listing(500, price=10_000_000, area=70.0) if "500" in url else None,
+    )
+
+    stats = sweep(max_pages=1, max_new_details=0, max_refresh=10, db_path=db)
+
+    with get_conn(db) as conn:
+        area = conn.execute("SELECT area FROM listings WHERE id = 500").fetchone()[0]
+    assert area == 70.0  # отредактированная площадь подтянулась
+    assert stats["stale_refresh_queue"] == 1
+    assert stats["stale_refreshed"] == 1
+
+
+def test_sweep_does_not_refresh_recently_scraped_details(tmp_path, monkeypatch):
+    db = tmp_path / "test.db"
+    init_db(db)
+    upsert_listing(_listing(501, price=10_000_000, area=55.0), db)  # scraped_at = now
+
+    shards = shard_urls()
+    first_url = shards[0][1]
+    client = FakeClient({first_url: _card(999, 5_000_000)})
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "parse_detail", lambda html, url: None)
+
+    stats = sweep(max_pages=1, max_new_details=0, max_refresh=10, db_path=db)
+
+    assert stats["stale_refresh_queue"] == 0
+    assert stats["stale_refreshed"] == 0
+    with get_conn(db) as conn:
+        assert conn.execute("SELECT area FROM listings WHERE id = 501").fetchone()[0] == 55.0
+
+
+def test_sweep_max_refresh_zero_disables_stale_refresh(tmp_path, monkeypatch):
+    db = tmp_path / "test.db"
+    init_db(db)
+    upsert_listing(_listing(502, price=10_000_000), db)
+    with get_conn(db) as conn:
+        conn.execute("UPDATE listings SET scraped_at = '2020-01-01 00:00:00' WHERE id = 502")
+
+    shards = shard_urls()
+    first_url = shards[0][1]
+    client = FakeClient({first_url: _card(999, 5_000_000)})
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "parse_detail", lambda html, url: None)
+
+    stats = sweep(max_pages=1, max_new_details=0, max_refresh=0, db_path=db)
+
+    assert stats["stale_refresh_queue"] == 0
+    assert stats["stale_refreshed"] == 0
+    assert not any(url.endswith("/show/502") for url in client.requested)  # деталка не запрошена
+
+
+# ---------- issue #103: карточка выдачи тоже под data-contract на цену ----------
+
+
+def test_sweep_quarantines_out_of_range_card_price_and_keeps_old(tmp_path, monkeypatch):
+    db = tmp_path / "test.db"
+    init_db(db)
+    upsert_listing(_listing(600, price=10_000_000), db)
+
+    shards = shard_urls()
+    first_url = shards[0][1]
+    # карточка отдаёт битую цену (ниже PRICE_MIN) для знакомого id=600
+    pages = {first_url: _card(600, 1)}
+    client = FakeClient(pages)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "parse_detail", lambda html, url: None)
+
+    stats = sweep(max_pages=1, max_new_details=0, max_refresh=0, db_path=db)
+
+    assert stats["price_changes"] == 0
+    with get_conn(db) as conn:
+        price = conn.execute("SELECT price FROM listings WHERE id = 600").fetchone()[0]
+        anomalies = conn.execute(
+            "SELECT COUNT(*) FROM parse_anomalies WHERE listing_id = 600 AND field = 'price'"
+        ).fetchone()[0]
+    assert price == 10_000_000  # старая цена не затёрта мусором из карточки
+    assert anomalies == 1
 
 
 def test_sweep_aborts_early_on_ban_and_skips_delist(tmp_path, monkeypatch):

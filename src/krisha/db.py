@@ -7,7 +7,15 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-from krisha.config import DB_PATH
+from krisha.config import (
+    ALMATY_BBOX,
+    AREA_MAX,
+    AREA_MIN,
+    DB_PATH,
+    PRICE_MAX,
+    PRICE_MIN,
+    SHARED_PIN_MIN,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +107,19 @@ CREATE TABLE IF NOT EXISTS complexes (
     scraped_at          TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_complexes_name_norm ON complexes(name_norm);
+
+-- issue #103: данные, отклонённые data-contract проверкой в upsert_listing
+-- (цена/площадь/координаты вне разумного диапазона) — не молча в listings,
+-- а сюда: аудит + метрика качества парсинга (COUNT(*) по detected_at).
+CREATE TABLE IF NOT EXISTS parse_anomalies (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    listing_id   INTEGER NOT NULL,
+    field        TEXT NOT NULL,
+    reason       TEXT NOT NULL,
+    raw_value    TEXT,
+    detected_at  TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_parse_anomalies_listing ON parse_anomalies(listing_id);
 """
 
 LISTING_COLUMNS = [
@@ -116,7 +137,7 @@ _UPSERT_ALWAYS = ["price", "title", "raw_params"]
 # source при конфликте НЕ трогаем: это происхождение первой записи
 # (scrape/user); пользовательский предикт не должен переписывать провенанс.
 _UPSERT_COALESCE = [
-    c for c in [*LISTING_COLUMNS, "fingerprint"]
+    c for c in [*LISTING_COLUMNS, "fingerprint", "coords_approx"]
     if c != "id" and c not in _UPSERT_ALWAYS
 ]
 
@@ -128,10 +149,10 @@ _UPSERT_SET = ", ".join(
 UPSERT_SQL = f"""
 INSERT INTO listings (
     {", ".join(LISTING_COLUMNS)},
-    source, fingerprint, first_seen, last_seen, is_active
+    source, fingerprint, coords_approx, first_seen, last_seen, is_active
 ) VALUES (
     {", ".join(":" + c for c in LISTING_COLUMNS)},
-    :source, :fingerprint, datetime('now'), datetime('now'), 1
+    :source, :fingerprint, :coords_approx, datetime('now'), datetime('now'), 1
 )
 ON CONFLICT(id) DO UPDATE SET
     {_UPSERT_SET},
@@ -151,17 +172,17 @@ ON CONFLICT(id) DO UPDATE SET
 # парс перезаписывает, а NULL из неполного парса не затирает хорошие данные.
 _USER_UPSERT_SET = ", ".join(
     f"{c} = COALESCE(excluded.{c}, listings.{c})"
-    for c in [*LISTING_COLUMNS, "fingerprint"]
+    for c in [*LISTING_COLUMNS, "fingerprint", "coords_approx"]
     if c not in ("id", "price", "title", "raw_params")
 )
 
 UPSERT_SQL_USER = f"""
 INSERT INTO listings (
     {", ".join(LISTING_COLUMNS)},
-    source, fingerprint, first_seen, last_seen, is_active
+    source, fingerprint, coords_approx, first_seen, last_seen, is_active
 ) VALUES (
     {", ".join(":" + c for c in LISTING_COLUMNS)},
-    :source, :fingerprint, datetime('now'), datetime('now'), 1
+    :source, :fingerprint, :coords_approx, datetime('now'), datetime('now'), 1
 )
 ON CONFLICT(id) DO UPDATE SET
     {_USER_UPSERT_SET},
@@ -237,6 +258,10 @@ _MIGRATION_COLUMNS = {
     # Пользовательские объявления: откуда запись и «отпечаток» квартиры для дублей
     "source": "TEXT DEFAULT 'scrape'",
     "fingerprint": "TEXT",
+    # issue #103: 1 = координаты сидят на общей метке ЖК (≥ SHARED_PIN_MIN
+    # объявлений на той же точке), не на реальном подъезде/доме — использовать
+    # в фичах/дедупе как признак пониженной точности координат.
+    "coords_approx": "INTEGER DEFAULT 0",
 }
 
 
@@ -311,6 +336,97 @@ def find_duplicate_id(
     return int(row[0]) if row else None
 
 
+def is_valid_price(price: int | float | None) -> bool:
+    """issue #103: PRICE_MIN..PRICE_MAX data-contract, для переиспользования вне
+    upsert_listing — например rescrape.sweep()'s "знакомый лот, цена из
+    карточки выдачи" путь, который пишет price в обход upsert_listing."""
+    return price is None or PRICE_MIN <= price <= PRICE_MAX
+
+
+def record_parse_anomaly(
+    conn: sqlite3.Connection, listing_id: int, field: str, reason: str, raw_value: Any
+) -> None:
+    conn.execute(
+        "INSERT INTO parse_anomalies (listing_id, field, reason, raw_value) VALUES (?, ?, ?, ?)",
+        (int(listing_id), field, reason, None if raw_value is None else str(raw_value)),
+    )
+    logger.warning(
+        "listing %s: аномалия %s (%s), значение %r — в карантин, поле не записано",
+        listing_id,
+        field,
+        reason,
+        raw_value,
+    )
+
+
+def _validate_and_quarantine(conn: sqlite3.Connection, listing_id: int, row: dict[str, Any]) -> bool:
+    """Data-contract проверка входа upsert_listing (issue #103): цена вне
+    PRICE_MIN..MAX, площадь вне AREA_MIN..MAX или координаты вне ALMATY_BBOX —
+    аудит в parse_anomalies + метрика качества парсинга, а не молча в базу.
+    Возвращает True, если координаты (если были) прошли bbox-проверку.
+
+    Не блокирует upsert целиком — только откатывает конкретное поле:
+    - площадь — COALESCE-поле в UPSERT_SQL, `None` здесь = "не обновлять",
+      старое хорошее значение (если было) остаётся;
+    - цена — единственное из проверяемых полей в _UPSERT_ALWAYS (пишется
+      безусловно), поэтому откатываем на текущее значение в БД явно, чтобы
+      garbage-парс не затёр валидную цену NULL'ом/мусором;
+    - координаты НЕ зануляем и не трогаем сырое значение в listings: train-time
+      фильтр (`train._filter_stale_and_out_of_area`) уже сам исключает лоты
+      вне ALMATY_BBOX, но специально НЕ исключает лоты без координат вовсе
+      (их чинит resolve_zones дальше по пайплайну) — занулить здесь значило
+      бы молча перевести "мусорные координаты" в "координат нет" и вернуть их
+      обратно в train. Вместо этого anomaly просто логируется, а вызывающий
+      (upsert_listing) использует возвращённый флаг, чтобы не пустить garbage
+      координаты в fingerprint-дедуп/coords_approx.
+    """
+    price = row.get("price")
+    if not is_valid_price(price):
+        record_parse_anomaly(conn, listing_id, "price", "out_of_range", price)
+        prev = conn.execute(
+            "SELECT price FROM listings WHERE id = ?", (listing_id,)
+        ).fetchone()
+        row["price"] = int(prev[0]) if prev and prev[0] is not None else None
+
+    area = row.get("area")
+    if area is not None and not (AREA_MIN <= area <= AREA_MAX):
+        record_parse_anomaly(conn, listing_id, "area", "out_of_range", area)
+        row["area"] = None
+
+    lat, lon = row.get("lat"), row.get("lon")
+    if lat is not None and lon is not None and not (
+        ALMATY_BBOX["lat_min"] <= lat <= ALMATY_BBOX["lat_max"]
+        and ALMATY_BBOX["lon_min"] <= lon <= ALMATY_BBOX["lon_max"]
+    ):
+        record_parse_anomaly(conn, listing_id, "coords", "out_of_bbox", f"{lat},{lon}")
+        return False
+    return True
+
+
+def _coords_approx(
+    conn: sqlite3.Connection, listing_id: int, lat: float | None, lon: float | None
+) -> int | None:
+    """1 = координаты сидят на общей метке ЖК (issue #103): ≥ SHARED_PIN_MIN
+    объявлений (включая это) на той же точке с округлением до 5 знаков
+    (~1 м, тот же ROUND, что и снапшот scripts/fetch_osm_zones.py).
+
+    `None`, если lat/lon в этом проходе не пришли или не прошли bbox-проверку
+    — COALESCE в UPSERT_SQL тогда сохранит старое значение вместо ложного
+    сброса в 0.
+    """
+    if lat is None or lon is None:
+        return None
+    try:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM listings WHERE id != ? "
+            "AND ROUND(lat, 5) = ROUND(?, 5) AND ROUND(lon, 5) = ROUND(?, 5)",
+            (int(listing_id), lat, lon),
+        ).fetchone()[0]
+    except sqlite3.OperationalError:
+        return None
+    return 1 if (count + 1) >= SHARED_PIN_MIN else 0
+
+
 def upsert_listing(
     listing: dict[str, Any],
     db_path: Path | str = DB_PATH,
@@ -318,10 +434,25 @@ def upsert_listing(
 ) -> None:
     row = {col: listing.get(col) for col in LISTING_COLUMNS}
     row["source"] = listing.get("source") or "scrape"
-    row["fingerprint"] = listing_fingerprint(listing)
     is_user = row["source"] == "user"
     sql = UPSERT_SQL_USER if is_user else UPSERT_SQL
     with use_conn(conn, db_path) as conn:
+        try:
+            coords_valid = _validate_and_quarantine(conn, row["id"], row)
+        except sqlite3.OperationalError:
+            conn.executescript(SCHEMA)
+            _migrate(conn)
+            coords_valid = _validate_and_quarantine(conn, row["id"], row)
+        # issue #103: fingerprint-дедуп и coords_approx считаем по "чистым"
+        # координатам — garbage вне bbox не должен склеивать разные квартиры
+        # по случайному совпадению битого парсинга и не должен засчитаться
+        # как shared-pin ЖК. Сырое значение в row["lat"/"lon"] (то, что уйдёт
+        # в listings) не трогаем — см. docstring _validate_and_quarantine.
+        fp_source = row if coords_valid else {**row, "lat": None, "lon": None}
+        row["fingerprint"] = listing_fingerprint(fp_source)
+        row["coords_approx"] = (
+            _coords_approx(conn, row["id"], row.get("lat"), row.get("lon")) if coords_valid else None
+        )
         try:
             conn.execute(sql, row)
         except sqlite3.OperationalError:
@@ -334,6 +465,22 @@ def upsert_listing(
         # как «изменение цены» и даст ложный алерт подписчикам /track.
         if not is_user and row.get("price") is not None:
             _record_price_if_changed(conn, row["id"], int(row["price"]))
+
+
+def count_parse_anomalies(since: str | None = None, db_path: Path | str = DB_PATH) -> int:
+    """Метрика качества парсинга (issue #103): сколько полей ушло в карантин.
+
+    `since` — нижняя граница `detected_at` (например 'YYYY-MM-DD'), None — все.
+    """
+    with get_conn(db_path) as conn:
+        try:
+            if since:
+                return conn.execute(
+                    "SELECT COUNT(*) FROM parse_anomalies WHERE detected_at >= ?", (since,)
+                ).fetchone()[0]
+            return conn.execute("SELECT COUNT(*) FROM parse_anomalies").fetchone()[0]
+        except sqlite3.OperationalError:
+            return 0
 
 
 SIGHTING_UPSERT_SQL = """
