@@ -53,3 +53,7 @@ ignore = ["E501", "B905"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# CI/local invoke plain `pytest` (not `python -m pytest`), which does not
+# add the repo root to sys.path on its own — tests/test_runtime_lock.py
+# imports the non-package `scripts/` dir, so it needs the root explicit.
+pythonpath = ["."]
