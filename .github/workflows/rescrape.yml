@@ -50,6 +50,7 @@ jobs:
             --pages "${{ github.event.inputs.pages || '250' }}" \
             --max-new "${{ github.event.inputs.max_new || '1000' }}" \
             --fail-empty \
+            --fail-below 8000 \
             --summary-json /tmp/rescrape_stats.json
 
       - name: Job summary
