@@ -3,9 +3,10 @@
 install:        ## зависимости (venv создай заранее: python -m venv .venv && source .venv/bin/activate)
 	pip install -e ".[dev]"
 
-lock:           ## перегенерировать requirements.lock / requirements-train.lock из pyproject.toml
+lock:           ## перегенерировать requirements.lock / requirements-train.lock / requirements-runtime.lock
 	uv pip compile pyproject.toml -o requirements.lock --python-version 3.11
 	uv pip compile pyproject.toml --extra train -o requirements-train.lock --python-version 3.11
+	python scripts/gen_runtime_lock.py   # requirements.lock минус plotting-хвост catboost (issue #119)
 
 crawl:          ## быстрая проба: 5 страниц, до 50 объявлений
 	python scripts/crawl.py --pages 5 --limit 50

@@ -1,0 +1,110 @@
+# АВТОГЕНЕРИРУЕТСЯ: scripts/gen_runtime_lock.py из requirements.lock (make lock).
+# issue #119 — тот же резолв минус plotting-хвост catboost (matplotlib/
+# plotly/graphviz/pillow/...), не нужный serving-пути (/api/predict).
+# Ставить строго с `pip install --no-deps`: лок уже полностью плоский,
+# без --no-deps pip заново подтянет matplotlib из Requires-Dist catboost.
+
+annotated-doc==0.0.4
+    # via fastapi
+annotated-types==0.7.0
+    # via pydantic
+anyio==4.14.1
+    # via
+    #   httpx
+    #   starlette
+    #   watchfiles
+beautifulsoup4==4.15.0
+    # via krisha-fair-price (pyproject.toml)
+catboost==1.2.10
+    # via krisha-fair-price (pyproject.toml)
+certifi==2026.6.17
+    # via
+    #   httpcore
+    #   httpx
+cffi==2.0.0
+    # via cryptography
+click==8.4.2
+    # via uvicorn
+cryptography==49.0.0
+    # via krisha-fair-price (pyproject.toml)
+fastapi==0.139.0
+    # via krisha-fair-price (pyproject.toml)
+h11==0.16.0
+    # via
+    #   httpcore
+    #   uvicorn
+h3==4.5.0
+    # via krisha-fair-price (pyproject.toml)
+httpcore==1.0.9
+    # via httpx
+httptools==0.8.0
+    # via uvicorn
+httpx==0.28.1
+    # via krisha-fair-price (pyproject.toml)
+idna==3.18
+    # via
+    #   anyio
+    #   httpx
+lxml==6.1.1
+    # via krisha-fair-price (pyproject.toml)
+numpy==2.4.6
+    # via
+    #   krisha-fair-price (pyproject.toml)
+    #   catboost
+    #   contourpy
+    #   matplotlib
+    #   pandas
+    #   scipy
+pandas==3.0.3
+    # via
+    #   krisha-fair-price (pyproject.toml)
+    #   catboost
+pycparser==3.0
+    # via cffi
+pydantic==2.13.4
+    # via
+    #   krisha-fair-price (pyproject.toml)
+    #   fastapi
+pydantic-core==2.46.4
+    # via pydantic
+python-dateutil==2.9.0.post0
+    # via
+    #   matplotlib
+    #   pandas
+python-dotenv==1.2.2
+    # via uvicorn
+pyyaml==6.0.3
+    # via uvicorn
+scipy==1.17.1
+    # via
+    #   krisha-fair-price (pyproject.toml)
+    #   catboost
+six==1.17.0
+    # via
+    #   catboost
+    #   python-dateutil
+soupsieve==2.8.4
+    # via beautifulsoup4
+starlette==1.3.1
+    # via fastapi
+typing-extensions==4.16.0
+    # via
+    #   anyio
+    #   beautifulsoup4
+    #   fastapi
+    #   pydantic
+    #   pydantic-core
+    #   starlette
+    #   typing-inspection
+typing-inspection==0.4.2
+    # via
+    #   fastapi
+    #   pydantic
+uvicorn==0.50.0
+    # via krisha-fair-price (pyproject.toml)
+uvloop==0.22.1
+    # via uvicorn
+watchfiles==1.2.0
+    # via uvicorn
+websockets==16.0
+    # via uvicorn
