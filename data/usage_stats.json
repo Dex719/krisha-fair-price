@@ -123,7 +123,17 @@
       "bot": 0,
       "bot_users": [],
       "hours": {
-        "20": 1
+        "20": 2,
+        "21": 3
+      },
+      "predict": 0,
+      "site": 5
+    },
+    "2026-07-19": {
+      "bot": 0,
+      "bot_users": [],
+      "hours": {
+        "11": 1
       },
       "predict": 0,
       "site": 1
