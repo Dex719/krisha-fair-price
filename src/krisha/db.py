@@ -132,6 +132,32 @@ CREATE INDEX IF NOT EXISTS idx_parse_anomalies_listing ON parse_anomalies(listin
 --
 -- Источник истины именно база, а не файл в репозитории: база — единственный
 -- артефакт, который едет вместе с данными (релиз db-latest → раннер → Space).
+-- issue #154: счётчики каждого прохода. Без них инварианты «очередь деталей
+-- растёт третий проход подряд» и «докачано ровно max_new N дней подряд»
+-- невычислимы: раннер GitHub Actions каждый раз чистый, а файл истории
+-- лежит в .gitignore и до прода не доезжает. База — единственное состояние,
+-- которое переживает проход (скачивается из релиза и заливается обратно).
+--
+-- Ровно та слепота, из-за которой отставание сбора было невидимым: докачка
+-- двенадцать дней подряд упиралась в потолок 1000/день, а в отчёте это
+-- выглядело как «новых 1000» — то есть как успех.
+--
+-- Одна строка в сутки: 365 строк в год, на размер базы не влияет.
+CREATE TABLE IF NOT EXISTS sweep_runs (
+    started_at         TEXT PRIMARY KEY,
+    deal               TEXT,
+    found_in_search    INTEGER,
+    discovered_new     INTEGER,
+    details_fetched    INTEGER,
+    max_new_details    INTEGER,   -- потолок, в который упиралась докачка
+    detail_queue_after INTEGER,
+    price_changes      INTEGER,
+    delisted           INTEGER,   -- NULL = детект пропущен
+    failed_shards      INTEGER,
+    recovery_pass      INTEGER,
+    suspicious         INTEGER
+);
+
 CREATE TABLE IF NOT EXISTS data_gaps (
     gap_start   TEXT NOT NULL,   -- MAX(last_seen) до провала: последнее наблюдение
     gap_end     TEXT NOT NULL,   -- старт первого прохода, который провал заметил
@@ -729,6 +755,57 @@ def known_ids(db_path: Path | str = DB_PATH) -> set[int]:
             return {r[0] for r in conn.execute("SELECT id FROM listings")}
         except sqlite3.OperationalError:
             return set()
+
+
+_SWEEP_RUN_COLUMNS = (
+    "started_at", "deal", "found_in_search", "discovered_new", "details_fetched",
+    "max_new_details", "detail_queue_after", "price_changes", "delisted",
+    "failed_shards", "recovery_pass", "suspicious",
+)
+
+
+def record_sweep_run(
+    row: dict[str, Any], db_path: Path | str = DB_PATH,
+    conn: sqlite3.Connection | None = None,
+) -> None:
+    """Пишет счётчики прохода в sweep_runs (issue #154).
+
+    INSERT OR REPLACE по started_at: перезапуск джобы в ту же секунду
+    перезапишет строку, а не заведёт дубль.
+
+    Ошибку глотаем: строка истории вторична, ронять из-за неё ночной проход
+    (и терять вместе с ним заливку базы) — плохой размен.
+    """
+    payload = {c: row.get(c) for c in _SWEEP_RUN_COLUMNS}
+    for flag in ("recovery_pass", "suspicious"):
+        if payload[flag] is not None:
+            payload[flag] = int(bool(payload[flag]))
+    try:
+        with use_conn(conn, db_path) as conn:
+            conn.execute(
+                f"INSERT OR REPLACE INTO sweep_runs ({', '.join(_SWEEP_RUN_COLUMNS)}) "
+                f"VALUES ({', '.join(':' + c for c in _SWEEP_RUN_COLUMNS)})",
+                payload,
+            )
+    except sqlite3.Error:
+        logger.warning("Не удалось записать историю прохода в sweep_runs", exc_info=True)
+
+
+def recent_sweep_runs(
+    limit: int = 7, deal: str = "prodazha", db_path: Path | str = DB_PATH,
+    conn: sqlite3.Connection | None = None,
+) -> list[dict[str, Any]]:
+    """Последние проходы, свежие первыми. Пустой список, если таблицы ещё нет."""
+    try:
+        with use_conn(conn, db_path) as conn:
+            rows = conn.execute(
+                f"SELECT {', '.join(_SWEEP_RUN_COLUMNS)} FROM sweep_runs "
+                "WHERE COALESCE(deal, 'prodazha') = ? ORDER BY started_at DESC LIMIT ?",
+                (deal, limit),
+            ).fetchall()
+    except sqlite3.Error:
+        return []
+    return [dict(zip(_SWEEP_RUN_COLUMNS, r)) for r in rows]
 
 
 def count_listings(db_path: Path | str = DB_PATH) -> int:

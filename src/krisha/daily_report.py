@@ -57,6 +57,111 @@ def _db_counts(db_path: Path) -> tuple[int, int] | None:
         return None
 
 
+# issue #154: сколько проходов подряд должна расти очередь деталей, чтобы это
+# считалось проблемой. Один рост — обычный день с большим притоком; три подряд
+# означают, что потолок докачки ниже притока и отставание копится.
+QUEUE_GROWTH_STREAK = 3
+# Сколько проходов подряд докачка может упираться в свой потолок, прежде чем
+# это станет сигналом. Ровно эта слепота прятала отставание: двенадцать дней
+# подряд «докачано 1000» читалось как успех, а означало «упёрлись».
+CAP_HIT_STREAK = 3
+MAX_RETRAIN_AGE_DAYS = 8
+
+
+def _invariants(stats: dict | None, db_path: Path, scope: str) -> list[tuple[bool, str]]:
+    """Проверки «конвейер жив». [(ок, текст), ...] — порядок фиксирован.
+
+    Смысл в том, чтобы отчёт начинался с вердикта, а не с таблицы цифр.
+    Поломку 14.07 не заметили не из-за отсутствия алертов, а потому что
+    читать надо было цифры и сравнивать их с ожиданием в голове.
+    """
+    from krisha.db import recent_sweep_runs
+
+    checks: list[tuple[bool, str]] = []
+    if not stats:
+        return [(False, "счётчики прохода не найдены — рескрейп не доработал")]
+
+    # Формулировки нейтральные, а не «всё хорошо»: строка показывается
+    # ТОЛЬКО когда проверка провалилась, и «выдача отдаёт объявления (0)»
+    # читалось бы как утверждение об успехе рядом с красным заголовком.
+    found = stats.get("found_in_search") or 0
+    checks.append((found > 0, f"в выдаче объявлений: {found}"))
+
+    discovered = stats.get("discovered_new")
+    if discovered is not None:
+        checks.append((discovered > 0, f"новых лотов найдено: {discovered}"))
+
+    fetched = stats.get("details_fetched")
+    if fetched is not None:
+        checks.append((fetched > 0, f"деталей докачано: {fetched}"))
+
+    if stats.get("failed_shards"):
+        checks.append((False, f"шардов не покрыто: {len(stats['failed_shards'])}"))
+    if stats.get("banned"):
+        checks.append((False, f"бан на фазе «{stats.get('banned_phase') or '?'}»"))
+    if stats.get("time_budget_hit"):
+        checks.append((False, "проход упёрся в бюджет времени"))
+    if stats.get("suspicious"):
+        checks.append((False, "parse-rate просел против базлайна"))
+
+    deal = "arenda" if scope == "rent" else "prodazha"
+    runs = recent_sweep_runs(limit=max(QUEUE_GROWTH_STREAK, CAP_HIT_STREAK) + 1,
+                            deal=deal, db_path=db_path)
+    queues = [r["detail_queue_after"] for r in runs if r["detail_queue_after"] is not None]
+    if len(queues) > QUEUE_GROWTH_STREAK:
+        # runs идут свежими первыми, поэтому рост во времени — это убывание
+        # по списку: queues[0] (сегодня) больше queues[1] (вчера) и т.д.
+        growing = all(
+            queues[i] > queues[i + 1] for i in range(QUEUE_GROWTH_STREAK)
+        )
+        if growing:
+            checks.append((
+                False,
+                f"очередь деталей растёт {QUEUE_GROWTH_STREAK} прохода подряд "
+                f"({queues[QUEUE_GROWTH_STREAK]} → {queues[0]})",
+            ))
+        else:
+            checks.append((True, f"очередь деталей: {queues[0]}"))
+
+    capped = [
+        r for r in runs[:CAP_HIT_STREAK]
+        if r["max_new_details"] and r["details_fetched"] == r["max_new_details"]
+    ]
+    if len(capped) >= CAP_HIT_STREAK:
+        checks.append((
+            False,
+            f"докачка упирается в потолок {capped[0]['max_new_details']} "
+            f"{len(capped)} прохода подряд — сбор ограничен лимитом, не рынком",
+        ))
+
+    if scope == "sale":
+        meta = _load_json(MODEL_META_PATH)
+        trained = (meta or {}).get("trained_at")
+        if trained:
+            try:
+                age = (datetime.now(ALMATY_TZ) - datetime.fromisoformat(trained).replace(
+                    tzinfo=datetime.fromisoformat(trained).tzinfo or ALMATY_TZ
+                )).days
+                checks.append((
+                    age <= MAX_RETRAIN_AGE_DAYS,
+                    f"модель обучена {age} дн. назад",
+                ))
+            except ValueError:
+                pass
+    return checks
+
+
+def _verdict_lines(stats: dict | None, db_path: Path, scope: str) -> list[str]:
+    checks = _invariants(stats, db_path, scope)
+    failed = [text for ok, text in checks if not ok]
+    if not failed:
+        return [f"✅ <b>ОК</b> — все проверки прошли ({len(checks)})"]
+    return [
+        f"🔴 <b>ПРОБЛЕМА</b> — не прошло проверок: {len(failed)} из {len(checks)}",
+        *(f"  • {t}" for t in failed),
+    ]
+
+
 def _model_line() -> str | None:
     meta = _load_json(MODEL_META_PATH)
     if not meta:
@@ -109,6 +214,11 @@ def build_daily_report(scope: str = "sale", summary_path: Path | str | None = No
     lines = [f"<b>{title}</b> · {now.strftime('%d.%m %H:%M')}"]
 
     stats = _load_json(Path(summary_path) if summary_path else default_summary)
+    # issue #154: вердикт первым, до всех цифр. Поломку 14.07 не заметили не
+    # из-за отсутствия алертов, а потому что отчёт требовал читать таблицу и
+    # сравнивать её с ожиданием в голове — а глазу «новых 1000» выглядело
+    # ровно так же, как в здоровый день.
+    lines.extend(_verdict_lines(stats, db_path, scope))
     if stats:
         lines.append(
             f"Проход: в выдаче <b>{stats.get('found_in_search', '?')}</b>, "
