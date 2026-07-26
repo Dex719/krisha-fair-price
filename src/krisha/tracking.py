@@ -54,43 +54,52 @@ def add_tracked(
     path: Path | None = None,
 ) -> tuple[bool, str | None]:
     """Добавляет лот в слежку. Возвращает (успех, причина отказа)."""
-    tracked = load_tracked(path)
-    chat = tracked.setdefault(str(chat_id), {})
-    if str(listing_id) in chat:
-        return False, "already"
-    if len(chat) >= MAX_TRACKED_PER_CHAT:
-        return False, "limit"
-    chat[str(listing_id)] = {
-        "price": price,
-        "title": title,
-        "since": datetime.now(timezone.utc).isoformat(),
-    }
-    # Без chat_id/listing_id в message: история коммитов публична
-    _save(tracked, "track: обновление слежки", path)
-    return True, None
+    from krisha.subscriptions import STATE_LOCK
+
+    # Под локом весь цикл читать-менять-писать: два /track из разных чатов
+    # обрабатываются параллельно (BackgroundTasks поверх тредпула), и без
+    # него оба читают одну версию файла, а записавший вторым теряет чужой лот.
+    with STATE_LOCK:
+        tracked = load_tracked(path)
+        chat = tracked.setdefault(str(chat_id), {})
+        if str(listing_id) in chat:
+            return False, "already"
+        if len(chat) >= MAX_TRACKED_PER_CHAT:
+            return False, "limit"
+        chat[str(listing_id)] = {
+            "price": price,
+            "title": title,
+            "since": datetime.now(timezone.utc).isoformat(),
+        }
+        # Без chat_id/listing_id в message: история коммитов публична
+        _save(tracked, "track: обновление слежки", path)
+        return True, None
 
 
 def remove_tracked(chat_id: int, listing_id: int | None, path: Path | None = None) -> int:
     """Убирает лот (или все лоты чата при listing_id=None). Возвращает число удалённых."""
-    tracked = load_tracked(path)
-    chat = tracked.get(str(chat_id))
-    if not chat:
-        return 0
-    if listing_id is None:
-        removed = len(chat)
-        del tracked[str(chat_id)]
-    else:
-        if str(listing_id) not in chat:
-            return 0
-        del chat[str(listing_id)]
-        removed = 1
+    from krisha.subscriptions import STATE_LOCK
+
+    with STATE_LOCK:
+        tracked = load_tracked(path)
+        chat = tracked.get(str(chat_id))
         if not chat:
+            return 0
+        if listing_id is None:
+            removed = len(chat)
             del tracked[str(chat_id)]
-    # Если чат ушёл целиком — это удаление ключа верхнего уровня, о котором
-    # надо сказать слиянию (issue #111), иначе он вернётся с сервера.
-    gone = {str(chat_id)} if str(chat_id) not in tracked else None
-    _save(tracked, "track: обновление слежки", path, deleted_keys=gone)
-    return removed
+        else:
+            if str(listing_id) not in chat:
+                return 0
+            del chat[str(listing_id)]
+            removed = 1
+            if not chat:
+                del tracked[str(chat_id)]
+        # Если чат ушёл целиком — это удаление ключа верхнего уровня, о котором
+        # надо сказать слиянию (issue #111), иначе он вернётся с сервера.
+        gone = {str(chat_id)} if str(chat_id) not in tracked else None
+        _save(tracked, "track: обновление слежки", path, deleted_keys=gone)
+        return removed
 
 
 def list_tracked(chat_id: int, path: Path | None = None) -> dict[str, Any]:

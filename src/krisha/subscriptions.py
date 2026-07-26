@@ -29,6 +29,7 @@ import logging
 import os
 import re
 import tempfile
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -41,6 +42,13 @@ from krisha.stats import DISTRICT_RU
 logger = logging.getLogger(__name__)
 
 SUBSCRIPTIONS_PATH = DATA_DIR / "subscriptions.json"
+# Сериализует цикл «прочитал файл → поменял → записал» для state-файлов.
+# Апдейты Telegram обрабатываются в BackgroundTasks поверх тредпула, так что
+# два /alerts_on или /track от разных пользователей запросто идут параллельно:
+# оба читают одну и ту же версию файла, и тот, кто записал вторым, затирает
+# правку первого. RLock — чтобы вложенные вызовы (save внутри mutate) не
+# заклинивали сами себя.
+STATE_LOCK = threading.RLock()
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "Dex719/krisha-fair-price")
 _GH_API = "https://api.github.com"
 STATE_KEY_ENV = "STATE_ENCRYPTION_KEY"
@@ -156,20 +164,22 @@ def describe_filters(flt: dict[str, Any]) -> str:
 
 
 def set_subscription(chat_id: int, flt: dict[str, Any]) -> None:
-    subs = load_subscriptions()
-    subs[str(chat_id)] = {**flt, "since": datetime.now(timezone.utc).isoformat()}
-    # Без chat_id в message: репозиторий публичный, история коммитов — тоже
-    _save(subs, "alerts: обновление подписок")
+    with STATE_LOCK:
+        subs = load_subscriptions()
+        subs[str(chat_id)] = {**flt, "since": datetime.now(timezone.utc).isoformat()}
+        # Без chat_id в message: репозиторий публичный, история коммитов — тоже
+        _save(subs, "alerts: обновление подписок")
 
 
 def remove_subscription(chat_id: int) -> bool:
-    subs = load_subscriptions()
-    if str(chat_id) not in subs:
-        return False
-    del subs[str(chat_id)]
-    # deleted_keys: иначе слияние с удалённой копией вернёт отписавшегося
-    _save(subs, "alerts: обновление подписок", deleted_keys={str(chat_id)})
-    return True
+    with STATE_LOCK:
+        subs = load_subscriptions()
+        if str(chat_id) not in subs:
+            return False
+        del subs[str(chat_id)]
+        # deleted_keys: иначе слияние с удалённой копией вернёт отписавшегося
+        _save(subs, "alerts: обновление подписок", deleted_keys={str(chat_id)})
+        return True
 
 
 def _save(subs: dict[str, Any], message: str, deleted_keys: set[str] | None = None) -> None:
