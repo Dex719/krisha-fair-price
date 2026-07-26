@@ -176,3 +176,26 @@ def test_purge_leaked_train_rows_keeps_other_units_in_same_building():
     purged, n_purged = purge_leaked_train_rows(raw_train, raw_test)
     assert n_purged == 0
     assert len(purged) == len(raw_train)
+
+
+def test_train_survives_train_part_narrower_than_calib_window(monkeypatch):
+    """Регрессия: еженедельный retrain падал с CatBoostError «Labels variable
+    is empty» и не отработал ни разу.
+
+    time_based_split задаёт минимальный размер только для ПРАВОЙ (свежей)
+    части — на левую нижней границы нет. В прод-базе first_seen укладывался
+    в ~месяц с разрывом, после общего сплита train оказался разовым
+    bulk-краулом за одни сутки, а окно калибровки в TEST_WINDOW_DAYS дней
+    забрало все его строки: fit остался пустым. Гварды проверяли только
+    правую часть (len(cal_idx) == 0 / len(test_idx) == 0), поэтому фолбэк на
+    групповой сплит не срабатывал и пустой Pool уезжал в CatBoost.
+
+    days_span=1 воспроизводит перекос в чистом виде: вся история короче
+    окна, так что и общий сплит, и fit/calib обязаны уйти в фолбэк.
+    """
+    monkeypatch.setattr("krisha.zones.load_zone_index", lambda *a, **k: None)
+    metrics = train(df=synthetic_df(n=300, days_span=1), iterations=60, save=False)
+
+    assert metrics["n_train"] > 0
+    assert metrics["n_test"] > 0
+    assert metrics["model"]["mae"] > 0

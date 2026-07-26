@@ -48,9 +48,23 @@ DELIST_AFTER_DAYS = 3  # не видели в выдаче N дней → счи
 # Сигнатуры анти-бот/капча-страниц (нижний регистр) — сервер отдал HTTP 200,
 # но это не выдача. Проверяются только на первой странице шарда, чтобы не
 # гонять re.search по мегабайтам HTML на каждой странице.
+#
+# ВАЖНО (регрессия 14.07.2026 — из-за неё рескрейп продажи и аренды падал
+# 13 дней подряд): здесь НЕЛЬЗЯ держать голые подстроки "captcha"/"recaptcha".
+# krisha.kz печатает в подвале КАЖДОЙ нормальной страницы
+# `<p class="g-recaptcha-policy">Этот сайт защищён сервисом reCAPTCHA…</p>`,
+# поэтому такая подстрока находилась на любой живой выдаче: все 32 шарда
+# объявлялись капчей, found_in_search=0, `--fail-empty` ронял воркфлоу, база
+# не заливалась в релиз и протухала (а /api/health уходил в stale).
+#
+# Держим только маркеры самого челленджа, которых на обычной странице нет:
+# виджет reCAPTCHA (именно `class="g-recaptcha"`, а не `g-recaptcha-policy`),
+# скрипты/iframe челленджа и заглушки Cloudflare.
 _ANTIBOT_SIGNS = (
-    "captcha",
-    "recaptcha",
+    'class="g-recaptcha"',
+    "recaptcha/api2",
+    "grecaptcha.render",
+    "data-sitekey",
     "attention required",
     "cf-browser-verification",
     "доступ ограничен",
@@ -116,6 +130,7 @@ def _save_history(deal: str, history: list[int]) -> None:
 
 
 def _looks_like_antibot(html: str) -> bool:
+    """Страница-заглушка анти-бота/капчи вместо выдачи (см. _ANTIBOT_SIGNS)."""
     lower = html.lower()
     return any(sign in lower for sign in _ANTIBOT_SIGNS)
 

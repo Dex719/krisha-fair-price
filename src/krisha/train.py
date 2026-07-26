@@ -344,7 +344,8 @@ def _save_gate_samples(
     ape_old = (np.abs(y_old - y_true) / np.maximum(y_true, 1.0)).tolist()
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text(
-        json.dumps({"ape_new": ape_new, "ape_old": ape_old}, separators=(",", ":"))
+        json.dumps({"ape_new": ape_new, "ape_old": ape_old}, separators=(",", ":")),
+        encoding="utf-8",
     )
 
 
@@ -438,7 +439,15 @@ def train_quantile_interval(
     что реально видит пользователь).
     """
     fit_idx, cal_idx = time_based_split(raw_train, window_days=TEST_WINDOW_DAYS)
-    if len(cal_idx) == 0:  # нет first_seen (тесты/старая БД) — фолбэк на группы
+    # len(fit_idx) == 0 — не гипотетика, а причина падения еженедельного
+    # retrain: time_based_split гарантирует минимальный размер только для
+    # ПРАВОЙ (свежей) части, на левую нижней границы нет. Если весь
+    # raw_train укладывается в окно window_days по first_seen (в проде
+    # train — это разовый bulk-краул за одни сутки), калибровка забирает
+    # все строки, fit остаётся пустым и CatBoost падает с
+    # «Labels variable is empty». Фолбэк по зданиям всегда даёт непустые
+    # обе части, поэтому проверяем обе.
+    if len(cal_idx) == 0 or len(fit_idx) == 0:
         groups = building_groups(raw_train)
         splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=RANDOM_STATE)
         fit_idx, cal_idx = next(splitter.split(raw_train, groups=groups))
@@ -462,7 +471,7 @@ def train_quantile_interval(
     # групповой по зданиям: должен быть согласован с уже отрезанным по
     # времени calib-окном, а не мешать train/val по времени случайно.
     es_fit_idx, es_val_idx = time_based_split(fit_raw, window_days=TEST_WINDOW_DAYS)
-    if len(es_val_idx) == 0:
+    if len(es_val_idx) == 0 or len(es_fit_idx) == 0:  # см. комментарий к fit/calib выше
         groups_es = building_groups(fit_raw)
         splitter_es = GroupShuffleSplit(n_splits=1, test_size=0.15, random_state=RANDOM_STATE)
         es_fit_idx, es_val_idx = next(splitter_es.split(fit_raw, groups=groups_es))
@@ -566,9 +575,11 @@ def train(
             dedup_stats.get("new_building_share_of_dup_groups"),
         )
     train_idx, test_idx = time_based_split(df)
-    if len(test_idx) == 0:
+    if len(test_idx) == 0 or len(train_idx) == 0:
         # Нет first_seen вообще (старая БД / ручной DataFrame без него) —
         # временной сплит невозможен, фолбэк на прежний случайный по зданиям.
+        # len(train_idx) == 0 — тот же перекос, что ломал квантильный сплит:
+        # если вся база уложилась в свежее окно, слева не остаётся ничего.
         logger.warning("first_seen недоступен — фолбэк на group_shuffle-сплит по зданиям")
         groups = building_groups(df)
         splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=RANDOM_STATE)
@@ -698,7 +709,7 @@ def train(
                 "ppsm_maps": ppsm_maps,
             },
             ensure_ascii=False, indent=2,
-        ))
+        ), encoding="utf-8")
         _save_shap_report(model, test_df)
         # История метрик — тренд MAE/MAPE по переобучениям (мониторинг)
         try:
