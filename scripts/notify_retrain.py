@@ -29,8 +29,8 @@ def main() -> None:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
-    old = json.loads(Path(args.old_meta).read_text())
-    new = json.loads(Path(args.new_meta).read_text())
+    old = json.loads(Path(args.old_meta).read_text(encoding="utf-8"))
+    new = json.loads(Path(args.new_meta).read_text(encoding="utf-8"))
     gate_passed = args.gate == "success"
 
     try:

@@ -66,7 +66,7 @@ def _hash_user(user_id: int | str) -> str:
 def load_state() -> dict:
     if USAGE_PATH.exists():
         try:
-            return json.loads(USAGE_PATH.read_text())
+            return json.loads(USAGE_PATH.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             logger.warning("usage_stats.json повреждён — начинаем заново")
     return {"days": {}}

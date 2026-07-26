@@ -580,7 +580,9 @@ def main() -> None:
         label_b = Path(csv_b).stem.replace("_predictions", "")
         report_md = compare_runs(csv_a, csv_b, label_a, label_b)
         print(report_md)
-        (out_dir / f"compare_{label_a}_vs_{label_b}.md").write_text(report_md)
+        (out_dir / f"compare_{label_a}_vs_{label_b}.md").write_text(
+            report_md, encoding="utf-8"
+        )
         return
 
     combined, report = run_backtest(
@@ -592,9 +594,11 @@ def main() -> None:
     csv_path = out_dir / f"{args.label}_predictions.csv"
     combined.to_csv(csv_path, index=False)
     report_json_path = out_dir / f"{args.label}_report.json"
-    report_json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str))
+    report_json_path.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    )
     report_md = _report_markdown(report, args.label)
-    (out_dir / f"{args.label}_report.md").write_text(report_md)
+    (out_dir / f"{args.label}_report.md").write_text(report_md, encoding="utf-8")
     print(report_md)
     print(f"\nper-row предикты: {csv_path}")
 
