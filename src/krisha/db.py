@@ -122,6 +122,23 @@ CREATE TABLE IF NOT EXISTS parse_anomalies (
     detected_at  TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_parse_anomalies_listing ON parse_anomalies(listing_id);
+
+-- issue #156: интервалы, когда сбор не работал. Строку пишет САМ первый
+-- успешный проход после провала — sweep() сравнивает now с MAX(last_seen)
+-- только что скачанной базы. Ни одной вписанной руками даты: версия кода и
+-- версия базы распространяются независимо, поэтому константа в коде
+-- протухла бы к следующему инциденту, а у аренды провал вообще свой
+-- (13.07 17:17 UTC против 04:33 у продажи — разные базы, разные границы).
+--
+-- Источник истины именно база, а не файл в репозитории: база — единственный
+-- артефакт, который едет вместе с данными (релиз db-latest → раннер → Space).
+CREATE TABLE IF NOT EXISTS data_gaps (
+    gap_start   TEXT NOT NULL,   -- MAX(last_seen) до провала: последнее наблюдение
+    gap_end     TEXT NOT NULL,   -- старт первого прохода, который провал заметил
+    detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+    note        TEXT,
+    PRIMARY KEY (gap_start, gap_end)
+);
 """
 
 LISTING_COLUMNS = [
@@ -264,6 +281,17 @@ _MIGRATION_COLUMNS = {
     # объявлений на той же точке), не на реальном подъезде/доме — использовать
     # в фичах/дедупе как признак пониженной точности координат.
     "coords_approx": "INTEGER DEFAULT 0",
+    # issue #156: происхождение first_seen. NULL — органика, first_seen это
+    # честная дата первого появления в выдаче. 'initial' — когорта самого
+    # первого сбора (первые двое суток), у неё first_seen = дата старта
+    # скрейпа, а не публикации. 'gap:YYYY-MM-DD' — лот впервые увиден сразу
+    # после провала сбора с таким gap_start: он мог быть опубликован когда
+    # угодно раньше, first_seen тут не факт о рынке, а факт о нас.
+    #
+    # Это дешёвый построчный фильтр для потребителей (ликвидность, сплит
+    # обучения, статистика притока) — без него они не отличат волну бэкфилла
+    # от рекордного дня на рынке.
+    "first_seen_cohort": "TEXT",
 }
 
 
@@ -293,6 +321,22 @@ def _migrate(conn: sqlite3.Connection) -> None:
            WHERE price IS NOT NULL
              AND COALESCE(source, 'scrape') <> 'user'
              AND id NOT IN (SELECT DISTINCT listing_id FROM price_history)"""
+    )
+    # issue #156: когорта самого первого сбора. У неё first_seen — дата, когда
+    # мы запустили скрейпер, а не когда лот опубликовали (левое цензурирование),
+    # поэтому её «срок на рынке» — фикция. Раньше это жило неявной эвристикой
+    # прямо в market.py:_DELISTED_SQL; теперь метка материализована в строке и
+    # доступна всем потребителям одинаково.
+    #
+    # Вычисляется из данных, без дат в коде: граница — MIN(first_seen) базы
+    # плюс двое суток. Предикат IS NULL обязателен — бэкфилл гоняется на
+    # КАЖДОМ init_db (старт API, начало каждого прохода), и без него он
+    # переписывал бы уже проставленные 'gap:'-метки на 'initial'.
+    conn.execute(
+        """UPDATE listings SET first_seen_cohort = 'initial'
+           WHERE first_seen_cohort IS NULL AND first_seen IS NOT NULL
+             AND julianday(first_seen) <=
+                 (SELECT julianday(MIN(first_seen)) + 2 FROM listings)"""
     )
 
 

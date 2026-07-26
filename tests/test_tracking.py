@@ -99,6 +99,61 @@ def test_check_updates_delisted(tmp_path, monkeypatch):
     assert tracking.list_tracked(42, path=path) == {}
 
 
+def test_delist_after_long_blind_gap_is_not_alerted(tmp_path, monkeypatch):
+    """issue #156: снятие, замеченное после долгого перерыва в наблюдении, —
+    факт о нашем сбое, а не о рынке.
+
+    Сценарий первого прохода после окна слепоты 14–26.07.2026: у всех
+    активных лотов last_seen отстал на 13 дней, и те, что не нашлись в
+    выдаче, разом уезжают в delisted. Часть из них жива. Отправленное
+    «🏁 Снято с продажи» не отзовёшь, и вместе с ним лот молча выпадает из
+    слежки — пользователь заметит это, только когда перестанет получать
+    алерты по живому объявлению.
+
+    Поэтому молчим И оставляем лот в слежке: если он жив, ближайший
+    нормальный проход вернёт is_active=1 и слежка продолжится сама.
+    """
+    _no_github_push(monkeypatch)
+    path = tmp_path / "tracked.json"
+    db = tmp_path / "krisha.db"
+    init_db(db)
+    upsert_listing({**BASE, "id": 111}, db_path=db)
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            "UPDATE listings SET is_active = 0, "
+            "last_seen = datetime('now', '-14 days'), "
+            "delisted_at = datetime('now') WHERE id = 111"
+        )
+    tracking.add_tracked(42, 111, 50_000_000, "Квартира", path=path)
+
+    assert tracking.check_tracked_updates(db_path=db, path=path) == []
+    assert set(tracking.list_tracked(42, path=path)) == {"111"}, (
+        "лот обязан остаться в слежке — снятие не подтверждено наблюдением"
+    )
+
+
+def test_delist_within_normal_lag_still_alerts(tmp_path, monkeypatch):
+    """Обратная сторона порога: штатный лаг (рескрейп ходит ежедневно и
+    снимает после 3 дней отсутствия, замер по проду — медиана 4.0 дня)
+    обязан по-прежнему давать алерт, иначе защита съест нормальную работу."""
+    _no_github_push(monkeypatch)
+    path = tmp_path / "tracked.json"
+    db = tmp_path / "krisha.db"
+    init_db(db)
+    upsert_listing({**BASE, "id": 111}, db_path=db)
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            "UPDATE listings SET is_active = 0, "
+            "last_seen = datetime('now', '-4 days'), "
+            "delisted_at = datetime('now') WHERE id = 111"
+        )
+    tracking.add_tracked(42, 111, 50_000_000, "Квартира", path=path)
+
+    updates = tracking.check_tracked_updates(db_path=db, path=path)
+    assert len(updates) == 1 and "🏁" in updates[0][1]
+    assert tracking.list_tracked(42, path=path) == {}
+
+
 def test_check_updates_no_change(tmp_path, monkeypatch):
     _no_github_push(monkeypatch)
     path = tmp_path / "tracked.json"
