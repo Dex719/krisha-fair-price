@@ -36,6 +36,7 @@ from krisha.db import (
     price_bounds_for,
     record_parse_anomaly,
     record_sighting,
+    record_sweep_run,
     upsert_listing,
 )
 from krisha.monitoring import ADMIN_CHAT_ENV
@@ -711,7 +712,29 @@ def sweep(
         # этот проход, и сколько реально докачали в рамках max_refresh.
         "stale_refresh_queue": refresh_queue_size,
         "stale_refreshed": refreshed_count,
+        # issue #154: потолок докачки нужен в отчёте, чтобы «докачано 1000»
+        # можно было отличить от «докачано 1000 из 1000, то есть упёрлись».
+        # Ровно эта неразличимость двенадцать дней подряд прятала отставание.
+        "max_new_details": max_new_details,
     }
+
+    # issue #154: история проходов едет в базе, а не в файле — раннер каждый
+    # раз чистый, а база скачивается из релиза и заливается обратно. Без неё
+    # инварианты «очередь растёт третий проход подряд» и «упёрлись в потолок
+    # N дней подряд» невычислимы в принципе.
+    record_sweep_run(
+        {
+            "started_at": pass_started_at,
+            "deal": deal,
+            "failed_shards": len(failed_shards),
+            **{k: stats.get(k) for k in (
+                "found_in_search", "discovered_new", "details_fetched",
+                "max_new_details", "detail_queue_after", "price_changes",
+                "delisted", "recovery_pass", "suspicious",
+            )},
+        },
+        db_path,
+    )
     logger.info(
         "Рескрейп: в выдаче %(found_in_search)s, знакомых %(known_seen)s, "
         "новых %(discovered_new)s (докачано деталей %(details_fetched)s), "
