@@ -54,3 +54,54 @@ def test_stats_trend_key(tmp_path):
     for point in stats["trend"]:
         assert set(point) == {"week", "median_ppsm", "n"}
         assert point["median_ppsm"] > 100_000
+
+
+def test_alert_window_catches_listing_detailed_after_first_sighting(tmp_path, monkeypatch):
+    """Регрессия: issue #127 развёл sighting и докачку деталей по разным
+    очередям. Пока деталей нет, у строки нет area, и фильтр `area > 0` её
+    отсекает; когда детали наконец приезжают, first_seen уже вне окна — лот
+    не попадал в алерты и дайджест НИКОГДА."""
+    from krisha import alerts
+    from krisha.db import get_conn, init_db
+
+    db = tmp_path / "t.db"
+    init_db(db)
+    monkeypatch.setattr(alerts, "ALERTED_PATH", tmp_path / "alerted.json")
+    with get_conn(db) as conn:
+        # Замечен 5 дней назад (sighting), детали докачали только что.
+        conn.execute(
+            "INSERT INTO listings (id, url, price, area, is_active, first_seen, scraped_at) "
+            "VALUES (1, 'u', 30000000, 60.0, 1, datetime('now','-5 days'), datetime('now'))"
+        )
+    found = [r["id"] for r in alerts.new_listings(db)]
+    assert found == [1], "лот с поздней докачкой деталей должен попадать в окно"
+
+
+def test_alerted_listings_are_not_resent(tmp_path, monkeypatch):
+    """Обратная сторона: scraped_at обновляет и очередь дообновления
+    устаревших деталей (issue #102), поэтому без отметки об отправке один и
+    тот же лот уезжал бы подписчикам на каждом проходе."""
+    from krisha import alerts
+    from krisha.db import get_conn, init_db
+
+    db = tmp_path / "t.db"
+    init_db(db)
+    path = tmp_path / "alerted.json"
+    monkeypatch.setattr(alerts, "ALERTED_PATH", path)
+    monkeypatch.setattr("krisha.subscriptions._push_to_github", lambda *a, **k: None)
+    with get_conn(db) as conn:
+        conn.execute(
+            "INSERT INTO listings (id, url, price, area, is_active, first_seen, scraped_at) "
+            "VALUES (2, 'u', 30000000, 60.0, 1, datetime('now'), datetime('now'))"
+        )
+    assert [r["id"] for r in alerts.new_listings(db)] == [2]
+
+    sent = []
+    monkeypatch.setattr(
+        "krisha.bot.tg_call", lambda m, **kw: sent.append(kw) or {"ok": True}
+    )
+    deals = [{"id": 2, "url": "u", "price": 30_000_000, "area": 60.0,
+              "fair_price": 35_000_000, "diff_pct": -14.3, "title": "Лот"}]
+    assert alerts.send_alerts({"77": {}}, deals) == 1
+    assert alerts.load_alerted(path) == [2]
+    assert alerts.new_listings(db) == [], "повторно тот же лот слать нельзя"

@@ -17,7 +17,7 @@ import sys
 from krisha.complexes import normalize_complex_name, snapshot_complexes
 from krisha.config import DB_PATH
 from krisha.db import init_db, known_complex_ids, upsert_complex
-from krisha.scraping.client import PoliteClient
+from krisha.scraping.client import BanDetected, PoliteClient
 from krisha.scraping.complex_parser import parse_complex
 
 SITEMAP_URL = "https://krisha.kz/sitemap/frontend/complexes.xml"
@@ -29,7 +29,13 @@ logger = logging.getLogger(__name__)
 
 
 def sitemap_urls(client: PoliteClient, all_regions: bool) -> list[str]:
-    xml = client.get(SITEMAP_URL)
+    # BanDetected (серия 403) здесь не должна валить процесс трейсбеком:
+    # ниже по main() уже накопленные ЖК уходят в снапшот.
+    try:
+        xml = client.get(SITEMAP_URL)
+    except BanDetected as exc:
+        logger.critical("%s — сайтмап ЖК не скачан", exc)
+        return []
     if not xml:
         logger.error("Не смогли скачать сайтмап ЖК")
         return []
@@ -61,7 +67,15 @@ def main() -> int:
         if args.limit:
             urls = urls[: args.limit]
         for i, url in enumerate(urls, 1):
-            html = client.get(url)
+            try:
+                html = client.get(url)
+            except BanDetected as exc:
+                # Раньше исключение вылетало из main() трейсбеком, и
+                # snapshot_complexes ниже не выполнялся: всё, что успели
+                # собрать за проход, оставалось только в БД, а снапшот
+                # models/complexes.json — со старыми данными.
+                logger.critical("%s — прерываем обход ЖК на %s/%s", exc, i, len(urls))
+                break
             if not html:
                 failed += 1
                 continue

@@ -263,6 +263,28 @@ def format_reply(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _clip_html(text: str, limit: int) -> str:
+    """Обрезает готовую HTML-разметку по границам СТРОК, а не по символам.
+
+    format_reply отдаёт размеченный текст (<b>, <a href=…>). Резать его по
+    смещению можно ровно посередине тега или между <b> и </b> — Telegram на
+    такой caption отвечает «can't parse entities», sendPhoto падает, и лот
+    уходит вторым запросом без фото. Каждая строка ответа самодостаточна по
+    разметке, поэтому набираем строки целиком, пока влезаем в лимит.
+    """
+    if len(text) <= limit:
+        return text
+    out: list[str] = []
+    total = 0
+    for line in text.split("\n"):
+        # +1 на перевод строки, +1 на многоточие в конце
+        if total + len(line) + 2 > limit:
+            break
+        out.append(line)
+        total += len(line) + 1
+    return ("\n".join(out) + "\n…") if out else ""
+
+
 def extract_url(text: str) -> str | None:
     match = KRISHA_URL_RE.search(text)
     return f"https://krisha.kz/a/show/{match.group(1)}" if match else None
@@ -321,7 +343,7 @@ def handle_update(update: dict[str, Any]) -> None:
     photos = result.get("photos") or []
     sent = None
     if photos:
-        caption = reply if len(reply) <= CAPTION_LIMIT else reply[: CAPTION_LIMIT - 1] + "…"
+        caption = _clip_html(reply, CAPTION_LIMIT)
         sent = tg_call("sendPhoto", chat_id=chat_id, photo=photos[0],
                        caption=caption, parse_mode="HTML")
     if not photos or not (sent or {}).get("ok"):
@@ -476,6 +498,20 @@ TRACK_HELP = (
 )
 
 
+BAD_ID_HINT = "Не похоже на id объявления 🤔 Пришлите ссылку вида krisha.kz/a/show/123456789"
+
+
+def _valid_listing_id(listing_id: int) -> bool:
+    """id объявления должен влезать в SQLite INTEGER (знаковые 64 бита).
+
+    KRISHA_URL_RE ловит `\\d+` без ограничения длины, поэтому
+    krisha.kz/a/show/999…9 (сотня цифр) давала питоновский bignum: sqlite3
+    поднимал OverflowError уже внутри хендлера, вебхук ловил его в общий
+    except и молчал — пользователь не получал вообще никакого ответа.
+    """
+    return 0 < listing_id < 2**63
+
+
 def _tracked_list_text(chat_id: int) -> str:
     from krisha.tracking import list_tracked
 
@@ -507,7 +543,9 @@ def _track_listing_meta(listing_id: int) -> tuple[int | None, str | None]:
             ).fetchone()
         if row is not None:
             return row["price"], row["title"]
-    except (sqlite3.OperationalError, FileNotFoundError):
+    except (sqlite3.Error, OverflowError, ValueError, FileNotFoundError):
+        # sqlite3.Error покрывает и OperationalError, и остальные варианты;
+        # OverflowError/ValueError — на случай id, не влезающего в INTEGER.
         pass
 
     url = f"https://krisha.kz/a/show/{listing_id}"
@@ -539,6 +577,9 @@ def _handle_track_command(chat_id: int, text: str) -> None:
                     disable_web_page_preview=True)
             return
         listing_id = int(match.group(1)) if match else None
+        if listing_id is not None and not _valid_listing_id(listing_id):
+            tg_call("sendMessage", chat_id=chat_id, text=BAD_ID_HINT)
+            return
         removed = remove_tracked(chat_id, listing_id)
         tg_call("sendMessage", chat_id=chat_id,
                 text="Убрал из слежки 👌" if removed else "Этого лота и не было в слежке 🙂")
@@ -551,6 +592,9 @@ def _handle_track_command(chat_id: int, text: str) -> None:
         return
 
     listing_id = int(match.group(1))
+    if not _valid_listing_id(listing_id):
+        tg_call("sendMessage", chat_id=chat_id, text=BAD_ID_HINT)
+        return
     tg_call("sendChatAction", chat_id=chat_id, action="typing")
     try:
         price, title = _track_listing_meta(listing_id)

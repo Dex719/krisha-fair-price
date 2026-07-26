@@ -61,7 +61,7 @@ def human_summary(label: str, stats: dict) -> str:
         f"## {label}",
         "",
         f"- в выдаче: **{stats.get('found_in_search', '?')}**",
-        f"- новых объявлений: **{stats.get('new_listings', '?')}**",
+        f"- новых объявлений: **{stats.get('discovered_new', stats.get('new_listings', '?'))}**",
         f"- изменений цены: **{stats.get('price_changes', '?')}**",
         delisted_line,
     ]

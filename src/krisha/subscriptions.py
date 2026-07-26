@@ -29,6 +29,8 @@ import logging
 import os
 import re
 import tempfile
+import threading
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -40,6 +42,13 @@ from krisha.stats import DISTRICT_RU
 logger = logging.getLogger(__name__)
 
 SUBSCRIPTIONS_PATH = DATA_DIR / "subscriptions.json"
+# Сериализует цикл «прочитал файл → поменял → записал» для state-файлов.
+# Апдейты Telegram обрабатываются в BackgroundTasks поверх тредпула, так что
+# два /alerts_on или /track от разных пользователей запросто идут параллельно:
+# оба читают одну и ту же версию файла, и тот, кто записал вторым, затирает
+# правку первого. RLock — чтобы вложенные вызовы (save внутри mutate) не
+# заклинивали сами себя.
+STATE_LOCK = threading.RLock()
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "Dex719/krisha-fair-price")
 _GH_API = "https://api.github.com"
 STATE_KEY_ENV = "STATE_ENCRYPTION_KEY"
@@ -60,6 +69,28 @@ def _fernet():
     return Fernet(key)
 
 
+def _decode_payload(text: str, name: str = "state"):
+    """Сырой текст state-файла → данные: расшифровывает обёртку
+    {"_encrypted": ...} или отдаёт legacy plaintext-JSON. Битый/нет ключа → None."""
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(data, dict) and "_encrypted" in data:
+        f = _fernet()
+        if f is None:
+            logger.warning("%s зашифрован, а ключа нет (STATE_ENCRYPTION_KEY/токен)", name)
+            return None
+        from cryptography.fernet import InvalidToken
+
+        try:
+            return json.loads(f.decrypt(str(data["_encrypted"]).encode()))
+        except (InvalidToken, json.JSONDecodeError):
+            logger.warning("Не удалось расшифровать %s — сменился ключ? Начинаем заново", name)
+            return None
+    return data
+
+
 def load_json_state(path):
     """Читает state-файл: расшифровывает обёртку {"_encrypted": ...} или
     отдаёт legacy plaintext-JSON. Нет файла/битый/нет ключа → None."""
@@ -67,22 +98,21 @@ def load_json_state(path):
         # encoding обязателен: пишем мы всегда utf-8 (см. save_json_state ниже),
         # а read_text() без него берёт локаль ОС — на Windows это cp1251, и
         # кириллица в tracked.json/subscriptions.json читается «РљРІР°СЂС‚РёСЂР°».
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        text = path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
         return None
-    if isinstance(data, dict) and "_encrypted" in data:
-        f = _fernet()
-        if f is None:
-            logger.warning("%s зашифрован, а ключа нет (STATE_ENCRYPTION_KEY/токен)", path.name)
-            return None
-        from cryptography.fernet import InvalidToken
+    return _decode_payload(text, path.name)
 
-        try:
-            return json.loads(f.decrypt(str(data["_encrypted"]).encode()))
-        except (InvalidToken, json.JSONDecodeError):
-            logger.warning("Не удалось расшифровать %s — сменился ключ? Начинаем заново", path.name)
-            return None
-    return data
+
+def _encode_payload(data: Any, encrypt: bool) -> tuple[str, bool]:
+    """Данные → (текст для записи, зашифровано ли)."""
+    payload = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)
+    if not encrypt:
+        return payload, False
+    f = _fernet()
+    if f is None:
+        return payload, False
+    return json.dumps({"_encrypted": f.encrypt(payload.encode()).decode()}, indent=2), True
 
 # «2к», «2-к», «2комн» и просто «2» → комнаты; «45млн», «до 45» → бюджет
 _ROOMS_RE = re.compile(r"^([1-6])(?:-?к(?:омн\w*)?)?$", re.IGNORECASE)
@@ -134,46 +164,52 @@ def describe_filters(flt: dict[str, Any]) -> str:
 
 
 def set_subscription(chat_id: int, flt: dict[str, Any]) -> None:
-    subs = load_subscriptions()
-    subs[str(chat_id)] = {**flt, "since": datetime.now(timezone.utc).isoformat()}
-    # Без chat_id в message: репозиторий публичный, история коммитов — тоже
-    _save(subs, "alerts: обновление подписок")
+    with STATE_LOCK:
+        subs = load_subscriptions()
+        subs[str(chat_id)] = {**flt, "since": datetime.now(timezone.utc).isoformat()}
+        # Без chat_id в message: репозиторий публичный, история коммитов — тоже
+        _save(subs, "alerts: обновление подписок")
 
 
 def remove_subscription(chat_id: int) -> bool:
-    subs = load_subscriptions()
-    if str(chat_id) not in subs:
-        return False
-    del subs[str(chat_id)]
-    _save(subs, "alerts: обновление подписок")
-    return True
+    with STATE_LOCK:
+        subs = load_subscriptions()
+        if str(chat_id) not in subs:
+            return False
+        del subs[str(chat_id)]
+        # deleted_keys: иначе слияние с удалённой копией вернёт отписавшегося
+        _save(subs, "alerts: обновление подписок", deleted_keys={str(chat_id)})
+        return True
 
 
-def _save(subs: dict[str, Any], message: str) -> None:
-    save_json_state(SUBSCRIPTIONS_PATH, subs, message)
+def _save(subs: dict[str, Any], message: str, deleted_keys: set[str] | None = None) -> None:
+    save_json_state(SUBSCRIPTIONS_PATH, subs, message, deleted_keys=deleted_keys)
 
 
-def save_json_state(path, data: Any, message: str, encrypt: bool = True) -> None:
+def save_json_state(
+    path,
+    data: Any,
+    message: str,
+    encrypt: bool = True,
+    deleted_keys: set[str] | None = None,
+) -> None:
     """Сохраняет JSON-состояние локально и коммитит в GitHub (см. докстринг модуля).
 
     Общий механизм для subscriptions.json, tracked.json и др.
     encrypt=True шифрует содержимое целиком (файлы с chat_id — PII в публичном
     репо); usage-статистика и опубликованные id пишутся открыто (encrypt=False).
+
+    `deleted_keys` — ключи верхнего уровня, которые вызывающий УДАЛИЛ намеренно
+    (отписка, /untrack). Нужны для слияния при конкурентной записи: без них
+    «ключа нет у нас, но есть на сервере» неотличимо от «его только что
+    добавил другой писатель», см. _push_to_github (issue #111).
     """
-    payload = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True)
-    encrypted = False
-    if encrypt:
-        f = _fernet()
-        if f is not None:
-            payload = json.dumps(
-                {"_encrypted": f.encrypt(payload.encode()).decode()}, indent=2
-            )
-            encrypted = True
-        else:
-            logger.warning(
-                "%s: нет ключа шифрования (STATE_ENCRYPTION_KEY/TELEGRAM_BOT_TOKEN) — "
-                "сохраняю только локально открытым текстом", path.name,
-            )
+    payload, encrypted = _encode_payload(data, encrypt)
+    if encrypt and not encrypted:
+        logger.warning(
+            "%s: нет ключа шифрования (STATE_ENCRYPTION_KEY/TELEGRAM_BOT_TOKEN) — "
+            "сохраняю только локально открытым текстом", path.name,
+        )
     path.parent.mkdir(parents=True, exist_ok=True)
     # tmp + replace защищает от обрезанного JSON при остановке процесса во время записи.
     fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent, text=True)
@@ -191,14 +227,58 @@ def save_json_state(path, data: Any, message: str, encrypt: bool = True) -> None
             pass
     # PII-состояние без ключа никогда не публикуем в репозиторий.
     if not encrypt or encrypted:
-        _push_to_github(path, payload, message)
+        _push_to_github(path, payload, message, data, deleted_keys, encrypt)
 
 
-def _push_to_github(path, payload: str, message: str) -> None:
+PUSH_MAX_ATTEMPTS = 3
+
+
+def _merge_remote(local: Any, remote: Any, deleted_keys: set[str] | None) -> Any:
+    """Сливает удалённое состояние в локальное перед PUT (issue #111).
+
+    Ключ верхнего уровня во всех state-файлах — chat_id, поэтому слияние
+    определено однозначно на этом уровне: берём удалённую версию за основу и
+    накладываем свои ключи сверху (наши свежее), а затем выкидываем то, что
+    мы удалили намеренно. Без `deleted_keys` отписка бы «воскресала» из
+    удалённой копии.
+
+    Гранулярность — именно чат целиком: если два писателя одновременно
+    правили РАЗНЫЕ лоты ОДНОГО чата в tracked.json, победит наша версия
+    чата. Это осознанный компромисс: одновременная правка одного чата с
+    двух сторон практически не встречается, а полноценный merge требует
+    хранить дельту, а не итоговое состояние (см. issue #111 про переход к
+    единственному писателю).
+
+    Не словари (или сервер отдал мусор) — сливать нечего, пишем как есть.
+    """
+    if not isinstance(local, dict) or not isinstance(remote, dict):
+        return local
+    merged = {**remote, **local}
+    for key in deleted_keys or ():
+        merged.pop(key, None)
+    return merged
+
+
+def _push_to_github(
+    path,
+    payload: str,
+    message: str,
+    data: Any = None,
+    deleted_keys: set[str] | None = None,
+    encrypt: bool = True,
+) -> None:
     """Коммитит файл состояния в GitHub, чтобы пережить редеплой.
 
     Токен: GITHUB_PAT (сервер) или GITHUB_TOKEN (GitHub Actions,
     у workflow есть contents:write).
+
+    issue #111: у файла ДВА независимых писателя — Space (команды бота) и
+    GitHub Actions (алерты, usage). Раньше здесь читался sha и сразу же
+    делался PUT, то есть конфликт, который должен был дать 409, превращался
+    в успешную перезапись: чужие изменения (например только что оформленная
+    подписка) исчезали молча. Теперь удалённое состояние сливается с нашим
+    перед записью, а 409/422 от GitHub — это повод перечитать и повторить,
+    а не потерять данные.
     """
     token = os.environ.get("GITHUB_PAT") or os.environ.get("GITHUB_TOKEN")
     if not token:
@@ -207,16 +287,49 @@ def _push_to_github(path, payload: str, message: str) -> None:
     rel = f"data/{path.name}"
     url = f"{_GH_API}/repos/{GITHUB_REPO}/contents/{rel}"
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+    for attempt in range(1, PUSH_MAX_ATTEMPTS + 1):
+        try:
+            resp = httpx.get(url, headers=headers, timeout=15.0)
+            sha = resp.json().get("sha") if resp.status_code == 200 else None
+            body_payload = payload
+            if sha and data is not None:
+                remote = _decode_payload(_remote_text(resp), path.name)
+                if remote is not None:
+                    merged = _merge_remote(data, remote, deleted_keys)
+                    if merged != data:
+                        logger.info(
+                            "%s: слил конкурентные изменения с сервера (+%d ключей)",
+                            rel,
+                            len(merged) - len(data) if isinstance(merged, dict) else 0,
+                        )
+                        body_payload, _ = _encode_payload(merged, encrypt)
+            body = {
+                "message": message,
+                "content": base64.b64encode(body_payload.encode()).decode(),
+                **({"sha": sha} if sha else {}),
+            }
+            put = httpx.put(url, headers=headers, json=body, timeout=15.0)
+            if put.status_code in (200, 201):
+                return
+            if put.status_code in (409, 422) and attempt < PUSH_MAX_ATTEMPTS:
+                # Кто-то записал файл между нашими GET и PUT — перечитываем
+                # sha и сливаемся заново, а не затираем его правку.
+                logger.warning(
+                    "GitHub push %s: конфликт %s, попытка %d/%d",
+                    rel, put.status_code, attempt, PUSH_MAX_ATTEMPTS,
+                )
+                time.sleep(0.5 * attempt)
+                continue
+            logger.error("GitHub push %s: %s %s", rel, put.status_code, put.text[:200])
+            return
+        except httpx.HTTPError as exc:
+            logger.warning("GitHub push %s не удался: %s", rel, exc)
+            return
+
+
+def _remote_text(resp) -> str:
+    """Содержимое файла из ответа GitHub Contents API (base64)."""
     try:
-        resp = httpx.get(url, headers=headers, timeout=15.0)
-        sha = resp.json().get("sha") if resp.status_code == 200 else None
-        body = {
-            "message": message,
-            "content": base64.b64encode(payload.encode()).decode(),
-            **({"sha": sha} if sha else {}),
-        }
-        put = httpx.put(url, headers=headers, json=body, timeout=15.0)
-        if put.status_code not in (200, 201):
-            logger.warning("GitHub push %s: %s %s", rel, put.status_code, put.text[:200])
-    except httpx.HTTPError as exc:
-        logger.warning("GitHub push %s не удался: %s", rel, exc)
+        return base64.b64decode(resp.json().get("content") or "").decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return ""

@@ -32,6 +32,7 @@ from krisha.db import (
     init_db,
     is_valid_price,
     known_ids,
+    price_bounds_for,
     record_parse_anomaly,
     record_sighting,
     upsert_listing,
@@ -217,6 +218,10 @@ def sweep(
     (самые старые — первыми), max_refresh за проход. max_refresh=0 выключает.
     """
     init_db(db_path)
+    # Контракт на цену зависит от типа сделки: продажа — ₸ за квартиру,
+    # аренда — ₸/месяц. Пока границы были захардкожены на продажу, арендный
+    # проход отбраковывал каждую цену и krisha_rent.db не обновлялась вовсе.
+    bounds = price_bounds_for(deal)
     seen_in_db = known_ids(db_path)
     with get_conn(db_path) as conn:
         active_in_db = conn.execute(
@@ -249,7 +254,10 @@ def sweep(
         # отдельной лимитированной очередью.
         new_ids = [lid for lid in found if lid not in seen_in_db]
         for lid in new_ids:
-            record_sighting(lid, f"https://krisha.kz/a/show/{lid}", found[lid], db_path)
+            record_sighting(
+                lid, f"https://krisha.kz/a/show/{lid}", found[lid], db_path,
+                price_bounds=bounds,
+            )
 
         # Очередь detail fetch — самые старые ещё не докачанные лоты первыми
         # (title IS NULL — сентинел «есть только sighting, детали ещё нет»),
@@ -282,7 +290,7 @@ def sweep(
                 break
             listing = parse_detail(detail_html, f"https://krisha.kz/a/show/{lid}") if detail_html else None
             if listing is not None:
-                upsert_listing(listing, db_path)
+                upsert_listing(listing, db_path, price_bounds=bounds)
                 new_count += 1
         queue_size_after = queue_size_before - new_count
 
@@ -321,7 +329,7 @@ def sweep(
                     else None
                 )
                 if listing is not None:
-                    upsert_listing(listing, db_path)
+                    upsert_listing(listing, db_path, price_bounds=bounds)
                     refreshed_count += 1
 
     price_changes = 0
@@ -340,7 +348,7 @@ def sweep(
             # страницы (нет upsert_listing/_validate_and_quarantine) — тот же
             # data-contract на цену нужен и здесь, иначе битый парс карточки
             # (не upsert) свободно пишется в listings.price/price_history.
-            if not is_valid_price(price):
+            if not is_valid_price(price, bounds):
                 record_parse_anomaly(conn, lid, "price", "out_of_range", price)
                 continue
             if _record_price_if_changed(conn, lid, price):
@@ -414,7 +422,17 @@ def sweep(
     stats = {
         "found_in_search": len(found),
         "known_seen": len(known_seen),
-        "new_listings": new_count,
+        # ВНИМАНИЕ на семантику (легко перепутать):
+        # discovered_new — сколько id впервые увидели в выдаче за этот проход;
+        # details_fetched (= legacy new_listings) — сколько детальных страниц
+        # реально докачали. Второе берётся из ОБЩЕЙ очереди backlog'а, куда
+        # входят и находки прошлых проходов, и упирается в max_new_details,
+        # поэтому «новых» в отчётах надо показывать именно discovered_new:
+        # раньше проход, который ничего не нашёл, но дочистил хвост очереди,
+        # рапортовал «новых 300».
+        "discovered_new": len(new_ids),
+        "details_fetched": new_count,
+        "new_listings": new_count,  # legacy-ключ: старые summary-JSON и тесты
         "price_changes": price_changes,
         "delisted": delisted_count,
         "failed_shards": failed_shards,
@@ -437,7 +455,8 @@ def sweep(
     }
     logger.info(
         "Рескрейп: в выдаче %(found_in_search)s, знакомых %(known_seen)s, "
-        "новых %(new_listings)s, изменений цены %(price_changes)s, снято %(delisted)s, "
+        "новых %(discovered_new)s (докачано деталей %(details_fetched)s), "
+        "изменений цены %(price_changes)s, снято %(delisted)s, "
         "очередь деталей %(detail_queue_after)s, обновлено устаревших %(stale_refreshed)s",
         {**stats, "delisted": stats["delisted"] if stats["delisted"] is not None else "n/a"},
     )

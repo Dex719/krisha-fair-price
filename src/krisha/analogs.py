@@ -48,6 +48,13 @@ def _distance(subject: dict[str, Any], cand: sqlite3.Row) -> float:
     year_s, year_c = subject.get("year_built"), cand["year_built"]
     if year_s and year_c:
         d += (abs(year_s - year_c) / _YEAR_SCALE) ** 2
+    elif year_s:
+        # Кандидат без года постройки раньше не получал НИЧЕГО за это поле, то
+        # есть был «идеально похож» по возрасту дома и обгонял кандидатов с
+        # известным, но не совпадающим годом. Штрафуем — как для координат.
+        # Если года нет у самого subject, слагаемое одинаково для всех
+        # кандидатов и на порядок не влияет, поэтому его не добавляем.
+        d += _MISSING_PENALTY**2
     return math.sqrt(d)
 
 

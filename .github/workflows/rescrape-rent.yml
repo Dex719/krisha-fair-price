@@ -41,10 +41,25 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Первый запуск: ассета ещё нет — sweep сам создаст базу
-          gh release download db-latest -p "krisha_rent.db.gz" -O /tmp/krisha_rent.db.gz && \
-            gunzip -c /tmp/krisha_rent.db.gz > data/krisha_rent.db || \
+          set -euo pipefail
+          # Раньше здесь стояло `download && gunzip || echo "базы ещё нет"`,
+          # и `||` глотал ЛЮБУЮ ошибку — сетевой сбой, битый gzip, урезанную
+          # закачку. Проход стартовал с пустой базой, находил «все объявления
+          # новыми» и заливал этот огрызок обратно в db-latest поверх
+          # накопленной истории. Отличаем «ассета нет» (нормально для первого
+          # запуска) от «скачать не удалось» (падаем).
+          if gh release view db-latest --json assets -q '.assets[].name' \
+               | grep -qx 'krisha_rent.db.gz'; then
+            gh release download db-latest -p krisha_rent.db.gz -O /tmp/krisha_rent.db.gz
+            if gh release view db-latest --json assets -q '.assets[].name' \
+                 | grep -qx 'krisha_rent.db.gz.sha256'; then
+              gh release download db-latest -p krisha_rent.db.gz.sha256 -O /tmp/rent.sha256
+              echo "$(cat /tmp/rent.sha256)  /tmp/krisha_rent.db.gz" | sha256sum -c -
+            fi
+            gunzip -c /tmp/krisha_rent.db.gz > data/krisha_rent.db
+          else
             echo "Арендной базы в релизе ещё нет — начинаем с нуля"
+          fi
 
       - name: Rescrape rent
         env:

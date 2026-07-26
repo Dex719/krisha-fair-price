@@ -22,6 +22,43 @@ logger = logging.getLogger(__name__)
 ALERT_WINDOW_HOURS = 26  # запас к суточному крону
 MAX_DEALS_PER_CHAT = 5
 
+# issue #127 сделал sighting и докачку детали разными очередями: id попадает
+# в базу сразу, а детальная страница — когда до неё дойдёт лимитированная
+# очередь, порой через несколько проходов. Окно только по first_seen из-за
+# этого пропускало лот навсегда: пока деталей нет, у строки нет ни area, ни
+# нормальной цены (её отсекает `price > 0 AND area > 0`), а когда детали
+# приезжают — first_seen уже вне окна. Поэтому смотрим ещё и на scraped_at,
+# то есть на момент, когда лот стал пригоден для оценки.
+#
+# Плата за это — scraped_at обновляет и очередь дообновления устаревших
+# деталей (issue #102), так что по одному только окну старый лот попадал бы
+# в алерты повторно. От повторов защищает файл уже разосланных id.
+ALERTED_PATH = Path(__file__).resolve().parents[2] / "data" / "alerted_ids.json"
+ALERTED_KEEP = 2000
+
+
+def load_alerted(path: Path | None = None) -> list[int]:
+    import json
+
+    path = path or ALERTED_PATH
+    if not path.exists():
+        return []
+    try:
+        return [int(x) for x in json.loads(path.read_text(encoding="utf-8"))]
+    except (json.JSONDecodeError, TypeError, ValueError):
+        logger.warning("alerts: битый %s — начинаем с нуля", path)
+        return []
+
+
+def remember_alerted(ids: list[int], path: Path | None = None) -> None:
+    """Помечает лоты как разосланные, чтобы не слать их повторно."""
+    from krisha.subscriptions import save_json_state
+
+    path = path or ALERTED_PATH
+    merged = (load_alerted(path) + [int(i) for i in ids])[-ALERTED_KEEP:]
+    # encrypt=False: это id публичных объявлений, PII здесь нет
+    save_json_state(path, merged, "state: разосланные в алертах лоты", encrypt=False)
+
 
 def match_filters(listing: dict[str, Any], flt: dict[str, Any]) -> bool:
     if flt.get("rooms") and listing.get("rooms") != flt["rooms"]:
@@ -40,10 +77,11 @@ def new_listings(db_path: Path | str = DB_PATH, hours: int = ALERT_WINDOW_HOURS)
     with get_conn(db_path) as conn:
         rows = conn.execute(
             "SELECT * FROM listings WHERE is_active = 1 AND price > 0 AND area > 0 "
-            "AND first_seen >= datetime('now', ?)",
-            (f"-{hours} hours",),
+            "AND (first_seen >= datetime('now', ?) OR scraped_at >= datetime('now', ?))",
+            (f"-{hours} hours", f"-{hours} hours"),
         ).fetchall()
-    return [dict(r) for r in rows]
+    already = set(load_alerted())
+    return [dict(r) for r in rows if r["id"] not in already]
 
 
 def find_good_deals(db_path: Path | str = DB_PATH, hours: int = ALERT_WINDOW_HOURS) -> list[dict]:
@@ -83,11 +121,14 @@ def format_alert(deals: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def send_alerts(subscriptions: dict[str, dict], deals: list[dict]) -> int:
+def send_alerts(
+    subscriptions: dict[str, dict], deals: list[dict], persist: bool = True
+) -> int:
     """Рассылает алерты; возвращает число отправленных сообщений."""
     from krisha.bot import tg_call
 
     sent = 0
+    delivered_ids: set[int] = set()
     for chat_id, flt in subscriptions.items():
         matched = [d for d in deals if match_filters(d, flt)][:MAX_DEALS_PER_CHAT]
         if not matched:
@@ -96,4 +137,10 @@ def send_alerts(subscriptions: dict[str, dict], deals: list[dict]) -> int:
                        parse_mode="HTML", disable_web_page_preview=True)
         if resp and resp.get("ok"):
             sent += 1
+            delivered_ids.update(int(d["id"]) for d in matched if d.get("id") is not None)
+    # Помечаем только реально доставленные: окно теперь ловит лот и по
+    # scraped_at, так что без этой отметки очередь дообновления деталей
+    # (issue #102) присылала бы один и тот же лот снова и снова.
+    if persist and delivered_ids:
+        remember_alerted(sorted(delivered_ids))
     return sent

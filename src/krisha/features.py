@@ -316,14 +316,23 @@ def build_features(
     df = resolve_zones(df)
     df = add_raw_param_features(df)
     df = add_complex_features(df, lookup=complex_lookup)
-    df = add_geo_features(df)
-    df = add_llm_flag_features(df)
+    # Числовую санитизацию делаем ДО геофичей, а не после: add_geo_features
+    # считает dist_*_km и walk_score по сырым lat/lon, и координаты вне
+    # ALMATY_BBOX (битый парсинг, чужой город) успевали превратиться в
+    # правдоподобные расстояния до КАКОГО-ТО метро/школы. Дальше по коду
+    # _sanitize_raw_numeric зануляла сами координаты, но производные фичи
+    # оставались — модель получала «до центра 900 км» вместе с осмысленным
+    # walk_score. Теперь мусорные координаты становятся NaN раньше, и
+    # geo-фичи честно выходят пустыми. Заодно колонки lat/lon гарантированно
+    # существуют к моменту вызова add_geo_features.
     for col in ["rooms", "area", "floor", "total_floors", "year_built", "ceiling",
                 "lat", "lon", "photos_count", *COMPLEX_NUM_FEATURES]:
         if col not in df:
             df[col] = np.nan
         df[col] = pd.to_numeric(df[col], errors="coerce")
     df = _sanitize_raw_numeric(df)  # issue #108: битые значения → NaN до фичей
+    df = add_geo_features(df)
+    df = add_llm_flag_features(df)
 
     df["floor_ratio"] = df["floor"] / df["total_floors"]
     df["is_first_floor"] = (df["floor"] == 1).astype(int)

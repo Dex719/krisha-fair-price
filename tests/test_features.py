@@ -2,7 +2,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from krisha.features import ALL_FEATURES, build_features, clean, haversine_km, listing_to_frame
+from krisha.features import (
+    ALL_FEATURES,
+    build_features,
+    clean,
+    current_year,
+    haversine_km,
+    listing_to_frame,
+)
 
 
 def make_df():
@@ -28,7 +35,9 @@ def test_build_features_derived():
     assert row["floor_ratio"] == pytest.approx(4 / 9)
     assert row["is_first_floor"] == 0
     assert row["is_last_floor"] == 0
-    assert row["building_age"] == 14  # 2026 - 2012
+    # Не хардкодим год: building_age считается от current_year(), и после
+    # Нового года захардкоженное значение начинало падать на ровном месте.
+    assert row["building_age"] == current_year() - 2012
     assert 0 < row["dist_center_km"] < 10
     assert row["log_price"] == pytest.approx(17.553, abs=0.01)
     for col in ALL_FEATURES:

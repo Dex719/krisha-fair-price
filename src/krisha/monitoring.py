@@ -191,4 +191,7 @@ def notify_retrain(old_meta: dict, new_meta: dict, gate_passed: bool) -> bool:
         old_meta, new_meta, gate_passed, history=load_metrics_history(), dataset=dataset
     )
     resp = tg_call("sendMessage", chat_id=int(chat_id), text=text, parse_mode="HTML")
-    return bool(resp)
+    # tg_call возвращает распарсенный ответ и при ok=false (например 400 из-за
+    # разметки) — bool(resp) был True, и скрипт рапортовал об успешной отправке
+    # отчёта, которого никто не получил.
+    return bool(resp and resp.get("ok"))
