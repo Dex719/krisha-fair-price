@@ -11,6 +11,15 @@ on:
       max_new:
         description: "Максимум новых детальных страниц"
         default: "1000"
+      time_budget_min:
+        description: "Мягкий дедлайн прохода, мин (меньше timeout-minutes — успеть залить базу)"
+        default: "320"
+      delay_min:
+        description: "Минимальная пауза между запросами, сек"
+        default: "2.5"
+      delay_max:
+        description: "Максимальная пауза между запросами, сек"
+        default: "5.0"
 
 concurrency:
   group: krisha-db-writes
@@ -43,12 +52,15 @@ jobs:
 
       - name: Rescrape
         env:
-          KRISHA_DELAY_MIN: "2.5"
-          KRISHA_DELAY_MAX: "5.0"
+          # Паузы вынесены в inputs, чтобы фазу разгребания очереди (#152)
+          # можно было запустить быстрее без правки файла и мержа.
+          KRISHA_DELAY_MIN: "${{ github.event.inputs.delay_min || '2.5' }}"
+          KRISHA_DELAY_MAX: "${{ github.event.inputs.delay_max || '5.0' }}"
         run: |
           python scripts/rescrape.py \
             --pages "${{ github.event.inputs.pages || '250' }}" \
             --max-new "${{ github.event.inputs.max_new || '1000' }}" \
+            --time-budget-min "${{ github.event.inputs.time_budget_min || '320' }}" \
             --fail-empty \
             --fail-below 8000 \
             --summary-json /tmp/rescrape_stats.json
