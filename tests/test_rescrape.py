@@ -353,10 +353,19 @@ def test_sweep_records_sighting_for_ids_beyond_detail_limit(tmp_path, monkeypatc
     assert stats["detail_queue_after"] == 2
 
 
-def test_sweep_detail_queue_prioritizes_oldest_backlog_first(tmp_path, monkeypatch):
-    """Приоритет очереди — самые старые sighting-only лоты, а не то, что нашли
-    первым в текущем проходе (чтобы шард, идущий первым в обходе, не всегда
-    «съедал» весь лимит детального fetch)."""
+def test_sweep_detail_queue_drains_backlog_not_just_current_pass(tmp_path, monkeypatch):
+    """Очередь докачки берёт накопленный backlog, а не только то, что нашли
+    в текущем проходе — иначе шард, идущий первым в обходе, всегда съедал бы
+    весь лимит детального fetch.
+
+    issue #152: раньше порядок внутри backlog был FIFO по first_seen. Но
+    first_seen внутри прохода = порядок обхода шардов = алфавит районов, так
+    что «самые старые» систематически означало «Алатауский». Итог на проде:
+    7094 лота с деталями в Алатауском (медиана 631 тыс ₸/м²) против 639 в
+    Медеуском (996 тыс) — модель оказалась слепа там, где цены выше всего.
+    Теперь порядок круговой по «район × комнаты», и этот тест проверяет уже
+    только то, что backlog вообще разгребается; сам порядок — в отдельном
+    тесте про round-robin."""
     db = tmp_path / "test.db"
     init_db(db)
     from krisha.db import record_sighting
@@ -383,11 +392,15 @@ def test_sweep_detail_queue_prioritizes_oldest_backlog_first(tmp_path, monkeypat
 
     with get_conn(db) as conn:
         titles = {r[0]: r[1] for r in conn.execute("SELECT id, title FROM listings").fetchall()}
-    # старые 100/101 обработаны раньше нового 999 (FIFO по first_seen)
-    assert titles[100] is not None
-    assert titles[101] is not None
-    assert titles[999] is None  # ещё в очереди
+    # Бюджета хватает на 2 из 3 — накопленный backlog должен быть разгребён,
+    # а не проигнорирован в пользу свежей находки текущего прохода.
+    drained = sum(1 for lid in (100, 101) if titles.get(lid) is not None)
+    assert drained >= 1, "backlog прошлых проходов обязан попадать в очередь"
+    assert stats["detail_queue_after"] < stats["detail_queue_before"]
+    # Какой именно лот остался недокачанным — теперь не свойство FIFO, а
+    # результат кругового обхода, поэтому проверяем только сам факт остатка.
     assert stats["detail_queue_after"] == 1
+    assert sum(1 for t in titles.values() if t is not None) == 2
 
 
 def test_sweep_detail_queue_skips_delisted_sighting(tmp_path, monkeypatch):
@@ -605,3 +618,106 @@ def test_sweep_covers_shard_with_recaptcha_policy_footer(tmp_path, monkeypatch):
 
     assert stats["failed_shards"] == []
     assert stats["found_in_search"] == 1
+
+
+class _SlowClient(FakeClient):
+    """Клиент с управляемыми «часами»: каждый запрос двигает время вперёд."""
+
+    def __init__(self, pages, clock, step=60.0):
+        super().__init__(pages)
+        self._clock = clock
+        self._step = step
+
+    def get(self, url):
+        self._clock[0] += self._step
+        return super().get(url)
+
+
+def test_time_budget_stops_softly_and_marks_shards_uncovered(tmp_path, monkeypatch):
+    """issue #152: раннер убивает джобу по timeout-minutes ЖЁСТКО, вместе с
+    шагом заливки базы — теряется вся ночная работа. Свой дедлайн обязан
+    остановиться мягко, и недообойдённые шарды должны попасть в failed_shards,
+    иначе их лоты уедут в delisted как «пропавшие»."""
+    db = tmp_path / "test.db"
+    init_db(db)
+
+    clock = [0.0]
+    monkeypatch.setattr(rescrape, "_now", lambda: clock[0])
+
+    page = "<html><body>" + _card(4001, 30_000_000) + "</body></html>"
+    client = _SlowClient(dict.fromkeys([u for _, u in shard_urls()], page), clock, step=120.0)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+
+    # Бюджет 5 минут при 2 минутах на запрос — хватит на пару шардов.
+    stats = sweep(max_pages=1, max_new_details=0, db_path=db, time_budget_min=5)
+
+    assert stats["time_budget_hit"] is True
+    assert len(stats["failed_shards"]) > 0, "необойдённые шарды обязаны быть помечены"
+    assert stats["delisted"] is None, "при неполном покрытии delisted не проставляем"
+
+
+def test_mass_delist_is_blocked(tmp_path, monkeypatch):
+    """issue #152: если выдача частично отдала пустые 200 без анти-бот
+    маркеров, кандидатов на снятие становятся десятки процентов базы.
+    Пометить их снятыми — испортить ликвидность и «дни на рынке» разом,
+    причём необратимо."""
+    db = tmp_path / "test.db"
+    init_db(db)
+    with get_conn(db) as conn:
+        for i in range(200):
+            conn.execute(
+                "INSERT INTO listings (id, url, price, area, is_active, first_seen, last_seen) "
+                "VALUES (?, 'u', 30000000, 60.0, 1, datetime('now','-40 days'), "
+                "datetime('now','-40 days'))",
+                (9000 + i,),
+            )
+
+    # Выдача отдаёт ровно один лот — остальные 200 выглядят «пропавшими».
+    page = "<html><body>" + _card(9000, 30_000_000) + "</body></html>"
+    client = FakeClient(dict.fromkeys([u for _, u in shard_urls()], page))
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+
+    stats = sweep(max_pages=1, max_new_details=0, db_path=db)
+
+    assert stats["delist_blocked"] is True
+    assert stats["delisted"] is None
+    with get_conn(db) as conn:
+        still_active = conn.execute("SELECT COUNT(*) FROM listings WHERE is_active=1").fetchone()[0]
+    assert still_active == 200, "массовое снятие должно быть заблокировано"
+
+
+def test_detail_queue_is_round_robin_across_districts(tmp_path):
+    """issue #152: очередь шла FIFO по first_seen, а first_seen внутри прохода
+    = порядок обхода шардов = алфавит районов. Алатауский выедал весь бюджет:
+    7094 лота с деталями против 639 у Медеуского, причём Медеуский — один из
+    самых дорогих районов, где модель и так слепа."""
+    db = tmp_path / "test.db"
+    init_db(db)
+    with get_conn(db) as conn:
+        # Алатауский нашли первым и много, Медеуский — последним и мало.
+        for i in range(50):
+            conn.execute(
+                "INSERT INTO listings (id, url, district, rooms, is_active, first_seen) "
+                "VALUES (?, 'u', 'Alatauskiy_r-n', 2, 1, datetime('now'))", (1000 + i,)
+            )
+        for i in range(5):
+            conn.execute(
+                "INSERT INTO listings (id, url, district, rooms, is_active, first_seen) "
+                "VALUES (?, 'u', 'Medeuskiy_r-n', 2, 1, datetime('now'))", (2000 + i,)
+            )
+        rows = [
+            r[0] for r in conn.execute(
+                """
+                SELECT id FROM (
+                    SELECT id, ROW_NUMBER() OVER (
+                        PARTITION BY COALESCE(district, '?'), COALESCE(rooms, -1)
+                        ORDER BY id DESC
+                    ) AS rn
+                    FROM listings WHERE title IS NULL AND is_active = 1
+                ) ORDER BY rn, id DESC
+                """
+            ).fetchall()
+        ]
+    top10 = rows[:10]
+    medeu = sum(1 for r in top10 if r >= 2000)
+    assert medeu >= 4, f"недопредставленный район должен попасть в голову очереди, а не в хвост: {top10}"

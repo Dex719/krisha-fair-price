@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import statistics
+import time
 from pathlib import Path
 
 from krisha.config import ALMATY_DISTRICT_SLUGS, BASE_URL, DATA_DIR, ROOM_SHARDS
@@ -87,6 +88,25 @@ PARSE_RATE_DROP_RATIO = 0.5  # алерт, если текущий проход 
 # (холодная/тестовая БД), сравнение ничего не даёт и его пропускаем.
 ACTIVE_IN_DB_DROP_RATIO = 0.5
 MIN_ACTIVE_IN_DB_FOR_CHECK = 100
+
+# issue #152: доля активных, выше которой массовое снятие считаем сбоем, а не
+# рынком. Нормальный delist — 1–4% в день. 30% означает, что выдача частично
+# отдала пустые 200 без анти-бот маркеров: пометить их снятыми — испортить
+# ликвидность и «дни на рынке» разом по всей базе, а откатить нечем.
+MAX_DELIST_SHARE = 0.30
+
+# Бюджет прохода по стенным часам. Раннер убивает джобу по timeout-minutes
+# ЖЁСТКО, вместе с шагом заливки базы — то есть теряется вся ночная работа,
+# включая полный обход выдачи и все собранные точки цен. Свой дедлайн
+# останавливает мягко и оставляет время на upload.
+DEFAULT_TIME_BUDGET_MIN = 320
+
+
+def _now() -> float:
+    """Монотонные часы отдельной функцией — чтобы тесты подменяли ЕЁ, а не
+    time.monotonic глобально. И именно монотонные: настенные часы на раннере
+    может дёрнуть NTP прямо посреди прохода."""
+    return time.monotonic()
 
 
 def _alert_ban(exc: BanDetected) -> None:
@@ -201,6 +221,7 @@ def sweep(
     deal: str = "prodazha",
     refresh_stale_days: int = 30,
     max_refresh: int = 300,
+    time_budget_min: float = DEFAULT_TIME_BUDGET_MIN,
 ) -> dict:
     """Один проход рескрейпа по всем шардам. Возвращает счётчики для лога/отчёта.
 
@@ -230,13 +251,33 @@ def sweep(
     found: dict[int, int | None] = {}
     failed_shards: list[str] = []
     banned = False
+    banned_phase: str | None = None
+    deadline = _now() + time_budget_min * 60.0
+    time_budget_hit = False
+
+    def out_of_time() -> bool:
+        return _now() >= deadline
 
     with PoliteClient() as client:
-        for label, base_url in shard_urls(deal):
+        shards = shard_urls(deal)
+        for i, (label, base_url) in enumerate(shards):
+            if out_of_time():
+                # Недообойдённые шарды — в failed_shards: их объявления не
+                # получили last_seen, и без этой пометки они уехали бы в
+                # delisted (issue #96).
+                time_budget_hit = True
+                remaining = [lbl for lbl, _ in shards[i:]]
+                failed_shards.extend(remaining)
+                logger.error(
+                    "Бюджет времени (%s мин) исчерпан на фазе выдачи — не обойдено шардов: %s",
+                    time_budget_min, len(remaining),
+                )
+                break
             try:
                 if not _sweep_shard(client, label, base_url, max_pages, found):
                     failed_shards.append(label)
             except BanDetected as exc:
+                banned_phase = "search"
                 logger.critical(
                     "%s — прерываем проход на шарде «%s», остальные шарды не обходим",
                     exc,
@@ -268,23 +309,49 @@ def sweep(
         # страница отдаёт 404 → parse_detail() -> None → title не
         # заполняется) и застревает в голове FIFO, съедая бюджет докачки на
         # каждом проходе.
+        # issue #152: порядок был FIFO по first_seen, а first_seen внутри
+        # прохода = порядок обхода шардов = алфавит районов. Алатауский идёт
+        # первым и выедал весь бюджет: на момент правки у него 7094 лота с
+        # деталями при медиане 631 тыс ₸/м², а у Бостандыкского — 1672 при
+        # 1015 тыс, у Медеуского — 639 при 996 тыс. Модель оказалась хуже
+        # всего обучена там, где квадратный метр дороже всего.
+        # Круговой обход по «район × комнаты» даёт каждому сегменту равную
+        # долю бюджета в каждом раунде, внутри сегмента — свежие первыми
+        # (id на krisha монотонен по времени подачи, а после массового
+        # бэкфилла first_seen у тысяч лотов совпадает до секунд и сортировать
+        # по нему бессмысленно).
         with get_conn(db_path) as conn:
             backlog_ids = [
                 r[0]
                 for r in conn.execute(
-                    "SELECT id FROM listings WHERE title IS NULL AND is_active = 1 "
-                    "ORDER BY first_seen ASC"
+                    """
+                    SELECT id FROM (
+                        SELECT id, ROW_NUMBER() OVER (
+                            PARTITION BY COALESCE(district, '?'), COALESCE(rooms, -1)
+                            ORDER BY id DESC
+                        ) AS rn
+                        FROM listings WHERE title IS NULL AND is_active = 1
+                    ) ORDER BY rn, id DESC
+                    """
                 ).fetchall()
             ]
         queue_size_before = len(backlog_ids)
         to_fetch = [] if banned else backlog_ids[:max_new_details]
         new_count = 0
         for lid in to_fetch:
+            if out_of_time():
+                # Проверяем перед КАЖДЫМ запросом, а не раз в шард: один шард
+                # это до 250 страниц ≈ 13 минут, промах на такую величину
+                # съедает весь запас на заливку базы.
+                time_budget_hit = True
+                logger.error("Бюджет времени исчерпан на докачке деталей — мягкий стоп")
+                break
             try:
                 detail_html = client.get(f"https://krisha.kz/a/show/{lid}")
             except BanDetected as exc:
                 logger.critical("%s — прерываем докачку деталей", exc)
                 if not banned:
+                    banned_phase = "details"
                     _alert_ban(exc)
                 banned = True
                 break
@@ -315,11 +382,16 @@ def sweep(
                 ]
             refresh_queue_size = len(refresh_ids)
             for lid in refresh_ids:
+                if out_of_time():
+                    time_budget_hit = True
+                    logger.error("Бюджет времени исчерпан на обновлении деталей — мягкий стоп")
+                    break
                 try:
                     detail_html = client.get(f"https://krisha.kz/a/show/{lid}")
                 except BanDetected as exc:
                     logger.critical("%s — прерываем обновление устаревших деталей", exc)
                     if not banned:
+                        banned_phase = "details"
                         _alert_ban(exc)
                     banned = True
                     break
@@ -359,14 +431,34 @@ def sweep(
         # не дообошли (блокировка/сеть), его объявления не получили last_seen,
         # и delisted был бы ложным.
         delisted_count: int | None = 0
+        delist_blocked = False
         if not failed_shards:
-            delisted = conn.execute(
-                "UPDATE listings SET is_active = 0, delisted_at = datetime('now') "
-                "WHERE is_active = 1 "
-                f"AND julianday('now') - julianday(last_seen) > {DELIST_AFTER_DAYS} "
-                "RETURNING id",
-            ).fetchall()
-            delisted_count = len(delisted)
+            where = (
+                "is_active = 1 "
+                f"AND julianday('now') - julianday(last_seen) > {DELIST_AFTER_DAYS}"
+            )
+            candidates = conn.execute(f"SELECT COUNT(*) FROM listings WHERE {where}").fetchone()[0]
+            # issue #152: гард на массовое снятие. Нормальный delist — 1–4% в
+            # день; доля в разы выше означает, что выдача частично отдала
+            # пустые 200 без анти-бот маркеров (шард формально «покрыт»).
+            # Пометить их снятыми — испортить ликвидность и «дни на рынке»
+            # разом по всей базе, а отката нет. Смотрим именно на ДОЛЮ:
+            # после разгона активных станет ~40k, и абсолютные пороги соврут.
+            share = candidates / active_in_db if active_in_db else 0.0
+            if active_in_db >= MIN_ACTIVE_IN_DB_FOR_CHECK and share > MAX_DELIST_SHARE:
+                delist_blocked = True
+                delisted_count = None
+                logger.error(
+                    "Кандидатов на снятие %s из %s активных (%.0f%%, порог %.0f%%) — "
+                    "это не рынок, а сбой сбора. Пометку delisted пропускаем",
+                    candidates, active_in_db, share * 100, MAX_DELIST_SHARE * 100,
+                )
+            else:
+                delisted = conn.execute(
+                    "UPDATE listings SET is_active = 0, delisted_at = datetime('now') "
+                    f"WHERE {where} RETURNING id",
+                ).fetchall()
+                delisted_count = len(delisted)
         else:
             logger.warning(
                 "Не полностью покрыты шарды: %s — пропускаем пометку delisted",
@@ -442,6 +534,17 @@ def sweep(
         # issue #101: early-abort по серии 403 (см. BanDetected) — проход
         # прерван до конца шардов/очереди докачки, а не тихо неполный.
         "banned": banned,
+        # issue #152: бан на ДЕТАЛЯХ не обесценивает уже собранную выдачу —
+        # цены и last_seen валидны, базу нужно залить. Бан на ВЫДАЧЕ означает
+        # неполное покрытие, заливать нельзя. Раньше одна серия 403 на
+        # деталях выбрасывала целиком успешный ночной обход.
+        "banned_phase": banned_phase,
+        # Мягкий стоп по своему дедлайну вместо жёсткого kill раннера,
+        # который убивает джобу вместе с шагом заливки базы.
+        "time_budget_hit": time_budget_hit,
+        "delist_blocked": delist_blocked,
+        # getattr: в тестах клиент подменяется двойником без телеметрии
+        "client": getattr(client, "stats", {}),
         # issue #127: сколько лотов ждут detail fetch (sighting есть, деталей
         # ещё нет) — растущая очередь сигналит, что max_new_details мал
         # относительно притока новых объявлений.

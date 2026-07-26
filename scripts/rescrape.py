@@ -47,6 +47,15 @@ def main() -> None:
         help="prodazha — продажа (data/krisha.db), arenda — долгосрочная аренда "
         "(отдельная база data/krisha_rent.db, цена = ₸/мес)",
     )
+    parser.add_argument(
+        "--time-budget-min",
+        type=float,
+        default=320.0,
+        help="Мягкий дедлайн прохода в минутах. Раннер убивает джобу по "
+        "timeout-minutes ЖЁСТКО, вместе с шагом заливки базы — теряется вся "
+        "ночная работа. Свой дедлайн останавливает аккуратно и оставляет "
+        "время на upload",
+    )
     parser.add_argument("--summary-json", help="Записать счётчики прохода в JSON-файл")
     parser.add_argument(
         "--fail-empty",
@@ -74,6 +83,7 @@ def main() -> None:
         deal=args.deal,
         refresh_stale_days=args.refresh_stale_days,
         max_refresh=args.max_refresh,
+        time_budget_min=args.time_budget_min,
     )
 
     if args.summary_json:
@@ -93,12 +103,22 @@ def main() -> None:
         if stats["found_in_search"] == 0:
             logging.error("Выдача пуста — вероятно, блокировка по IP или разметка изменилась")
             sys.exit(1)
-        if stats.get("banned"):
+        if stats.get("banned") and stats.get("banned_phase") != "details":
             logging.error(
                 "Проход прерван досрочно — похоже на бан (серия HTTP 403) — "
                 "не заливаем db-latest"
             )
             sys.exit(1)
+        if stats.get("banned_phase") == "details":
+            # Бан пришёл на ДОКАЧКЕ ДЕТАЛЕЙ, а выдача к тому моменту уже
+            # обойдена полностью: цены, last_seen и точки истории валидны.
+            # Ронять проход здесь означало бы выбросить целиком успешный
+            # ночной обход из-за недокачанных карточек — база заливается,
+            # а недобранные детали просто уедут в очередь следующего прохода.
+            logging.error(
+                "Бан на докачке деталей — выдача обойдена полностью, базу заливаем. "
+                "Недокачанные лоты останутся в очереди"
+            )
         if stats.get("suspicious"):
             logging.error(
                 "Проход помечен подозрительным (parse-rate просел против медианы %s "
