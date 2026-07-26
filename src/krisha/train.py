@@ -421,9 +421,17 @@ def baseline_predict(train: pd.DataFrame, test: pd.DataFrame) -> np.ndarray:
 
 
 def evaluate(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
+    # issue #158: медиана рядом со средним обязательна. APE на ценах
+    # тяжелохвостый — несколько лотов с битой ценой или экзотикой утаскивают
+    # MAPE, и «средняя ошибка» перестаёт описывать типичный случай. На проде
+    # разрыв большой: MAPE 9.4% против MdAPE около 5%.
+    ape = np.abs(np.asarray(y_pred, float) - np.asarray(y_true, float)) / np.maximum(
+        np.asarray(y_true, float), 1.0
+    )
     return {
         "mae": float(mean_absolute_error(y_true, y_pred)),
         "mape": float(mean_absolute_percentage_error(y_true, y_pred)),
+        "mdape": float(np.median(ape)),
         "r2": float(r2_score(y_true, y_pred)),
     }
 
@@ -758,9 +766,55 @@ def train(
         raw_train, test_df, point_pred=y_model
     )
 
+    # issue #158: метрика без описания выборки, на которой получена, почти
+    # ничего не значит, а одно число без интервала не даёт отличить улучшение
+    # от шума. И то, и другое пишем рядом с метрикой, чтобы они не могли
+    # разъехаться и чтобы число не путешествовало без оговорки.
+    from krisha.validity import cluster_bootstrap_ci, representativeness, time_confounding
+
+    test_repr = representativeness(test_df, df)
+    confounding = time_confounding(df)
+    # Временная оценка валидна, только если тест похож на генеральную выборку
+    # И время не спутано с составом данных. Второе без первого не спасает:
+    # можно случайно набрать представительный тест из данных, где каждый день
+    # это отдельный район, и всё равно померять перенос между районами.
+    temporal_valid = bool(test_repr["representative"] and not confounding["confounded"])
+    if not temporal_valid:
+        logger.warning(
+            "issue #158: временная оценка НЕ валидна — worst TVD теста %.3f (порог %s), "
+            "спутанность времени с районом: %s. Число нельзя читать как «среднюю "
+            "ошибку модели по городу» и нельзя гейтить им релизы",
+            test_repr["worst_tvd"], test_repr["threshold"], confounding["confounded"],
+        )
+
     metrics = {
         "model": evaluate(y_true, y_model),
         "baseline": evaluate(y_true, y_base),
+        # Кластерный бутстреп по зданиям, а не построчный: квартиры в одном
+        # доме коррелируют, построчный ресемплинг считает их независимыми и
+        # даёт интервал уже реального (на синтетике с эффектом здания —
+        # почти втрое). Решение «модель стала лучше» на таком интервале
+        # принималось бы на шуме.
+        "model_mape_ci": cluster_bootstrap_ci(
+            y_true, y_model, clusters=building_groups(test_df)
+        ),
+        # Насколько состав теста похож на состав всей выборки. На проде сейчас
+        # TVD 0.46 (тест на 79% Алмалинский) — сбор был ограничен лимитом
+        # 1000/день и шёл по районам по алфавиту, поэтому «свежие дни»
+        # оказались почти одним районом.
+        "test_representativeness": test_repr,
+        # Спутана ли временная ось с составом данных. Пока confounded=true,
+        # rolling-origin померяет перенос между районами, а не обобщение во
+        # времени. Проверка автоматически перестанет срабатывать, когда сбор
+        # станет равномерным (issue #152), — дату для этого знать не нужно.
+        "time_confounding": confounding,
+        # Базис оценки и вердикт о её временной валидности — на верхнем уровне,
+        # чтобы потребитель меты увидел оговорку РАНЬШЕ числа. Тренды и
+        # сравнения не имеют права склеивать числа разных базисов в одну
+        # кривую: 9.4% на однорайонном тесте и 9.4% на представительном — это
+        # разные величины, совпадение значений ничего не означает.
+        "basis": "time_holdout",
+        "temporal_validity": temporal_valid,
         "interval": interval_meta,
         "n_train": len(train_df),
         "n_test": len(test_df),
