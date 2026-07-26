@@ -35,10 +35,15 @@ def load_tracked(path: Path | None = None) -> dict[str, dict[str, Any]]:
     return data if isinstance(data, dict) else {}
 
 
-def _save(tracked: dict[str, Any], message: str, path: Path | None = None) -> None:
+def _save(
+    tracked: dict[str, Any],
+    message: str,
+    path: Path | None = None,
+    deleted_keys: set[str] | None = None,
+) -> None:
     from krisha.subscriptions import save_json_state
 
-    save_json_state(path or TRACKED_PATH, tracked, message)
+    save_json_state(path or TRACKED_PATH, tracked, message, deleted_keys=deleted_keys)
 
 
 def add_tracked(
@@ -81,7 +86,10 @@ def remove_tracked(chat_id: int, listing_id: int | None, path: Path | None = Non
         removed = 1
         if not chat:
             del tracked[str(chat_id)]
-    _save(tracked, "track: обновление слежки", path)
+    # Если чат ушёл целиком — это удаление ключа верхнего уровня, о котором
+    # надо сказать слиянию (issue #111), иначе он вернётся с сервера.
+    gone = {str(chat_id)} if str(chat_id) not in tracked else None
+    _save(tracked, "track: обновление слежки", path, deleted_keys=gone)
     return removed
 
 
@@ -116,15 +124,27 @@ def check_tracked_updates(
                 if row is None:
                     continue
                 event = _lot_event(lid, state, row)
-                if event is None:
-                    continue
-                events.append(event)
-                changed = True
                 if not row["is_active"]:
-                    del lots[lid]  # снят с продажи — слежка закончена
-                else:
+                    if event is not None:
+                        events.append(event)
+                        del lots[lid]  # снят с продажи — слежка закончена
+                        changed = True
+                    continue
+                # Цену активного лота подтягиваем из базы ВСЕГДА, а не только
+                # когда есть что отправить. Лот, взятый в слежку с неизвестной
+                # ценой (price=None — деталь ещё не докачана, страница не
+                # открылась), иначе навсегда застревал: _lot_event выходит по
+                # `old is None`, событий нет, а раз событий нет — цена не
+                # сохранялась, и на следующем проходе old снова None. Такой
+                # лот не давал алерта об изменении цены никогда.
+                if state.get("price") != row["price"] or (
+                    not state.get("title") and row["title"]
+                ):
                     state["price"] = row["price"]
                     state["title"] = state.get("title") or row["title"]
+                    changed = True
+                if event is not None:
+                    events.append(event)
             if events:
                 messages.append((int(chat_id), "\n\n".join(events)))
 

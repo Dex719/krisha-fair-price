@@ -16,10 +16,12 @@ FLUSH_INTERVAL — иначе каждый визит порождал бы ко
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import logging
 import os
+import threading
 from datetime import datetime, timedelta, timezone
 
 from krisha.config import DATA_DIR
@@ -38,6 +40,8 @@ _WEEKDAYS = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
 # Кэш состояния между запросами (в рамках одного процесса).
 _state: dict | None = None
 _last_flush: datetime | None = None
+# Сериализует _record: хендлеры FastAPI живут в тредпуле (см. комментарий там).
+_lock = threading.Lock()
 
 
 def _usage_salt() -> str:
@@ -84,23 +88,36 @@ def _record(kind: str, user_id: int | str | None, now: datetime) -> None:
     global _state, _last_flush
     if kind not in KINDS:
         raise ValueError(f"Неизвестный тип события: {kind}")
-    if _state is None:
-        _state = load_state()
-    day = _state["days"].setdefault(
-        now.strftime("%Y-%m-%d"),
-        {"site": 0, "predict": 0, "bot": 0, "bot_users": [], "hours": {}},
-    )
-    day[kind] = day.get(kind, 0) + 1
-    hour = str(now.hour)
-    day["hours"][hour] = day["hours"].get(hour, 0) + 1
-    if user_id is not None:
-        h = _hash_user(user_id)
-        if h not in day["bot_users"]:
-            day["bot_users"].append(h)
-    if _last_flush is None or now - _last_flush >= FLUSH_INTERVAL:
+    # FastAPI гоняет sync-хендлеры в тредпуле, так что _record зовётся из
+    # нескольких потоков разом. Без блокировки: (а) два потока проходили
+    # проверку интервала до того, как хоть один выставит _last_flush, и
+    # уходили в _flush одновременно — два конкурентных PUT в GitHub по
+    # одному и тому же blob sha; (б) _flush сериализовал словарь, который
+    # в этот же момент мутировал соседний поток.
+    with _lock:
+        if _state is None:
+            _state = load_state()
+        day = _state["days"].setdefault(
+            now.strftime("%Y-%m-%d"),
+            {"site": 0, "predict": 0, "bot": 0, "bot_users": [], "hours": {}},
+        )
+        day[kind] = day.get(kind, 0) + 1
+        hour = str(now.hour)
+        day["hours"][hour] = day["hours"].get(hour, 0) + 1
+        if user_id is not None:
+            h = _hash_user(user_id)
+            if h not in day["bot_users"]:
+                day["bot_users"].append(h)
+        due = _last_flush is None or now - _last_flush >= FLUSH_INTERVAL
+        if not due:
+            return
+        # Помечаем флаш выполненным и снимаем консистентный снапшот ДО выхода
+        # из-под блокировки: сам флаш ходит по сети (GitHub), держать на нём
+        # лок нельзя — иначе все запросы выстроятся в очередь за api.github.com.
         _prune(_state, now)
-        _flush(_state)
         _last_flush = now
+        snapshot = copy.deepcopy(_state)
+    _flush(snapshot)
 
 
 def _prune(state: dict, now: datetime) -> None:

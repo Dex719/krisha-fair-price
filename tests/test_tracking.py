@@ -136,3 +136,35 @@ def test_bot_track_commands(tmp_path, monkeypatch):
     )
     assert "Убрал" in calls[-1][1]["text"]
     assert tracking.list_tracked(42) == {}
+
+
+def test_tracked_lot_with_unknown_price_heals_and_then_alerts(tmp_path, monkeypatch):
+    """Регрессия: лот, взятый в слежку с неизвестной ценой (деталь ещё не
+    докачана), не давал алерта НИКОГДА. _lot_event выходил по `old is None`,
+    а сохранённая цена обновлялась только внутри ветки «событие есть» — так
+    что old оставался None на каждом следующем проходе."""
+    from krisha.db import get_conn, init_db, upsert_listing
+    from krisha.tracking import add_tracked, check_tracked_updates, list_tracked
+
+    db = tmp_path / "t.db"
+    path = tmp_path / "tracked.json"
+    init_db(db)
+    upsert_listing(
+        {"id": 900, "url": "https://krisha.kz/a/show/900", "title": "Лот",
+         "price": 40_000_000, "area": 60.0, "lat": 43.24, "lon": 76.89}, db
+    )
+    # Цена на момент /track неизвестна — ровно тот случай из бага.
+    add_tracked(5, 900, None, "Лот", path=path)
+
+    # Первый проход: события нет, но цена обязана «подлечиться» из базы.
+    assert check_tracked_updates(db_path=db, path=path) == []
+    assert list_tracked(5, path=path)["900"]["price"] == 40_000_000
+
+    with get_conn(db) as conn:
+        conn.execute("UPDATE listings SET price = 36000000 WHERE id = 900")
+
+    messages = check_tracked_updates(db_path=db, path=path)
+    assert len(messages) == 1
+    chat_id, text = messages[0]
+    assert chat_id == 5
+    assert "📉" in text and "36.0 млн" in text

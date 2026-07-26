@@ -175,3 +175,60 @@ def test_rate_limit_survives_concurrent_access(monkeypatch):
         list(pool.map(worker, range(64)))
 
     assert errors == []
+
+
+def test_chunked_overflow_returns_413_through_the_real_app():
+    """Регрессия: 413-ветка была недостижима в настоящем приложении.
+
+    _MaxBodySizeExceeded бросалось внутри стека FastAPI (при чтении тела), а
+    ловилось снаружи, вокруг self.app(...) — но FastAPI перехватывает ошибки
+    чтения тела сам и отвечает 400, так что до нашего except исключение уже
+    не долетало. Юнит-тесты гоняли middleware в изоляции с заглушкой вместо
+    приложения и этого не видели. Здесь бьём по реальному стеку."""
+    client = TestClient(app, raise_server_exceptions=False)
+
+    def oversized_body():
+        for _ in range(4):
+            yield b"x" * (MAX_BODY_BYTES // 2)  # без Content-Length → chunked
+
+    resp = client.post(
+        "/api/predict", content=oversized_body(), headers={"content-type": "application/json"}
+    )
+    assert resp.status_code == 413
+    assert resp.json()["detail"] == "Слишком большой запрос"
+    _assert_security_headers(resp)
+
+
+def test_webhook_secret_with_non_ascii_header_is_403_not_500(monkeypatch):
+    """Регрессия: hmac.compare_digest на двух str требует ASCII-only в обоих
+    аргументах, иначе TypeError. Заголовок приходит от кого угодно, поэтому
+    подделка с кириллицей давала 500 (и стектрейс в логи) вместо 403."""
+    monkeypatch.setattr(app_module.bot, "bot_token", lambda: "test-token")
+    client = TestClient(app, raise_server_exceptions=False)
+
+    # Передаём сырые байты: Starlette декодирует заголовки как latin-1, так
+    # что 0xE9 приходит в хендлер как не-ASCII str — ровно тот вход, на
+    # котором compare_digest(str, str) падал с TypeError.
+    resp = client.post(
+        "/tg/webhook",
+        json={"update_id": 1},
+        headers={b"X-Telegram-Bot-Api-Secret-Token": b"\xe9\xe9\xe9-not-ascii"},
+    )
+    assert resp.status_code == 403
+
+
+def test_internal_value_error_does_not_leak_as_422(monkeypatch):
+    """Регрессия: `except ValueError` ловил всё подряд, поэтому внутренний
+    сбой (например JSONDecodeError на битом model_meta.json — подкласс
+    ValueError) уезжал пользователю как 422 с сырым текстом исключения."""
+    import json as _json
+
+    def boom(*_a, **_kw):
+        raise _json.JSONDecodeError("Expecting value", '{"features": <мусор>}', 12)
+
+    monkeypatch.setattr(app_module, "predict_from_url", boom)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    resp = client.post("/api/predict", json={"url": "https://krisha.kz/a/show/1"})
+    assert resp.status_code == 502
+    assert "мусор" not in resp.text, "внутренние детали не должны утекать наружу"
