@@ -24,12 +24,17 @@ from fastapi.staticfiles import StaticFiles
 from krisha import __version__, bot, db_release, usage
 from krisha.api.schemas import (
     DemoResponse,
-    FlagsResponse,
     HealthResponse,
     PredictRequest,
     PredictResponse,
 )
-from krisha.config import DB_PATH, MODEL_META_PATH, MODEL_PATH, ROOT_DIR
+from krisha.config import (
+    DB_PATH,
+    MODEL_META_PATH,
+    MODEL_PATH,
+    ROOT_DIR,
+    feature_forecast,
+)
 from krisha.db import get_conn
 from krisha.predict import InvalidListingUrl, predict_from_url
 from krisha.stats import get_stats, heatmap_points
@@ -310,11 +315,12 @@ def _check_rate_limit(request: Request) -> None:
 async def predict(req: PredictRequest, request: Request) -> PredictResponse:
     _check_rate_limit(request)
     try:
-        # flags_live=False: отвечаем сразу, LLM-флаги фронт догружает отдельно.
+        # live_vision=False: веб отвечает сразу и не ходит в Gemini Vision
+        # (он и так за фича-флагом, issue #157) — живой запрос только у бота.
         # issue #110: явный CapacityLimiter вместо дефолтного sync-threadpool —
         # тяжёлый путь (скрейп + CatBoost + SQLite) не делит пул с health/site.
         result = await anyio.to_thread.run_sync(
-            functools.partial(predict_from_url, req.url, flags_live=False),
+            functools.partial(predict_from_url, req.url, live_vision=False),
             limiter=_PREDICT_LIMITER,
         )
     except InvalidListingUrl as exc:
@@ -343,38 +349,11 @@ async def predict(req: PredictRequest, request: Request) -> PredictResponse:
     return PredictResponse(**result)
 
 
-def _fetch_and_build_flags(listing_id: int) -> list[dict[str, str]] | None:
-    """Синхронная часть /api/flags — исполняется в threadpool (см. ниже).
-
-    issue #110: одно соединение на запрос (SELECT + кэш/запись флагов внутри
-    build_text_flags), а не отдельный get_conn() для чтения листинга и ещё
-    один внутри llm_flags.
-    """
-    from krisha.llm_flags import build_text_flags
-
-    with get_conn(DB_PATH) as conn:
-        row = conn.execute(
-            "SELECT id, description FROM listings WHERE id = ?", (listing_id,)
-        ).fetchone()
-        if row is None:
-            return None
-        # max_retries=1: ровно один живой запрос без sleep-бэкоффов — иначе
-        # ретраи Gemini держали бы поток тредпула до минут на один запрос
-        return build_text_flags(
-            {"id": row["id"], "description": row["description"]}, max_retries=1, conn=conn
-        )
-
-
-@app.get("/api/flags/{listing_id}", response_model=FlagsResponse)
-async def flags(listing_id: int, request: Request) -> FlagsResponse:
-    """Догрузка LLM-бейджей: из кэша или один живой запрос к Gemini."""
-    _check_rate_limit(request)
-    text_flags = await anyio.to_thread.run_sync(
-        functools.partial(_fetch_and_build_flags, listing_id), limiter=_PREDICT_LIMITER
-    )
-    if text_flags is None:
-        raise HTTPException(status_code=404, detail="Объявление не найдено")
-    return FlagsResponse(listing_id=listing_id, text_flags=text_flags)
+# issue #157: эндпоинт /api/flags/{listing_id} удалён вместе со всем путём
+# LLM-бейджей. Абляция на честном сплите показала, что как фичи они ухудшают
+# модель (R² 0.79 → 0.76), в неё они не идут, и оставались украшением карточки
+# ценой похода в Gemini на каждый предикт и кэша, который всё равно стирался
+# при каждом рестарте Space. Фронт больше не догружает флаги.
 
 
 @app.get("/api/demo", response_model=DemoResponse)
@@ -442,7 +421,16 @@ _forecast_cache: dict = {"data": None, "ts": 0.0}
 
 @app.get("/api/forecast")
 def forecast() -> dict:
-    """Прогноз ₸/м² на 3–6 месяцев: линейный тренд недельных медиан по районам."""
+    """Прогноз ₸/м² на 3–6 месяцев: линейный тренд недельных медиан по районам.
+
+    issue #157: за фича-флагом FEATURE_FORECAST, по умолчанию выключен.
+    Экстраполировать полгода по истории короче двух месяцев, которая вдобавок
+    дважды прерывалась провалами сбора, — значит показывать пользователю
+    уверенное число, за которым ничего не стоит. Полугодовой горизонт и так
+    не отображался никогда: данных на него нет.
+    """
+    if not feature_forecast():
+        raise HTTPException(status_code=404, detail="Прогноз отключён")
     now = time.monotonic()
     if _forecast_cache["data"] is not None and now - _forecast_cache["ts"] < STATS_CACHE_TTL:
         return _forecast_cache["data"]

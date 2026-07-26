@@ -25,9 +25,10 @@ PREDICT_RESULT_KEYS = {
     "price_history",
     "days_on_market",
     "liquidity",
-    "text_flags",
     "photos",
     "description",
+    "scam_risk",
+    "renovation",
 }
 
 

@@ -1,82 +1,67 @@
-"""Скам-детектор: бейдж «подозрительно дёшево» (задача 4 бэклога).
+"""Предупреждение «подозрительно дёшево» (issue #157).
 
-Классика мошенничества на krisha — цена заметно ниже рынка, чтобы собрать
-задатки/предоплаты. Модель уже даёт справедливую цену, поэтому главный
-сигнал — отклонение вниз от оценки; к нему добавляем простые эвристики
-по самому объявлению. Балльная система, порог → уровень риска.
+Раньше здесь была балльная система: отклонение от оценки по порогам 12/20/30%
+плюс регулярки на «задаток/предоплата/срочно», счётчик фото и длина описания.
+Она давала иллюзию строгости, но каждое слагаемое и каждый порог были взяты
+из головы, а суммирование баллов разной природы не означает ничего
+проверяемого. Плюс регулярки ловили честные объявления: «задаток» пишут и
+нормальные продавцы.
+
+Теперь один сигнал, у которого есть смысл, и один — который его уточняет.
+
+ЦЕНА НИЖЕ НИЖНЕЙ ГРАНИЦЫ ИНТЕРВАЛА. Интервал строит квантильная модель
+(q10/q90) и калибрует конформная процедура CQR под фактическое покрытие 80%.
+То есть «ниже нижней границы» — это не «дешевле среднего на сколько-то
+процентов», а откалиброванное утверждение: примерно у 10% нормальных квартир
+такого класса цена оказывается ниже. Порог не выдуман, он выведен из данных
+и пересчитывается при каждом обучении.
+
+СВЕЖЕСТЬ. Объявление-приманка живёт недолго: его быстро снимают по жалобам
+или после сбора предоплат. Лот, который висит по такой цене третью неделю,
+скорее объясняется чем-то другим — плохим состоянием, спорными документами,
+неудачным домом. Поэтому свежесть повышает уровень, а не создаёт его.
+
+Формулировки намеренно осторожные: это предупреждение «проверьте внимательнее»,
+а не обвинение. Мы не знаем, мошенник ли продавец, — мы знаем только, что
+цена не объясняется характеристиками квартиры.
 """
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
-# Слова про предоплату/задаток — главный «крючок» мошенников
-_PREPAY_RE = re.compile(
-    r"задаток|задатк|предоплат|аванс|бронировани|депозит|каспи\s*перевод|kaspi\s*перевод",
-    re.IGNORECASE,
-)
-_URGENCY_RE = re.compile(r"срочно|сегодня\s+отда|уезжаю|улетаю", re.IGNORECASE)
+# Насколько ниже нижней границы интервала, чтобы поднять уровень до high.
+# Ниже границы уже необычно; вдвое дальше — это уже не «повезло с торгом».
+DEEP_BELOW_PCT = 15.0
 
-# Отклонение цены вниз от оценки модели, %
-_DEV_STRONG = 30.0
-_DEV_MEDIUM = 20.0
-_DEV_LIGHT = 12.0
-
-HIGH_THRESHOLD = 5
-MEDIUM_THRESHOLD = 3
+# Сколько дней в выдаче считаем «свежим». Рескрейп ходит ежедневно, так что
+# счёт идёт по фактическим наблюдениям, а не по дате подачи у продавца.
+FRESH_DAYS = 7
 
 
 def assess_scam_risk(
-    listing: dict[str, Any], fair_price: float, actual_price: float | None
+    fair_low: float | None,
+    actual_price: float | None,
+    days_on_market: int | None = None,
 ) -> dict[str, Any] | None:
-    """Оценка риска мошенничества. None — подозрительного не нашли.
+    """Предупреждение о подозрительно низкой цене. None — поводов нет.
 
-    Возвращает {"level": "high"|"medium", "score": int, "reasons": [str]}.
+    Возвращает {"level": "high"|"medium", "below_pct": float, "reasons": [str]},
+    где below_pct — насколько цена ниже НИЖНЕЙ ГРАНИЦЫ интервала (не оценки).
     """
-    if not actual_price or not fair_price or fair_price <= 0:
+    if not actual_price or not fair_low or fair_low <= 0:
+        return None
+    if actual_price >= fair_low:
         return None
 
-    score = 0
-    reasons: list[str] = []
+    below_pct = (1 - actual_price / fair_low) * 100
+    reasons = [
+        f"цена на {below_pct:.0f}% ниже нижней границы справедливого интервала"
+    ]
 
-    below_pct = (1 - actual_price / fair_price) * 100
-    if below_pct >= _DEV_STRONG:
-        score += 3
-        reasons.append(f"цена на {below_pct:.0f}% ниже оценки модели")
-    elif below_pct >= _DEV_MEDIUM:
-        score += 2
-        reasons.append(f"цена на {below_pct:.0f}% ниже оценки модели")
-    elif below_pct >= _DEV_LIGHT:
-        score += 1
-        reasons.append(f"цена на {below_pct:.0f}% ниже оценки модели")
+    fresh = days_on_market is not None and days_on_market <= FRESH_DAYS
+    if fresh:
+        reasons.append(f"объявление свежее — в выдаче {days_on_market} дн.")
 
-    photos = listing.get("photos") or []
-    if not photos:
-        score += 2
-        reasons.append("нет фотографий")
-    elif len(photos) < 3:
-        score += 1
-        reasons.append("подозрительно мало фотографий")
-
-    desc = (listing.get("description") or "").strip()
-    if _PREPAY_RE.search(desc):
-        score += 2
-        reasons.append("в описании упоминается задаток/предоплата")
-    if _URGENCY_RE.search(desc):
-        score += 1
-        reasons.append("давление срочностью в описании")
-    if len(desc) < 60:
-        score += 1
-        reasons.append("пустое или очень короткое описание")
-
-    if score >= HIGH_THRESHOLD:
-        level = "high"
-    elif score >= MEDIUM_THRESHOLD:
-        level = "medium"
-    else:
-        return None
-    # Без ценового сигнала не пугаем: просто лаконичное объявление — не скам
-    if below_pct < _DEV_LIGHT:
-        return None
-    return {"level": level, "score": score, "reasons": reasons}
+    level = "high" if (below_pct >= DEEP_BELOW_PCT and fresh) else "medium"
+    return {"level": level, "below_pct": round(below_pct, 1), "reasons": reasons}

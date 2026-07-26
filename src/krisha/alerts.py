@@ -91,7 +91,7 @@ def find_good_deals(db_path: Path | str = DB_PATH, hours: int = ALERT_WINDOW_HOU
     deals = []
     for listing in new_listings(db_path, hours):
         try:
-            result = predict_from_listing(listing, flags_live=False)
+            result = predict_from_listing(listing, live_vision=False)
         except Exception as exc:  # noqa: BLE001 — одна кривая строка не должна ронять рассылку
             logger.warning("alerts: predict для %s не удался: %s", listing.get("id"), exc)
             continue
