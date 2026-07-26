@@ -77,11 +77,17 @@ from krisha.train import (
     dedup_relistings,
     purge_leaked_train_rows,
 )
+from krisha.validity import representativeness
 
 logger = logging.getLogger(__name__)
 
 FOLD_WINDOW_DAYS = 7   # неделя, как в issue #130
 N_FOLDS_DEFAULT = 8
+# issue #158: сколько валидных фолдов нужно, чтобы агрегат имел смысл как
+# ВРЕМЕННАЯ оценка. Один-два фолда — это оценка одной-двух конкретных недель,
+# а не свойства модели: разброс между неделями сам по себе больше разницы
+# между моделями, которую мы пытаемся померить.
+MIN_VALID_FOLDS = 3
 POINT_ITERATIONS_DEFAULT = 600     # легче прод. train.py (2000) — стенд не еженедельный, но быстрый
 QUANTILE_ITERATIONS_DEFAULT = 400  # легче прод. (800), та же логика
 
@@ -139,8 +145,19 @@ def load_raw_with_history(db_path: Path | str = DB_PATH) -> tuple[pd.DataFrame, 
         raise ValueError("В БД нет колонки first_seen — walk-forward backtest невозможен")
     listings["first_seen"] = pd.to_datetime(listings["first_seen"], errors="coerce", utc=True)
     listings = listings.dropna(subset=["first_seen"]).reset_index(drop=True)
+    # format="mixed" обязателен: в price_history соседствуют два формата —
+    # 'YYYY-MM-DD HH:MM:SS' от миграционного бэкфилла (там DEFAULT
+    # datetime('now')) и 'YYYY-MM-DD HH:MM:SS.mmm' от обычной записи (там
+    # strftime('%Y-%m-%d %H:%M:%f','now')). Без него pandas выводит ОДИН
+    # формат по первому значению и молча превращает все остальные в NaT.
+    #
+    # Цена ошибки была не теоретической: на проде из 22 475 точек истории
+    # выживало 7 050, то есть 69% выбрасывалось — оставалась только когорта
+    # первичного краула 11–12.06. Все фолды получали calib=0/test=0 и
+    # пропускались «по нехватке данных», хотя данные были. В stats.py этот
+    # format="mixed" уже стоял — здесь его просто забыли.
     price_history["observed_at"] = pd.to_datetime(
-        price_history["observed_at"], errors="coerce", utc=True
+        price_history["observed_at"], format="mixed", errors="coerce", utc=True
     )
     price_history = price_history.dropna(subset=["observed_at"]).reset_index(drop=True)
     return listings, price_history
@@ -423,6 +440,7 @@ def run_backtest(
     all_preds = []
     fold_summaries = []
     skipped = 0
+    invalid = 0
     for fold in folds:
         train_raw, calib_raw, test_raw, n_purged = build_fold_data(listings, price_history, fold)
         preds = run_fold(
@@ -441,21 +459,69 @@ def run_backtest(
         preds["fold"] = fold.index
         preds["test_start"] = fold.test_start
         preds["test_end"] = fold.test_end
-        all_preds.append(preds)
+        # issue #158: фолд валиден, только если его тест похож на генеральную
+        # выборку. Иначе rolling-origin померяет не обобщение во времени, а
+        # перенос между районами: сбор шёл по алфавиту с лимитом 1000/день,
+        # поэтому «неделя» в июле означала «район». Невалидный фолд считается
+        # и показывается, но НЕ входит в агрегат.
+        fold_validity = representativeness(test_raw, listings)
+        preds["fold_valid"] = fold_validity["representative"]
         fold_stats = summarize(preds)["overall"]
         fold_stats.update({
             "fold": fold.index, "test_start": str(fold.test_start), "test_end": str(fold.test_end),
             "n_train": len(train_raw), "n_calib": len(calib_raw), "n_purged": n_purged,
+            "valid": fold_validity["representative"],
+            "worst_tvd": fold_validity["worst_tvd"],
         })
         fold_summaries.append(fold_stats)
+        if not fold_validity["representative"]:
+            invalid += 1
+            logger.warning(
+                "fold %d НЕВАЛИДЕН: worst TVD %.3f > %s — тест не представляет "
+                "выборку, в агрегат не берём",
+                fold.index, fold_validity["worst_tvd"], fold_validity["threshold"],
+            )
+            continue
+        all_preds.append(preds)
 
+    # issue #158: агрегат публикуем только если валидных фолдов достаточно.
+    # Отказ с диагностикой — это КОРРЕКТНЫЙ вывод методики на текущих данных,
+    # а не её провал: на сборе 02.07–13.07 валидных фолдов ноль, и число,
+    # выданное «хотя бы для справки», приживётся в обсуждениях, а оговорка нет.
     if not all_preds:
-        raise RuntimeError("Ни один фолд не набрал достаточно данных — проверьте БД/n_folds")
+        report = {
+            "overall": None,
+            "temporal_estimate": None,
+            "per_fold": fold_summaries,
+            "n_folds_run": 0,
+            "n_folds_skipped": skipped,
+            "n_folds_invalid": invalid,
+            "reason": (
+                f"валидных фолдов 0 из {len(folds)} "
+                f"(пропущено по нехватке данных: {skipped}, непредставительных: {invalid}) "
+                "— временная оценка недоступна"
+            ),
+            "config": {
+                "target_mode": target_mode,
+                "freshness_half_life_days": freshness_half_life_days,
+                "train_window_weeks": train_window_weeks,
+            },
+        }
+        logger.error("issue #158: %s", report["reason"])
+        return pd.DataFrame(), report
 
     combined = pd.concat(all_preds, ignore_index=True)
     report = summarize(combined)
+    if len(all_preds) < MIN_VALID_FOLDS:
+        report["temporal_estimate"] = None
+        report["reason"] = (
+            f"валидных фолдов {len(all_preds)} < {MIN_VALID_FOLDS} — агрегат посчитан, "
+            "но как временная оценка не годится"
+        )
+        logger.warning("issue #158: %s", report["reason"])
     report["per_fold"] = fold_summaries
     report["n_folds_run"] = len(all_preds)
+    report["n_folds_invalid"] = invalid
     report["n_folds_skipped"] = skipped
     report["config"] = {
         "target_mode": target_mode,
@@ -467,10 +533,35 @@ def run_backtest(
 
 def _report_markdown(report: dict, label: str) -> str:
     o = report["overall"]
+    # issue #158: отказ — законный исход, и отчёт обязан его показывать, а не
+    # падать. Пустой агрегат означает, что ни один фолд не прошёл проверку на
+    # представительность: на данных 02.07–13.07 каждая «неделя» это отдельный
+    # район, и любое число здесь описывало бы перенос между районами.
+    if o is None:
+        return "\n".join([
+            f"### Walk-forward backtest — `{label}`",
+            "",
+            "**Временная оценка недоступна.**",
+            "",
+            f"{report.get('reason', 'нет валидных фолдов')}",
+            "",
+            "**По фолдам:**",
+            "",
+            "| fold | test_start | n | worst TVD | вердикт |",
+            "|---|---|---|---|---|",
+            *[
+                f"| {f['fold']} | {f['test_start'][:10]} | {f['n']} | "
+                f"{f.get('worst_tvd', '?')} | "
+                f"{'валиден' if f.get('valid') else 'непредставителен'} |"
+                for f in report.get("per_fold", [])
+            ],
+        ])
     lines = [
         f"### Walk-forward backtest — `{label}`",
         "",
-        f"Фолдов: {report['n_folds_run']} (пропущено: {report['n_folds_skipped']})",
+        f"Фолдов валидных: {report['n_folds_run']} "
+        f"(пропущено по данным: {report['n_folds_skipped']}, "
+        f"непредставительных: {report.get('n_folds_invalid', 0)})",
         "",
         "| Метрика | Значение |",
         "|---|---|",
