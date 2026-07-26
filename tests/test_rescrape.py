@@ -686,6 +686,271 @@ def test_mass_delist_is_blocked(tmp_path, monkeypatch):
     assert still_active == 200, "массовое снятие должно быть заблокировано"
 
 
+def test_recovery_pass_is_detected_from_observation_gap(tmp_path, monkeypatch):
+    """issue #156: проход после перерыва обязан пометить себя САМ.
+
+    Захардкоженная дата протухнет и не переживёт следующий сбой, а он
+    повторяется: окно слепоты 14–26.07.2026 было не первым (02.07 разом
+    ушло 1919 лотов с лагом ≈21 день). Разрыв выводится из самой базы —
+    MAX(last_seen) — поэтому верен и после отката базы из старого релиза,
+    и без единого нового поля в схеме.
+    """
+    db = tmp_path / "test.db"
+    init_db(db)
+    with get_conn(db) as conn:
+        conn.execute(
+            "INSERT INTO listings (id, url, price, area, title, is_active, "
+            "first_seen, last_seen) VALUES (7000, 'u', 30000000, 60.0, 't', 1, "
+            "datetime('now','-40 days'), datetime('now','-13 days'))"
+        )
+    page = "<html><body>" + _card(7000, 30_000_000) + "</body></html>"
+    client = FakeClient(dict.fromkeys([u for _, u in shard_urls()], page))
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+
+    stats = sweep(max_pages=1, max_new_details=0, db_path=db)
+
+    assert stats["recovery_pass"] is True
+    assert stats["observation_gap_days"] == pytest.approx(13.0, abs=0.1)
+
+
+@pytest.mark.parametrize("gap_days", [1, 2])
+def test_short_gap_is_not_flagged_as_recovery(tmp_path, monkeypatch, gap_days):
+    """Обратная сторона порога: штатный суточный разрыв и ОДИН упавший крон
+    (разрыв 2 дня) не должны помечать проход восстановительным.
+
+    Это всё ещё обычный приток за один-два дня. Пометить его когортой —
+    молча выкинуть двое суток нормальных данных из обучения, ликвидности и
+    статистики притока. И если помечать каждый проход, маркер перестаёт
+    что-либо значить, а вместе с ним ломается весь отсев.
+    """
+    db = tmp_path / "test.db"
+    init_db(db)
+    with get_conn(db) as conn:
+        conn.execute(
+            "INSERT INTO listings (id, url, price, area, title, is_active, "
+            "first_seen, last_seen) VALUES (7000, 'u', 30000000, 60.0, 't', 1, "
+            f"datetime('now','-40 days'), datetime('now','-{gap_days} days'))"
+        )
+    page = "<html><body>" + _card(7000, 30_000_000) + "</body></html>"
+    client = FakeClient(dict.fromkeys([u for _, u in shard_urls()], page))
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+
+    stats = sweep(max_pages=1, max_new_details=0, db_path=db)
+
+    assert stats["recovery_pass"] is False
+    assert stats["cohort_marked"] == 0
+    with get_conn(db) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM data_gaps").fetchone()[0] == 0
+
+
+def test_user_visit_during_blackout_cannot_mask_the_gap(tmp_path, monkeypatch):
+    """Пользовательский предикт тоже ставит last_seen = now.
+
+    Один человек, открывший карточку посреди слепоты, поднял бы
+    MAX(last_seen) к сегодняшнему дню и замаскировал разрыв целиком —
+    детектор молча перестал бы работать ровно в том сценарии, ради которого
+    заведён. Поэтому разрыв считается только по скрейп-наблюдениям.
+    """
+    db = tmp_path / "test.db"
+    init_db(db)
+    with get_conn(db) as conn:
+        conn.execute(
+            "INSERT INTO listings (id, url, price, area, title, source, is_active, "
+            "first_seen, last_seen) VALUES (7000, 'u', 30000000, 60.0, 't', 'scrape', 1, "
+            "datetime('now','-40 days'), datetime('now','-13 days'))"
+        )
+        # Лот, который посреди слепоты открыл пользователь через /api/predict.
+        conn.execute(
+            "INSERT INTO listings (id, url, price, area, title, source, is_active, "
+            "first_seen, last_seen) VALUES (7001, 'u', 30000000, 60.0, 't', 'user', 1, "
+            "datetime('now','-40 days'), datetime('now'))"
+        )
+    page = "<html><body>" + _card(7000, 30_000_000) + "</body></html>"
+    client = FakeClient(dict.fromkeys([u for _, u in shard_urls()], page))
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+
+    stats = sweep(max_pages=1, max_new_details=0, db_path=db)
+
+    assert stats["recovery_pass"] is True
+    assert stats["observation_gap_days"] == pytest.approx(13.0, abs=0.1)
+
+
+def test_recovery_pass_records_gap_and_marks_its_backfill_cohort(tmp_path, monkeypatch):
+    """Полный цикл #156: проход записывает провал в data_gaps и метит
+    когортой лоты, которые сам же впервые увидел.
+
+    Смысл метки: у этих лотов first_seen — дата первого наблюдения ПОСЛЕ
+    провала, а не дата публикации. Лот мог висеть на рынке месяцами (мы
+    покрывали 19k из ~44k рынка), поэтому «дни на рынке» и «приток» по ним
+    считать нельзя. Знакомый лот, который был в базе до провала, когортой
+    НЕ метится — его first_seen честный.
+    """
+    db = tmp_path / "test.db"
+    init_db(db)
+    with get_conn(db) as conn:
+        conn.execute(
+            "INSERT INTO listings (id, url, price, area, title, is_active, "
+            "first_seen, last_seen) VALUES (7000, 'u', 30000000, 60.0, 't', 1, "
+            "datetime('now','-40 days'), datetime('now','-13 days'))"
+        )
+    # Выдача: знакомый лот + два, которых мы не видели за время провала.
+    cards = [_card(7000, 30_000_000), _card(7100, 31_000_000), _card(7101, 32_000_000)]
+    page = "<html><body>" + "".join(cards) + "</body></html>"
+    client = FakeClient(dict.fromkeys([u for _, u in shard_urls()], page))
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+
+    stats = sweep(max_pages=1, max_new_details=0, db_path=db)
+
+    assert stats["recovery_pass"] is True
+    assert stats["cohort_marked"] == 2
+    with get_conn(db) as conn:
+        gaps = conn.execute("SELECT gap_start, gap_end FROM data_gaps").fetchall()
+        assert len(gaps) == 1, "провал записан ровно один раз"
+        cohorts = dict(
+            conn.execute("SELECT id, first_seen_cohort FROM listings").fetchall()
+        )
+    # gap_start = последнее наблюдение до провала, то есть 13 дней назад.
+    with get_conn(db) as conn:
+        age = conn.execute(
+            "SELECT julianday('now') - julianday(?)", (gaps[0][0],)
+        ).fetchone()[0]
+    assert age == pytest.approx(13.0, abs=0.1)
+
+    assert cohorts[7100] == cohorts[7101] == f"gap:{str(gaps[0][0])[:10]}"
+    # 7000 жил до провала, поэтому НЕ в gap-когорте. В этой крошечной базе он
+    # оказывается 'initial' (он же и есть самый первый сбор) — на проде под
+    # 'initial' попадает реальная когорта 11–13.06, у которой first_seen это
+    # дата запуска скрейпера, а не публикации.
+    assert not str(cohorts[7000]).startswith("gap:"), (
+        "лот, живший до провала, не должен попасть в когорту бэкфилла"
+    )
+
+
+def test_grace_marking_applies_only_after_incomplete_recovery(tmp_path, monkeypatch):
+    """Grace-окно растягивает пометку только после НЕПОЛНОГО обхода.
+
+    Сайтинг пишется для каждого найденного id без лимита (лимит стоит только
+    на докачке деталей), поэтому при полном обходе вся волна бэкфилла
+    получает first_seen за один проход. Метить следующие дни в этом случае —
+    молча выбросить из ликвидности и обучения честную органику, ~850 лотов в
+    сутки. Растягивать нужно ровно тогда, когда часть выдачи не добрана и
+    остаток волны придёт позже.
+    """
+    db = tmp_path / "test.db"
+    init_db(db)
+    with get_conn(db) as conn:
+        conn.execute(
+            "INSERT INTO listings (id, url, price, area, title, is_active, "
+            "first_seen, last_seen) VALUES (7000, 'u', 30000000, 60.0, 't', 1, "
+            "datetime('now','-40 days'), datetime('now','-13 days'))"
+        )
+    # Восстановительный проход, в котором один шард не отдал выдачу.
+    pages = dict.fromkeys(
+        [u for _, u in shard_urls()],
+        "<html><body>" + _card(7000, 30_000_000) + _card(7100, 31_000_000) + "</body></html>",
+    )
+    broken = shard_urls()[0][1]
+    pages[broken] = "<html><body></body></html>"  # 0 валидных id → шард не покрыт
+    client = FakeClient(pages)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+
+    first = sweep(max_pages=1, max_new_details=0, db_path=db)
+    assert first["recovery_pass"] is True
+    assert first["failed_shards"], "шард обязан быть помечен непокрытым"
+    with get_conn(db) as conn:
+        assert conn.execute("SELECT note FROM data_gaps").fetchone()[0] == "incomplete"
+
+    # Следующий проход разрыва уже не видит, но остаток волны ещё приходит —
+    # эти лоты обязаны попасть в ту же когорту.
+    pages[broken] = "<html><body>" + _card(7200, 33_000_000) + "</body></html>"
+    second = sweep(max_pages=1, max_new_details=0, db_path=db)
+    assert second["recovery_pass"] is False
+    assert second["cohort_marked"] == 1
+    with get_conn(db) as conn:
+        cohort = conn.execute(
+            "SELECT first_seen_cohort FROM listings WHERE id = 7200"
+        ).fetchone()[0]
+    assert cohort.startswith("gap:")
+
+
+def test_gap_is_not_recorded_twice_on_repeated_pass(tmp_path, monkeypatch):
+    """После ПОЛНОГО восстановительного прохода следующий проход когортой уже
+    не метит: вся волна получила first_seen сразу, дальше идёт органика."""
+    db = tmp_path / "test.db"
+    init_db(db)
+    with get_conn(db) as conn:
+        conn.execute(
+            "INSERT INTO listings (id, url, price, area, title, is_active, "
+            "first_seen, last_seen) VALUES (7000, 'u', 30000000, 60.0, 't', 1, "
+            "datetime('now','-40 days'), datetime('now','-13 days'))"
+        )
+    page = "<html><body>" + _card(7000, 30_000_000) + _card(7100, 31_000_000) + "</body></html>"
+    client = FakeClient(dict.fromkeys([u for _, u in shard_urls()], page))
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+
+    first = sweep(max_pages=1, max_new_details=0, db_path=db)
+    assert first["cohort_marked"] == 1
+
+    # Второй проход: разрыва уже нет (last_seen обновлён), но запись о провале
+    # ещё в grace-окне — новых лотов нет, метить нечего.
+    second = sweep(max_pages=1, max_new_details=0, db_path=db)
+    assert second["recovery_pass"] is False
+    assert second["cohort_marked"] == 0
+    with get_conn(db) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM data_gaps").fetchone()[0] == 1
+
+
+def test_mass_delist_block_after_gap_clears_itself_on_next_pass(tmp_path, monkeypatch):
+    """Знаменатель гарда — активные ДО прохода, и блокировка не залипает.
+
+    Кандидатом на снятие может стать только лот, который входил в проход
+    активным; всё, что проход увидел впервые, только что получило
+    last_seen = now и в числитель попасть не может. Поэтому делить надо на
+    популяцию, из которой числитель и берётся, — иначе большой приток
+    разбавляет знаменатель и глушит гард ровно тогда, когда он нужен.
+
+    Цена этого решения — что первый проход после долгой слепоты может
+    упереться в порог и не проставить снятия. Тест фиксирует, что это НЕ
+    тупик: на следующем проходе активных до прохода уже больше на величину
+    бэкфилла, доля падает под порог и снятие проходит само. Чинить руками
+    и поднимать порог не нужно.
+    """
+    db = tmp_path / "test.db"
+    init_db(db)
+    with get_conn(db) as conn:
+        # 100 старых лотов; 40 из них выдача больше не отдаёт (реально ушли).
+        for i in range(100):
+            conn.execute(
+                "INSERT INTO listings (id, url, price, area, title, is_active, "
+                "first_seen, last_seen) VALUES (?, 'u', 30000000, 60.0, 't', 1, "
+                "datetime('now','-40 days'), datetime('now','-40 days'))",
+                (9000 + i,),
+            )
+
+    # Проход 1: 60 знакомых выживших + 200 впервые увиденных (волна бэкфилла).
+    cards = [_card(9000 + i, 30_000_000) for i in range(60)]
+    cards += [_card(20_000 + i, 30_000_000) for i in range(200)]
+    page = "<html><body>" + "".join(cards) + "</body></html>"
+    client = FakeClient(dict.fromkeys([u for _, u in shard_urls()], page))
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+
+    first = sweep(max_pages=1, max_new_details=0, db_path=db)
+
+    # 40 кандидатов от 100 активных до прохода = 40% > порога 30%.
+    assert first["active_in_db_before"] == 100
+    assert first["delist_blocked"] is True
+    assert first["delisted"] is None
+    assert first["delist_share"] == pytest.approx(0.40, abs=0.005)
+
+    # Проход 2 по той же выдаче: активных до прохода теперь 300 (бэкфилл
+    # никуда не делся, снятия не проставились), те же 40 кандидатов = 13%.
+    second = sweep(max_pages=1, max_new_details=0, db_path=db)
+
+    assert second["active_in_db_before"] == 300
+    assert second["delist_blocked"] is False
+    assert second["delisted"] == 40, "блокировка обязана сниматься сама, без человека"
+
+
 def test_detail_queue_is_round_robin_across_districts(tmp_path):
     """issue #152: очередь шла FIFO по first_seen, а first_seen внутри прохода
     = порядок обхода шардов = алфавит районов. Алатауский выедал весь бюджет:

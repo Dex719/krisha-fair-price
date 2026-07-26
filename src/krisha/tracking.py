@@ -19,13 +19,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from krisha.config import DATA_DIR, DB_PATH
+from krisha.config import DATA_DIR, DB_PATH, MAX_TRUSTED_DELIST_LAG_DAYS
 from krisha.db import get_conn
 
 logger = logging.getLogger(__name__)
 
 TRACKED_PATH = DATA_DIR / "tracked.json"
 MAX_TRACKED_PER_CHAT = 10
+
+# issue #156: порог доверия к снятию — общий с market.py, см. config.
+# Здесь цена ложного срабатывания особенно несимметрична: отправленное
+# «🏁 Снято с продажи» не отзовёшь, и вместе с ним лот молча выпадает из
+# слежки — пользователь узнает об этом, только когда перестанет получать
+# алерты по живому объявлению. Так было бы в окне слепоты 14–26.07.2026
+# (13 дней) и раньше 02.07 (лаг ≈ 21 день у 1901 лота).
 
 
 def load_tracked(path: Path | None = None) -> dict[str, dict[str, Any]]:
@@ -137,8 +144,8 @@ def check_tracked_updates(
             events: list[str] = []
             for lid, state in list(lots.items()):
                 row = conn.execute(
-                    "SELECT price, is_active, first_seen, last_seen, title, url "
-                    "FROM listings WHERE id = ?",
+                    "SELECT price, is_active, first_seen, last_seen, delisted_at, "
+                    "title, url FROM listings WHERE id = ?",
                     (int(lid),),
                 ).fetchone()
                 if row is None:
@@ -182,6 +189,19 @@ def _lot_event(lid: str, state: dict[str, Any], row) -> str | None:
     link = f'<a href="{_html.escape(url)}">{title}</a>'
 
     if not row["is_active"]:
+        # issue #156: снятие, замеченное после долгого перерыва в наблюдении,
+        # не является фактом о рынке — мы просто не смотрели. Молчим и
+        # ОСТАВЛЯЕМ лот в слежке (вызывающий удаляет только когда event не
+        # None): если лот жив, ближайший нормальный проход вернёт is_active=1
+        # и слежка продолжится как ни в чём не бывало.
+        lag = _days_between(row["last_seen"], row["delisted_at"])
+        if lag is not None and lag > MAX_TRUSTED_DELIST_LAG_DAYS:
+            logger.info(
+                "Лот %s: снят после %s дн. без наблюдения (порог %s) — "
+                "алерт о снятии не шлём, слежку сохраняем",
+                lid, lag, MAX_TRUSTED_DELIST_LAG_DAYS,
+            )
+            return None
         days = _days_between(row["first_seen"], row["last_seen"])
         days_txt = f" (провисело ~{days} дн.)" if days is not None else ""
         return f"🏁 {link}\nСнято с продажи{days_txt} — слежку завершил."
