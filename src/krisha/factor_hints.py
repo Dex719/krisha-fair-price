@@ -98,7 +98,14 @@ def _floor_hint(listing: dict, s: dict) -> str | None:
     where = f"Этаж {floor} из {total}"
     if floor == total and total >= 2:
         pct = _pct(s["last_floor"], s["mid_floor"]) if s.get("last_floor") and s.get("mid_floor") else None
-        stat = f" По нашей базе последние этажи в среднем на {abs(pct)}% дешевле за м², чем средние." if pct else ""
+        # Слово подбираем по знаку: pct считается как отклонение последних
+        # этажей от средних и вполне бывает положительным (верхние этажи с
+        # видом дороже). Захардкоженное «дешевле» рядом с abs() выдавало
+        # прямо противоположное правде утверждение.
+        stat = (
+            f" По нашей базе последние этажи в среднем на {abs(pct)}% "
+            f"{'дешевле' if pct < 0 else 'дороже'} за м², чем средние."
+        ) if pct else ""
         extra = ""
         if total >= 6:
             extra = f" Плюс зависимость от лифта: сломается — подъём на {floor}-й пешком."
@@ -113,7 +120,10 @@ def _floor_hint(listing: dict, s: dict) -> str | None:
         )
     if floor == 1:
         pct = _pct(s["first_floor"], s["mid_floor"]) if s.get("first_floor") and s.get("mid_floor") else None
-        stat = f" По нашей базе первые этажи в среднем на {abs(pct)}% дешевле за м²." if pct else ""
+        stat = (
+            f" По нашей базе первые этажи в среднем на {abs(pct)}% "
+            f"{'дешевле' if pct < 0 else 'дороже'} за м²."
+        ) if pct else ""
         return f"{where} — первый: шум улицы, меньше приватности и света.{stat}"
     if floor >= 9:
         return (

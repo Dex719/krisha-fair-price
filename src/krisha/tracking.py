@@ -107,13 +107,22 @@ def list_tracked(chat_id: int, path: Path | None = None) -> dict[str, Any]:
 
 
 def check_tracked_updates(
-    db_path=DB_PATH, path: Path | None = None, persist: bool = True
+    db_path=DB_PATH,
+    path: Path | None = None,
+    persist: bool = True,
+    only_chats: set[int] | None = None,
 ) -> list[tuple[int, str]]:
     """Сравнивает лоты в слежке с базой после рескрейпа.
 
     Возвращает [(chat_id, html-сообщение), ...] и обновляет сохранённые цены
     (persist=False — не сохранять, для dry-run), чтобы не слать одно и то же
     изменение повторно.
+
+    `only_chats` — применить и сохранить изменения ТОЛЬКО для этих чатов.
+    Нужно для порядка «сначала доставили, потом зафиксировали»: если
+    сохранить состояние до отправки, а отправка упадёт (Telegram 5xx, бот
+    заблокирован), пользователь не узнает об изменении цены НИКОГДА — на
+    следующем проходе старая и новая цена уже совпадают. См. send_alerts.py.
     """
     tracked = load_tracked(path)
     if not tracked:
@@ -123,6 +132,8 @@ def check_tracked_updates(
     changed = False
     with get_conn(db_path) as conn:
         for chat_id, lots in tracked.items():
+            if only_chats is not None and int(chat_id) not in only_chats:
+                continue
             events: list[str] = []
             for lid, state in list(lots.items()):
                 row = conn.execute(

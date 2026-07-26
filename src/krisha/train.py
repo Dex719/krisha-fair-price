@@ -99,7 +99,7 @@ def load_dataset(db_path=DB_PATH) -> pd.DataFrame:
     return df
 
 
-def _fingerprints(df: pd.DataFrame) -> pd.Series:
+def _fingerprints(df: pd.DataFrame, tag: str = "") -> pd.Series:
     """Отпечаток каждой строки (krisha.db.listing_fingerprint), None → уникальный."""
     from krisha.db import listing_fingerprint
 
@@ -109,7 +109,13 @@ def _fingerprints(df: pd.DataFrame) -> pd.Series:
         return listing_fingerprint(d)
 
     fp = df.apply(_fp, axis=1)
-    return fp.fillna(pd.Series((f"solo:{i}" for i in df.index), index=df.index))
+    # tag разводит «заглушечные» отпечатки по пространствам имён. Плейсхолдер
+    # нужен (dedup_relistings опирается на их уникальность внутри фрейма), но
+    # индексы обоих фреймов начинаются с нуля после reset_index — и в
+    # purge_leaked_train_rows строка train с solo:7 совпадала со строкой test
+    # solo:7, хотя это разные квартиры без координат. Такие строки молча
+    # выкидывались из обучения как «протёкшие».
+    return fp.fillna(pd.Series((f"solo:{tag}:{i}" for i in df.index), index=df.index))
 
 
 DEDUP_PRICE_TOLERANCE = 0.02  # issue #129: fingerprint-совпадение — дубль только при близкой цене
@@ -296,8 +302,8 @@ def purge_leaked_train_rows(
     """
     if len(raw_test) == 0:
         return raw_train, 0
-    test_fp = set(_fingerprints(raw_test))
-    train_fp = _fingerprints(raw_train)
+    test_fp = set(_fingerprints(raw_test, "test"))
+    train_fp = _fingerprints(raw_train, "train")
     leak_mask = train_fp.isin(test_fp)
     purged = raw_train.loc[~leak_mask].reset_index(drop=True)
     n_purged = int(leak_mask.sum())

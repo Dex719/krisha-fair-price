@@ -190,4 +190,6 @@ def send_weekly_report(dry_run: bool = False) -> bool:
         logger.info("TG_ADMIN_CHAT_ID не задан — отчёт статистики не отправляем")
         return False
     resp = tg_call("sendMessage", chat_id=int(chat_id), text=text, parse_mode="HTML")
-    return bool(resp)
+    # ok=false (400 на разметке и т.п.) — это НЕ успешная отправка, см. тот же
+    # разбор в monitoring.notify_retrain_report.
+    return bool(resp and resp.get("ok"))
