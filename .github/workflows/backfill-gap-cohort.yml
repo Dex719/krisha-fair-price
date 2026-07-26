@@ -1,0 +1,106 @@
+name: Backfill gap cohort (разовый ремонт)
+
+# Разовая ретро-разметка когорты восстановительного прохода, случившегося до
+# появления механизма из #161. Только вручную: это не инвариант, а ремонт
+# конкретного инцидента с явными границами — см. docstring скрипта.
+#
+# Запуск по умолчанию делает dry-run: сначала смотрим, что скрипт нашёл, и
+# только потом снимаем галочку и пишем.
+on:
+  workflow_dispatch:
+    inputs:
+      deal:
+        description: "Какая база"
+        type: choice
+        options: ["arenda", "prodazha"]
+        default: "arenda"
+      window_start:
+        description: "Начало окна восстановительного прохода, UTC"
+        default: "2026-07-26 16:04:00"
+      window_end:
+        description: "Конец окна (не включая), UTC"
+        default: "2026-07-26 18:01:00"
+      expect:
+        description: "Ожидаемое число лотов в окне — защита от чужой базы"
+        default: "5031"
+      apply:
+        description: "Снять галочку dry-run и записать изменения"
+        type: boolean
+        default: false
+
+# Та же группа, что у прохода аренды: нельзя писать в базу параллельно с
+# рескрейпом, иначе один из двух зальёт свою версию поверх чужой.
+concurrency:
+  group: krisha-rent-db-writes
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: |
+          pip install -r requirements.lock
+          pip install -e . --no-deps
+
+      - name: Download DB from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event.inputs.deal }}" = "arenda" ]; then
+            ASSET=krisha_rent.db.gz; DB=data/krisha_rent.db
+          else
+            ASSET=krisha.db.gz; DB=data/krisha.db
+          fi
+          echo "ASSET=$ASSET" >> "$GITHUB_ENV"
+          echo "DB=$DB" >> "$GITHUB_ENV"
+          mkdir -p data
+          gh release download db-latest -p "$ASSET" -O /tmp/db.gz
+          gh release download db-latest -p "$ASSET.sha256" -O /tmp/db.sha256
+          echo "$(cat /tmp/db.sha256)  /tmp/db.gz" | sha256sum -c -
+          gunzip -c /tmp/db.gz > "$DB"
+
+      - name: Backfill
+        run: |
+          set -euo pipefail
+          FLAG=""
+          if [ "${{ github.event.inputs.apply }}" != "true" ]; then FLAG="--dry-run"; fi
+          python scripts/backfill_gap_cohort.py \
+            --db "$DB" \
+            --window-start "${{ github.event.inputs.window_start }}" \
+            --window-end "${{ github.event.inputs.window_end }}" \
+            --expect "${{ github.event.inputs.expect }}" \
+            $FLAG | tee /tmp/backfill.log
+          {
+            echo '### Ретро-разметка когорты'
+            echo '```'
+            cat /tmp/backfill.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload DB to release
+        if: ${{ github.event.inputs.apply == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          sqlite3 "$DB" "VACUUM;" || true
+          gzip -9 -c "$DB" > /tmp/out.gz
+          sha256sum /tmp/out.gz | cut -d' ' -f1 > /tmp/out.gz.sha256
+          cp /tmp/out.gz "/tmp/$ASSET"
+          cp /tmp/out.gz.sha256 "/tmp/$ASSET.sha256"
+          gh release upload db-latest "/tmp/$ASSET" "/tmp/$ASSET.sha256" --clobber
+          echo "Залито: $ASSET, $(du -h /tmp/out.gz | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
