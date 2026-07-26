@@ -41,6 +41,12 @@ ENV PYTHONUNBUFFERED=1 \
 EXPOSE 7860
 # issue #119: HF keepalive пинговал только "жив ли процесс" — не отличал
 # рабочий Space от одного с протухшей моделью/базой (см. /api/health).
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD curl -f http://localhost:7860/api/health || exit 1
+# Бюджет намеренно щедрый: /api/health раз в час дёргает Telegram
+# (webhook_status самолечит вебхук), а это до 10 с на коннект и до 15 с на
+# ответ — при недоступном api.telegram.org (типичная ситуация на HF Spaces
+# по IPv6) прежние 5 с гарантированно истекали, три раза подряд, и Docker
+# объявлял здоровый контейнер мёртвым. --max-time дополнительно ограничивает
+# сам curl, чтобы проба не висела дольше своего timeout.
+HEALTHCHECK --interval=60s --timeout=35s --start-period=60s --retries=3 \
+    CMD curl -fsS --max-time 30 http://localhost:7860/api/health || exit 1
 CMD ["uvicorn", "krisha.api.app:app", "--host", "0.0.0.0", "--port", "7860"]

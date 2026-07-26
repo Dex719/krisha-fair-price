@@ -35,10 +35,15 @@ def load_tracked(path: Path | None = None) -> dict[str, dict[str, Any]]:
     return data if isinstance(data, dict) else {}
 
 
-def _save(tracked: dict[str, Any], message: str, path: Path | None = None) -> None:
+def _save(
+    tracked: dict[str, Any],
+    message: str,
+    path: Path | None = None,
+    deleted_keys: set[str] | None = None,
+) -> None:
     from krisha.subscriptions import save_json_state
 
-    save_json_state(path or TRACKED_PATH, tracked, message)
+    save_json_state(path or TRACKED_PATH, tracked, message, deleted_keys=deleted_keys)
 
 
 def add_tracked(
@@ -49,40 +54,52 @@ def add_tracked(
     path: Path | None = None,
 ) -> tuple[bool, str | None]:
     """Добавляет лот в слежку. Возвращает (успех, причина отказа)."""
-    tracked = load_tracked(path)
-    chat = tracked.setdefault(str(chat_id), {})
-    if str(listing_id) in chat:
-        return False, "already"
-    if len(chat) >= MAX_TRACKED_PER_CHAT:
-        return False, "limit"
-    chat[str(listing_id)] = {
-        "price": price,
-        "title": title,
-        "since": datetime.now(timezone.utc).isoformat(),
-    }
-    # Без chat_id/listing_id в message: история коммитов публична
-    _save(tracked, "track: обновление слежки", path)
-    return True, None
+    from krisha.subscriptions import STATE_LOCK
+
+    # Под локом весь цикл читать-менять-писать: два /track из разных чатов
+    # обрабатываются параллельно (BackgroundTasks поверх тредпула), и без
+    # него оба читают одну версию файла, а записавший вторым теряет чужой лот.
+    with STATE_LOCK:
+        tracked = load_tracked(path)
+        chat = tracked.setdefault(str(chat_id), {})
+        if str(listing_id) in chat:
+            return False, "already"
+        if len(chat) >= MAX_TRACKED_PER_CHAT:
+            return False, "limit"
+        chat[str(listing_id)] = {
+            "price": price,
+            "title": title,
+            "since": datetime.now(timezone.utc).isoformat(),
+        }
+        # Без chat_id/listing_id в message: история коммитов публична
+        _save(tracked, "track: обновление слежки", path)
+        return True, None
 
 
 def remove_tracked(chat_id: int, listing_id: int | None, path: Path | None = None) -> int:
     """Убирает лот (или все лоты чата при listing_id=None). Возвращает число удалённых."""
-    tracked = load_tracked(path)
-    chat = tracked.get(str(chat_id))
-    if not chat:
-        return 0
-    if listing_id is None:
-        removed = len(chat)
-        del tracked[str(chat_id)]
-    else:
-        if str(listing_id) not in chat:
-            return 0
-        del chat[str(listing_id)]
-        removed = 1
+    from krisha.subscriptions import STATE_LOCK
+
+    with STATE_LOCK:
+        tracked = load_tracked(path)
+        chat = tracked.get(str(chat_id))
         if not chat:
+            return 0
+        if listing_id is None:
+            removed = len(chat)
             del tracked[str(chat_id)]
-    _save(tracked, "track: обновление слежки", path)
-    return removed
+        else:
+            if str(listing_id) not in chat:
+                return 0
+            del chat[str(listing_id)]
+            removed = 1
+            if not chat:
+                del tracked[str(chat_id)]
+        # Если чат ушёл целиком — это удаление ключа верхнего уровня, о котором
+        # надо сказать слиянию (issue #111), иначе он вернётся с сервера.
+        gone = {str(chat_id)} if str(chat_id) not in tracked else None
+        _save(tracked, "track: обновление слежки", path, deleted_keys=gone)
+        return removed
 
 
 def list_tracked(chat_id: int, path: Path | None = None) -> dict[str, Any]:
@@ -90,13 +107,22 @@ def list_tracked(chat_id: int, path: Path | None = None) -> dict[str, Any]:
 
 
 def check_tracked_updates(
-    db_path=DB_PATH, path: Path | None = None, persist: bool = True
+    db_path=DB_PATH,
+    path: Path | None = None,
+    persist: bool = True,
+    only_chats: set[int] | None = None,
 ) -> list[tuple[int, str]]:
     """Сравнивает лоты в слежке с базой после рескрейпа.
 
     Возвращает [(chat_id, html-сообщение), ...] и обновляет сохранённые цены
     (persist=False — не сохранять, для dry-run), чтобы не слать одно и то же
     изменение повторно.
+
+    `only_chats` — применить и сохранить изменения ТОЛЬКО для этих чатов.
+    Нужно для порядка «сначала доставили, потом зафиксировали»: если
+    сохранить состояние до отправки, а отправка упадёт (Telegram 5xx, бот
+    заблокирован), пользователь не узнает об изменении цены НИКОГДА — на
+    следующем проходе старая и новая цена уже совпадают. См. send_alerts.py.
     """
     tracked = load_tracked(path)
     if not tracked:
@@ -106,6 +132,8 @@ def check_tracked_updates(
     changed = False
     with get_conn(db_path) as conn:
         for chat_id, lots in tracked.items():
+            if only_chats is not None and int(chat_id) not in only_chats:
+                continue
             events: list[str] = []
             for lid, state in list(lots.items()):
                 row = conn.execute(
@@ -116,15 +144,27 @@ def check_tracked_updates(
                 if row is None:
                     continue
                 event = _lot_event(lid, state, row)
-                if event is None:
-                    continue
-                events.append(event)
-                changed = True
                 if not row["is_active"]:
-                    del lots[lid]  # снят с продажи — слежка закончена
-                else:
+                    if event is not None:
+                        events.append(event)
+                        del lots[lid]  # снят с продажи — слежка закончена
+                        changed = True
+                    continue
+                # Цену активного лота подтягиваем из базы ВСЕГДА, а не только
+                # когда есть что отправить. Лот, взятый в слежку с неизвестной
+                # ценой (price=None — деталь ещё не докачана, страница не
+                # открылась), иначе навсегда застревал: _lot_event выходит по
+                # `old is None`, событий нет, а раз событий нет — цена не
+                # сохранялась, и на следующем проходе old снова None. Такой
+                # лот не давал алерта об изменении цены никогда.
+                if state.get("price") != row["price"] or (
+                    not state.get("title") and row["title"]
+                ):
                     state["price"] = row["price"]
                     state["title"] = state.get("title") or row["title"]
+                    changed = True
+                if event is not None:
+                    events.append(event)
             if events:
                 messages.append((int(chat_id), "\n\n".join(events)))
 

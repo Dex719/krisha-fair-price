@@ -354,3 +354,39 @@ def test_tg_call_swallows_json_decode_error(monkeypatch, caplog):
         assert bot.tg_call("getMe") is None
     assert "supersecrettoken" not in caplog.text
     assert "getMe failed" in caplog.text
+
+
+def test_photo_caption_is_clipped_on_line_boundaries():
+    """Регрессия: подпись к фото резалась по смещению в готовой HTML-разметке,
+    то есть могла разорвать тег или пару <b>…</b>. Telegram на такой caption
+    отвечает «can't parse entities», sendPhoto падает — и лот уходил вторым
+    сообщением уже без фото."""
+    from krisha.bot import _clip_html
+
+    text = "\n".join(f"<b>строка {i}</b> и <a href=\"https://x/{i}\">ссылка</a>" for i in range(60))
+    clipped = _clip_html(text, 300)
+
+    assert len(clipped) <= 300
+    assert clipped.endswith("…")
+    assert clipped.count("<b>") == clipped.count("</b>"), "тег <b> не должен остаться открытым"
+    assert clipped.count("<a ") == clipped.count("</a>"), "тег <a> не должен остаться открытым"
+    # Короткий текст не трогаем вовсе.
+    assert _clip_html("<b>коротко</b>", 300) == "<b>коротко</b>"
+
+
+def test_track_rejects_out_of_range_listing_id(monkeypatch):
+    r"""Регрессия: KRISHA_URL_RE ловит \d+ без ограничения длины, поэтому
+    krisha.kz/a/show/999…9 давал питоновский bignum — sqlite3 поднимал
+    OverflowError внутри хендлера, вебхук глотал его в общий except, и
+    пользователь не получал вообще никакого ответа."""
+    from krisha import bot
+
+    calls = []
+    monkeypatch.setattr(bot, "tg_call", lambda m, **kw: calls.append((m, kw)) or {"ok": True})
+
+    huge = "9" * 40
+    bot.handle_update(
+        {"message": {"chat": {"id": 7}, "text": f"/track https://krisha.kz/a/show/{huge}"}}
+    )
+    sent = [kw["text"] for m, kw in calls if m == "sendMessage"]
+    assert sent and "Не похоже на id объявления" in sent[-1]

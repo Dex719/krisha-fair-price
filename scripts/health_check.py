@@ -14,6 +14,7 @@ Env: TELEGRAM_BOT_TOKEN, TG_ADMIN_CHAT_ID; опционально HEALTH_URL.
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
 import sys
@@ -78,7 +79,11 @@ def build_message(status: str, prev: str, detail: str, url: str) -> str:
     if prev and prev != "unknown":
         lines.append(f"Было: {STATUS_RU.get(prev, prev)}")
     if detail:
-        lines.append(f"Детали: {detail}")
+        # detail — текст исключения, а сообщение уходит с parse_mode=HTML.
+        # У urllib ошибки выглядят как «<urlopen error [Errno 111] ...>»:
+        # Telegram видел незакрытый тег, отвечал 400 и алерт о ПАДЕНИИ сервиса
+        # просто не доходил — ровно тогда, когда он нужнее всего.
+        lines.append(f"Детали: {html.escape(detail)}")
     lines.append(url.removesuffix("/api/health"))
     return "\n".join(lines)
 

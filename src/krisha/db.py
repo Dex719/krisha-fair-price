@@ -14,6 +14,8 @@ from krisha.config import (
     DB_PATH,
     PRICE_MAX,
     PRICE_MIN,
+    RENT_PRICE_MAX,
+    RENT_PRICE_MIN,
     SHARED_PIN_MIN,
 )
 
@@ -279,11 +281,17 @@ def _migrate(conn: sqlite3.Connection) -> None:
     conn.execute("UPDATE listings SET first_seen = scraped_at WHERE first_seen IS NULL")
     conn.execute("UPDATE listings SET last_seen = scraped_at WHERE last_seen IS NULL")
     conn.execute("UPDATE listings SET is_active = 1 WHERE is_active IS NULL")
-    # Стартовая точка истории цены для всех объявлений без истории
+    # Стартовая точка истории цены для всех объявлений без истории.
+    # source <> 'user' обязателен: по правилу issue #117 пользовательский
+    # предикт намеренно НЕ пишет точку в price_history (устаревшая страница
+    # не должна выглядеть как изменение цены), а бэкфилл гонится на каждом
+    # init_db — то есть при каждом старте API и в начале каждого прохода
+    # рескрейпа — и возвращал этим лотам ровно ту точку, которую #117 убрал.
     conn.execute(
         """INSERT OR IGNORE INTO price_history (listing_id, price, observed_at)
            SELECT id, price, first_seen FROM listings
            WHERE price IS NOT NULL
+             AND COALESCE(source, 'scrape') <> 'user'
              AND id NOT IN (SELECT DISTINCT listing_id FROM price_history)"""
     )
 
@@ -336,11 +344,33 @@ def find_duplicate_id(
     return int(row[0]) if row else None
 
 
-def is_valid_price(price: int | float | None) -> bool:
-    """issue #103: PRICE_MIN..PRICE_MAX data-contract, для переиспользования вне
+SALE_PRICE_BOUNDS = (PRICE_MIN, PRICE_MAX)
+RENT_PRICE_BOUNDS = (RENT_PRICE_MIN, RENT_PRICE_MAX)
+
+
+def price_bounds_for(deal: str | None) -> tuple[int, int]:
+    """Границы data-contract для цены по типу сделки.
+
+    Продажа — ₸ за квартиру, аренда — ₸/месяц; один общий диапазон для них
+    невозможен. Раньше контракт был захардкожен на продажу, и весь арендный
+    рескрейп отбраковывал КАЖДУЮ цену: `krisha_rent.db` копилась с
+    замороженными ценами и пустой price_history.
+    """
+    return RENT_PRICE_BOUNDS if deal == "arenda" else SALE_PRICE_BOUNDS
+
+
+def is_valid_price(
+    price: int | float | None, bounds: tuple[int, int] | None = None
+) -> bool:
+    """issue #103: data-contract на цену, для переиспользования вне
     upsert_listing — например rescrape.sweep()'s "знакомый лот, цена из
-    карточки выдачи" путь, который пишет price в обход upsert_listing."""
-    return price is None or PRICE_MIN <= price <= PRICE_MAX
+    карточки выдачи" путь, который пишет price в обход upsert_listing.
+
+    `bounds` — (min, max) для нужного типа сделки (см. price_bounds_for);
+    по умолчанию продажные, чтобы не менять поведение старых вызовов.
+    """
+    lo, hi = bounds or SALE_PRICE_BOUNDS
+    return price is None or lo <= price <= hi
 
 
 def record_parse_anomaly(
@@ -359,7 +389,12 @@ def record_parse_anomaly(
     )
 
 
-def _validate_and_quarantine(conn: sqlite3.Connection, listing_id: int, row: dict[str, Any]) -> bool:
+def _validate_and_quarantine(
+    conn: sqlite3.Connection,
+    listing_id: int,
+    row: dict[str, Any],
+    price_bounds: tuple[int, int] | None = None,
+) -> bool:
     """Data-contract проверка входа upsert_listing (issue #103): цена вне
     PRICE_MIN..MAX, площадь вне AREA_MIN..MAX или координаты вне ALMATY_BBOX —
     аудит в parse_anomalies + метрика качества парсинга, а не молча в базу.
@@ -381,8 +416,16 @@ def _validate_and_quarantine(conn: sqlite3.Connection, listing_id: int, row: dic
       координаты в fingerprint-дедуп/coords_approx.
     """
     price = row.get("price")
-    if not is_valid_price(price):
-        record_parse_anomaly(conn, listing_id, "price", "out_of_range", price)
+    # price is None тоже откатываем на сохранённое значение: `price` лежит в
+    # _UPSERT_ALWAYS, то есть пишется безусловно (`price = excluded.price`),
+    # а is_valid_price(None) → True, поэтому неполный парс (страница без
+    # цены, «договорная») ЗАТИРАЛ хорошую цену NULL-ом. И залипало: на
+    # следующем проходе _record_price_if_changed видит в истории ту же
+    # цену, возвращает False, и UPDATE listings.price не происходит.
+    if price is None or not is_valid_price(price, price_bounds):
+        if price is not None:
+            # Отсутствие цены — не аномалия парсинга, не засоряем метрику.
+            record_parse_anomaly(conn, listing_id, "price", "out_of_range", price)
         prev = conn.execute(
             "SELECT price FROM listings WHERE id = ?", (listing_id,)
         ).fetchone()
@@ -431,6 +474,7 @@ def upsert_listing(
     listing: dict[str, Any],
     db_path: Path | str = DB_PATH,
     conn: sqlite3.Connection | None = None,
+    price_bounds: tuple[int, int] | None = None,
 ) -> None:
     row = {col: listing.get(col) for col in LISTING_COLUMNS}
     row["source"] = listing.get("source") or "scrape"
@@ -438,11 +482,11 @@ def upsert_listing(
     sql = UPSERT_SQL_USER if is_user else UPSERT_SQL
     with use_conn(conn, db_path) as conn:
         try:
-            coords_valid = _validate_and_quarantine(conn, row["id"], row)
+            coords_valid = _validate_and_quarantine(conn, row["id"], row, price_bounds)
         except sqlite3.OperationalError:
             conn.executescript(SCHEMA)
             _migrate(conn)
-            coords_valid = _validate_and_quarantine(conn, row["id"], row)
+            coords_valid = _validate_and_quarantine(conn, row["id"], row, price_bounds)
         # issue #103: fingerprint-дедуп и coords_approx считаем по "чистым"
         # координатам — garbage вне bbox не должен склеивать разные квартиры
         # по случайному совпадению битого парсинга и не должен засчитаться
@@ -494,7 +538,11 @@ ON CONFLICT(id) DO UPDATE SET
 
 
 def record_sighting(
-    listing_id: int, url: str, price: int | None, db_path: Path | str = DB_PATH
+    listing_id: int,
+    url: str,
+    price: int | None,
+    db_path: Path | str = DB_PATH,
+    price_bounds: tuple[int, int] | None = None,
 ) -> None:
     """Дешёвая запись «видели лот в выдаче» — без похода на детальную страницу.
 
@@ -507,6 +555,21 @@ def record_sighting(
     (`title IS NULL` — сентинел «сайтинг без детали», см. sweep()).
     """
     with get_conn(db_path) as conn:
+        # issue #103: тот же data-contract, что и на пути upsert_listing.
+        # Раньше его здесь не было вовсе — мусорная цена карточки для НОВОГО
+        # id спокойно ложилась и в listings.price, и в price_history (для
+        # знакомого id та же цена отбраковывалась), а count_parse_anomalies
+        # при этом рапортовал чистый парс. Саму строку sighting пишем в любом
+        # случае, просто без цены: иначе теряются first_seen и место в
+        # очереди на докачку деталей — ровно то, ради чего заведён #127.
+        if price is not None and not is_valid_price(price, price_bounds):
+            try:
+                record_parse_anomaly(conn, listing_id, "price", "out_of_range", price)
+            except sqlite3.OperationalError:
+                conn.executescript(SCHEMA)
+                _migrate(conn)
+                record_parse_anomaly(conn, listing_id, "price", "out_of_range", price)
+            price = None
         try:
             conn.execute(SIGHTING_UPSERT_SQL, {"id": listing_id, "url": url, "price": price})
         except sqlite3.OperationalError:

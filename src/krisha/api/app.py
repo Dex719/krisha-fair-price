@@ -31,7 +31,7 @@ from krisha.api.schemas import (
 )
 from krisha.config import DB_PATH, MODEL_META_PATH, MODEL_PATH, ROOT_DIR
 from krisha.db import get_conn
-from krisha.predict import predict_from_url
+from krisha.predict import InvalidListingUrl, predict_from_url
 from krisha.stats import get_stats, heatmap_points
 
 logging.basicConfig(level=logging.INFO)
@@ -119,23 +119,46 @@ class _ChunkedBodyLimitMiddleware:
             return
 
         total = 0
+        exceeded = False
+
+        async def guarded_send(message):
+            # После того как мы сами отправили 413, ответ приложения глушим:
+            # два http.response.start в одном запросе — ошибка протокола ASGI.
+            if exceeded:
+                return
+            await send(message)
 
         async def counted_receive():
-            nonlocal total
+            nonlocal total, exceeded
             message = await receive()
             if message["type"] == "http.request":
                 total += len(message.get("body") or b"")
-                if total > self.max_bytes:
-                    raise _MaxBodySizeExceeded()
+                if total > self.max_bytes and not exceeded:
+                    # Раньше здесь бросалось исключение, а ловилось оно вокруг
+                    # self.app(...). Но исключение поднимается ВНУТРИ стека
+                    # FastAPI, который перехватывает ошибки чтения тела и сам
+                    # отвечает 400 — до нашего except оно уже не долетало, и
+                    # клиент вместо 413 получал 400. Отвечаем прямо здесь.
+                    exceeded = True
+                    response = _apply_security_headers(
+                        JSONResponse(
+                            status_code=413, content={"detail": "Слишком большой запрос"}
+                        )
+                    )
+                    await response(scope, receive, send)
+                    # Приложению говорим «клиент отключился»: оно свернётся,
+                    # а его ответ отбросит guarded_send.
+                    return {"type": "http.disconnect"}
             return message
 
         try:
-            await self.app(scope, counted_receive, send)
-        except _MaxBodySizeExceeded:
-            response = _apply_security_headers(
-                JSONResponse(status_code=413, content={"detail": "Слишком большой запрос"})
-            )
-            await response(scope, receive, send)
+            await self.app(scope, counted_receive, guarded_send)
+        except _MaxBodySizeExceeded:  # pragma: no cover — на всякий случай
+            if not exceeded:
+                response = _apply_security_headers(
+                    JSONResponse(status_code=413, content={"detail": "Слишком большой запрос"})
+                )
+                await response(scope, receive, send)
 
 
 app.add_middleware(_ChunkedBodyLimitMiddleware, max_bytes=MAX_BODY_BYTES)
@@ -294,9 +317,16 @@ async def predict(req: PredictRequest, request: Request) -> PredictResponse:
             functools.partial(predict_from_url, req.url, flags_live=False),
             limiter=_PREDICT_LIMITER,
         )
-    except ValueError as exc:
+    except InvalidListingUrl as exc:
         # 422 — пользовательская валидация URL, текст безопасен и полезен
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError:
+        # Любой ДРУГОЙ ValueError — внутренний сбой, а не ошибка ввода.
+        # Например json.JSONDecodeError (подкласс ValueError) на битом
+        # model_meta.json: раньше он уезжал пользователю как 422 с сырым
+        # текстом исключения, включая кусок содержимого файла.
+        logger.exception("predict: внутренняя ошибка обработки")
+        raise HTTPException(status_code=502, detail="Не удалось обработать объявление") from None
     except FileNotFoundError:
         # детали (пути и т.п.) — в лог, наружу обобщённо
         logger.exception("predict: модель/файл недоступны")
@@ -304,7 +334,12 @@ async def predict(req: PredictRequest, request: Request) -> PredictResponse:
     except RuntimeError:
         logger.exception("predict: ошибка обработки объявления")
         raise HTTPException(status_code=502, detail="Не удалось обработать объявление") from None
-    usage.record_event("predict")
+    # record_event раз в FLUSH_INTERVAL уходит в _flush → запись файла и
+    # PUT в api.github.com (два httpx-вызова с таймаутом 15 с). Здесь мы в
+    # `async def`, то есть в потоке event loop'а: синхронный вызов вешал бы
+    # ВЕСЬ сервер на время похода в GitHub — включая /api/health, по
+    # которому keepalive решает, жив ли Space.
+    await anyio.to_thread.run_sync(functools.partial(usage.record_event, "predict"))
     return PredictResponse(**result)
 
 
@@ -450,9 +485,13 @@ def telegram_webhook(
     token = bot.bot_token()
     if not token:
         raise HTTPException(status_code=404)
-    if not x_telegram_bot_api_secret_token or not hmac.compare_digest(
-        x_telegram_bot_api_secret_token, bot.webhook_secret(token)
-    ):
+    # Сравниваем в байтах: hmac.compare_digest на str требует, чтобы ОБА
+    # аргумента были ASCII-only, иначе бросает TypeError — а заголовок
+    # приходит от кого угодно. Starlette декодирует заголовки как latin-1,
+    # поэтому обратно кодируем тоже latin-1 (utf-8 исказил бы байты).
+    # Без этого подделанный заголовок с не-ASCII давал 500 вместо 403.
+    secret = (x_telegram_bot_api_secret_token or "").encode("latin-1", "ignore")
+    if not secret or not hmac.compare_digest(secret, bot.webhook_secret(token).encode("ascii")):
         raise HTTPException(status_code=403)
     update_id = update.get("update_id")
     if isinstance(update_id, int):

@@ -1,12 +1,17 @@
 """Шифрование state-файлов (subscriptions/tracked) в публичном репозитории."""
 
 import json
+import json as _json
 import os
 
 import pytest
 
 from krisha import subscriptions as subs_mod
 from krisha.subscriptions import load_json_state, save_json_state
+
+# Настоящая реализация, снятая до того, как autouse-фикстура её подменит:
+# тесты слияния должны гонять именно её (с заглушенным httpx).
+_REAL_PUSH = subs_mod._push_to_github
 
 
 @pytest.fixture(autouse=True)
@@ -94,3 +99,85 @@ def test_tracking_uses_encryption(tmp_path, monkeypatch):
     assert "99001" not in path.read_text()
     lots = list_tracked(99001, path=path)
     assert "123456789" in lots and lots["123456789"]["price"] == 45_000_000
+
+
+def test_push_merges_concurrent_remote_changes(monkeypatch, tmp_path):
+    """issue #111: у state-файлов два независимых писателя — Space (команды
+    бота) и GitHub Actions. Раньше sha читался прямо перед PUT, поэтому
+    конфликт, который должен был дать 409, превращался в тихую перезапись:
+    подписка, оформленная другим писателем, исчезала без следа."""
+    import base64
+
+    monkeypatch.setattr(subs_mod, "_push_to_github", _REAL_PUSH)
+    monkeypatch.setenv("GITHUB_PAT", "t")
+    monkeypatch.delenv("STATE_ENCRYPTION_KEY", raising=False)
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+
+    # На сервере уже лежит подписка чата 777, которой мы не видели.
+    remote = json.dumps({"777": {"rooms": 1}})
+    put_bodies = []
+
+    class _Resp:
+        status_code = 200
+
+        def __init__(self, payload):
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    monkeypatch.setattr(
+        subs_mod.httpx, "get",
+        lambda *a, **k: _Resp({"sha": "abc", "content": base64.b64encode(remote.encode()).decode()}),
+    )
+
+    def fake_put(url, headers=None, json=None, timeout=None):
+        put_bodies.append(json)
+        return _Resp({})
+
+    monkeypatch.setattr(subs_mod.httpx, "put", fake_put)
+
+    path = tmp_path / "subscriptions.json"
+    save_json_state(path, {"111": {"rooms": 2}}, "msg", encrypt=False)
+
+    pushed = _json.loads(base64.b64decode(put_bodies[0]["content"]).decode())
+    assert pushed == {"777": {"rooms": 1}, "111": {"rooms": 2}}, "чужая подписка не должна пропасть"
+
+
+def test_push_honours_intentional_deletion(monkeypatch, tmp_path):
+    """Обратная сторона слияния: отписка не должна «воскресать» с сервера."""
+    import base64
+
+    monkeypatch.setattr(subs_mod, "_push_to_github", _REAL_PUSH)
+    monkeypatch.setenv("GITHUB_PAT", "t")
+    monkeypatch.delenv("STATE_ENCRYPTION_KEY", raising=False)
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+
+    remote = json.dumps({"777": {"rooms": 1}, "111": {"rooms": 2}})
+    put_bodies = []
+
+    class _Resp:
+        status_code = 200
+
+        def __init__(self, payload):
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    monkeypatch.setattr(
+        subs_mod.httpx, "get",
+        lambda *a, **k: _Resp({"sha": "abc", "content": base64.b64encode(remote.encode()).decode()}),
+    )
+    monkeypatch.setattr(
+        subs_mod.httpx, "put",
+        lambda url, headers=None, json=None, timeout=None: (
+            put_bodies.append(json) or _Resp({})
+        ),
+    )
+
+    path = tmp_path / "subscriptions.json"
+    save_json_state(path, {"777": {"rooms": 1}}, "msg", encrypt=False, deleted_keys={"111"})
+
+    pushed = _json.loads(base64.b64decode(put_bodies[0]["content"]).decode())
+    assert pushed == {"777": {"rooms": 1}}, "удалённый нами ключ не должен вернуться"

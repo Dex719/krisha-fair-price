@@ -31,6 +31,16 @@ from krisha.scraping.detail_parser import parse_detail
 
 logger = logging.getLogger(__name__)
 
+class InvalidListingUrl(ValueError):
+    """Ссылка не похожа на объявление krisha.kz — ошибка ПОЛЬЗОВАТЕЛЯ.
+
+    Отдельный тип нужен, чтобы api/app.py отдавал 422 с текстом только на
+    неё. Раньше ловился любой ValueError, и внутренние сбои (например
+    JSONDecodeError на битом model_meta.json — подкласс ValueError) тоже
+    превращались в 422 с сырым текстом исключения наружу.
+    """
+
+
 KRISHA_URL_RE = re.compile(r"krisha\.kz/a/show/(\d+)")
 KRISHA_SHOW_BASE = "https://krisha.kz/a/show/"
 VERDICT_THRESHOLD = 0.10  # ±10% — справедливая цена
@@ -451,7 +461,7 @@ def _predict_from_listing(
 def predict_from_url(url: str, flags_live: bool = True) -> dict[str, Any]:
     match = KRISHA_URL_RE.search(url)
     if not match:
-        raise ValueError("Ожидается ссылка вида https://krisha.kz/a/show/<id>")
+        raise InvalidListingUrl("Ожидается ссылка вида https://krisha.kz/a/show/<id>")
     # Защита от SSRF: не ходим по сырому пользовательскому URL (можно подсунуть
     # http://169.254.169.254/krisha.kz/a/show/1 — подстрока пройдёт проверку).
     # Берём только id и собираем канонический адрес сами, как в боте.

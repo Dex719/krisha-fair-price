@@ -90,12 +90,20 @@ def load_poi_index(path: Path | str = OSM_POIS_SNAPSHOT_PATH) -> PoiIndex | None
 def walk_score(dists: dict[str, float]) -> float:
     """Скор пешей доступности 0–100: вклад категории линейно затухает к порогу."""
     score = 0.0
+    known = 0
     for cat in _WALK_CATS:
         d = dists.get(cat)
         if d is None or (isinstance(d, float) and math.isnan(d)):
             continue
+        known += 1
         # квадратичное затухание: близко к POI ≈ полный балл, у порога → 0
         score += max(0.0, 1.0 - (d / _WALK_FULL_KM[cat]) ** 2)
+    if known == 0:
+        # «Нет данных» — это NaN, а не 0.0. Ноль означает «всё далеко», то есть
+        # худшую пешую доступность в городе: лот без координат (или прогон без
+        # снапшота OSM) выглядел для модели как окраина без единого POI, вместо
+        # честного пропуска, который CatBoost умеет обрабатывать нативно.
+        return float("nan")
     return round(score / len(_WALK_CATS) * 100, 1)
 
 

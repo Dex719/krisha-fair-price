@@ -43,14 +43,25 @@ def _send_deal_alerts(dry_run: bool, deals: list) -> None:
 def _send_track_alerts(dry_run: bool) -> None:
     from krisha.bot import tg_call
 
-    updates = check_tracked_updates(persist=not dry_run)
+    # persist=False: сначала доставляем, потом фиксируем. Раньше состояние
+    # сохранялось ДО отправки, и упавший sendMessage (Telegram 5xx, бот
+    # заблокирован пользователем) означал потерю алерта навсегда — на
+    # следующем проходе сохранённая цена уже равна новой, события нет.
+    updates = check_tracked_updates(persist=False)
     print(f"Обновлений по слежке (/track): {len(updates)}")
+    delivered: set[int] = set()
     for chat_id, message in updates:
         if dry_run:
             print(f"--- chat {chat_id}:\n{message}")
             continue
-        tg_call("sendMessage", chat_id=chat_id, text=message,
-                parse_mode="HTML", disable_web_page_preview=True)
+        resp = tg_call("sendMessage", chat_id=chat_id, text=message,
+                       parse_mode="HTML", disable_web_page_preview=True)
+        if resp and resp.get("ok"):
+            delivered.add(int(chat_id))
+        else:
+            print(f"Не доставлено в chat {chat_id} — состояние не фиксируем, повторим позже")
+    if delivered:
+        check_tracked_updates(persist=True, only_chats=delivered)
 
 
 def _post_channel_digest(dry_run: bool, deals: list) -> None:
