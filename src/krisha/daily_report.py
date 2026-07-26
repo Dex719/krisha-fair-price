@@ -119,8 +119,25 @@ def build_daily_report(scope: str = "sale", summary_path: Path | str | None = No
             f"изменений цены {stats.get('price_changes', '?')}, "
             f"{_delisted_fragment(stats)}"
         )
+        # issue #156: без этой строки восстановительный проход в отчёте
+        # неотличим от удачного дня на рынке — «новых 20000» читается как
+        # рекордный приток, хотя это то, что мы пропустили за перерыв.
+        if stats.get("recovery_pass"):
+            lines.append(
+                f"📌 Восстановительный проход: лоты не наблюдались "
+                f"{stats.get('observation_gap_days', '?')} дн. "
+                "«Новые» — в основном пропущенное за перерыв, а не приток рынка; "
+                "снятия датированы сегодня, хотя лоты ушли внутри перерыва"
+            )
         if stats.get("failed_shards"):
             lines.append("⚠️ Сбойные шарды: " + ", ".join(stats["failed_shards"]))
+        if stats.get("delist_blocked"):
+            share = stats.get("delist_share")
+            share_txt = f"{share * 100:.0f}%" if isinstance(share, (int, float)) else "?"
+            lines.append(
+                f"🛑 Массовое снятие заблокировано: кандидатов {share_txt} от активных. "
+                "Снятия НЕ проставлены — проверьте, отдаёт ли выдача полные страницы"
+            )
         # issue #127: очередь detail fetch — сколько лотов уже есть (sighting),
         # но детали ещё не докачаны. Растущая очередь = приток обгоняет лимит.
         queue_after = stats.get("detail_queue_after")

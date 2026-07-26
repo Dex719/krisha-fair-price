@@ -245,6 +245,18 @@ def test_liquidity_excludes_censored_and_bad_durations(tmp_path):
     _add_delisted(db, 2002, days=-3.0)                               # отрицательная
     _add_delisted(db, 2003, first_seen="2026-06-01 12:00:00", days=30.0)  # когорта старта
     _add_delisted(db, 2004, days=10.0, active=True)                  # активное
+    # Лот 2005: снятие замечено через 12 дней после последнего наблюдения —
+    # цензурированный эпизод (issue #156). Столько лот не наблюдался, момент
+    # ухода с рынка неизвестен. Так выглядит вся волна после провала сбора.
+    _add_delisted(db, 2006, days=10.0)
+    with get_conn(db) as conn:
+        conn.execute(
+            "UPDATE listings SET delisted_at = datetime(last_seen, '+12 days') "
+            "WHERE id = 2006"
+        )
+    # Метку 'initial' проставляет миграция; в проде init_db гоняется в начале
+    # каждого прохода и при старте API, здесь воспроизводим тот же момент.
+    init_db(db)
     assert liquidity_estimate(DISTRICT, 2, db_path=db) is None
     _add_delisted(db, 2005, days=10.0)  # 15-е валидное → оценка появляется
     est = liquidity_estimate(DISTRICT, 2, db_path=db)
