@@ -30,3 +30,6 @@ data/rescrape_history_*.json
 
 # catboost
 catboost_info/
+
+# Локальный конфиг превью для Claude Code (пути к venv у каждого свои)
+.claude/
