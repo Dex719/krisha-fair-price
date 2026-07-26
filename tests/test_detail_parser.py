@@ -5,7 +5,9 @@ import pytest
 from krisha.scraping.detail_parser import parse_detail
 from krisha.scraping.listing_parser import has_next_page, parse_listing_ids
 
-FIXTURE = (Path(__file__).parent / "fixtures" / "detail_sample.html").read_text()
+FIXTURE = (Path(__file__).parent / "fixtures" / "detail_sample.html").read_text(
+    encoding="utf-8"
+)
 
 
 @pytest.fixture()

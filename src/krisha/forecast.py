@@ -93,5 +93,11 @@ def build_forecast(db_path: Path | str = DB_PATH) -> dict:
         if fc is not None:
             districts.append({"district": ru, "slug": slug, **fc})
 
-    districts.sort(key=lambda d: d["m6"]["change_pct"], reverse=True)
+    # Сортируем по m3, а не по m6: горизонт m6 отсутствует у районов с
+    # историей короче MIN_WEEKS_M6 недель (см. _fit_forecast), и обращение
+    # к d["m6"] роняло весь эндпоинт с KeyError → HTTP 500 (/api/forecast и
+    # блок прогноза на /stats не работали вовсе). m3 проставляется всегда,
+    # а для линейной экстраполяции change_pct = slope·weeks/current, так что
+    # порядок по m3 и по m6 совпадает — ранжирование не меняется.
+    districts.sort(key=lambda d: d["m3"]["change_pct"], reverse=True)
     return {"city": city, "districts": districts, "disclaimer": DISCLAIMER}

@@ -560,3 +560,48 @@ def test_sweep_aborts_early_on_ban_and_skips_delist(tmp_path, monkeypatch):
     assert len(alerts) == 1
     # прервались на первом же шарде — не обошли оставшиеся 31
     assert len(client.requested) == 1
+
+
+def test_antibot_signature_ignores_recaptcha_policy_footer():
+    """Регрессия 14.07.2026: krisha.kz печатает в подвале каждой нормальной
+    страницы «Этот сайт защищён сервисом reCAPTCHA», и голая подстрока
+    "captcha" в _ANTIBOT_SIGNS считала капчей ЛЮБУЮ живую выдачу. Все 32
+    шарда падали, found_in_search=0, --fail-empty ронял ежедневный рескрейп
+    (продажа и аренда) 13 дней подряд, база протухала."""
+    live_page = (
+        "<html><body>"
+        + _card(101, 25_000_000)
+        + '<div class="footer__trademark">&copy; 2006 — 2026 «Крыша»'
+        '<p class="g-recaptcha-policy">Этот сайт защищён сервисом reCAPTCHA, '
+        "и к нему применяется политика конфиденциальности Google.</p></div>"
+        "</body></html>"
+    )
+    assert rescrape._looks_like_antibot(live_page) is False
+
+    # Настоящий челлендж/бан по-прежнему распознаётся.
+    assert rescrape._looks_like_antibot(
+        '<html><body><div class="g-recaptcha" data-sitekey="x"></div></body></html>'
+    )
+    assert rescrape._looks_like_antibot("<html><body>Attention Required! | Cloudflare</body></html>")
+    assert rescrape._looks_like_antibot("<html><body>Подтвердите, что вы не робот</body></html>")
+
+
+def test_sweep_covers_shard_with_recaptcha_policy_footer(tmp_path, monkeypatch):
+    """Тот же баг на уровне прохода: живая выдача с подвальной оговоркой про
+    reCAPTCHA должна быть покрыта, а не уйти в failed_shards с нулём цен."""
+    db = tmp_path / "test.db"
+    init_db(db)
+
+    page = (
+        "<html><body>"
+        + _card(2001, 30_000_000)
+        + '<p class="g-recaptcha-policy">Этот сайт защищён сервисом reCAPTCHA</p>'
+        "</body></html>"
+    )
+    client = FakeClient(dict.fromkeys([u for _, u in shard_urls()], page))
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+
+    stats = sweep(max_pages=1, max_new_details=0, db_path=db)
+
+    assert stats["failed_shards"] == []
+    assert stats["found_in_search"] == 1

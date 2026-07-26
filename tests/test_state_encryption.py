@@ -1,6 +1,7 @@
 """Шифрование state-файлов (subscriptions/tracked) в публичном репозитории."""
 
 import json
+import os
 
 import pytest
 
@@ -35,7 +36,11 @@ def test_plaintext_pii_is_not_pushed(tmp_path, monkeypatch):
     save_json_state(path, {"123": {"rooms": 2}}, "msg", encrypt=True)
 
     assert pushed == []
-    assert path.stat().st_mode & 0o777 == 0o600
+    # Права 0600 — POSIX-свойство: на Windows os.chmod умеет только флаг
+    # «только для чтения», st_mode всегда остаётся 0666, и проверка ломала
+    # весь локальный прогон тестов у разработчика на Windows.
+    if os.name == "posix":
+        assert path.stat().st_mode & 0o777 == 0o600
 
 
 def test_encrypted_roundtrip(tmp_path, monkeypatch):

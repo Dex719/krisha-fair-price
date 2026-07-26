@@ -64,7 +64,10 @@ def load_json_state(path):
     """Читает state-файл: расшифровывает обёртку {"_encrypted": ...} или
     отдаёт legacy plaintext-JSON. Нет файла/битый/нет ключа → None."""
     try:
-        data = json.loads(path.read_text())
+        # encoding обязателен: пишем мы всегда utf-8 (см. save_json_state ниже),
+        # а read_text() без него берёт локаль ОС — на Windows это cp1251, и
+        # кириллица в tracked.json/subscriptions.json читается «РљРІР°СЂС‚РёСЂР°».
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return None
     if isinstance(data, dict) and "_encrypted" in data:

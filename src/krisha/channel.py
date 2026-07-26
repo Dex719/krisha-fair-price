@@ -31,7 +31,7 @@ def load_posted(path=None) -> list[int]:
     if not path.exists():
         return []
     try:
-        return list(json.loads(path.read_text()))
+        return list(json.loads(path.read_text(encoding="utf-8")))
     except (json.JSONDecodeError, TypeError):
         logger.warning("channel: битый %s — начинаем с нуля", path)
         return []

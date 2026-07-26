@@ -124,7 +124,7 @@ def load_model() -> tuple[CatBoostRegressor, dict]:
         )
     model = CatBoostRegressor()
     model.load_model(str(MODEL_PATH))
-    meta = json.loads(MODEL_META_PATH.read_text())
+    meta = json.loads(MODEL_META_PATH.read_text(encoding="utf-8"))
     return model, meta
 
 

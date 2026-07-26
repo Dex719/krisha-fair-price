@@ -77,7 +77,9 @@ def main() -> None:
     )
 
     if args.summary_json:
-        Path(args.summary_json).write_text(json.dumps(stats, ensure_ascii=False, indent=2))
+        Path(args.summary_json).write_text(
+            json.dumps(stats, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
 
     if args.fail_below and stats["found_in_search"] < args.fail_below:
         logging.error(

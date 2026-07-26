@@ -108,3 +108,29 @@ def test_build_forecast_shape(monkeypatch):
     assert [d["district"] for d in data["districts"]] == ["Бостандыкский"]
     assert data["districts"][0]["m6"]["change_pct"] < 0
     assert "не инвестиционный совет" in data["disclaimer"]
+
+
+def test_build_forecast_survives_district_without_m6(monkeypatch):
+    """Регрессия: районы с историей короче MIN_WEEKS_M6 не получают ключ "m6"
+    (см. _fit_forecast), а build_forecast сортировал по d["m6"]["change_pct"] —
+    KeyError ронял весь /api/forecast в HTTP 500, вместе с блоком прогноза
+    на /stats. Смешанный набор (короткая и длинная история) должен работать."""
+
+    def fake_trend(db_path, max_weeks=26, min_n=100, district=None):
+        if district is None:
+            return _trend([500_000 - 1_000 * i for i in range(12)])
+        if district == "Bostandykskiy_r-n":
+            return _trend([500_000 - 2_000 * i for i in range(12)])  # есть m6
+        if district == "Medeuskiy_r-n":
+            return _trend([500_000 - 1_000 * i for i in range(8)])   # m6 нет
+        return []
+
+    monkeypatch.setattr(forecast, "_weekly_trend", fake_trend)
+    data = build_forecast(db_path="ignored.db")
+
+    districts = {d["district"]: d for d in data["districts"]}
+    assert set(districts) == {"Бостандыкский", "Медеуский"}
+    assert "m6" not in districts["Медеуский"], "короткая история — m6 не показываем"
+    assert "m6" in districts["Бостандыкский"]
+    # Сортировка по m3 (он есть всегда): менее падающий район — выше.
+    assert [d["district"] for d in data["districts"]] == ["Медеуский", "Бостандыкский"]

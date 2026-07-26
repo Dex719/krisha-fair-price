@@ -84,7 +84,9 @@ def snapshot_complexes(db_path: Path | str = DB_PATH,
             lookup[key] = attrs
 
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-    Path(out_path).write_text(json.dumps(lookup, ensure_ascii=False, indent=1))
+    Path(out_path).write_text(
+        json.dumps(lookup, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
     logger.info("Снапшот ЖК: %s записей → %s", len(lookup), out_path)
     return len(lookup)
 
@@ -96,4 +98,4 @@ def load_complex_lookup(path: str | None = None) -> dict[str, dict]:
     if not p.exists():
         logger.warning("Снапшот ЖК не найден (%s) — фичи ЖК будут пустыми", p)
         return {}
-    return json.loads(p.read_text())
+    return json.loads(p.read_text(encoding="utf-8"))
