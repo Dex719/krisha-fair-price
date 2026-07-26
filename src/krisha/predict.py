@@ -21,6 +21,7 @@ from krisha.config import (
     MODEL_META_PATH,
     MODEL_PATH,
     MODEL_QUANTILE_PATH,
+    feature_vision,
 )
 from krisha.db import get_conn
 from krisha.features import listing_to_frame
@@ -304,7 +305,7 @@ def _location_details_with_pin_note(listing: dict[str, Any]) -> list[dict[str, s
 
 def predict_from_listing(
     listing: dict[str, Any],
-    flags_live: bool = True,
+    live_vision: bool = True,
     conn: sqlite3.Connection | None = None,
 ) -> dict[str, Any]:
     """issue #110: `conn` — необязательное уже открытое SQLite-соединение,
@@ -316,22 +317,17 @@ def predict_from_listing(
     analogs, log_prediction) — теперь один на всю функцию."""
     if conn is None:
         with get_conn(DB_PATH) as new_conn:
-            return _predict_from_listing(listing, flags_live, new_conn)
-    return _predict_from_listing(listing, flags_live, conn)
+            return _predict_from_listing(listing, live_vision, new_conn)
+    return _predict_from_listing(listing, live_vision, conn)
 
 
 def _predict_from_listing(
-    listing: dict[str, Any], flags_live: bool, conn: sqlite3.Connection
+    listing: dict[str, Any], live_vision: bool, conn: sqlite3.Connection
 ) -> dict[str, Any]:
     model, meta = load_model()
     features = meta["features"]
 
-    # LLM-флаги достаём ДО фичей: они теперь и фичи модели, и бейджи карточки
-    from krisha.llm_flags import flags_to_badges, get_flags_raw
     from krisha.spatial import load_spatial_ref
-
-    raw_flags = get_flags_raw(listing, live=flags_live, conn=conn)
-    listing = {**listing, "llm_flags": raw_flags if raw_flags is not None else None}
 
     df = listing_to_frame(
         listing, ppsm_maps=meta.get("ppsm_maps"), spatial_ref=load_spatial_ref()
@@ -395,21 +391,30 @@ def _predict_from_listing(
         listing.get("district"), listing.get("rooms"), result.get("diff_pct"), conn=conn
     )
 
-    # Скам-детектор: цена сильно ниже оценки + эвристики по объявлению
+    # issue #157: предупреждение о подозрительно низкой цене — от НИЖНЕЙ
+    # ГРАНИЦЫ интервала, а не от точечной оценки. Граница откалибрована CQR
+    # под фактическое покрытие, то есть «ниже неё» — проверяемое утверждение,
+    # а не выдуманный порог в процентах. days_on_market посчитан выше.
     from krisha.scam import assess_scam_risk
 
     result["scam_risk"] = assess_scam_risk(
-        listing, result["fair_price"], result.get("actual_price")
+        result.get("fair_price_low"),
+        result.get("actual_price"),
+        result.get("days_on_market"),
     )
 
-    # Оценка ремонта по фото (Gemini Vision, кэш + fail-soft).
-    # live только когда flags_live=True (бот); веб получает из кэша.
-    from krisha.vision import assess_renovation
+    # Оценка ремонта по фото — за фича-флагом (issue #157): вклад в точность
+    # не измерен, а каждый показ это живой запрос к Gemini Vision прямо на
+    # пользовательском пути. Вернуть, когда абляция покажет измеримый вклад.
+    if feature_vision():
+        from krisha.vision import assess_renovation
 
-    try:
-        result["renovation"] = assess_renovation(listing, live=flags_live, conn=conn)
-    except Exception:  # noqa: BLE001 — фото-анализ не должен ломать оценку
-        logger.exception("vision failed")
+        try:
+            result["renovation"] = assess_renovation(listing, live=live_vision, conn=conn)
+        except Exception:  # noqa: BLE001 — фото-анализ не должен ломать оценку
+            logger.exception("vision failed")
+            result["renovation"] = None
+    else:
         result["renovation"] = None
 
     # Аналоги: похожие активные объявления из базы (kNN по фичам, fail-soft)
@@ -421,21 +426,14 @@ def _predict_from_listing(
         logger.exception("analogs failed")
         result["analogs"] = []
 
-    # Этап 5: LLM-анализ описания — бейджи red flags / плюсов (кэш + Gemini).
-    # flags_live=False — быстрый ответ: отдаём только кэш, а если кэша нет,
-    # ставим flags_pending=True и фронт догружает флаги отдельным запросом.
-    import os
-
-    from krisha.llm_flags import GEMINI_API_KEY_ENV
-
-    result["text_flags"] = flags_to_badges(raw_flags)
-    text = listing.get("description") or ""
-    result["flags_pending"] = bool(
-        not flags_live
-        and len(text.strip()) >= 20
-        and raw_flags is None
-        and os.environ.get(GEMINI_API_KEY_ENV)
-    )
+    # issue #157: LLM-бейджи описания убраны с пользовательского пути целиком.
+    # Абляция на честном сплите показала, что как фичи они УХУДШАЮТ модель
+    # (R² 0.79 → 0.76), в неё они не идут, и оставались только украшением
+    # карточки — ценой похода в Gemini на каждый предикт, кэша в SQLite
+    # (который всё равно стирался при каждом рестарте Space) и отдельного
+    # эндпоинта с догрузкой на фронте. Модуль krisha.llm_flags и пакетный
+    # scripts/analyze_flags.py оставлены для офлайн-абляции: условие возврата
+    # — измеримый вклад на rolling-origin backtest (#158).
 
     # issue #128: логируем каждый предикт (пользовательский через
     # predict_from_url, канальный через alerts.find_good_deals — оба
@@ -458,7 +456,7 @@ def _predict_from_listing(
     return result
 
 
-def predict_from_url(url: str, flags_live: bool = True) -> dict[str, Any]:
+def predict_from_url(url: str, live_vision: bool = True) -> dict[str, Any]:
     match = KRISHA_URL_RE.search(url)
     if not match:
         raise InvalidListingUrl("Ожидается ссылка вида https://krisha.kz/a/show/<id>")
@@ -482,7 +480,7 @@ def predict_from_url(url: str, flags_live: bool = True) -> dict[str, Any]:
     from krisha.db import find_duplicate_id, listing_fingerprint, upsert_listing
 
     with get_conn(DB_PATH) as conn:
-        result = predict_from_listing(listing, flags_live=flags_live, conn=conn)
+        result = predict_from_listing(listing, live_vision=live_vision, conn=conn)
         # Каждая проверенная ссылка пополняет базу (fail-soft: read-only FS и т.п.)
         result["duplicate_of"] = None
         try:
