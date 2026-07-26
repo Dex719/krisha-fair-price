@@ -200,7 +200,9 @@ def snapshot_stats(db_path: Path | str = DB_PATH) -> dict:
     """Считает статистику и сохраняет в models/stats.json (для деплоя без БД)."""
     stats = compute_stats(db_path)
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    STATS_SNAPSHOT_PATH.write_text(json.dumps(stats, ensure_ascii=False, indent=2))
+    STATS_SNAPSHOT_PATH.write_text(
+        json.dumps(stats, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     logger.info("Снапшот статистики: %s", STATS_SNAPSHOT_PATH)
     return stats
 
@@ -240,7 +242,7 @@ def get_stats() -> dict:
     except FileNotFoundError:
         pass
     if STATS_SNAPSHOT_PATH.exists():
-        stats = json.loads(STATS_SNAPSHOT_PATH.read_text())
+        stats = json.loads(STATS_SNAPSHOT_PATH.read_text(encoding="utf-8"))
         stats["source"] = "snapshot"
         return stats
     raise FileNotFoundError("Нет ни БД, ни снапшота статистики — запусти crawl + train")

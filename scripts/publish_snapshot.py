@@ -84,7 +84,7 @@ def human_summary(label: str, stats: dict) -> str:
 def load_stats(stats_json: str | None) -> dict:
     if not stats_json or not Path(stats_json).exists():
         return {}
-    return json.loads(Path(stats_json).read_text())
+    return json.loads(Path(stats_json).read_text(encoding="utf-8"))
 
 
 def publish(

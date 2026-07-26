@@ -74,7 +74,7 @@ def main() -> None:
     parser.add_argument("--summary", help="Файл для markdown-отчёта (GITHUB_STEP_SUMMARY)")
     args = parser.parse_args()
 
-    new_meta = json.loads(Path(args.new_meta).read_text())
+    new_meta = json.loads(Path(args.new_meta).read_text(encoding="utf-8"))
     new = new_meta["metrics"]["model"]
     new_interval = new_meta["metrics"].get("interval", {})
     old_on_new_test = new_meta["metrics"].get("old_model")
@@ -92,11 +92,11 @@ def main() -> None:
         ]
         print("\n".join(lines))
         if args.summary:
-            with open(args.summary, "a") as fh:
+            with open(args.summary, "a", encoding="utf-8") as fh:
                 fh.write("\n".join(lines) + "\n")
         sys.exit(1)
 
-    old_meta_full = json.loads(Path(args.old_meta).read_text())
+    old_meta_full = json.loads(Path(args.old_meta).read_text(encoding="utf-8"))
     old_interval = old_meta_full.get("metrics", {}).get("interval", {})
     if old_on_new_test:
         old = old_on_new_test
@@ -110,7 +110,7 @@ def main() -> None:
     bootstrap_note = None
     if old_on_new_test and samples_path.exists():
         try:
-            samples = json.loads(samples_path.read_text())
+            samples = json.loads(samples_path.read_text(encoding="utf-8"))
             lower, upper, point = bootstrap_ape_diff(samples["ape_new"], samples["ape_old"])
             mape_ok = lower <= BOOTSTRAP_TOLERANCE
             bootstrap_note = (
@@ -167,7 +167,7 @@ def main() -> None:
     report = "\n".join(lines)
     print(report)
     if args.summary:
-        with open(args.summary, "a") as fh:
+        with open(args.summary, "a", encoding="utf-8") as fh:
             fh.write(report + "\n")
 
     sys.exit(0 if passed else 1)

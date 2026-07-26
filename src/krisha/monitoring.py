@@ -46,7 +46,7 @@ def load_metrics_history(path: Path | None = None, last: int = 8) -> list[dict]:
     path = path or METRICS_HISTORY_PATH
     if not path.exists():
         return []
-    lines = [ln for ln in path.read_text().splitlines() if ln.strip()]
+    lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
     return [json.loads(ln) for ln in lines[-last:]]
 
 
