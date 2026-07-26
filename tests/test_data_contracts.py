@@ -186,3 +186,60 @@ def test_almaty_bbox_sanity():
     # координаты центра Алматы должны укладываться в текущий bbox
     assert ALMATY_BBOX["lat_min"] < 43.24 < ALMATY_BBOX["lat_max"]
     assert ALMATY_BBOX["lon_min"] < 76.89 < ALMATY_BBOX["lon_max"]
+
+
+def test_rent_prices_survive_the_price_contract(tmp_path):
+    """Регрессия: контракт цены был захардкожен на продажу (PRICE_MIN=5 млн),
+    поэтому КАЖДАЯ арендная цена (₸/месяц) считалась мусором. Ни одна цена в
+    krisha_rent.db не обновлялась, price_history аренды стояла пустой."""
+    from krisha.db import RENT_PRICE_BOUNDS, SALE_PRICE_BOUNDS, is_valid_price, price_bounds_for
+
+    assert price_bounds_for("arenda") == RENT_PRICE_BOUNDS
+    assert price_bounds_for("prodazha") == SALE_PRICE_BOUNDS
+    assert price_bounds_for(None) == SALE_PRICE_BOUNDS
+
+    rent = price_bounds_for("arenda")
+    assert is_valid_price(350_000, rent), "типичная аренда 350к ₸/мес должна проходить"
+    assert not is_valid_price(350_000), "по продажному контракту она же — мусор"
+    assert not is_valid_price(5, rent)
+
+
+def test_upsert_does_not_null_out_a_stored_price(tmp_path):
+    """Регрессия: price лежит в _UPSERT_ALWAYS (пишется безусловно), а
+    is_valid_price(None) → True, поэтому парс без цены («договорная», битая
+    страница) затирал хорошую цену NULL-ом. И залипало: на следующем проходе
+    _record_price_if_changed видел в истории ту же цену и не чинил поле."""
+    from krisha.db import get_conn, init_db, upsert_listing
+
+    db = tmp_path / "t.db"
+    init_db(db)
+    base = {"id": 7, "url": "u", "price": 30_000_000, "area": 60.0,
+            "lat": 43.24, "lon": 76.89, "title": "Квартира"}
+    upsert_listing(base, db)
+    upsert_listing({**base, "price": None}, db)
+
+    with get_conn(db) as conn:
+        price = conn.execute("SELECT price FROM listings WHERE id = 7").fetchone()[0]
+    assert price == 30_000_000, "отсутствие цены в свежем парсе не должно затирать базу"
+
+
+def test_sighting_quarantines_out_of_contract_card_price(tmp_path):
+    """Регрессия: record_sighting (путь НОВОГО id) писал цену карточки вообще
+    без проверки — та же величина для знакомого id отбраковывалась. Строку
+    sighting пишем всё равно (нужны first_seen и место в очереди деталей),
+    но без цены и с аномалией в parse_anomalies."""
+    from krisha.db import count_parse_anomalies, get_conn, init_db, record_sighting
+
+    db = tmp_path / "t.db"
+    init_db(db)
+    record_sighting(4242, "https://krisha.kz/a/show/4242", 1, db)
+
+    with get_conn(db) as conn:
+        row = conn.execute("SELECT price FROM listings WHERE id = 4242").fetchone()
+        history = conn.execute(
+            "SELECT COUNT(*) FROM price_history WHERE listing_id = 4242"
+        ).fetchone()[0]
+    assert row is not None, "сам sighting должен сохраниться (issue #127)"
+    assert row[0] is None
+    assert history == 0, "мусорная цена не должна попадать в историю"
+    assert count_parse_anomalies(db_path=db) == 1

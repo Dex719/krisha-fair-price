@@ -112,7 +112,10 @@ def build_daily_report(scope: str = "sale", summary_path: Path | str | None = No
     if stats:
         lines.append(
             f"Проход: в выдаче <b>{stats.get('found_in_search', '?')}</b>, "
-            f"новых <b>{stats.get('new_listings', '?')}</b>, "
+            # discovered_new — реально впервые увиденные лоты; new_listings
+            # (докачанные детали из общей очереди) оставлен как фолбэк для
+            # summary-JSON, снятых до появления нового ключа.
+            f"новых <b>{stats.get('discovered_new', stats.get('new_listings', '?'))}</b>, "
             f"изменений цены {stats.get('price_changes', '?')}, "
             f"{_delisted_fragment(stats)}"
         )
