@@ -23,8 +23,8 @@ class Factor(BaseModel):
 
 
 class ScamRisk(BaseModel):
-    level: str  # medium / high
-    score: int
+    level: str        # medium / high
+    below_pct: float  # насколько ниже НИЖНЕЙ границы интервала, %
     reasons: list[str] = Field(default_factory=list)
 
 
@@ -61,11 +61,6 @@ class Liquidity(BaseModel):
     band_sample: int | None = None       # выборка снятых в этой полосе
 
 
-class TextFlag(BaseModel):
-    kind: str   # warn — настораживает, plus — скрытый плюс из текста
-    label: str  # подпись бейджа («Срочная продажа», «Торг уместен»...)
-
-
 class Renovation(BaseModel):
     level: str                              # rough/needs_repair/dated/good/premium
     label: str                              # подпись по-русски
@@ -90,19 +85,12 @@ class PredictResponse(BaseModel):
     price_history: list[PricePoint] = Field(default_factory=list)    # этап 4: точки истории цены
     days_on_market: int | None = None       # этап 4: дней в выдаче
     liquidity: Liquidity | None = None      # этап 4: за сколько продаются аналоги
-    text_flags: list[TextFlag] = Field(default_factory=list)         # этап 5: LLM-анализ описания
-    flags_pending: bool = False             # кэша нет — фронт догрузит /api/flags/{id}
     duplicate_of: int | None = None         # возможный дубль (тот же «отпечаток» квартиры)
     photos: list[str] = Field(default_factory=list)                  # URL фото с krisha-photos.kcdn.online
     description: str | None = None
     analogs: list[Analog] = Field(default_factory=list)              # похожие активные объявления (kNN)
     scam_risk: ScamRisk | None = None       # бейдж «подозрительно дёшево»
-    renovation: Renovation | None = None    # оценка ремонта по фото (Gemini)
-
-
-class FlagsResponse(BaseModel):
-    listing_id: int
-    text_flags: list[TextFlag] = Field(default_factory=list)
+    renovation: Renovation | None = None    # оценка ремонта по фото — за FEATURE_VISION (#157)
 
 
 class DemoResponse(BaseModel):

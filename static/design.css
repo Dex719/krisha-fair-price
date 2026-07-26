@@ -354,7 +354,6 @@ button:disabled{cursor:wait;opacity:.72}
 @keyframes skel{50%{background-position:100% 0}}
 .fstat[aria-hidden="false"]{display:block}.fstat.err{color:#F4B39B}.fstat.ok{color:var(--on2)}
 .receipt.flash{animation:rise .55s var(--ease)}
-.flag-pending{opacity:.72}
 .btn-sec{background:transparent;color:var(--green);border:1px solid var(--rule2)}
 .btn-sec:hover{background:rgba(46,110,82,.08);border-color:var(--green)}
 body.dark .btn-sec:hover{background:rgba(87,161,130,.14)}

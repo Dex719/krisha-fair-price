@@ -211,10 +211,16 @@ def format_reply(result: dict[str, Any]) -> str:
                 f"(по {liq['sample']} снятым)"
             )
 
+    # issue #157: формулировка осторожная. Мы знаем только, что цена не
+    # объясняется характеристиками квартиры, — обвинять продавца не в чем.
     scam = result.get("scam_risk")
     if scam:
         mark = "🚨" if scam.get("level") == "high" else "⚠️"
-        head = "Похоже на мошенничество" if scam.get("level") == "high" else "Будьте осторожны"
+        head = (
+            "Цена сильно ниже рынка — проверьте внимательнее"
+            if scam.get("level") == "high"
+            else "Цена ниже ожидаемой — стоит проверить"
+        )
         reasons = ", ".join(scam.get("reasons") or [])
         lines.append(f"{mark} <b>{head}:</b> {html.escape(reasons)}")
 
@@ -250,15 +256,6 @@ def format_reply(result: dict[str, Any]) -> str:
                 f'• <a href="{html.escape(a["url"])}">{title}</a> — '
                 f"{a['price'] / 1_000_000:.1f} млн ₸"
             )
-
-    # Этап 5: бейджи из LLM-анализа описания
-    flags = result.get("text_flags") or []
-    if flags:
-        lines.append("")
-        lines.append("📝 <b>Анализ описания:</b>")
-        for f in flags:
-            mark = "⚠️" if f.get("kind") == "warn" else "✅"
-            lines.append(f"{mark} {html.escape(f.get('label', ''))}")
 
     return "\n".join(lines)
 

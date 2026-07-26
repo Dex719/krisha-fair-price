@@ -42,12 +42,6 @@ SECURITY_FLAGS = {
 COMPLEX_CAT_FEATURES = ["housing_class", "developer"]
 COMPLEX_NUM_FEATURES = ["completion_year", "apartments_count"]
 
-# LLM-флаги описания (этап 5) как бинарные фичи: flag_pledge, flag_bargain, ...
-# Ключи — словарь FLAGS_RU из llm_flags; flags_known=0 — анализа не было.
-from krisha.llm_flags import FLAGS_RU  # noqa: E402
-
-FLAG_FEATURES = [f"flag_{key}" for key in FLAGS_RU]
-
 CAT_FEATURES = [
     "district", "microdistrict", "building_type", "complex_name", "user_type", "category",
     *RAW_PARAM_CAT_MAP,
@@ -66,9 +60,14 @@ NUM_FEATURES = [
 # Вычисляются, но в модель не идут — абляция на честном сплите (group split по
 # зданиям + dedup перевыставлений) показала, что они ухудшают метрики:
 #   knn_ppsm/knn_n      — на train сосед = свой дом, на test его нет (leakage-mismatch)
-#   flag_*/flags_known  — LLM-флаги описаний: шум, R² падает 0.79 → 0.76
 #   district_mismatch   — нулевой эффект; остаётся как бейдж-предупреждение в predict
-EXTRA_FEATURES = ["district_mismatch", "knn_ppsm", "knn_n", "flags_known", *FLAG_FEATURES]
+#
+# issue #157: flag_*/flags_known отсюда убраны вместе с их вычислением. Они
+# тоже проваливали абляцию (R² 0.79 → 0.76), но, в отличие от knn_*, стоили
+# на каждом предикте похода в кэш llm_flags — то есть SQL-запроса ради колонок,
+# которые тут же выбрасывались. Вернуть, если абляция на rolling-origin
+# backtest (#158) покажет измеримый вклад.
+EXTRA_FEATURES = ["district_mismatch", "knn_ppsm", "knn_n"]
 ALL_FEATURES = NUM_FEATURES + CAT_FEATURES
 TARGET = "log_price"
 MISSING_CAT = "unknown"
@@ -220,55 +219,6 @@ def add_raw_param_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _parse_flags_value(val: Any) -> list[str] | None:
-    """Явное значение колонки llm_flags (list или JSON-строка) → list | None."""
-    if isinstance(val, list):
-        return val
-    if isinstance(val, str) and val:
-        try:
-            parsed = json.loads(val)
-            return parsed if isinstance(parsed, list) else None
-        except json.JSONDecodeError:
-            return None
-    return None
-
-
-def add_llm_flag_features(df: pd.DataFrame) -> pd.DataFrame:
-    """LLM-флаги описания → бинарные фичи flag_* + индикатор flags_known.
-
-    Источник: колонка `llm_flags` (predict кладёт свежие флаги) или кэш в БД
-    (train) — кэш читается ПАЧКОЙ одним соединением, а не по строке (раньше
-    обучение делало 7000+ отдельных connect'ов к SQLite).
-    Нет анализа → все нули и flags_known=0 — модель это различает.
-    """
-    df = df.copy()
-    flags_list: list[list[str] | None] = [None] * len(df)
-    pending: list[tuple[int, int, str]] = []  # (позиция, listing_id, описание)
-    for pos, (_, row) in enumerate(df.iterrows()):
-        parsed = _parse_flags_value(row.get("llm_flags"))
-        if parsed is not None:
-            flags_list[pos] = parsed
-            continue
-        lid, text = row.get("id"), row.get("description")
-        if lid and isinstance(text, str) and len(text.strip()) >= 20:
-            pending.append((pos, int(lid), text))
-
-    if pending:
-        from krisha.llm_flags import get_cached_flags_bulk
-
-        try:
-            cached = get_cached_flags_bulk([(lid, text) for _, lid, text in pending])
-        except Exception:  # noqa: BLE001 — кэш недоступен → фичи по нулям
-            cached = {}
-        for pos, lid, _ in pending:
-            flags_list[pos] = cached.get(lid)
-
-    df["flags_known"] = [int(f is not None) for f in flags_list]
-    for col, key in zip(FLAG_FEATURES, FLAGS_RU):
-        df[col] = [int(key in f) if f else 0 for f in flags_list]
-    return df
-
-
 def complex_join_name(df: pd.DataFrame) -> pd.Series:
     """Имя ЖК для джойна: raw_params["map.complex"] (точнее), иначе complex_name."""
     raw = (
@@ -332,7 +282,6 @@ def build_features(
         df[col] = pd.to_numeric(df[col], errors="coerce")
     df = _sanitize_raw_numeric(df)  # issue #108: битые значения → NaN до фичей
     df = add_geo_features(df)
-    df = add_llm_flag_features(df)
 
     df["floor_ratio"] = df["floor"] / df["total_floors"]
     df["is_first_floor"] = (df["floor"] == 1).astype(int)

@@ -138,7 +138,7 @@ def predict_from_text(text: str) -> dict[str, Any] | None:
     from krisha.predict import predict_from_listing
 
     listing = parsed_to_listing(parsed, text)
-    result = predict_from_listing(listing, flags_live=False)
+    result = predict_from_listing(listing, live_vision=False)
     result["from_text"] = True
     result["parsed_fields"] = {
         k: v for k, v in listing.items()

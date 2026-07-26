@@ -74,15 +74,12 @@ def test_design_css_self_hosts_golos_text_weights():
         assert f"font-weight:{weight}" in css or f"font-weight: {weight}" in css
 
 
-def test_home_keeps_api_flow_flags_theme_and_delayed_skeleton():
+def test_home_keeps_api_flow_theme_and_delayed_skeleton():
     html = _static("index.html")
 
     assert 'id="form"' in html
     assert 'id="url"' in html and 'type="url"' in html and 'inputmode="url"' in html
     assert "/api/predict" in html
-    assert "/api/flags/" in html
-    assert "flags_pending" in html
-    assert "text_flags" in html
     assert "localStorage.setItem" in html
     assert "receipt-skeleton" in html
     assert "setTimeout" in html and "300" in html
@@ -220,3 +217,17 @@ def test_demo_endpoint_returns_active_listing_url_and_is_rate_limited(tmp_path, 
         )
     limited = client.get("/api/demo", headers={"x-forwarded-for": "203.0.113.80"})
     assert limited.status_code == 429
+
+
+def test_home_has_no_llm_flag_hydration_left():
+    """issue #157: путь LLM-бейджей убран целиком, включая догрузку на фронте.
+
+    Проверяем именно отсутствие: висячий fetch к удалённому эндпоинту дал бы
+    404 в консоли на каждой оценке, а чип «анализ текста…» — обещание разбора
+    описания, которого больше не происходит.
+    """
+    html = _static("index.html")
+
+    for leftover in ("/api/flags", "flags_pending", "text_flags",
+                     "hydrateFlags", "flag-pending"):
+        assert leftover not in html, f"остался хвост LLM-флагов: {leftover}"

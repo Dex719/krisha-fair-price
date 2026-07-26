@@ -45,7 +45,7 @@ def test_predict_from_text_happy_path(monkeypatch):
     monkeypatch.setattr(text_parse, "_gemini_extract", lambda text, key: dict(PARSED))
     captured = {}
 
-    def fake_predict(listing, flags_live=True):
+    def fake_predict(listing, live_vision=True):
         captured.update(listing)
         return {"fair_price": 48_000_000, "verdict": "FAIR", "actual_price": listing.get("price")}
 

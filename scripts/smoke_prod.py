@@ -99,9 +99,19 @@ def _run_with_client(base_url: str, client: httpx.Client | Any) -> list[str]:
         raise SmokeError("GET /api/heatmap: expected non-empty list of points")
     checks.append("GET /api/heatmap")
 
-    forecast = _get_json(client, base_url, "/api/forecast", "GET /api/forecast")
-    _expect_non_empty_forecast(forecast)
-    checks.append("GET /api/forecast")
+    # issue #157: прогноз спрятан за фича-флагом FEATURE_FORECAST и по
+    # умолчанию выключен — тогда эндпоинт честно отвечает 404. Считать это
+    # падением смоука нельзя: постоянно красная проверка хуже отсутствующей,
+    # именно на таком фоне и утонула настоящая поломка на 13 дней (#154).
+    # Если же прогноз ВКЛЮЧЁН, он обязан отдавать непустые данные — то есть
+    # проверка не ослаблена, а стала условной.
+    forecast_resp = _get(client, base_url, "/api/forecast", "GET /api/forecast")
+    if forecast_resp.status_code == 404:
+        checks.append("GET /api/forecast (выключен фича-флагом)")
+    else:
+        _expect_status("GET /api/forecast", forecast_resp)
+        _expect_non_empty_forecast(_parse_json("GET /api/forecast", forecast_resp))
+        checks.append("GET /api/forecast")
 
     return checks
 

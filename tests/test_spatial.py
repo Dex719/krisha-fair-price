@@ -150,20 +150,3 @@ def test_building_groups():
     g = building_groups(df)
     assert g.iloc[0] == g.iloc[1]
     assert g.iloc[0] != g.iloc[2]
-
-
-def test_llm_flag_features_from_column():
-    from krisha.features import add_llm_flag_features
-
-    df = pd.DataFrame([
-        {"id": 1, "llm_flags": ["bargain", "needs_repair"]},
-        {"id": 2, "llm_flags": '["pledge"]'},
-        {"id": 3, "llm_flags": None, "description": ""},
-    ])
-    out = add_llm_flag_features(df)
-    assert out.loc[0, "flag_bargain"] == 1
-    assert out.loc[0, "flag_needs_repair"] == 1
-    assert out.loc[0, "flags_known"] == 1
-    assert out.loc[1, "flag_pledge"] == 1
-    assert out.loc[2, "flags_known"] == 0
-    assert out.loc[2, "flag_bargain"] == 0

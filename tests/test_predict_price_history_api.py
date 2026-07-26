@@ -39,7 +39,7 @@ def test_predict_api_returns_real_price_history(monkeypatch):
         {"observed_at": "2026-06-14 08:00:00", "price": 50_000_000},
         {"observed_at": "2026-07-01 09:30:00", "price": 48_000_000},
     ]
-    monkeypatch.setattr(app_module, "predict_from_url", lambda url, flags_live=False: _predict_payload(history))
+    monkeypatch.setattr(app_module, "predict_from_url", lambda url, live_vision=False: _predict_payload(history))
     app_module._rate.clear()
 
     resp = TestClient(app).post("/api/predict", json={"url": "https://krisha.kz/a/show/91"})
@@ -49,7 +49,7 @@ def test_predict_api_returns_real_price_history(monkeypatch):
 
 
 def test_predict_api_keeps_empty_price_history_without_synthetic_rows(monkeypatch):
-    monkeypatch.setattr(app_module, "predict_from_url", lambda url, flags_live=False: _predict_payload([]))
+    monkeypatch.setattr(app_module, "predict_from_url", lambda url, live_vision=False: _predict_payload([]))
     app_module._rate.clear()
 
     resp = TestClient(app).post("/api/predict", json={"url": "https://krisha.kz/a/show/91"})
