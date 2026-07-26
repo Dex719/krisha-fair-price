@@ -181,3 +181,89 @@ def test_push_honours_intentional_deletion(monkeypatch, tmp_path):
 
     pushed = _json.loads(base64.b64decode(put_bodies[0]["content"]).decode())
     assert pushed == {"777": {"rooms": 1}}, "удалённый нами ключ не должен вернуться"
+
+
+def _resp_factory(remote_text, sha="abc"):
+    import base64
+
+    class _Resp:
+        status_code = 200
+
+        def __init__(self, payload):
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    return _Resp({"sha": sha, "content": base64.b64encode(remote_text.encode()).decode()})
+
+
+def test_push_refuses_to_overwrite_unreadable_remote(monkeypatch, tmp_path):
+    """issue #150: файл на сервере ЕСТЬ, но не расшифровывается (сменился ключ).
+
+    Раньше слияние просто пропускалось и уходил PUT с нашим payload и чужим
+    sha — свежеподнятый Space с пустым состоянием одной командой стирал всех
+    подписчиков, причём безвозвратно. Теперь запись отменяется."""
+    monkeypatch.setattr(subs_mod, "_push_to_github", _REAL_PUSH)
+    monkeypatch.setenv("GITHUB_PAT", "t")
+    monkeypatch.setenv("STATE_ENCRYPTION_KEY", "new-key")
+    monkeypatch.delenv("STATE_FORCE_OVERWRITE", raising=False)
+
+    alerts = []
+    monkeypatch.setattr(subs_mod, "_alert_admin", lambda text: alerts.append(text))
+
+    # На сервере лежит валидный конверт, зашифрованный ДРУГИМ ключом.
+    monkeypatch.setenv("STATE_ENCRYPTION_KEY", "old-key")
+    foreign, _ = subs_mod._encode_payload({"777": {"rooms": 1}}, True)
+    monkeypatch.setenv("STATE_ENCRYPTION_KEY", "new-key")
+
+    puts = []
+    monkeypatch.setattr(subs_mod.httpx, "get", lambda *a, **k: _resp_factory(foreign))
+    monkeypatch.setattr(
+        subs_mod.httpx, "put",
+        lambda url, headers=None, json=None, timeout=None: puts.append(json) or _resp_factory("{}"),
+    )
+
+    save_json_state(tmp_path / "subscriptions.json", {"111": {"rooms": 2}}, "msg")
+
+    assert puts == [], "нельзя писать поверх того, что не смогли прочитать"
+    assert alerts and "не читается" in alerts[0]
+
+
+def test_force_overwrite_flag_allows_writing_over_unreadable_remote(monkeypatch, tmp_path):
+    """Аварийный выключатель для случая, когда ключ потерян навсегда."""
+    monkeypatch.setattr(subs_mod, "_push_to_github", _REAL_PUSH)
+    monkeypatch.setenv("GITHUB_PAT", "t")
+    monkeypatch.setenv("STATE_ENCRYPTION_KEY", "new-key")
+    monkeypatch.setenv("STATE_FORCE_OVERWRITE", "1")
+    monkeypatch.setattr(subs_mod, "_alert_admin", lambda text: None)
+
+    puts = []
+    monkeypatch.setattr(subs_mod.httpx, "get", lambda *a, **k: _resp_factory("не-json-мусор"))
+    monkeypatch.setattr(
+        subs_mod.httpx, "put",
+        lambda url, headers=None, json=None, timeout=None: puts.append(json) or _resp_factory("{}"),
+    )
+
+    save_json_state(tmp_path / "subscriptions.json", {"111": {"rooms": 2}}, "msg")
+    assert len(puts) == 1
+
+
+def test_missing_remote_file_still_writes(monkeypatch, tmp_path):
+    """Пустой ответ (файла на сервере ещё нет) — это не «не прочитали», это
+    первая запись. Fail-closed не должен блокировать нормальный первый push."""
+    monkeypatch.setattr(subs_mod, "_push_to_github", _REAL_PUSH)
+    monkeypatch.setenv("GITHUB_PAT", "t")
+    monkeypatch.delenv("STATE_ENCRYPTION_KEY", raising=False)
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.setattr(subs_mod, "_alert_admin", lambda text: None)
+
+    puts = []
+    monkeypatch.setattr(subs_mod.httpx, "get", lambda *a, **k: _resp_factory(""))
+    monkeypatch.setattr(
+        subs_mod.httpx, "put",
+        lambda url, headers=None, json=None, timeout=None: puts.append(json) or _resp_factory(""),
+    )
+
+    save_json_state(tmp_path / "subscriptions.json", {"111": {"rooms": 2}}, "msg", encrypt=False)
+    assert len(puts) == 1

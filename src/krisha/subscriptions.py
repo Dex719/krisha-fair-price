@@ -231,6 +231,32 @@ def save_json_state(
 
 
 PUSH_MAX_ATTEMPTS = 3
+# Аварийный выключатель fail-closed: ставится оператором, когда ключ шифрования
+# потерян НАВСЕГДА и удалённое состояние решено осознанно затереть.
+FORCE_OVERWRITE_ENV = "STATE_FORCE_OVERWRITE"
+
+
+def _force_overwrite() -> bool:
+    return os.environ.get(FORCE_OVERWRITE_ENV, "0") == "1"
+
+
+def _alert_admin(text: str) -> None:
+    """Сообщение админу о проблеме с сохранением состояния.
+
+    До этого единственным следом неудачной записи был `logger.error` в
+    контейнере, который никто не читает: протухший по сроку токен или
+    неразрешённый конфликт означали тихую потерю подписок. Fail-soft —
+    сам алерт не должен ронять команду бота.
+    """
+    chat_id = os.environ.get("TG_ADMIN_CHAT_ID")
+    if not chat_id:
+        return
+    try:
+        from krisha.bot import tg_call
+
+        tg_call("sendMessage", chat_id=int(chat_id), text=text)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Не удалось отправить алерт о состоянии: %s", exc)
 
 
 def _merge_remote(local: Any, remote: Any, deleted_keys: set[str] | None) -> Any:
@@ -293,8 +319,34 @@ def _push_to_github(
             sha = resp.json().get("sha") if resp.status_code == 200 else None
             body_payload = payload
             if sha and data is not None:
-                remote = _decode_payload(_remote_text(resp), path.name)
-                if remote is not None:
+                raw_remote = _remote_text(resp)
+                remote = _decode_payload(raw_remote, path.name)
+                if remote is None and raw_remote.strip():
+                    # FAIL-CLOSED (issue #150). Файл на сервере ЕСТЬ, но мы его
+                    # не прочитали: сменился STATE_ENCRYPTION_KEY, потерялся
+                    # секрет при деплое, битый JSON. Раньше здесь молча уходил
+                    # PUT с нашим payload и чужим sha — свежеподнятый Space с
+                    # пустым локальным состоянием одной командой /alerts_on
+                    # стирал всех подписчиков, причём безвозвратно: перезапись
+                    # уничтожала и то, что можно было бы спасти, вернув ключ.
+                    # Не пишем поверх того, что не смогли прочитать.
+                    if not _force_overwrite():
+                        logger.error(
+                            "%s: удалённое состояние не читается — запись ОТМЕНЕНА "
+                            "(проверь ключ шифрования; принудительно: %s=1)",
+                            rel, FORCE_OVERWRITE_ENV,
+                        )
+                        _alert_admin(
+                            f"⛔️ {rel}: удалённое состояние не читается, запись отменена.\n"
+                            f"Похоже, сменился ключ шифрования. Данные на сервере целы.\n"
+                            f"Перезаписать намеренно: переменная {FORCE_OVERWRITE_ENV}=1"
+                        )
+                        return
+                    logger.warning(
+                        "%s: %s=1 — перезаписываю нечитаемое удалённое состояние",
+                        rel, FORCE_OVERWRITE_ENV,
+                    )
+                elif remote is not None:
                     merged = _merge_remote(data, remote, deleted_keys)
                     if merged != data:
                         logger.info(
@@ -321,10 +373,15 @@ def _push_to_github(
                 time.sleep(0.5 * attempt)
                 continue
             logger.error("GitHub push %s: %s %s", rel, put.status_code, put.text[:200])
+            _alert_admin(f"⚠️ {rel}: не сохранено в GitHub — HTTP {put.status_code}")
             return
         except httpx.HTTPError as exc:
             logger.warning("GitHub push %s не удался: %s", rel, exc)
+            _alert_admin(f"⚠️ {rel}: не сохранено в GitHub — {type(exc).__name__}")
             return
+    # Ретраи исчерпаны: локальная копия уже записана, удалённая осталась чужой.
+    logger.error("GitHub push %s: конфликт не разрешён за %d попыток", rel, PUSH_MAX_ATTEMPTS)
+    _alert_admin(f"⚠️ {rel}: конфликт записи не разрешён за {PUSH_MAX_ATTEMPTS} попытки")
 
 
 def _remote_text(resp) -> str:
