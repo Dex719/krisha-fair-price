@@ -199,3 +199,94 @@ def test_train_survives_train_part_narrower_than_calib_window(monkeypatch):
     assert metrics["n_train"] > 0
     assert metrics["n_test"] > 0
     assert metrics["model"]["mae"] > 0
+
+
+def _days_df(spec):
+    """spec: {смещение_дня_назад: сколько_строк} → фрейм с id и first_seen."""
+    base = pd.Timestamp("2026-07-20")
+    rows, next_id = [], 1
+    for back, count in sorted(spec.items(), reverse=True):
+        day = base - pd.Timedelta(days=back)
+        for _ in range(count):
+            rows.append({"id": next_id, "first_seen": day.isoformat(sep=" ")})
+            next_id += 1
+    return pd.DataFrame(rows)
+
+
+def test_split_caps_test_share_and_keeps_bulk_day_in_train():
+    """issue #153: у окна был только пол, без потолка — на реальной базе это
+    дало test 61% при train 39%, причём весь train был разовым краулом за сутки."""
+    from krisha.train import TEST_MAX_FRACTION, time_based_split
+
+    # Профиль прода: гора первичного обхода + ровный дневной приток.
+    df = _days_df({40: 5000, **{d: 750 for d in range(0, 14)}})
+    train_idx, test_idx = time_based_split(df)
+
+    n = len(df)
+    assert len(test_idx) / n <= TEST_MAX_FRACTION + 0.001, "тест обязан влезать в потолок"
+    assert len(train_idx) > len(test_idx), "train должен быть больше теста"
+
+    ts_train = pd.to_datetime(df.iloc[train_idx]["first_seen"])
+    bulk_day = pd.Timestamp("2026-07-20") - pd.Timedelta(days=40)
+    assert (ts_train.dt.floor("D") == bulk_day).sum() == 5000, "вся гора — в train"
+    ts_test = pd.to_datetime(df.iloc[test_idx]["first_seen"])
+    assert (ts_test.dt.floor("D") == bulk_day).sum() == 0, "горы в тесте быть не должно"
+
+
+def test_split_anchor_skips_a_bulk_day_that_is_the_freshest():
+    """Ключевой случай: гора бэкфилла — САМЫЙ СВЕЖИЙ день, то есть попадает
+    ровно в тестовое окно. Якорь обязан встать на день перед ней."""
+    from krisha.train import time_based_split
+
+    df = _days_df({0: 6000, **{d: 700 for d in range(1, 15)}})
+    _, test_idx = time_based_split(df)
+
+    ts_test = pd.to_datetime(df.iloc[test_idx]["first_seen"]).dt.floor("D")
+    assert len(test_idx) > 0
+    assert ts_test.max() == pd.Timestamp("2026-07-19"), "свежайший день теста — до горы"
+    assert (ts_test == pd.Timestamp("2026-07-20")).sum() == 0
+
+
+def test_bulk_detection_is_relative_and_off_on_short_history():
+    """Детектор bulk-дней относительный (кратность медианы), поэтому:
+
+    1. Ровный датасет из одинаково больших дней НЕ объявляется сплошным
+       заливом — иначе после разгребания очереди, когда каждый день станет
+       большим, сплит бы деградировал в групповой фолбэк.
+    2. При истории короче BULK_MIN_DAYS_FOR_MEDIAN медиана бессмысленна, и
+       детект отключается целиком — иначе на молодой базе первый же обычный
+       день ложно уехал бы в train.
+    """
+    from krisha.train import TEST_MAX_FRACTION, time_based_split
+
+    uniform = _days_df({d: 5000 for d in range(0, 8)})
+    train_idx, test_idx = time_based_split(uniform)
+    assert len(test_idx) > 0, "ровные большие дни — это не залив"
+    assert len(test_idx) / len(uniform) <= TEST_MAX_FRACTION + 0.001
+
+    short = _days_df({0: 5000, 10: 400, 20: 400})
+    train_short, test_short = time_based_split(short)
+    ts_test = pd.to_datetime(short.iloc[test_short]["first_seen"]).dt.floor("D")
+    assert len(test_short) > 0
+    assert (ts_test == pd.Timestamp("2026-07-20")).sum() > 0, "на короткой истории bulk не ищем"
+
+
+def test_split_is_reproducible_when_a_day_does_not_fit_whole():
+    """Последний день не влезает целиком — подвыборка должна быть
+    детерминированной, иначе метрики скачут между запусками CI."""
+    from krisha.train import time_based_split
+
+    df = _days_df({0: 4000, 1: 400, 2: 400})
+    first = time_based_split(df)
+    second = time_based_split(df)
+    assert np.array_equal(first[1], second[1])
+    assert len(first[1]) > 0
+
+
+def test_split_keeps_rows_without_first_seen_in_train():
+    from krisha.train import time_based_split
+
+    df = _days_df({d: 600 for d in range(0, 12)})
+    df.loc[df.index[:50], "first_seen"] = None
+    train_idx, test_idx = time_based_split(df)
+    assert set(range(50)).issubset(set(train_idx.tolist())), "строки без даты — в train"

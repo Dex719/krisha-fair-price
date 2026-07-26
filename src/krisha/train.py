@@ -46,6 +46,24 @@ logger = logging.getLogger(__name__)
 TEST_WINDOW_DAYS = 14
 TEST_MIN_FRACTION = 0.10
 
+# issue #153: у окна теста не было ПОТОЛКА, только пол. На реальной базе с
+# провалом в сборе это дало test 61% / train 39%, причём весь train — разовый
+# bulk-краул за одни сутки: модель училась на срезе за день и проверялась на
+# месяце. После разгребания очереди деталей (~20k лотов с одинаковым
+# first_seen) перекос стал бы ещё хуже, и гейт качества начал бы сравнивать
+# модели на мусоре.
+TEST_MAX_FRACTION = 0.20      # потолок доли теста
+TEST_MIN_ROWS = 500           # абсолютный пол теста
+MAX_TEST_LOOKBACK_DAYS = 45   # насколько далеко можно растянуть окно, добирая тест
+
+# «Bulk-день» — разовый массовый залив (первичный обход, бэкфилл сайтингов),
+# а не органический приток. Такие дни целиком уходят в train: они не
+# репрезентативны как срез рынка и, что важнее, докачиваются постепенно —
+# кохорта растёт задним числом неделями, раздувая любое окно по first_seen.
+BULK_DAY_MULTIPLIER = 3.0     # во сколько раз выше медианы дневного притока
+BULK_ABS_MIN_ROWS = 1500      # и не меньше стольких строк — страховка от просевшей медианы
+BULK_MIN_DAYS_FOR_MEDIAN = 5  # меньше дней истории — медиана бессмысленна, bulk не ищем
+
 
 def _filter_stale_and_out_of_area(df: pd.DataFrame) -> pd.DataFrame:
     """issue #104: снятые месяцы назад лоты и чужие города не должны учить модель.
@@ -256,28 +274,102 @@ def time_based_split(
     объявления с обеих сторон видели один и тот же ценовой уровень, метрики
     оптимистичны, в проде модель на самом деле экстраполирует в будущее.
 
-    Окно — последние window_days дней по first_seen; если это меньше
-    min_fraction от датасета (мало истории / БД маленькая), берём последние
-    min_fraction по времени вместо фиксированного окна.
-    Нет first_seen вообще (старая БД/тесты) — весь датасет в train, test
-    пустой, вызывающий код (train() ниже) на это рассчитывает.
+    issue #153: у окна был только пол, без потолка. На реальной базе это дало
+    test 61% / train 39%, причём весь train — разовый краул за одни сутки.
+    Правила теперь такие, по убыванию приоритета:
+
+    1. Дни массового залива (bulk) целиком уходят в train. Такой день не срез
+       рынка, а разовая заливка, и он ещё и растёт задним числом: детали
+       докачиваются неделями, так что кохорта раздувает любое окно по
+       first_seen при каждом следующем ретрейне. Признак — количество строк
+       выше BULK_DAY_MULTIPLIER медиан дневного притока И не меньше
+       BULK_ABS_MIN_ROWS (абсолютный порог страхует от просевшей медианы:
+       после сбоя сбора медиана падает, и обычные дни ложно станут bulk).
+    2. Тест набирается ЦЕЛЫМИ днями от свежих к старым, пока влезает в
+       потолок TEST_MAX_FRACTION. Якорь — свежайший не-bulk день, а не
+       max(first_seen): самым свежим как раз и бывает гора бэкфилла.
+    3. Не добрали TEST_MIN_FRACTION / TEST_MIN_ROWS — окно растягивается
+       назад, но не дальше MAX_TEST_LOOKBACK_DAYS.
+    4. Последний день может не влезть целиком — берём из него
+       детерминированную подвыборку до потолка.
+    5. Совсем не набралось (или вся база — сплошные заливы) — возвращаем
+       пустой test, и вызывающий уходит в групповой фолбэк по зданиям.
+
+    Строки без first_seen молча остаются в train. Нет колонки вовсе (старая
+    БД/тесты) — весь датасет в train, вызывающий код на это рассчитывает.
     """
     if "first_seen" not in df.columns:
         return df.index.to_numpy(), np.array([], dtype=int)
 
     ts = pd.to_datetime(df["first_seen"], errors="coerce", utc=True)
-    if ts.notna().sum() == 0:
+    n = int(ts.notna().sum())
+    if n == 0:
         return df.index.to_numpy(), np.array([], dtype=int)
 
-    order = ts.rank(method="first")  # стабильный порядок и для NaT (в конец)
-    max_ts = ts.max()
-    cutoff = max_ts - pd.Timedelta(days=window_days)
-    test_mask = (ts >= cutoff).fillna(False)
+    # Режем по КАЛЕНДАРНЫМ суткам, а не по таймстампу: иначе граница окна
+    # гуляет по часам между запусками и состав теста слегка меняется сам собой.
+    day = ts.dt.floor("D")
+    counts = day.value_counts()
 
-    min_test_n = max(1, int(min_fraction * ts.notna().sum()))
-    if test_mask.sum() < min_test_n:
-        thresh = order.quantile(1 - min_fraction)
-        test_mask = order > thresh
+    bulk: set = set()
+    if len(counts) >= BULK_MIN_DAYS_FOR_MEDIAN:
+        threshold = max(BULK_DAY_MULTIPLIER * float(counts.median()), BULK_ABS_MIN_ROWS)
+        bulk = set(counts.index[counts >= threshold])
+
+    eligible = [d for d in counts.sort_index(ascending=False).index if d not in bulk]
+    if not eligible:
+        # Вся база — сплошные заливы. Временной сплит бессмыслен, пусть
+        # вызывающий уйдёт в групповой фолбэк по зданиям.
+        return df.index.to_numpy(), np.array([], dtype=int)
+
+    cap = max(1, int(TEST_MAX_FRACTION * n))
+    need = min(max(TEST_MIN_ROWS, int(np.ceil(min_fraction * n))), cap)
+
+    # Якорь — свежайший НЕ-bulk день. Брать max(first_seen) нельзя: самым
+    # свежим днём как раз и бывает гора бэкфилла.
+    anchor = eligible[0]
+    window_start = anchor - pd.Timedelta(days=window_days - 1)
+    lookback_start = anchor - pd.Timedelta(days=MAX_TEST_LOOKBACK_DAYS)
+
+    test_days: list = []
+    size = 0
+    partial: tuple | None = None
+    for d in eligible:
+        if d < lookback_start:
+            break
+        if d < window_start and size >= need:
+            break
+        c = int(counts[d])
+        if size + c <= cap:
+            test_days.append(d)
+            size += c
+        elif size < need:
+            partial = (d, cap - size)
+            break
+        else:
+            break
+
+    test_mask = day.isin(test_days)
+    if partial is not None:
+        # День не влезает целиком — берём из него детерминированную подвыборку.
+        # Сортировка по id перед rng обязательна: без неё состав теста (а
+        # значит и метрики) не воспроизводится между запусками.
+        d, k = partial
+        rows = np.flatnonzero((day == d).to_numpy())
+        if "id" in df.columns:
+            rows = rows[np.argsort(df["id"].to_numpy()[rows], kind="stable")]
+        picked = np.random.default_rng(RANDOM_STATE).choice(len(rows), size=k, replace=False)
+        test_mask.iloc[rows[picked]] = True
+
+    if int(test_mask.sum()) < min(TEST_MIN_ROWS, max(1, n // 5)):
+        return df.index.to_numpy(), np.array([], dtype=int)
+
+    logger.info(
+        "issue #153 сплит: строк %s, потолок теста %s, цель %s → тест %s (%.0f%%); "
+        "bulk-дней %s, дней в тесте %s, якорь %s",
+        n, cap, need, int(test_mask.sum()), test_mask.sum() / n * 100,
+        len(bulk), len(test_days) + (1 if partial else 0), anchor.date(),
+    )
 
     train_idx = df.index[~test_mask].to_numpy()
     test_idx = df.index[test_mask].to_numpy()
