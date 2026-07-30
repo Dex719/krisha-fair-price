@@ -191,23 +191,11 @@
       "predict": 0,
       "site": 2
     },
-    "2026-07-29": {
-      "bot": 1,
-      "bot_users": [
-        "a9acbb01c6"
-      ],
-      "hours": {
-        "17": 10,
-        "21": 4
-      },
-      "predict": 1,
-      "site": 12
-    },
     "2026-07-30": {
       "bot": 0,
       "bot_users": [],
       "hours": {
-        "10": 1
+        "21": 1
       },
       "predict": 0,
       "site": 1
