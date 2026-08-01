@@ -196,10 +196,19 @@
       "bot_users": [],
       "hours": {
         "18": 3,
-        "21": 1
+        "21": 4
+      },
+      "predict": 1,
+      "site": 6
+    },
+    "2026-08-02": {
+      "bot": 0,
+      "bot_users": [],
+      "hours": {
+        "1": 1
       },
       "predict": 0,
-      "site": 4
+      "site": 1
     }
   }
 }
