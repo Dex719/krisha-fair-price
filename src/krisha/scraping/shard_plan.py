@@ -23,6 +23,8 @@ model_meta застрял на `confounded: true`.
 
 from __future__ import annotations
 
+import math
+
 
 def largest_remainder_quotas(stock: dict[str, int], cap: int) -> dict[str, int]:
     """Квоты докачки по шардам пропорционально стоку, сумма ровно `cap`.
@@ -57,15 +59,42 @@ def largest_remainder_quotas(stock: dict[str, int], cap: int) -> dict[str, int]:
 def rotated(items: list, offset: int) -> list:
     """Циклический сдвиг порядка обхода: проход N стартует не с первого шарда.
 
-    offset обычно — число прошлых проходов (см. db.sweep_rotation_offset):
-    хвост порядка, который ампутирует обрыв по бюджету/бану, гуляет по
-    алфавиту день ото дня вместо того, чтобы систематически обрезать один
+    offset — от shard_plan.rotation_offset (шаг, взаимно простой с числом
+    шардов): хвост порядка, который ампутирует обрыв по бюджету/бану, гуляет
+    по алфавиту день ото дня вместо того, чтобы систематически обрезать один
     и тот же район.
     """
     if not items:
         return items
     o = offset % len(items)
     return items[o:] + items[:o]
+
+
+def rotation_step(n_shards: int) -> int:
+    """Шаг смещения ротации между проходами, взаимно простой с n_shards.
+
+    Шаг +1 сохранял кластеризацию (ревью #166): при покрытии k из 32 шардов
+    шард покрыт при (k − offset) mod 32 < k — то есть 32−k проходов подряд
+    не покрыт, затем k подряд покрыт. Та же спутанность дня с составом,
+    только с длинным периодом. Взаимно простой шаг ≈ 0.4·n разносит
+    непокрытие: для n=32 шаг 13 (gcd(13,32)=1) даёт при окне непокрытия
+    u = 32−k ≤ 13 максимальную серию подряд непокрытий одного шарда = 1
+    проход (при u ≤ 16 — не больше 2) против u подряд при шаге 1. Проверено
+    перебором — tests/test_shard_plan.py::test_rotation_step_bounds_uncovered_runs.
+    """
+    if n_shards <= 1:
+        return 1
+    step = max(3, round(n_shards * 0.4))
+    while math.gcd(step, n_shards) != 1:
+        step += 1
+    return step
+
+
+def rotation_offset(pass_seq: int, n_shards: int) -> int:
+    """Смещение порядка обхода для прохода с номером pass_seq (сырой счётчик
+    из db.sweep_pass_seq). Умножение на взаимно простой шаг — биекция mod n,
+    поэтому смещения пробегают все n значений за n проходов, но не подряд."""
+    return (pass_seq * rotation_step(n_shards)) % max(1, n_shards)
 
 
 def shard_district(label: str) -> str:

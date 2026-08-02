@@ -30,7 +30,7 @@ from krisha.db import (
     DB_PATH,
     _record_price_if_changed,
     advance_shard_cursor,
-    advance_sweep_rotation,
+    advance_sweep_pass_seq,
     get_conn,
     init_db,
     is_valid_price,
@@ -45,7 +45,7 @@ from krisha.db import (
     shard_backlog_count,
     shard_backlog_window,
     shard_cursors,
-    sweep_rotation_offset,
+    sweep_pass_seq,
     unattributed_backlog_count,
     upsert_listing,
 )
@@ -53,7 +53,12 @@ from krisha.monitoring import ADMIN_CHAT_ENV
 from krisha.scraping.client import BanDetected, PoliteClient
 from krisha.scraping.detail_parser import parse_detail
 from krisha.scraping.listing_parser import has_next_page, parse_listing_prices
-from krisha.scraping.shard_plan import largest_remainder_quotas, rotated, shard_district
+from krisha.scraping.shard_plan import (
+    largest_remainder_quotas,
+    rotated,
+    rotation_offset,
+    shard_district,
+)
 from krisha.validity import MAX_TEST_TVD, total_variation_distance
 
 logger = logging.getLogger(__name__)
@@ -216,17 +221,22 @@ def _sweep_shard(
     label: str,
     base_url: str,
     max_pages: int,
-) -> tuple[dict[int, int | None], bool]:
-    """Обходит пагинацию одного шарда, возвращает ({id: цена}, покрыт_ли).
+) -> tuple[dict[int, int | None], bool, BanDetected | None]:
+    """Обходит пагинацию одного шарда, возвращает ({id: цена}, покрыт_ли, бан).
 
     covered=False, если шард не покрыт: страница не загрузилась
-    (сеть/блокировка), похожа на анти-бот/капчу, или первая страница дала
-    0 валидных id (сервер отдал 200, но не выдачу — изменённая вёрстка и
-    т.п.). Пустой/анти-бот шард НЕ считается покрытием — иначе живые
-    объявления рискуют быть ложно помечены delisted (issue #96). Уже
-    загруженные страницы при этом НЕ выбрасываются: их id честно увидены в
-    выдаче и получают sighting/last_seen, непокрытие лишь запрещает delist
-    и замер стока по этому шарду в этом проходе.
+    (сеть/блокировка), пойман BanDetected, страница похожа на анти-бот/капчу,
+    первая страница дала 0 валидных id (сервер отдал 200, но не выдачу —
+    изменённая вёрстка и т.п.), или выдача шарда глубже max_pages (гард-
+    остаток #152: усечение тоже непокрытие). Пустой/анти-бот/усечённый шард
+    НЕ считается покрытием — иначе живые объявления рискуют быть ложно
+    помечены delisted (issue #96). Уже загруженные страницы при этом НЕ
+    выбрасываются: их id честно увидены в выдаче и получают
+    sighting/last_seen, непокрытие лишь запрещает delist и замер стока по
+    этому шарду в этом проходе. Бан возвращается третьим элементом, а не
+    исключением: частично загруженные страницы переживают его так же, как
+    при сетевом сбое (до #166 они выживали в общем словаре — поведение
+    выровнено по ревью); решение об остановке прохода принимает sweep().
 
     issue #166: шард возвращает СВОИХ найденных id отдельно, а не дописывает
     в общий котел — состав шарда это сток выдачи для квоты докачки и источник
@@ -236,25 +246,39 @@ def _sweep_shard(
     found: dict[int, int | None] = {}
     for page in range(1, max_pages + 1):
         url = base_url if page == 1 else f"{base_url}&page={page}"
-        html = client.get(url)
+        try:
+            html = client.get(url)
+        except BanDetected as exc:
+            return found, False, exc
         if html is None:
             logger.error("Шард «%s»: стр. %s не загрузилась — стоп шарда", label, page)
-            return found, False
+            return found, False, None
         if page == 1 and _looks_like_antibot(html):
             logger.error("Шард «%s»: похоже на анти-бот/капча страницу — стоп шарда", label)
-            return found, False
+            return found, False, None
         page_prices = parse_listing_prices(html)
         if page == 1 and not page_prices:
             logger.warning(
                 "Шард «%s»: 0 валидных id на первой странице — подозрительно, шард не покрыт",
                 label,
             )
-            return found, False
+            return found, False, None
         found.update(page_prices)
         if not has_next_page(html, page):
             break
+    else:
+        # Вышли по max_pages, не встретив конец пагинации: выдача шарда
+        # глубже лимита — покрытие неполное. Лоты за срезом не получат
+        # sighting/атрибуцию, а delist по шарду будет ложным (гард-остаток
+        # #152). При штатном --pages=250 (с запасом над ~100 страницами
+        # самого большого шарда) ветка спит; проснётся, если лимит ужать.
+        logger.error(
+            "Шард «%s»: выдача глубже max_pages=%s — покрытие неполное, delist запрещён",
+            label, max_pages,
+        )
+        return found, False, None
     logger.info("Шард «%s»: %s объявлений в выдаче", label, len(found))
-    return found, True
+    return found, True, None
 
 
 def sweep(
@@ -357,17 +381,21 @@ def sweep(
 
     with PoliteClient() as client:
         shards = shard_urls(deal)
-        # issue #166: порядок обхода ротируется между запусками (смещение —
-        # счётчик в sweep_state, монотонный +1 за проход). Иначе обрыв прохода
-        # (бюджет, бан) ампутирует один и тот же хвост алфавита, и «день»
-        # снова становится «районом» — теперь хвост гуляет по всем шардам.
+        # issue #166: порядок обхода ротируется между запусками. Смещение
+        # считается от монотонного номера прохода (счётчик в sweep_state)
+        # шагом, взаимно простым с числом шардов (shard_plan.rotation_offset):
+        # шаг +1 при покрытии k из 32 давал шарду 32−k подряд непокрытых
+        # проходов — та же спутанность дня с составом с длинным периодом
+        # (ревью). Иначе обрыв прохода (бюджет, бан) ампутирует один и тот же
+        # хвост алфавита, и «день» снова становится «районом».
         with get_conn(db_path) as conn:
-            rotation = sweep_rotation_offset(conn, deal)
+            pass_seq = sweep_pass_seq(conn, deal)
+        rotation = rotation_offset(pass_seq, len(shards))
         ordered_shards = rotated(shards, rotation)
         if ordered_shards[0] != shards[0]:
             logger.info(
                 "Ротация обхода: старт с шарда «%s» (смещение %s/%s)",
-                ordered_shards[0][0], rotation % len(shards), len(shards),
+                ordered_shards[0][0], rotation, len(shards),
             )
         for i, (label, base_url) in enumerate(ordered_shards):
             if out_of_time():
@@ -382,31 +410,31 @@ def sweep(
                     time_budget_min, len(remaining),
                 )
                 break
-            try:
-                shard_ids, covered = _sweep_shard(client, label, base_url, max_pages)
-            except BanDetected as exc:
-                banned_phase = "search"
-                logger.critical(
-                    "%s — прерываем проход на шарде «%s», остальные шарды не обходим",
-                    exc,
-                    label,
-                )
-                failed_shards.append(label)
-                banned = True
-                _alert_ban(exc)
-                break
+            shard_ids, covered, ban_exc = _sweep_shard(client, label, base_url, max_pages)
             if not covered:
                 failed_shards.append(label)
             else:
                 shard_found[label] = shard_ids
-            # Частично обойдённые страницы упавшего шарда тоже честно увидены:
-            # их id получают sighting/last_seen/цену и атрибуцию — не
-            # выбрасываем их только из-за того, что хвост пагинации не лёг.
+            # Частично обойдённые страницы упавшего/забаненного шарда тоже
+            # честно увидены: их id получают sighting/last_seen/цену и
+            # атрибуцию — не выбрасываем их только из-за того, что хвост
+            # пагинации не лёг (при BanDetected — то же, что при сетевом
+            # сбое: до #166 частичные выживали в общем словаре).
             found.update(shard_ids)
             # Атрибуция id → шард пишется для КАЖДОГО найденного id (а не
             # только новых): backlog, набранный до ввода схемы, атрибутируется
             # сам с первого же прохода — ручная инициализация не нужна.
             record_listing_shards([(lid, label) for lid in shard_ids], db_path)
+            if ban_exc is not None:
+                banned_phase = "search"
+                logger.critical(
+                    "%s — прерываем проход на шарде «%s», остальные шарды не обходим",
+                    ban_exc,
+                    label,
+                )
+                banned = True
+                _alert_ban(ban_exc)
+                break
 
         # issue #127: раньше в базу шли только первые max_new_details новых id
         # (в порядке обхода шардов) — остальные найденные теряли даже
@@ -547,6 +575,7 @@ def sweep(
         }
         shard_stat_rows = [
             {
+                "run_seq": pass_seq,
                 "started_at": pass_started_at,
                 "shard": p["shard"],
                 "stock": p["stock"],
@@ -753,9 +782,9 @@ def sweep(
         for shard, cursor_id in cursor_updates.items():
             advance_shard_cursor(shard, cursor_id, db_path, conn=conn)
         record_sweep_shard_stats(shard_stat_rows, db_path, conn=conn)
-        # Ротация порядка обхода на следующий проход — тоже здесь: убитый на
-        # середине раннер ротацию не двигает.
-        advance_sweep_rotation(conn, deal, len(shards))
+        # Номер прохода (он же — источник ротации порядка обхода и run_seq
+        # в stats) — тоже здесь: убитый на середине раннер счётчик не двигает.
+        advance_sweep_pass_seq(conn, deal)
 
     # Тихая деградация (сервер отвечает, шарды формально покрыты, но
     # объявлений в разы меньше обычного) не ловится через failed_shards —

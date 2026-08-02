@@ -12,18 +12,28 @@
 - суммарное число запросов за проход не выросло.
 """
 
+import math
+
 import pytest
 
 from krisha.db import (
     get_conn,
     init_db,
+    last_known_shard_stock,
     record_listing_shards,
     shard_backlog_window,
-    sweep_rotation_offset,
+    sweep_pass_seq,
 )
 from krisha.scraping import rescrape
+from krisha.scraping.client import BanDetected
 from krisha.scraping.rescrape import shard_urls, sweep
-from krisha.scraping.shard_plan import largest_remainder_quotas, rotated, shard_district
+from krisha.scraping.shard_plan import (
+    largest_remainder_quotas,
+    rotated,
+    rotation_offset,
+    rotation_step,
+    shard_district,
+)
 from krisha.validity import MAX_TEST_TVD, total_variation_distance
 
 
@@ -302,17 +312,6 @@ def test_failing_shard_keeps_quota_unused_in_same_pass(tmp_path, monkeypatch):
 # ---------- курсоры переживают перезапуск ----------
 
 
-def _backdate_passes(db, days: int = 1) -> None:
-    """Моделируем сутки между проходами: started_at в sweep_runs и
-    sweep_shard_stats секундной точности с INSERT OR REPLACE — в проде проходы
-    раз в сутки, в тесте они иначе схлопываются в одну строку."""
-    with get_conn(db) as conn:
-        for table in ("sweep_runs", "sweep_shard_stats"):
-            conn.execute(
-                f"UPDATE {table} SET started_at = datetime(started_at, '-{days} days')"
-            )
-
-
 def test_cursors_survive_restart_and_walk_without_skips(tmp_path, monkeypatch):
     """Приёмочный критерий: курсоры шардов переживают перезапуск, повторный
     проход не начинает с нуля и не пропускает страницы — за несколько проходов
@@ -335,7 +334,6 @@ def test_cursors_survive_restart_and_walk_without_skips(tmp_path, monkeypatch):
         monkeypatch.setattr(rescrape, "parse_detail", parse_spy)
         sweep(max_pages=1, max_new_details=4, db_path=db)
         fetched_per_pass.append(parse_calls)
-        _backdate_passes(db)
 
     p1, p2, p3 = fetched_per_pass
     # Проход 2 продолжил с водяной отметки, а не начал с нуля: пересечений нет.
@@ -394,13 +392,15 @@ def test_interruption_hits_different_shards_on_consecutive_passes(tmp_path, monk
     поэтому ампутированный хвост гуляет по шардам, а не обрезает один и тот
     же район каждый день."""
     db = tmp_path / "test.db"
-    # Четыре покрытых шарда подряд в каноническом порядке (индексы 0–3):
-    # ротация +1 за проход делает первым в обходе каждый раз следующий шард.
+    # Четыре шарда, которые ротация ставит первыми в проходах 0–3: смещение
+    # считается шагом, взаимно простым с 32 (ревью #166), поэтому это НЕ
+    # соседи по алфавиту — и это суть проверки.
+    all_shards = shard_urls()
+    first_labels = [all_shards[rotation_offset(seq, 32)][0] for seq in range(4)]
+    assert len(set(first_labels)) == 4
     stock = {
-        "Алатауский 1к": list(range(1000, 1025)),
-        "Алатауский 2к": list(range(2000, 2025)),
-        "Алатауский 3к": list(range(3000, 3025)),
-        "Алатауский 4к+": list(range(4000, 4025)),
+        label: list(range((i + 1) * 1000, (i + 1) * 1000 + 25))
+        for i, label in enumerate(first_labels)
     }
     pages = _pages_by_shard(stock)
     clock = [0.0]
@@ -432,9 +432,10 @@ def test_interruption_hits_different_shards_on_consecutive_passes(tmp_path, monk
                 }
             )
 
-    # Каждый проход успел докачать только первый шард своей ротации — и это
-    # КАЖДЫЙ РАЗ ДРУГОЙ шард: за 4 оборванных прохода все 4 шарда получили
-    # свою квоту, систематического «дня одного района» нет.
+    # Каждый проход успел докачать (хотя бы один лот) только первый шард
+    # своей ротации — и это КАЖДЫЙ РАЗ ДРУГОЙ шард: за 4 оборванных прохода
+    # все 4 шарда получили свою квоту, систематического «дня одного района»
+    # нет (при шаге +1 это были бы 4 соседа по алфавиту).
     cumulative: set[int] = set()
     daily: list[set[int]] = []
     for pass_set in fetched_by_pass:
@@ -445,15 +446,186 @@ def test_interruption_hits_different_shards_on_consecutive_passes(tmp_path, monk
 
 
 def test_rotation_offset_advances_between_passes(tmp_path, monkeypatch):
-    """Смещение ротации монотонно +1 за проход и переживает перезапуск —
-    даже если проходы идут в одну секунду (started_at вторичен)."""
+    """Номер прохода монотонен +1 и переживает перезапуск — даже если проходы
+    идут в одну секунду (started_at вторичен). Смещение ротации считается из
+    номера шагом, взаимно простым с 32 (ревью #166): +1 давал бы кластерные
+    серии непокрытия."""
     db = tmp_path / "test.db"
     client = FakeClient({})
     monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
     monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
-    offsets = []
+    seqs = []
     for _ in range(3):
         with get_conn(db) as conn:
-            offsets.append(sweep_rotation_offset(conn, "prodazha"))
+            seqs.append(sweep_pass_seq(conn, "prodazha"))
         sweep(max_pages=1, max_new_details=0, db_path=db)
-    assert offsets == [0, 1, 2]
+    assert seqs == [0, 1, 2]
+    offsets = [rotation_offset(seq, 32) for seq in seqs]
+    assert offsets == [0, rotation_step(32), (2 * rotation_step(32)) % 32]
+
+
+# ---------- ротация: шаг, взаимно простой с 32 (ревью #166) ----------
+
+
+def test_rotation_step_bounds_uncovered_runs():
+    """Приёмочный критерий ревью: при покрытии k из 32 максимальная длина
+    серии непокрытия одного шарда ограничена. Шаг +1 давал серию 32−k подряд
+    (12 дней при k=20); шаг 13 (gcd(13,32)=1) — одиночные пропуски при окне
+    непокрытия u ≤ 13 и серии ≤ 2 при u ≤ 16. Проверено перебором всех шардов
+    и 320 проходов (10 периодов ротации)."""
+    n = 32
+    step = rotation_step(n)
+    assert step > 1, "шаг 1 сохраняет кластеризацию — регресс"
+    assert math.gcd(step, n) == 1, "шаг обязан быть взаимно простым с числом шардов"
+    order = list(range(n))
+    for k in range(n - 16, n):  # покрытие от половины и выше — рабочий режим бюджета
+        u = n - k
+        bound = 1 if u <= 13 else 2
+        for shard in range(n):
+            run = worst = 0
+            for seq in range(320):
+                covered = set(rotated(order, rotation_offset(seq, n))[:k])
+                if shard in covered:
+                    run = 0
+                else:
+                    run += 1
+                    worst = max(worst, run)
+            assert worst <= bound, (k, shard, worst, bound)
+
+
+def test_shard_stats_keyed_by_run_seq_not_started_at(tmp_path, monkeypatch):
+    """Ревью #166: PK sweep_shard_stats — (run_seq, shard): два прохода в одну
+    секунду не затирают друг друга, а last_known_shard_stock берёт последний
+    замер по монотонному run_seq, а не по секундному started_at."""
+    db = tmp_path / "test.db"
+    stock1 = {"Алатауский 2к": list(range(1000, 1005))}
+    stock2 = {"Алатауский 2к": list(range(1000, 1008))}
+    for stock in (stock1, stock2):
+        client = FakeClient(_pages_by_shard(stock))
+        monkeypatch.setattr(rescrape, "PoliteClient", lambda c=client: c)
+        monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
+        sweep(max_pages=1, max_new_details=0, db_path=db)  # без backdate — та же секунда
+    with get_conn(db) as conn:
+        rows = conn.execute(
+            "SELECT run_seq, stock FROM sweep_shard_stats WHERE shard = 'Алатауский 2к' "
+            "ORDER BY run_seq"
+        ).fetchall()
+        fallback = last_known_shard_stock(conn)
+    rows = [tuple(r) for r in rows]
+    assert rows == [(0, 5), (1, 8)]  # обе строки живы, несмотря на общий started_at
+    assert fallback["Алатауский 2к"] == 8  # последний замер по run_seq
+
+
+# ---------- бэкфилл атрибуции из деталей (ревью #166) ----------
+
+
+def _insert_detailed(db, lid, district, rooms):
+    with get_conn(db) as conn:
+        conn.execute(
+            "INSERT INTO listings (id, url, title, district, rooms, is_active) "
+            "VALUES (?, ?, 't', ?, ?, 1)",
+            (lid, f"https://krisha.kz/a/show/{lid}", district, rooms),
+        )
+
+
+def test_init_db_backfills_shards_from_details(tmp_path):
+    """Лоты с деталями получают точную атрибуцию из (district, rooms) разово
+    при init_db: фильтры шардов непересекаются, поэтому шард из деталей —
+    не оценка. Лоты вне 8 районов и без комнат/района пропускаются,
+    sighting-only (title IS NULL) не атрибутируются — их шард знает только
+    выдача. Повторный init_db идемпотентен, свежую атрибуцию выдачи
+    (INSERT OR REPLACE) бэкфилл не перетирает."""
+    db = tmp_path / "test.db"
+    init_db(db)
+    _insert_detailed(db, 1, "Bostandykskiy_r-n", 2)
+    _insert_detailed(db, 2, "Medeuskiy_r-n", 7)   # 4к+ = «4 и 5+»
+    _insert_detailed(db, 3, "Saratov_r-n", 2)     # вне Алматы — шарда нет
+    _insert_detailed(db, 4, None, 2)              # без района
+    with get_conn(db) as conn:
+        conn.execute(
+            "INSERT INTO listings (id, url, is_active) VALUES (5, 'u5', 1)"  # sighting-only
+        )
+        conn.execute(
+            "INSERT INTO listing_shards (listing_id, shard) VALUES (1, 'Алатауский 2к')"
+        )  # свежая атрибуция выдачи — бэкфилл не должен её перетереть
+    init_db(db)
+    init_db(db)  # идемпотентность
+    with get_conn(db) as conn:
+        m = dict(conn.execute("SELECT listing_id, shard FROM listing_shards").fetchall())
+    assert m == {1: "Алатауский 2к", 2: "Медеуский 4к+"}
+
+
+# ---------- бан и усечение: частичные страницы и гард #152 (ревью #166) ----------
+
+
+def test_banned_shard_keeps_partial_sightings(tmp_path, monkeypatch):
+    """Ревью #166: BanDetected на 2-й странице шарда — частично загруженные
+    страницы переживают бан так же, как при сетевом сбое: id получают
+    sighting/атрибуцию (до #166 они выживали в общем словаре). Проход
+    останавливается, сток шарда не замерен, delist запрещён."""
+    db = tmp_path / "test.db"
+    init_db(db)
+    url_by_label = dict(shard_urls())
+    target_url = url_by_label["Алатауский 2к"]
+
+    class BanOnPage2Client(FakeClient):
+        def get(self, url):
+            if url == f"{target_url}&page=2":
+                raise BanDetected("серия 403")
+            return super().get(url)
+
+    pages = {
+        target_url: _card(1001) + _card(1002)
+        + '<a class="paginator__btn--next" href="?page=2">2</a>',
+    }
+    client = BanOnPage2Client(pages)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
+    monkeypatch.setattr(rescrape, "_alert_ban", lambda exc: None)
+
+    stats = sweep(max_pages=3, max_new_details=5, db_path=db)
+
+    assert stats["banned"] is True
+    assert stats["banned_phase"] == "search"
+    assert "Алатауский 2к" in stats["failed_shards"]
+    assert stats["delisted"] is None
+    with get_conn(db) as conn:
+        seen = dict(
+            conn.execute("SELECT listing_id, shard FROM listing_shards").fetchall()
+        )
+        row = conn.execute(
+            "SELECT stock FROM sweep_shard_stats WHERE shard = 'Алатауский 2к'"
+        ).fetchone()
+    assert seen == {1001: "Алатауский 2к", 1002: "Алатауский 2к"}
+    assert row[0] is None  # сток по забаненному шарду не замерен
+
+
+def test_shard_deeper_than_max_pages_is_not_covered(tmp_path, monkeypatch):
+    """Гард-остаток #152 (ревью #166): дошли до max_pages, а следующая
+    страница есть — покрытие шарда неполное: failed_shards, сток не замерен,
+    delist запрещён, но уже увиденные id получают sighting/атрибуцию."""
+    db = tmp_path / "test.db"
+    init_db(db)
+    url_by_label = dict(shard_urls())
+    target_url = url_by_label["Алатауский 1к"]
+    nxt = '<a class="paginator__btn--next" href="?page=N">N</a>'
+    client = FakeClient({
+        target_url: _card(1001) + nxt,
+        f"{target_url}&page=2": _card(1002) + nxt,  # и дальше есть страницы
+    })
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
+
+    stats = sweep(max_pages=2, max_new_details=5, db_path=db)
+
+    assert "Алатауский 1к" in stats["failed_shards"]
+    assert stats["delisted"] is None
+    with get_conn(db) as conn:
+        seen = dict(
+            conn.execute("SELECT listing_id, shard FROM listing_shards").fetchall()
+        )
+        row = conn.execute(
+            "SELECT stock FROM sweep_shard_stats WHERE shard = 'Алатауский 1к'"
+        ).fetchone()
+    assert seen == {1001: "Алатауский 1к", 1002: "Алатауский 1к"}
+    assert row[0] is None

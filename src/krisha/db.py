@@ -17,6 +17,7 @@ from krisha.config import (
     RENT_PRICE_MAX,
     RENT_PRICE_MIN,
     SHARED_PIN_MIN,
+    listing_shard_label,
 )
 
 logger = logging.getLogger(__name__)
@@ -200,9 +201,13 @@ CREATE TABLE IF NOT EXISTS shard_cursors (
 -- перекосе узнаём только через две недели из model_meta. 32 строки в сутки —
 -- на размер базы не влияет. stock=NULL означает «шард не покрыт этим
 -- проходом», тогда квота считалась по последнему известному стоку.
+-- PK — (run_seq, shard), а не (started_at, shard): started_at секундной
+-- точности с INSERT OR REPLACE схлопывает два прохода в одну секунду (ручной
+-- перезапуск джобы), run_seq — монотонный счётчик из sweep_state.
 CREATE TABLE IF NOT EXISTS sweep_shard_stats (
-    started_at      TEXT NOT NULL,
+    run_seq         INTEGER NOT NULL,   -- номер прохода (sweep_state pass_seq)
     shard           TEXT NOT NULL,
+    started_at      TEXT NOT NULL,      -- для чтения человеком, не для сортировки
     stock           INTEGER,            -- найдено в выдаче этим проходом
     quota           INTEGER,            -- план докачки (largest remainder от стока)
     fetched         INTEGER,            -- факт докачки
@@ -210,7 +215,7 @@ CREATE TABLE IF NOT EXISTS sweep_shard_stats (
     backlog_after   INTEGER,
     cursor_after    INTEGER,            -- водяная отметка после прохода
     wrapped         INTEGER,            -- 1 = окно завернулось на голову выдачи
-    PRIMARY KEY (started_at, shard)
+    PRIMARY KEY (run_seq, shard)
 );
 
 -- issue #166: мелкое состояние прохода, которому нужна монотонность, а не
@@ -218,6 +223,9 @@ CREATE TABLE IF NOT EXISTS sweep_shard_stats (
 -- COUNT(sweep_runs), но started_at там секундной точности с INSERT OR
 -- REPLACE — два прохода в одну секунду (ручной перезапуск джобы) схлопываются
 -- в одну строку, и смещение «застревает». Явный счётчик монотонен всегда.
+-- Хранится СЫРОЙ номер прохода (без модуля): он же run_seq в
+-- sweep_shard_stats, а смещение ротации вычисляется из него шагом, взаимно
+-- простым с числом шардов (см. shard_plan.rotation_offset).
 CREATE TABLE IF NOT EXISTS sweep_state (
     key         TEXT PRIMARY KEY,
     value       TEXT NOT NULL,
@@ -428,6 +436,47 @@ def init_db(db_path: Path | str = DB_PATH) -> None:
     with get_conn(db_path) as conn:
         conn.executescript(SCHEMA)
         _migrate(conn)
+        backfill_listing_shards_from_details(conn=conn)
+
+
+def backfill_listing_shards_from_details(
+    db_path: Path | str = DB_PATH,
+    conn: sqlite3.Connection | None = None,
+) -> int:
+    """Бэкфилл атрибуции id → шард для лотов, у которых уже есть детали
+    (issue #166, ревью): (district, rooms) однозначно определяют шард —
+    фильтры выдачи непересекаются, — поэтому атрибуция из деталей точная,
+    а не оценочная. INSERT OR IGNORE: свежая атрибуция от фазы выдачи
+    (INSERT OR REPLACE в record_listing_shards) всегда выигрывает. Лоты без
+    деталей (sighting-only backlog) здесь НЕ атрибутируются — их шард знает
+    только выдача: они получают атрибуцию в проход, когда в ней встретятся.
+
+    Зовётся из init_db на каждом старте: идемпотентно (OR IGNORE), стоит
+    один индексированный проход по listings.
+    """
+    with use_conn(conn, db_path) as conn:
+        # Гипер-легаси схемы (миграции которых ещё не добавили title) —
+        # не наша забота: бэкфилл без сентинела sighting-only не определить.
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(listings)")}
+        if not {"title", "district", "rooms"} <= cols:
+            return 0
+        rows = conn.execute(
+            "SELECT id, district, rooms FROM listings "
+            "WHERE title IS NOT NULL AND district IS NOT NULL AND rooms IS NOT NULL"
+        ).fetchall()
+        pairs = [
+            (lid, label)
+            for lid, district, rooms in rows
+            if (label := listing_shard_label(district, rooms)) is not None
+        ]
+        if not pairs:
+            return 0
+        cur = conn.executemany(
+            "INSERT OR IGNORE INTO listing_shards (listing_id, shard, seen_at) "
+            "VALUES (?, ?, datetime('now'))",
+            pairs,
+        )
+        return cur.rowcount
 
 
 def listing_fingerprint(listing: dict[str, Any]) -> str | None:
@@ -1010,8 +1059,8 @@ def last_known_shard_stock(conn: sqlite3.Connection) -> dict[str, int]:
         rows = conn.execute(
             """
             SELECT s1.shard, s1.stock FROM sweep_shard_stats s1
-            WHERE s1.stock IS NOT NULL AND s1.started_at = (
-                SELECT MAX(s2.started_at) FROM sweep_shard_stats s2
+            WHERE s1.stock IS NOT NULL AND s1.run_seq = (
+                SELECT MAX(s2.run_seq) FROM sweep_shard_stats s2
                 WHERE s2.shard = s1.shard AND s2.stock IS NOT NULL
             )
             """
@@ -1034,7 +1083,7 @@ def record_sweep_shard_stats(
     if not rows:
         return
     cols = (
-        "started_at", "shard", "stock", "quota", "fetched",
+        "run_seq", "shard", "started_at", "stock", "quota", "fetched",
         "backlog_before", "backlog_after", "cursor_after", "wrapped",
     )
     payload = [
@@ -1052,32 +1101,35 @@ def record_sweep_shard_stats(
         logger.warning("Не удалось записать план/факт по шардам в sweep_shard_stats", exc_info=True)
 
 
-def sweep_rotation_offset(conn: sqlite3.Connection, deal: str) -> int:
-    """Смещение ротации порядка обхода шардов для этого прохода (issue #166).
+def sweep_pass_seq(conn: sqlite3.Connection, deal: str) -> int:
+    """Сырой монотонный номер прохода (issue #166).
 
-    Порядок обхода ротируется между запусками, чтобы обрыв прохода (бюджет
-    времени, бан) не ампутировал систематически один и тот же хвост алфавита:
-    «день» перестаёт означать «район». Состояние — явный счётчик в
+    Порядок обхода шардов ротируется между запусками, чтобы обрыв прохода
+    (бюджет времени, бан) не ампутировал систематически один и тот же хвост
+    алфавита: «день» перестаёт означать «район». Состояние — явный счётчик в
     sweep_state (монотонен, в отличие от COUNT(sweep_runs) с его секундным
-    PK); живёт в базе, которая едет релизом на раннер и обратно."""
+    PK); живёт в базе, которая едет релизом на раннер и обратно. Смещение
+    ротации из номера вычисляет shard_plan.rotation_offset; сам номер идёт в
+    run_seq sweep_shard_stats (там started_at секундной точности не подходит
+    для сортировки — схлопывает перезапуски в одну секунду)."""
     try:
         row = conn.execute(
-            "SELECT value FROM sweep_state WHERE key = ?", (f"shard_rotation:{deal}",)
+            "SELECT value FROM sweep_state WHERE key = ?", (f"pass_seq:{deal}",)
         ).fetchone()
     except sqlite3.OperationalError:
         return 0
     return int(row[0]) if row else 0
 
 
-def advance_sweep_rotation(conn: sqlite3.Connection, deal: str, n_shards: int) -> None:
-    """+1 к смещению ротации по модулю числа шардов. Зовётся в конце прохода:
-    убитый на середине раннер не двигает ротацию, и это честно — следующий
-    запуск повторит порядок прерванного прохода."""
-    key = f"shard_rotation:{deal}"
+def advance_sweep_pass_seq(conn: sqlite3.Connection, deal: str) -> None:
+    """+1 к номеру прохода. Зовётся в конце прохода в той же транзакции, что
+    и итоги: убитый на середине раннер номер не двигает, и это честно —
+    следующий запуск повторит порядок (и run_seq) прерванного прохода."""
+    key = f"pass_seq:{deal}"
     conn.execute(
         "INSERT INTO sweep_state (key, value, updated_at) VALUES (?, '1', datetime('now')) "
         "ON CONFLICT(key) DO UPDATE SET "
-        "value = CAST((CAST(value AS INTEGER) + 1) % ? AS TEXT), "
+        "value = CAST(CAST(value AS INTEGER) + 1 AS TEXT), "
         "updated_at = excluded.updated_at",
-        (key, max(1, int(n_shards))),
+        (key,),
     )
