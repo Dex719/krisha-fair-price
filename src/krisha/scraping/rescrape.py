@@ -29,20 +29,37 @@ from krisha.config import ALMATY_DISTRICT_SLUGS, BASE_URL, DATA_DIR, ROOM_SHARDS
 from krisha.db import (
     DB_PATH,
     _record_price_if_changed,
+    advance_shard_cursor,
+    advance_sweep_pass_seq,
     get_conn,
     init_db,
     is_valid_price,
     known_ids,
+    last_known_shard_stock,
     price_bounds_for,
+    record_listing_shards,
     record_parse_anomaly,
     record_sighting,
     record_sweep_run,
+    record_sweep_shard_stats,
+    shard_backlog_count,
+    shard_backlog_window,
+    shard_cursors,
+    sweep_pass_seq,
+    unattributed_backlog_count,
     upsert_listing,
 )
 from krisha.monitoring import ADMIN_CHAT_ENV
 from krisha.scraping.client import BanDetected, PoliteClient
 from krisha.scraping.detail_parser import parse_detail
 from krisha.scraping.listing_parser import has_next_page, parse_listing_prices
+from krisha.scraping.shard_plan import (
+    largest_remainder_quotas,
+    rotated,
+    rotation_offset,
+    shard_district,
+)
+from krisha.validity import MAX_TEST_TVD, total_variation_distance
 
 logger = logging.getLogger(__name__)
 
@@ -204,38 +221,64 @@ def _sweep_shard(
     label: str,
     base_url: str,
     max_pages: int,
-    found: dict[int, int | None],
-) -> bool:
-    """Обходит пагинацию одного шарда, дописывает id→цена в found.
+) -> tuple[dict[int, int | None], bool, BanDetected | None]:
+    """Обходит пагинацию одного шарда, возвращает ({id: цена}, покрыт_ли, бан).
 
-    Возвращает False, если шард не покрыт: страница не загрузилась
-    (сеть/блокировка), похожа на анти-бот/капчу, или первая страница дала
-    0 валидных id (сервер отдал 200, но не выдачу — изменённая вёрстка и
-    т.п.). Пустой/анти-бот шард НЕ считается покрытием — иначе живые
-    объявления рискуют быть ложно помечены delisted (issue #96).
+    covered=False, если шард не покрыт: страница не загрузилась
+    (сеть/блокировка), пойман BanDetected, страница похожа на анти-бот/капчу,
+    первая страница дала 0 валидных id (сервер отдал 200, но не выдачу —
+    изменённая вёрстка и т.п.), или выдача шарда глубже max_pages (гард-
+    остаток #152: усечение тоже непокрытие). Пустой/анти-бот/усечённый шард
+    НЕ считается покрытием — иначе живые объявления рискуют быть ложно
+    помечены delisted (issue #96). Уже загруженные страницы при этом НЕ
+    выбрасываются: их id честно увидены в выдаче и получают
+    sighting/last_seen, непокрытие лишь запрещает delist и замер стока по
+    этому шарду в этом проходе. Бан возвращается третьим элементом, а не
+    исключением: частично загруженные страницы переживают его так же, как
+    при сетевом сбое (до #166 они выживали в общем словаре — поведение
+    выровнено по ревью); решение об остановке прохода принимает sweep().
+
+    issue #166: шард возвращает СВОИХ найденных id отдельно, а не дописывает
+    в общий котел — состав шарда это сток выдачи для квоты докачки и источник
+    атрибуции id → шард (у лота без деталей district/rooms неизвестны,
+    а «круговая» очередь #152 по колонкам listings на них вырождалась).
     """
-    before = len(found)
+    found: dict[int, int | None] = {}
     for page in range(1, max_pages + 1):
         url = base_url if page == 1 else f"{base_url}&page={page}"
-        html = client.get(url)
+        try:
+            html = client.get(url)
+        except BanDetected as exc:
+            return found, False, exc
         if html is None:
             logger.error("Шард «%s»: стр. %s не загрузилась — стоп шарда", label, page)
-            return False
+            return found, False, None
         if page == 1 and _looks_like_antibot(html):
             logger.error("Шард «%s»: похоже на анти-бот/капча страницу — стоп шарда", label)
-            return False
+            return found, False, None
         page_prices = parse_listing_prices(html)
         if page == 1 and not page_prices:
             logger.warning(
                 "Шард «%s»: 0 валидных id на первой странице — подозрительно, шард не покрыт",
                 label,
             )
-            return False
+            return found, False, None
         found.update(page_prices)
         if not has_next_page(html, page):
             break
-    logger.info("Шард «%s»: +%s объявлений (всего %s)", label, len(found) - before, len(found))
-    return True
+    else:
+        # Вышли по max_pages, не встретив конец пагинации: выдача шарда
+        # глубже лимита — покрытие неполное. Лоты за срезом не получат
+        # sighting/атрибуцию, а delist по шарду будет ложным (гард-остаток
+        # #152). При штатном --pages=250 (с запасом над ~100 страницами
+        # самого большого шарда) ветка спит; проснётся, если лимит ужать.
+        logger.error(
+            "Шард «%s»: выдача глубже max_pages=%s — покрытие неполное, delist запрещён",
+            label, max_pages,
+        )
+        return found, False, None
+    logger.info("Шард «%s»: %s объявлений в выдаче", label, len(found))
+    return found, True, None
 
 
 def sweep(
@@ -261,6 +304,15 @@ def sweep(
     — отдельная лимитированная очередь: активные лоты с детальными данными,
     у которых scraped_at старше refresh_stale_days, докачиваются повторно
     (самые старые — первыми), max_refresh за проход. max_refresh=0 выключает.
+
+    issue #166: очередь новых лотов шардирована «район × комнаты». Дневной
+    лимит max_new_details раскладывается квотами пропорционально фактическому
+    стоку выдачи каждого шарда (а не отдаётся первым районам алфавита и не
+    режется по свежести id), у каждого шарда — свой круговой курсор в
+    shard_cursors, недобор по шарду не передаётся соседям. Порядок обхода
+    шардов ротируется от прохода к проходу, план/факт по шардам пишется в
+    sweep_shard_stats. Число запросов за проход не меняется: те же страницы
+    выдачи + тот же потолок докачки, меняется только ПОРЯДОК.
     """
     init_db(db_path)
     # Контракт на цену зависит от типа сделки: продажа — ₸ за квартиру,
@@ -314,6 +366,10 @@ def sweep(
                 observation_gap_days, RECOVERY_GAP_DAYS,
             )
     found: dict[int, int | None] = {}
+    # issue #166: найденные id ПО ШАРДАМ (а не только общим котлом): состав
+    # шарда — это фактический сток выдачи для квот докачки и источник
+    # атрибуции id → шард.
+    shard_found: dict[str, dict[int, int | None]] = {}
     failed_shards: list[str] = []
     banned = False
     banned_phase: str | None = None
@@ -325,32 +381,59 @@ def sweep(
 
     with PoliteClient() as client:
         shards = shard_urls(deal)
-        for i, (label, base_url) in enumerate(shards):
+        # issue #166: порядок обхода ротируется между запусками. Смещение
+        # считается от монотонного номера прохода (счётчик в sweep_state)
+        # шагом, взаимно простым с числом шардов (shard_plan.rotation_offset):
+        # шаг +1 при покрытии k из 32 давал шарду 32−k подряд непокрытых
+        # проходов — та же спутанность дня с составом с длинным периодом
+        # (ревью). Иначе обрыв прохода (бюджет, бан) ампутирует один и тот же
+        # хвост алфавита, и «день» снова становится «районом».
+        with get_conn(db_path) as conn:
+            pass_seq = sweep_pass_seq(conn, deal)
+        rotation = rotation_offset(pass_seq, len(shards))
+        ordered_shards = rotated(shards, rotation)
+        if ordered_shards[0] != shards[0]:
+            logger.info(
+                "Ротация обхода: старт с шарда «%s» (смещение %s/%s)",
+                ordered_shards[0][0], rotation, len(shards),
+            )
+        for i, (label, base_url) in enumerate(ordered_shards):
             if out_of_time():
                 # Недообойдённые шарды — в failed_shards: их объявления не
                 # получили last_seen, и без этой пометки они уехали бы в
                 # delisted (issue #96).
                 time_budget_hit = True
-                remaining = [lbl for lbl, _ in shards[i:]]
+                remaining = [lbl for lbl, _ in ordered_shards[i:]]
                 failed_shards.extend(remaining)
                 logger.error(
                     "Бюджет времени (%s мин) исчерпан на фазе выдачи — не обойдено шардов: %s",
                     time_budget_min, len(remaining),
                 )
                 break
-            try:
-                if not _sweep_shard(client, label, base_url, max_pages, found):
-                    failed_shards.append(label)
-            except BanDetected as exc:
+            shard_ids, covered, ban_exc = _sweep_shard(client, label, base_url, max_pages)
+            if not covered:
+                failed_shards.append(label)
+            else:
+                shard_found[label] = shard_ids
+            # Частично обойдённые страницы упавшего/забаненного шарда тоже
+            # честно увидены: их id получают sighting/last_seen/цену и
+            # атрибуцию — не выбрасываем их только из-за того, что хвост
+            # пагинации не лёг (при BanDetected — то же, что при сетевом
+            # сбое: до #166 частичные выживали в общем словаре).
+            found.update(shard_ids)
+            # Атрибуция id → шард пишется для КАЖДОГО найденного id (а не
+            # только новых): backlog, набранный до ввода схемы, атрибутируется
+            # сам с первого же прохода — ручная инициализация не нужна.
+            record_listing_shards([(lid, label) for lid in shard_ids], db_path)
+            if ban_exc is not None:
                 banned_phase = "search"
                 logger.critical(
                     "%s — прерываем проход на шарде «%s», остальные шарды не обходим",
-                    exc,
+                    ban_exc,
                     label,
                 )
-                failed_shards.append(label)
                 banned = True
-                _alert_ban(exc)
+                _alert_ban(ban_exc)
                 break
 
         # issue #127: раньше в базу шли только первые max_new_details новых id
@@ -365,66 +448,146 @@ def sweep(
                 price_bounds=bounds,
             )
 
-        # Очередь detail fetch — самые старые ещё не докачанные лоты первыми
-        # (title IS NULL — сентинел «есть только sighting, детали ещё нет»),
-        # а не «что нашли в этом проходе первым» (смещение по шардам).
+        # Очередь detail fetch — лоты с сайтингом, но без деталей
+        # (title IS NULL — сентинел «есть только sighting, детали ещё нет»).
         # is_active = 1 обязателен: лот может получить sighting и быть снят
         # с продажи (is_active=0) раньше, чем очередь до него дойдёт — без
         # фильтра такой «труп» навсегда остаётся с title IS NULL (детальная
         # страница отдаёт 404 → parse_detail() -> None → title не
-        # заполняется) и застревает в голове FIFO, съедая бюджет докачки на
-        # каждом проходе.
-        # issue #152: порядок был FIFO по first_seen, а first_seen внутри
-        # прохода = порядок обхода шардов = алфавит районов. Алатауский идёт
-        # первым и выедал весь бюджет: на момент правки у него 7094 лота с
-        # деталями при медиане 631 тыс ₸/м², а у Бостандыкского — 1672 при
-        # 1015 тыс, у Медеуского — 639 при 996 тыс. Модель оказалась хуже
-        # всего обучена там, где квадратный метр дороже всего.
-        # Круговой обход по «район × комнаты» даёт каждому сегменту равную
-        # долю бюджета в каждом раунде, внутри сегмента — свежие первыми
-        # (id на krisha монотонен по времени подачи, а после массового
-        # бэкфилла first_seen у тысяч лотов совпадает до секунд и сортировать
-        # по нему бессмысленно).
+        # заполняется) и застревает в голове очереди, съедая бюджет докачки
+        # на каждом проходе.
+        #
+        # issue #166: дневная порция — СМЕСЬ ГОРОДА, а не его срез.
+        # «Круговая» очередь #152 по колонкам listings.district/rooms на
+        # сайтингах вырождалась: эти колонки заполняет только детальная
+        # страница, поэтому у всего backlog'а они NULL — партиция одна, и
+        # порядок фактически `ORDER BY id DESC`: свежесть публикации вместо
+        # географии. Свежих лотов больше там, где выше оборачиваемость
+        # (Бостандыкский ~24% порции при ~13% стока), а не там, где больше
+        # сток (Алатауский ~11% при ~20%+) — TVD дня 0.32–0.35,
+        # time_confounding в model_meta застрял на confounded: true.
+        #
+        # Теперь: дневной лимит раскладывается квотами по шардам
+        # «район × комнаты» ПРОПОРЦИОНАЛЬНО ФАКТИЧЕСКОМУ СТОКУ ВЫДАЧИ этого
+        # прохода (shard_plan.largest_remainder_quotas). Недобор по шарду
+        # (бан, пустая страница, таймаут, мелкий backlog) НЕ отдаётся
+        # соседям в этом же проходе — иначе один сбойный район снова
+        # перекосит день; он компенсируется следующими проходами через
+        # круговой курсор шарда (shard_cursors): отметка не двигается по
+        # недокачанным лотам, и окно следующего прохода продолжит с неё.
+        # Курсор переживает перезапуск: живёт в базе, едет в релизе.
         with get_conn(db_path) as conn:
-            backlog_ids = [
-                r[0]
-                for r in conn.execute(
-                    """
-                    SELECT id FROM (
-                        SELECT id, ROW_NUMBER() OVER (
-                            PARTITION BY COALESCE(district, '?'), COALESCE(rooms, -1)
-                            ORDER BY id DESC
-                        ) AS rn
-                        FROM listings WHERE title IS NULL AND is_active = 1
-                    ) ORDER BY rn, id DESC
-                    """
-                ).fetchall()
-            ]
-        queue_size_before = len(backlog_ids)
-        to_fetch = [] if banned else backlog_ids[:max_new_details]
+            cursors = shard_cursors(db_path, conn=conn)
+            fallback_stock = last_known_shard_stock(conn)
+            queue_size_before = shard_backlog_count(conn)
+            unattributed = unattributed_backlog_count(conn)
+        if unattributed:
+            logger.warning(
+                "В backlog %s лотов без атрибуции к шарду — не видны в выдаче с "
+                "ввода схемы #166. В очередь не берутся: ждут переобнаружения "
+                "в выдаче (получат шард) или delisted",
+                unattributed,
+            )
+        stock = {
+            label: (
+                len(shard_found[label])
+                if label in shard_found
+                # Шард не покрыт этим проходом (бан/сеть/таймаут) — квота по
+                # последнему известному стоку: его backlog всё равно надо
+                # разгребать. Без единого успешного замера — 0.
+                else fallback_stock.get(label, 0)
+            )
+            for label, _ in shards
+        }
+        quotas = largest_remainder_quotas(stock, max_new_details)
+        plan: list[dict] = []
+        for label, _ in ordered_shards:
+            quota = quotas.get(label, 0)
+            with get_conn(db_path) as conn:
+                window, wrapped = shard_backlog_window(conn, label, cursors.get(label), quota)
+                backlog_before = shard_backlog_count(conn, label)
+            plan.append({
+                "shard": label,
+                "stock": stock[label] if label in shard_found else None,
+                "quota": quota,
+                "window": window,
+                "wrapped": wrapped,
+                "backlog_before": backlog_before,
+                "fetched": 0,
+                "last_ok": None,
+            })
+        logger.info(
+            "План докачки: %s лотов (потолок %s) по шардам: %s",
+            sum(p["quota"] for p in plan),
+            max_new_details,
+            ", ".join(f"{p['shard']}={p['quota']}" for p in plan if p["quota"]),
+        )
         new_count = 0
-        for lid in to_fetch:
-            if out_of_time():
-                # Проверяем перед КАЖДЫМ запросом, а не раз в шард: один шард
-                # это до 250 страниц ≈ 13 минут, промах на такую величину
-                # съедает весь запас на заливку базы.
-                time_budget_hit = True
-                logger.error("Бюджет времени исчерпан на докачке деталей — мягкий стоп")
+        stop_details = banned  # бан на выдаче — детали не качаем вовсе
+        for p in plan:
+            if stop_details:
                 break
-            try:
-                detail_html = client.get(f"https://krisha.kz/a/show/{lid}")
-            except BanDetected as exc:
-                logger.critical("%s — прерываем докачку деталей", exc)
-                if not banned:
-                    banned_phase = "details"
-                    _alert_ban(exc)
-                banned = True
-                break
-            listing = parse_detail(detail_html, f"https://krisha.kz/a/show/{lid}") if detail_html else None
-            if listing is not None:
-                upsert_listing(listing, db_path, price_bounds=bounds)
-                new_count += 1
+            for lid in p["window"]:
+                if out_of_time():
+                    # Проверяем перед КАЖДЫМ запросом, а не раз в шард: один
+                    # шард это до 250 страниц ≈ 13 минут, промах на такую
+                    # величину съедает весь запас на заливку базы.
+                    time_budget_hit = True
+                    logger.error("Бюджет времени исчерпан на докачке деталей — мягкий стоп")
+                    stop_details = True
+                    break
+                try:
+                    detail_html = client.get(f"https://krisha.kz/a/show/{lid}")
+                except BanDetected as exc:
+                    logger.critical("%s — прерываем докачку деталей", exc)
+                    if not banned:
+                        banned_phase = "details"
+                        _alert_ban(exc)
+                    banned = True
+                    stop_details = True
+                    break
+                listing = (
+                    parse_detail(detail_html, f"https://krisha.kz/a/show/{lid}")
+                    if detail_html
+                    else None
+                )
+                if listing is not None:
+                    upsert_listing(listing, db_path, price_bounds=bounds)
+                    new_count += 1
+                    p["fetched"] += 1
+                    # Курсор двигаем только по УСПЕШНО докачанным: недобор
+                    # (404, таймаут, битый парс) остаётся ниже отметки и
+                    # компенсируется следующими проходами, а не чужой квотой.
+                    p["last_ok"] = lid
+            if p["quota"] or p["fetched"]:
+                logger.info(
+                    "Шард «%s»: план %s, факт %s (backlog %s→%s%s)",
+                    p["shard"],
+                    p["quota"],
+                    p["fetched"],
+                    p["backlog_before"],
+                    p["backlog_before"] - p["fetched"],
+                    ", курсор с головы" if p["wrapped"] else "",
+                )
         queue_size_after = queue_size_before - new_count
+        cursor_updates = {
+            p["shard"]: p["last_ok"] for p in plan if p["last_ok"] is not None
+        }
+        shard_stat_rows = [
+            {
+                "run_seq": pass_seq,
+                "started_at": pass_started_at,
+                "shard": p["shard"],
+                "stock": p["stock"],
+                "quota": p["quota"],
+                "fetched": p["fetched"],
+                "backlog_before": p["backlog_before"],
+                "backlog_after": p["backlog_before"] - p["fetched"],
+                "cursor_after": cursor_updates.get(p["shard"], cursors.get(p["shard"])),
+                "wrapped": p["wrapped"],
+            }
+            for p in plan
+        ]
 
         # issue #102: отдельная лимитированная очередь — активные лоты,
         # уже имеющие детали (title IS NOT NULL), но не докачанные дольше
@@ -613,6 +776,16 @@ def sweep(
                     cohort, cohort_marked,
                 )
 
+        # issue #166: сдвиг круговых курсоров и план/факт по шардам — в той же
+        # транзакции, что и итоги прохода: курсор это состояние очереди, и его
+        # расходиться с базой (которая уезжает в релиз) нельзя.
+        for shard, cursor_id in cursor_updates.items():
+            advance_shard_cursor(shard, cursor_id, db_path, conn=conn)
+        record_sweep_shard_stats(shard_stat_rows, db_path, conn=conn)
+        # Номер прохода (он же — источник ротации порядка обхода и run_seq
+        # в stats) — тоже здесь: убитый на середине раннер счётчик не двигает.
+        advance_sweep_pass_seq(conn, deal)
+
     # Тихая деградация (сервер отвечает, шарды формально покрыты, но
     # объявлений в разы меньше обычного) не ловится через failed_shards —
     # сравниваем found_in_search с базлайном (issue #97).
@@ -657,6 +830,31 @@ def sweep(
     _save_history(deal, history)
 
     suspicious = suspicious_db or suspicious_history
+
+    # issue #166: контроль состава порции той же метрикой, что в model_meta —
+    # вторую реализацию TVD не пишем, берём validity.total_variation_distance.
+    # Сравниваем фактически докачанное с ФАКТИЧЕСКИМ стоком выдачи этого
+    # прохода (не с составом базы — база сама ещё несёт перекос прошлого).
+    batch_tvd_district: float | None = None
+    batch_tvd_shard: float | None = None
+    fetched_labels = [p["shard"] for p in plan for _ in range(p["fetched"])]
+    stock_labels = [label for label, n in stock.items() for _ in range(max(0, n))]
+    if fetched_labels and stock_labels:
+        batch_tvd_shard = round(total_variation_distance(fetched_labels, stock_labels), 3)
+        batch_tvd_district = round(
+            total_variation_distance(
+                [shard_district(s) for s in fetched_labels],
+                [shard_district(s) for s in stock_labels],
+            ),
+            3,
+        )
+        logger.info(
+            "Состав порции против стока выдачи: TVD по районам %.3f, по шардам %.3f "
+            "(порог %.2f)",
+            batch_tvd_district,
+            batch_tvd_shard,
+            MAX_TEST_TVD,
+        )
 
     stats = {
         "found_in_search": len(found),
@@ -716,6 +914,12 @@ def sweep(
         # можно было отличить от «докачано 1000 из 1000, то есть упёрлись».
         # Ровно эта неразличимость двенадцать дней подряд прятала отставание.
         "max_new_details": max_new_details,
+        # issue #166: план квот по шардам и TVD фактически докачанной порции
+        # против стока выдачи. Подробный план/факт по каждому шарду — в
+        # таблице sweep_shard_stats.
+        "detail_plan": {p["shard"]: p["quota"] for p in plan if p["quota"]},
+        "batch_tvd_district": batch_tvd_district,
+        "batch_tvd_shard": batch_tvd_shard,
     }
 
     # issue #154: история проходов едет в базе, а не в файле — раннер каждый
