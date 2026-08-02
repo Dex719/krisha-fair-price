@@ -1,0 +1,459 @@
+"""Тесты issue #166: шардирование дневной порции докачки «район × комнаты».
+
+Критерии приёмки из issue:
+
+- планировщик выдаёт дневную порцию с TVD ≤ 0.20 относительно заданного
+  распределения стока по шардам;
+- обрыв прохода в разных точках не даёт систематического перекоса (ротация);
+- курсоры шардов переживают перезапуск: повторный проход не начинает с нуля
+  и не пропускает страницы;
+- недобор по сбойному шарду не отдаёт его квоту другим в этом же проходе;
+- в логе/базе прохода виден план и факт по каждому шарду;
+- суммарное число запросов за проход не выросло.
+"""
+
+import pytest
+
+from krisha.db import (
+    get_conn,
+    init_db,
+    record_listing_shards,
+    shard_backlog_window,
+    sweep_rotation_offset,
+)
+from krisha.scraping import rescrape
+from krisha.scraping.rescrape import shard_urls, sweep
+from krisha.scraping.shard_plan import largest_remainder_quotas, rotated, shard_district
+from krisha.validity import MAX_TEST_TVD, total_variation_distance
+
+
+@pytest.fixture(autouse=True)
+def _isolate_parse_rate_history(tmp_path, monkeypatch):
+    """Как в test_rescrape: sweep() пишет data/rescrape_history_<deal>.json —
+    уводим на tmp_path, чтобы не трогать реальный data/ репо."""
+    monkeypatch.setattr(rescrape, "DATA_DIR", tmp_path)
+
+
+def _card(lid: int, price: int = 10_000_000) -> str:
+    return (
+        f'<div data-id="{lid}" class="a-card"><a href="/a/show/{lid}">x</a>'
+        f'<span class="a-card__price">{price:,} ₸</span></div>'.replace(",", " ")
+    )
+
+
+def _listing(lid: int, price: int = 10_000_000) -> dict:
+    return {
+        "id": lid,
+        "url": f"https://krisha.kz/a/show/{lid}",
+        "price": price,
+        "title": "test",
+        "rooms": 2,
+        "area": 60.0,
+    }
+
+
+class FakeClient:
+    """Отдаёт заданный HTML по URL; незнакомый URL → пустая страница."""
+
+    def __init__(self, pages: dict[str, str]):
+        self.pages = pages
+        self.requested: list[str] = []
+
+    def get(self, url: str) -> str | None:
+        self.requested.append(url)
+        return self.pages.get(url, "<html></html>")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return None
+
+
+def _pages_by_shard(stock: dict[str, list[int]]) -> dict[str, str]:
+    """HTML первой страницы каждого шарда с заданными id карточек."""
+    url_by_label = dict(shard_urls())
+    return {
+        url_by_label[label]: "".join(_card(lid) for lid in ids)
+        for label, ids in stock.items()
+    }
+
+
+def _parse_detail_by_url(html, url):
+    return _listing(int(url.rsplit("/", 1)[-1]))
+
+
+# ---------- чистый планировщик ----------
+
+
+def test_quotas_proportional_to_stock_exact_split():
+    q = largest_remainder_quotas({"a": 50, "b": 25, "c": 15, "d": 10}, 40)
+    assert q == {"a": 20, "b": 10, "c": 6, "d": 4}
+    assert sum(q.values()) == 40
+
+
+def test_quotas_largest_remainder_rounding_is_deterministic():
+    # 3 шарда по 1/3 стока, cap=2: два шарда получают +1 по дробной части,
+    # тай-брейк детерминирован — план воспроизводим от прогона к прогону.
+    q1 = largest_remainder_quotas({"a": 10, "b": 10, "c": 10}, 2)
+    q2 = largest_remainder_quotas({"c": 10, "a": 10, "b": 10}, 2)
+    assert sum(q1.values()) == 2
+    assert q1 == q2
+
+
+def test_quotas_zero_stock_shard_gets_zero_not_redistributed():
+    """Квота — доля стока, а не равная 1/32: шард без стока получает 0,
+    и его доля НЕ раздаётся соседям сверх их пропорции."""
+    q = largest_remainder_quotas({"a": 100, "b": 0}, 10)
+    assert q == {"a": 10, "b": 0}
+
+
+def test_quotas_zero_cap_or_empty_stock():
+    assert largest_remainder_quotas({"a": 100}, 0) == {"a": 0}
+    assert largest_remainder_quotas({"a": 0, "b": 0}, 10) == {"a": 0, "b": 0}
+    assert largest_remainder_quotas({}, 10) == {}
+
+
+def test_rotated_shifts_order_cyclically():
+    items = list("abcd")
+    assert rotated(items, 0) == items
+    assert rotated(items, 1) == ["b", "c", "d", "a"]
+    assert rotated(items, 4) == items
+    assert rotated(items, 5) == ["b", "c", "d", "a"]
+    assert rotated([], 3) == []
+
+
+def test_shard_district_from_label():
+    assert shard_district("Алатауский 4к+") == "Алатауский"
+    assert shard_district("Медеуский 1к") == "Медеуский"
+
+
+# ---------- проход с квотами: состав порции (TVD) ----------
+
+
+def test_daily_batch_matches_stock_composition(tmp_path, monkeypatch):
+    """Приёмочный критерий: при заданном распределении стока по шардам
+    дневная порция имеет TVD ≤ 0.20 относительно этого распределения —
+    метрикой из validity.py, той же, что в model_meta."""
+    db = tmp_path / "test.db"
+    stock = {
+        "Алатауский 2к": list(range(1000, 1050)),      # 50% стока
+        "Бостандыкский 2к": list(range(2000, 2025)),   # 25%
+        "Медеуский 1к": list(range(3000, 3015)),       # 15%
+        "Турксибский 1к": list(range(4000, 4010)),     # 10%
+    }
+    client = FakeClient(_pages_by_shard(stock))
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
+
+    stats = sweep(max_pages=1, max_new_details=40, db_path=db)
+
+    # Все найденные id — новые: backlog каждого шарда глубок, докачали ровно
+    # квоту (40 = 20+10+6+4 по стоку 50/25/15/10).
+    assert stats["details_fetched"] == 40
+    assert stats["detail_plan"] == {
+        "Алатауский 2к": 20, "Бостандыкский 2к": 10, "Медеуский 1к": 6, "Турксибский 1к": 4,
+    }
+    # TVD фактической порции против стока — и в stats, и пересчётом той же метрикой.
+    assert stats["batch_tvd_shard"] <= MAX_TEST_TVD
+    assert stats["batch_tvd_district"] <= MAX_TEST_TVD
+    with get_conn(db) as conn:
+        fetched = {
+            shard: conn.execute(
+                "SELECT COUNT(*) FROM listings l "
+                "JOIN listing_shards s ON s.listing_id = l.id "
+                "WHERE l.title IS NOT NULL AND s.shard = ?",
+                (shard,),
+            ).fetchone()[0]
+            for shard in stock
+        }
+    fetched_labels = [s for s, n in fetched.items() for _ in range(n)]
+    stock_labels = [s for s, ids in stock.items() for _ in ids]
+    assert total_variation_distance(fetched_labels, stock_labels) <= MAX_TEST_TVD
+    # Число запросов не выросло: выдача — по странице на шард (32), детали —
+    # ровно потолок 40, сверху ничего.
+    detail_requests = [u for u in client.requested if "/a/show/" in u]
+    search_requests = [u for u in client.requested if "/a/show/" not in u]
+    assert len(detail_requests) == 40
+    assert len(search_requests) == 32
+
+
+def test_plan_vs_fact_written_per_shard(tmp_path, monkeypatch):
+    """Приёмочный критерий: в базе прохода виден план и факт по каждому шарду
+    (32 строки, включая непокрытые — у них stock NULL и квота 0)."""
+    db = tmp_path / "test.db"
+    stock = {"Алатауский 2к": list(range(1000, 1020)), "Медеуский 1к": list(range(2000, 2010))}
+    client = FakeClient(_pages_by_shard(stock))
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
+
+    sweep(max_pages=1, max_new_details=6, db_path=db)
+
+    with get_conn(db) as conn:
+        rows = {
+            r[0]: r
+            for r in conn.execute(
+                "SELECT shard, stock, quota, fetched, backlog_before, backlog_after, "
+                "cursor_after, wrapped FROM sweep_shard_stats"
+            ).fetchall()
+        }
+    assert len(rows) == 32
+    # Покрытый шард: сток 20, квота 4 (20 из 30), факт 4, backlog сошёлся.
+    shard, stock_n, quota, fetched, before, after, cursor, wrapped = rows["Алатауский 2к"]
+    assert (stock_n, quota, fetched, before, after) == (20, 4, 4, 20, 16)
+    assert cursor is not None and wrapped == 0
+    shard, stock_n, quota, fetched, before, after, cursor, wrapped = rows["Медеуский 1к"]
+    assert (stock_n, quota, fetched, before, after) == (10, 2, 2, 10, 8)
+    # Непокрытый шард: сток неизвестен (NULL), квота 0, факт 0.
+    shard, stock_n, quota, fetched, before, after, cursor, wrapped = rows["Ауэзовский 3к"]
+    assert (stock_n, quota, fetched) == (None, 0, 0)
+
+
+def test_partial_failed_shard_keeps_its_sightings(tmp_path, monkeypatch):
+    """Шард упал на 2-й странице: найденное на 1-й — честно увидено в выдаче
+    и получает sighting/атрибуцию, но замером стока (квотой) это НЕ считается
+    и delist не разрешает."""
+    db = tmp_path / "test.db"
+    init_db(db)
+    url_by_label = dict(shard_urls())
+    target_url = url_by_label["Алатауский 2к"]
+
+    class FailOnPage2Client(FakeClient):
+        def get(self, url):
+            if url == f"{target_url}&page=2":
+                return None  # сеть/блокировка на второй странице
+            return super().get(url)
+
+    pages = {
+        target_url: _card(1001) + _card(1002)
+        + '<a class="paginator__btn--next" href="?page=2">2</a>',
+    }
+    client = FailOnPage2Client(pages)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
+
+    stats = sweep(max_pages=3, max_new_details=5, db_path=db)
+
+    assert "Алатауский 2к" in stats["failed_shards"]
+    assert stats["delisted"] is None  # неполное покрытие — delist запрещён
+    with get_conn(db) as conn:
+        seen = {
+            r[0]: r[1]
+            for r in conn.execute(
+                "SELECT s.listing_id, s.shard FROM listing_shards s"
+            ).fetchall()
+        }
+        row = conn.execute(
+            "SELECT quota, fetched FROM sweep_shard_stats WHERE shard = 'Алатауский 2к'"
+        ).fetchone()
+    # Оба id с первой страницы получили атрибуцию и sighting, несмотря на сбой...
+    assert seen == {1001: "Алатауский 2к", 1002: "Алатауский 2к"}
+    # ...но сток по упавшему шарду не замерен (строка есть: stock NULL), и без
+    # истории стока его квота 0 — недобор не выдумывается.
+    assert tuple(row) == (0, 0)
+
+
+# ---------- недобор не отдаёт квоту соседям ----------
+
+
+def test_failing_shard_keeps_quota_unused_in_same_pass(tmp_path, monkeypatch):
+    """Приёмочный критерий: сбойный шард не отдаёт свою квоту другим в этом же
+    проходе — иначе один сбойный район снова перекосит день."""
+    db = tmp_path / "test.db"
+    stock = {
+        "Алатауский 2к": list(range(1000, 1060)),   # 60% стока
+        "Медеуский 1к": list(range(2000, 2040)),    # 40% стока
+    }
+    pages = _pages_by_shard(stock)
+    medeu_ids = set(stock["Медеуский 1к"])
+
+    class FlakyClient(FakeClient):
+        def get(self, url):
+            # Детальные страницы Медеуского «падают» (таймаут/404) — недобор.
+            if "/a/show/" in url and int(url.rsplit("/", 1)[-1]) in medeu_ids:
+                self.requested.append(url)
+                return None
+            return super().get(url)
+
+    client = FlakyClient(pages)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
+
+    stats = sweep(max_pages=1, max_new_details=10, db_path=db)
+
+    # Квоты: Алатауский 6, Медеуский 4. Медеуский недобрал всё — но Алатауский
+    # получил СВОИ 6, а не 10: суммарно докачано меньше потолка.
+    assert stats["detail_plan"] == {"Алатауский 2к": 6, "Медеуский 1к": 4}
+    assert stats["details_fetched"] == 6
+    with get_conn(db) as conn:
+        medeu_detailed = conn.execute(
+            "SELECT COUNT(*) FROM listings l JOIN listing_shards s ON s.listing_id = l.id "
+            "WHERE l.title IS NOT NULL AND s.shard = 'Медеуский 1к'"
+        ).fetchone()[0]
+        # Курсор сбойного шарда НЕ сдвинулся: недобор компенсируется следующими
+        # проходами через курсор, а не чужой квотой сейчас.
+        medeu_cursor = conn.execute(
+            "SELECT last_id FROM shard_cursors WHERE shard = 'Медеуский 1к'"
+        ).fetchone()
+    assert medeu_detailed == 0
+    assert medeu_cursor is None
+
+
+# ---------- курсоры переживают перезапуск ----------
+
+
+def _backdate_passes(db, days: int = 1) -> None:
+    """Моделируем сутки между проходами: started_at в sweep_runs и
+    sweep_shard_stats секундной точности с INSERT OR REPLACE — в проде проходы
+    раз в сутки, в тесте они иначе схлопываются в одну строку."""
+    with get_conn(db) as conn:
+        for table in ("sweep_runs", "sweep_shard_stats"):
+            conn.execute(
+                f"UPDATE {table} SET started_at = datetime(started_at, '-{days} days')"
+            )
+
+
+def test_cursors_survive_restart_and_walk_without_skips(tmp_path, monkeypatch):
+    """Приёмочный критерий: курсоры шардов переживают перезапуск, повторный
+    проход не начинает с нуля и не пропускает страницы — за несколько проходов
+    backlog шарда докачивается целиком, каждый лот ровно один раз."""
+    db = tmp_path / "test.db"
+    ids = list(range(1000, 1010))  # один шард, 10 лотов в backlog
+    stock = {"Алатауский 2к": ids}
+    fetched_per_pass: list[list[int]] = []
+
+    for _ in range(3):
+        client = FakeClient(_pages_by_shard(stock))
+        monkeypatch.setattr(rescrape, "PoliteClient", lambda c=client: c)
+        parse_calls: list[int] = []
+
+        def parse_spy(html, url, _calls=parse_calls):
+            lid = int(url.rsplit("/", 1)[-1])
+            _calls.append(lid)
+            return _listing(lid)
+
+        monkeypatch.setattr(rescrape, "parse_detail", parse_spy)
+        sweep(max_pages=1, max_new_details=4, db_path=db)
+        fetched_per_pass.append(parse_calls)
+        _backdate_passes(db)
+
+    p1, p2, p3 = fetched_per_pass
+    # Проход 2 продолжил с водяной отметки, а не начал с нуля: пересечений нет.
+    assert p1 == sorted(ids, reverse=True)[:4]
+    assert p2 == sorted(ids, reverse=True)[4:8]
+    # Дно backlog'а: остаток 2 (всё остальное уже с деталями — wrap не даёт
+    # докачать их повторно).
+    assert p3 == sorted(ids, reverse=True)[8:]
+    # Ни один лот не пропущен и не докачан дважды.
+    assert sorted(p1 + p2 + p3) == ids
+    with get_conn(db) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM listings WHERE title IS NULL AND is_active = 1"
+        ).fetchone()[0] == 0
+        cursor = conn.execute(
+            "SELECT last_id FROM shard_cursors WHERE shard = 'Алатауский 2к'"
+        ).fetchone()[0]
+        assert cursor == ids[0]  # последняя водяная отметка — хвостовой id
+        # ...а план/факт каждого прохода лёг в историю
+        runs = conn.execute(
+            "SELECT COUNT(*) FROM sweep_shard_stats WHERE shard = 'Алатауский 2к'"
+        ).fetchone()[0]
+        assert runs == 3
+
+
+def test_cursor_wraps_to_head_when_bottom_reached(tmp_path, monkeypatch):
+    """Круговой курсор: дойдя до дна backlog'а, окно заворачивается на голову
+    выдачи — свежие лоты, пришедшие за время обхода, не ждут вечно."""
+    db = tmp_path / "test.db"
+    init_db(db)
+    # Старый backlog: 2 лота, курсор уже ниже их (прошлые окна прошли мимо).
+    old_ids = [100, 101]
+    fresh_ids = [5001, 5002, 5003]  # пришли в выдачу уже после установки курсора
+    with get_conn(db) as conn:
+        for lid in old_ids + fresh_ids:
+            conn.execute(
+                "INSERT INTO listings (id, url, is_active, first_seen) "
+                "VALUES (?, 'u', 1, datetime('now'))", (lid,)
+            )
+        conn.execute(
+            "INSERT INTO shard_cursors (shard, last_id) VALUES ('Алатауский 2к', 2000)"
+        )
+    record_listing_shards([(lid, "Алатауский 2к") for lid in old_ids + fresh_ids], db)
+    with get_conn(db) as conn:
+        window, wrapped = shard_backlog_window(conn, "Алатауский 2к", cursor_id=2000, limit=5)
+    assert sorted(window, reverse=True) == sorted(fresh_ids + old_ids, reverse=True)
+    assert wrapped, "после исчерпания лотов ниже отметки окно обязано завернуться на голову"
+
+
+# ---------- обрыв прохода без систематического перекоса ----------
+
+
+def test_interruption_hits_different_shards_on_consecutive_passes(tmp_path, monkeypatch):
+    """Приёмочный критерий: обрыв прохода в разных точках не даёт
+    систематического перекоса — порядок обхода ротируется между запусками,
+    поэтому ампутированный хвост гуляет по шардам, а не обрезает один и тот
+    же район каждый день."""
+    db = tmp_path / "test.db"
+    # Четыре покрытых шарда подряд в каноническом порядке (индексы 0–3):
+    # ротация +1 за проход делает первым в обходе каждый раз следующий шард.
+    stock = {
+        "Алатауский 1к": list(range(1000, 1025)),
+        "Алатауский 2к": list(range(2000, 2025)),
+        "Алатауский 3к": list(range(3000, 3025)),
+        "Алатауский 4к+": list(range(4000, 4025)),
+    }
+    pages = _pages_by_shard(stock)
+    clock = [0.0]
+    monkeypatch.setattr(rescrape, "_now", lambda: clock[0])
+
+    class ClockClient(FakeClient):
+        def get(self, url):
+            # Выдача быстрая (6 сек/стр), детали дорогие (2 мин/шт) — бюджет
+            # кончается на докачке после первого же шарда.
+            clock[0] += 120.0 if "/a/show/" in url else 6.0
+            return super().get(url)
+
+    fetched_by_pass: list[set[int]] = []
+    for _ in range(4):
+        client = ClockClient(pages)
+        monkeypatch.setattr(rescrape, "PoliteClient", lambda c=client: c)
+        monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
+        stats = sweep(max_pages=1, max_new_details=8, db_path=db, time_budget_min=6)
+        assert stats["time_budget_hit"] is True
+        with get_conn(db) as conn:
+            fetched_by_pass.append(
+                {
+                    r[0]
+                    for r in conn.execute(
+                        "SELECT s.shard FROM listings l "
+                        "JOIN listing_shards s ON s.listing_id = l.id "
+                        "WHERE l.title IS NOT NULL"
+                    ).fetchall()
+                }
+            )
+
+    # Каждый проход успел докачать только первый шард своей ротации — и это
+    # КАЖДЫЙ РАЗ ДРУГОЙ шард: за 4 оборванных прохода все 4 шарда получили
+    # свою квоту, систематического «дня одного района» нет.
+    cumulative: set[int] = set()
+    daily: list[set[int]] = []
+    for pass_set in fetched_by_pass:
+        daily.append(pass_set - cumulative)
+        cumulative |= pass_set
+    assert all(len(d) == 1 for d in daily), daily
+    assert cumulative == set(stock), cumulative
+
+
+def test_rotation_offset_advances_between_passes(tmp_path, monkeypatch):
+    """Смещение ротации монотонно +1 за проход и переживает перезапуск —
+    даже если проходы идут в одну секунду (started_at вторичен)."""
+    db = tmp_path / "test.db"
+    client = FakeClient({})
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
+    offsets = []
+    for _ in range(3):
+        with get_conn(db) as conn:
+            offsets.append(sweep_rotation_offset(conn, "prodazha"))
+        sweep(max_pages=1, max_new_details=0, db_path=db)
+    assert offsets == [0, 1, 2]
