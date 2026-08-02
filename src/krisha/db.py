@@ -150,7 +150,15 @@ CREATE TABLE IF NOT EXISTS sweep_runs (
     found_in_search    INTEGER,
     discovered_new     INTEGER,
     details_fetched    INTEGER,
-    max_new_details    INTEGER,   -- потолок, в который упиралась докачка
+    -- issue #152 (ревью #170): потолок разделён на заявленный (пресет
+    -- режима или явный оверрайд — то, чем сбор ограничен ЗАМЫСЛОМ) и
+    -- эффективный (после подрезки реальной очередью и бюджетом). Детектор
+    -- «упёрлись в лимит» сравнивает докачку с эффективным И требует
+    -- непустой очереди после прохода; иначе здоровое «очередь разобрана
+    -- в ноль» рапортовалось бы как «упёрлись» (очередь < потолка сжимает
+    -- эффективный до очереди, и равенство выполнялось бы тождественно).
+    max_new_details    INTEGER,   -- заявленный потолок режима/оверрайда
+    max_new_effective  INTEGER,   -- потолок после подрезки очередью/бюджетом
     detail_queue_after INTEGER,
     price_changes      INTEGER,
     delisted           INTEGER,   -- NULL = детект пропущен
@@ -415,6 +423,9 @@ _MIGRATION_SWEEP_RUN_COLUMNS = {
     "delay_lo": "REAL",
     "delay_hi": "REAL",
     "mode": "TEXT",
+    # issue #152 (ревью #170): эффективный потолок отдельно от заявленного —
+    # детектору «упёрлись в лимит» нужны оба (см. SCHEMA).
+    "max_new_effective": "INTEGER",
 }
 _MIGRATION_SWEEP_SHARD_COLUMNS = {
     "pass_cap": "INTEGER",
@@ -959,8 +970,8 @@ def known_ids(db_path: Path | str = DB_PATH) -> set[int]:
 
 _SWEEP_RUN_COLUMNS = (
     "started_at", "deal", "found_in_search", "discovered_new", "details_fetched",
-    "max_new_details", "detail_queue_after", "price_changes", "delisted",
-    "failed_shards", "recovery_pass", "suspicious",
+    "max_new_details", "max_new_effective", "detail_queue_after", "price_changes",
+    "delisted", "failed_shards", "recovery_pass", "suspicious",
     # issue #152: тайминги фаз, фактические паузы и режим — для оценщика
     # плана прохода (pass_plan.estimate_timings) и гистерезиса режима.
     "search_pages", "search_seconds", "detail_requests", "detail_seconds",

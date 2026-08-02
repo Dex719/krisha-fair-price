@@ -171,6 +171,22 @@ def test_fit_trims_by_politeness_ceiling():
     assert fit.budget_requests == politeness_total - 2100
 
 
+def test_fit_t_detail_floored_at_max_mean_rps():
+    """Ревью #170: цена запроса зажата снизу 1/MAX_MEAN_RPS. Без пола
+    оптимистичная оценка навершия (0.8 с при задавленных оверрайдом паузах)
+    давала бы план ~23k запросов за проход — темп ~1.2 rps при формально
+    соблюдённом счётчике 10 000: «0.5 rps» держалось на пресетах, а не на
+    коде. С полом быстрее одного запроса за 2 с планировать нельзя."""
+    fit = fit_detail_caps(
+        20_000, 0,
+        requests_so_far=32, elapsed_s=1.0, budget_s=19_200.0, t_detail=0.8,
+    )
+    assert fit.trimmed is True and fit.reason == "time"
+    # (19200 − 1 − 300 резерв) // 2 = 9449, а не // 0.8 = 23 623
+    assert fit.budget_requests == (19_200 - 1 - 300) // 2
+    assert fit.max_new == fit.budget_requests
+
+
 def test_fit_zero_when_budget_already_eaten():
     fit = fit_detail_caps(
         4500, 800,

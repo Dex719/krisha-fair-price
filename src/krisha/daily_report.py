@@ -76,6 +76,31 @@ UNATTRIBUTED_ALERT_MIN = 100
 UNATTRIBUTED_ALERT_SHARE = 0.05
 
 
+def _hit_cap(r: dict) -> bool:
+    """Проход действительно упёрся в лимит докачки (issue #154, ревью #170).
+
+    Сравнивать надо с ЭФФЕКТИВНЫМ потолком (max_new_effective — после
+    подрезки реальной очередью и бюджетом), а не с заявленным: именно он
+    ограничивал проход. Но и этого мало — при очереди мельче потолка
+    эффективный сжимается до очереди, докачивается вся очередь, и равенство
+    «докачано == потолок» выполняется тождественно: здоровое «очередь
+    разобрана в ноль» рапортовалось бы как «упёрлись» (инверсия детектора,
+    найдена на ревью #170). Поэтому обязательное второе условие — очередь
+    ПОСЛЕ прохода непуста: пустая очередь означает, что ограничением был
+    рынок, а не лимит. Подрезка потолка по времени сообщается отдельно
+    (plan_trimmed) и сюда не должна просачиваться.
+
+    Легаси-строки (до #170) не имеют max_new_effective — там max_new_details
+    и был сырым лимитом CLI, сравнение с ним честно; NULL очереди (совсем
+    старые строки) трактуем как «неизвестно» и детектор не гасим.
+    """
+    cap = r["max_new_effective"] or r["max_new_details"]
+    if not cap or r["details_fetched"] is None or r["details_fetched"] < cap:
+        return False
+    queue_after = r["detail_queue_after"]
+    return queue_after is None or queue_after > 0
+
+
 def _invariants(stats: dict | None, db_path: Path, scope: str) -> list[tuple[bool, str]]:
     """Проверки «конвейер жив». [(ок, текст), ...] — порядок фиксирован.
 
@@ -158,14 +183,12 @@ def _invariants(stats: dict | None, db_path: Path, scope: str) -> list[tuple[boo
         else:
             checks.append((True, f"очередь деталей: {queues[0]}"))
 
-    capped = [
-        r for r in runs[:CAP_HIT_STREAK]
-        if r["max_new_details"] and r["details_fetched"] == r["max_new_details"]
-    ]
+    capped = [r for r in runs[:CAP_HIT_STREAK] if _hit_cap(r)]
     if len(capped) >= CAP_HIT_STREAK:
+        cap = capped[0]["max_new_effective"] or capped[0]["max_new_details"]
         checks.append((
             False,
-            f"докачка упирается в потолок {capped[0]['max_new_details']} "
+            f"докачка упирается в потолок {cap} "
             f"{len(capped)} прохода подряд — сбор ограничен лимитом, не рынком",
         ))
 
@@ -272,7 +295,9 @@ def build_daily_report(scope: str = "sale", summary_path: Path | str | None = No
             lines.append(
                 f"Режим: <b>{stats['mode']}</b> ({stats.get('mode_reason', '?')}); "
                 f"паузы {delay[0]}–{delay[1]} с; потолок новых "
-                f"{stats.get('max_new_details', '?')}"
+                # эффективный (после подрезки очередью/бюджетом), fallback —
+                # заявленный для старых summary без нового поля
+                f"{stats.get('max_new_effective') or stats.get('max_new_details', '?')}"
                 + (
                     f", урезан заранее с {stats['plan_trimmed']['wanted_new']}"
                     f"+{stats['plan_trimmed']['wanted_refresh']} "

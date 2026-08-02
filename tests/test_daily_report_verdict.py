@@ -17,7 +17,9 @@ HEALTHY = {
 }
 
 
-def _run(db, started_at, *, queue, fetched=1000, cap=1000):
+def _run(db, started_at, *, queue, fetched=1000, cap=1000, eff=None):
+    """Строка истории прохода. eff=None имитирует легаси-строку (до #170):
+    тогда max_new_details и был сырым лимитом CLI."""
     record_sweep_run(
         {
             "started_at": started_at,
@@ -26,6 +28,7 @@ def _run(db, started_at, *, queue, fetched=1000, cap=1000):
             "discovered_new": 900,
             "details_fetched": fetched,
             "max_new_details": cap,
+            "max_new_effective": eff,
             "detail_queue_after": queue,
             "price_changes": 300,
             "delisted": 400,
@@ -108,6 +111,41 @@ def test_shrinking_queue_is_not_flagged(tmp_path):
     lines = _verdict_lines(HEALTHY, db, "sale")
 
     assert len(lines) == 1 and "ОК" in lines[0]
+
+
+def test_drained_queue_with_effective_cap_is_not_flagged(tmp_path):
+    """Регрессия ревью #170 (блокер): пост-#152 строки — заявленный потолок
+    1500 (пресет steady), эффективный 200 (= вся очередь), очередь разобрана
+    в ноль — три прохода подряд НЕ «упёрлись в потолок»: ограничением был
+    рынок, не лимит. До разделения потолков эффективный публиковался как
+    max_new_details, равенство «докачано == потолок» было тождеством, и
+    детектор краснел навсегда ровно в момент успеха разгребания."""
+    db = tmp_path / "t.db"
+    init_db(db)
+    for day in (21, 22, 23):
+        _run(db, f"2026-07-{day} 04:00:00", queue=0, fetched=200, cap=1500, eff=200)
+
+    lines = _verdict_lines(HEALTHY, db, "sale")
+
+    assert len(lines) == 1 and "ОК" in lines[0]
+
+
+def test_effective_cap_hit_with_nonempty_queue_is_flagged(tmp_path):
+    """Обратная сторона разделения: эффективный потолок выбран полностью И
+    очередь после прохода непуста — это и есть «сбор ограничен лимитом»
+    (подрезка по времени при этом сообщается отдельно, через plan_trimmed).
+    В сообщении — эффективный потолок, а не заявленный: именно он связал
+    проход."""
+    db = tmp_path / "t.db"
+    init_db(db)
+    for day in (21, 22, 23):
+        _run(db, f"2026-07-{day} 04:00:00", queue=800, fetched=200, cap=1500, eff=200)
+
+    lines = _verdict_lines(HEALTHY, db, "sale")
+
+    body = "\n".join(lines)
+    assert "ПРОБЛЕМА" in lines[0]
+    assert "упирается в потолок 200" in body
 
 
 def test_missing_summary_is_a_problem_not_silence(tmp_path):

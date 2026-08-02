@@ -148,8 +148,10 @@ def test_mode_steady_selected_by_small_backlog(tmp_path, monkeypatch):
 
     assert stats["mode"] == "steady"
     assert stats["delay_range"] == list(STEADY_MODE.delay_range)
-    # backlog мелкий — эффективный потолок ограничен реальной очередью
-    assert stats["max_new_details"] == 11  # 10 старых + 1 свежий сайтинг
+    # заявленный потолок — пресет steady (им сбор и ограничен замыслом);
+    # эффективный ограничен реальной очередью: 10 старых + 1 свежий сайтинг
+    assert stats["max_new_details"] == STEADY_MODE.max_new
+    assert stats["max_new_effective"] == 11
     assert stats["refresh_stale_days"] == STEADY_MODE.refresh_stale_days
 
 
@@ -410,7 +412,8 @@ def test_plan_trims_cap_in_advance_using_history_timings(tmp_path, monkeypatch):
 
     assert stats2["plan_trimmed"] is not None
     assert stats2["plan_trimmed"]["reason"] == "time"
-    assert stats2["max_new_details"] == 2  # (360 − ~0 − 36 резерв) // 120
+    assert stats2["max_new_details"] == 8  # заявленный оверрайд не трогаем
+    assert stats2["max_new_effective"] == 2  # (360 − ~0 − 36 резерв) // 120
     assert stats2["details_fetched"] == 2
     assert stats2["time_budget_hit"] is False  # дедлайна не коснулись вовсе
     # тайминги обоих проходов записаны — оценка следующего прохода честнее
@@ -431,7 +434,12 @@ def test_plan_trims_cap_in_advance_using_history_timings(tmp_path, monkeypatch):
 def test_politeness_ceiling_trims_huge_explicit_cap(tmp_path, monkeypatch):
     """Потолок вежливости — константа в коде: проход, который по плану
     пробивает min(10k/сутки, 0.5 rps × бюджет), режется до входа в фазу
-    докачки, даже если потолок задан явно руками."""
+    докачки, даже если потолок задан явно руками.
+
+    Бюджет 600 мин, а не дефолтные 320: после rps-пола в fit_detail_caps
+    (ревью #170, t_detail ≥ 1/MAX_MEAN_RPS) при 320 мин binding — время
+    (тот же 0.5 rps, но через пол цены запроса); здесь проверяем именно
+    счётчик 10 000 — на широком бюджете он binding первым."""
     db = tmp_path / "test.db"
     init_db(db)
     _seed_backlog(db, 20_000, shard="Алатауский 2к")
@@ -447,14 +455,95 @@ def test_politeness_ceiling_trims_huge_explicit_cap(tmp_path, monkeypatch):
     monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(rescrape, "parse_detail", lambda html, url: None)
 
-    stats = sweep(max_pages=1, max_new_details=20_000, db_path=db)
+    stats = sweep(max_pages=1, max_new_details=20_000, time_budget_min=600, db_path=db)
 
-    # min(10000, 0.5 × 19200) − 32 страницы выдачи = 9568
+    # min(10000, 0.5 × 36000) − 32 страницы выдачи = 9968
     assert stats["plan_trimmed"]["reason"] == "politeness"
-    assert stats["max_new_details"] == 9_568
+    assert stats["max_new_details"] == 20_000  # заявленный оверрайд не режем
+    assert stats["max_new_effective"] == 9_968
     detail_requests = [u for u in client.requested if "/a/show/" in u]
-    assert len(detail_requests) == 9_568  # потолок исполнен точно, без дедлайна
+    assert len(detail_requests) == 9_968  # потолок исполнен точно, без дедлайна
     assert stats["time_budget_hit"] is False
+
+
+# ---------- детектор «упёрлись в лимит» не инвертируется (ревью #170) ----------
+
+
+def _seed_known_detailed(db, ids: list[int]) -> None:
+    """Лоты с полными деталями (не backlog, не в refresh-очереди) — «фон»
+    выдачи, чтобы found_in_search > 0 без притока новых."""
+    with get_conn(db) as conn:
+        conn.executemany(
+            "INSERT INTO listings (id, url, is_active, title, rooms, area, "
+            "first_seen, scraped_at) VALUES (?, ?, 1, 't', 2, 50.0, "
+            "datetime('now'), datetime('now'))",
+            [(i, f"https://krisha.kz/a/show/{i}") for i in ids],
+        )
+
+
+def test_drained_queue_three_passes_verdict_stays_green(tmp_path, monkeypatch):
+    """Регрессия ревью #170 (блокер): steady-проход с очередью 200 при
+    пресете 1500 разбирает её полностью — и три прохода подряд НЕ красят
+    утренний отчёт строкой «докачка упирается в потолок».
+
+    До разделения потолков эффективный (сжатый очередью до 200) публиковался
+    как max_new_details, равенство «докачано == потолок» выполнялось
+    тождественно, и детектор #154 инвертировался ровно в момент успеха
+    разгребания. Теперь триггер — fetched >= max_new_effective И
+    detail_queue_after > 0: пустая очередь означает, что ограничением был
+    рынок, а не лимит.
+    """
+    from krisha.daily_report import _verdict_lines
+
+    db = tmp_path / "test.db"
+    init_db(db)
+    _seed_backlog(db, 200, shard="Алатауский 2к")  # id 900_000..900_199
+    # «Фон» выдачи: по знакомому лоту на шард — выдача непуста на всех
+    # проходах, притока новых из неё нет.
+    url_by_label = dict(shard_urls())
+    known_ids = list(range(700_000, 700_000 + len(url_by_label)))
+    _seed_known_detailed(db, known_ids)
+    base_pages = {
+        url_by_label[label]: _card(lid)
+        for label, lid in zip(url_by_label, known_ids)
+    }
+    # Лоты backlog'а обязаны быть в выдаче: parse-rate guard (#161) сравнивает
+    # число карточек выдачи с активными в БД и метит проход подозрительным,
+    # если выдача < 50% — без них 33 карточки против 233 активных «просаживали»
+    # бы каждый проход и вердикт был бы красным не по теме теста.
+    backlog_cards = "".join(_card(900_000 + i) for i in range(200))
+    client = FakeClient(dict(base_pages))
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
+    monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
+
+    last = None
+    for pass_no in range(3):
+        # По одному свежему id на проход: discovered_new > 0 (инвариант
+        # «новых лотов найдено» не краснеет), очередь всё равно уходит в 0.
+        fresh_id = 800_000 + pass_no
+        client.pages = {
+            **base_pages,
+            url_by_label["Алатауский 2к"]: base_pages[
+                url_by_label["Алатауский 2к"]
+            ] + backlog_cards + _card(fresh_id),
+        }
+        last = sweep(max_pages=1, db_path=db)  # БЕЗ флагов — пресет steady
+        assert last["mode"] == "steady"
+        assert last["detail_queue_after"] == 0, (pass_no, last["detail_queue_after"])
+        # started_at — PK с секундной точностью: разносим строки истории
+        # по «дням», иначе INSERT OR REPLACE схлопнет их в одну.
+        with get_conn(db) as conn:
+            conn.execute(
+                "UPDATE sweep_runs SET started_at = datetime(started_at, '-1 day')"
+            )
+
+    assert last["details_fetched"] == 1  # только свежий сайтинг прохода
+    assert last["max_new_details"] == STEADY_MODE.max_new  # заявленный
+    assert last["max_new_effective"] == 1  # эффективный = вся очередь
+
+    lines = _verdict_lines(last, db, "sale")
+
+    assert len(lines) == 1 and "ОК" in lines[0], "\n".join(lines)
 
 
 # ---------- диагностика без докачки: starved не поднимается (хвост #169) ----------
