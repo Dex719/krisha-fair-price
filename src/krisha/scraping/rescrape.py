@@ -45,9 +45,9 @@ from krisha.db import (
     shard_backlog_count,
     shard_backlog_window,
     shard_cursors,
-    sweep_pass_seq,
     unattributed_backlog_count,
     upsert_listing,
+    zero_quota_streak,
 )
 from krisha.monitoring import ADMIN_CHAT_ENV
 from krisha.scraping.client import BanDetected, PoliteClient
@@ -141,6 +141,16 @@ RECOVERY_GAP_DAYS = 2.5
 # вся волна получает first_seen сразу, и растягивать пометку значит
 # записывать в когорту честную органику следующих дней.
 GAP_COHORT_GRACE_DAYS = 3
+
+# issue #168: сколько проходов подряд шард может иметь непустой backlog при
+# нулевой квоте, прежде чем это станет событием, а не тишиной. Один-два
+# прохода — обычное колебание largest remainder (мелкий шард то получает
+# +1 по дробной части, то нет); три подряд — шаблон: шард хронически
+# усечён (сток NULL → строки в last_known_shard_stock нет → квота 0) и
+# backlog растёт незаметно для TVD порции (шарда нет ни в факте, ни в
+# стоке). Флаг уезжает в итоги прохода (stats["starved_shards"]) и дальше
+# по готовому пути: summary-json → вердикт утреннего отчёта админу.
+STARVED_SHARD_STREAK = 3
 
 
 def _now() -> float:
@@ -313,6 +323,13 @@ def sweep(
     шардов ротируется от прохода к проходу, план/факт по шардам пишется в
     sweep_shard_stats. Число запросов за проход не меняется: те же страницы
     выдачи + тот же потолок докачки, меняется только ПОРЯДОК.
+
+    issue #168: номер прохода инкрементируется в начале (отдельной
+    транзакцией), чтобы жёстко убитый раннер не залипал на одном смещении
+    ротации; шард с непустым backlog'ом и нулевой квотой STARVED_SHARD_STREAK
+    проходов подряд поднимается как событие (stats["starved_shards"]) —
+    оба хвоста того же класса, что и #166: сбор молча останавливается, и
+    узнаём мы об этом через две недели из model_meta.
     """
     init_db(db_path)
     # Контракт на цену зависит от типа сделки: продажа — ₸ за квартиру,
@@ -388,8 +405,17 @@ def sweep(
         # проходов — та же спутанность дня с составом с длинным периодом
         # (ревью). Иначе обрыв прохода (бюджет, бан) ампутирует один и тот же
         # хвост алфавита, и «день» снова становится «районом».
+        #
+        # issue #168: номер ИНКРЕМЕНТИРУЕТСЯ здесь, до фазы выдачи, отдельной
+        # транзакцией — а не в конце прохода в транзакции итогов. Мягкий
+        # дедлайн (--time-budget-min) проход завершал, и счётчик ехал; но
+        # timeout-minutes раннера рубит job вместе с транзакцией итогов —
+        # номер оставался прежним, следующий запуск повторял то же смещение
+        # и обрезал тот же хвост шардов (залипание ротации). Цена раннего
+        # инкремента — пропуск номера при падении на старте; номера не
+        # обязаны быть плотными, от них нужна только монотонность.
         with get_conn(db_path) as conn:
-            pass_seq = sweep_pass_seq(conn, deal)
+            pass_seq = advance_sweep_pass_seq(conn, deal)
         rotation = rotation_offset(pass_seq, len(shards))
         ordered_shards = rotated(shards, rotation)
         if ordered_shards[0] != shards[0]:
@@ -500,6 +526,17 @@ def sweep(
             for label, _ in shards
         }
         quotas = largest_remainder_quotas(stock, max_new_details)
+        # issue #168: осознанный ОТКАЗ от «пола» (минимальной квоты шарду с
+        # непустым backlog'ом и нулевой долей). largest_remainder_quotas
+        # трогать нельзя (проверена перебором в #167), а любой пол снаружи
+        # неё либо добавляет запросы сверх дневного потолка — ломая инвариант
+        # «число запросов за проход не изменилось», — либо отбирает квоту у
+        # замеренных шардов: перекос порции, невидимый для batch-TVD (у
+        # незамеренного шарда нет строки стока, с которой сверяется TVD, —
+        # его докачка ухудшала бы состав незаметно). Реальное лечение
+        # замороженного шарда — покрытие (разгон глубины выдачи живёт в
+        # #152), а не арифметика квот; молчание при этом недопустимо —
+        # поэтому ниже событие starved_shards.
         plan: list[dict] = []
         for label, _ in ordered_shards:
             quota = quotas.get(label, 0)
@@ -522,6 +559,34 @@ def sweep(
             max_new_details,
             ", ".join(f"{p['shard']}={p['quota']}" for p in plan if p["quota"]),
         )
+        # issue #168: шард с непустым backlog'ом и нулевой квотой N проходов
+        # подряд — событие, а не тишина. Типовой сценарий — хронически
+        # усечённый шард (выдача глубже max_pages → гард #152: stock NULL →
+        # нет строки в last_known_shard_stock → квота 0 на каждом проходе):
+        # backlog растёт, а TVD порции его не видит (шарда нет ни в факте,
+        # ни в стоке), unattributed_backlog_count молчит (атрибуция есть).
+        # Серия считается по записанным проходам (sweep_shard_stats) плюс
+        # текущий план; флаг уезжает в stats["starved_shards"] → summary-json
+        # → вердикт утреннего отчёта админу — путь до алерта уже существует.
+        starved_shards: list[str] = []
+        with get_conn(db_path) as conn:
+            for p in plan:
+                if p["quota"] or not p["backlog_before"]:
+                    continue
+                streak = 1 + zero_quota_streak(
+                    conn, p["shard"], pass_seq, STARVED_SHARD_STREAK - 1
+                )
+                if streak >= STARVED_SHARD_STREAK:
+                    starved_shards.append(p["shard"])
+        if starved_shards:
+            logger.error(
+                "Шарды с непустым backlog'ом и нулевой квотой %s прохода подряд: "
+                "%s — порция их молча обходит, backlog растёт незаметно для TVD. "
+                "Квотой это не лечится (см. комментарий выше) — нужно покрытие "
+                "этих шардов выдачей (разгон глубины живёт в #152)",
+                STARVED_SHARD_STREAK,
+                ", ".join(starved_shards),
+            )
         new_count = 0
         stop_details = banned  # бан на выдаче — детали не качаем вовсе
         for p in plan:
@@ -782,9 +847,10 @@ def sweep(
         for shard, cursor_id in cursor_updates.items():
             advance_shard_cursor(shard, cursor_id, db_path, conn=conn)
         record_sweep_shard_stats(shard_stat_rows, db_path, conn=conn)
-        # Номер прохода (он же — источник ротации порядка обхода и run_seq
-        # в stats) — тоже здесь: убитый на середине раннер счётчик не двигает.
-        advance_sweep_pass_seq(conn, deal)
+        # Номер прохода (источник ротации и run_seq в stats) здесь НЕ
+        # двигается: с issue #168 он инкрементируется в начале прохода,
+        # отдельной транзакцией — иначе жёстко убитый раннер залипал бы на
+        # том же смещении ротации (см. advance_sweep_pass_seq).
 
     # Тихая деградация (сервер отвечает, шарды формально покрыты, но
     # объявлений в разы меньше обычного) не ловится через failed_shards —
@@ -920,6 +986,11 @@ def sweep(
         "detail_plan": {p["shard"]: p["quota"] for p in plan if p["quota"]},
         "batch_tvd_district": batch_tvd_district,
         "batch_tvd_shard": batch_tvd_shard,
+        # issue #168: шарды, замороженные для очереди докачки — непустой
+        # backlog при нулевой квоте STARVED_SHARD_STREAK проходов подряд.
+        # Пустой список — штатное состояние. Непустой уезжает в summary-json
+        # и дальше в вердикт утреннего отчёта админу (daily_report).
+        "starved_shards": starved_shards,
     }
 
     # issue #154: история проходов едет в базе, а не в файле — раннер каждый

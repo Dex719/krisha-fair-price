@@ -120,3 +120,22 @@ def test_missing_summary_is_a_problem_not_silence(tmp_path):
 
     assert "ПРОБЛЕМА" in lines[0]
     assert "счётчики прохода не найдены" in "\n".join(lines)
+
+
+def test_starved_shards_are_caught(tmp_path):
+    """issue #168: шард с непустым backlog'ом и нулевой квотой серией проходов
+    — сбор по куску города молча остановился; до флага такое всплывало через
+    две недели из model_meta. Здоровый проход флага не несёт."""
+    db = tmp_path / "t.db"
+    init_db(db)
+    _run(db, "2026-08-03 04:00:00", queue=500, fetched=300)
+
+    ok = _verdict_lines(HEALTHY, db, "sale")
+    assert len(ok) == 1 and "ОК" in ok[0]
+
+    lines = _verdict_lines(
+        {**HEALTHY, "starved_shards": ["Алатауский 2к", "Медеуский 1к"]}, db, "sale"
+    )
+
+    assert "ПРОБЛЕМА" in lines[0]
+    assert any("нулевой квотой" in line and "2" in line for line in lines)

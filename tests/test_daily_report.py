@@ -59,6 +59,18 @@ def test_failed_shards_flagged(monkeypatch, tmp_path):
     assert "Модель" not in text  # для аренды блок модели не показываем
 
 
+def test_starved_shards_flagged(monkeypatch, tmp_path):
+    """issue #168: замороженные для докачки шарды видны в отчёте поимённо —
+    «шард без квоты» без района неотличим от шума."""
+    monkeypatch.setitem(daily_report._SCOPES, "sale", ("🌅 Утренний отчёт: продажа", tmp_path / "no.db", tmp_path / "none.json"))
+    summary = _summary(tmp_path / "stats.json", starved_shards=["Алатауский 2к"])
+
+    text = build_daily_report("sale", summary)
+
+    assert "нулевой квотой" in text
+    assert "Алатауский 2к" in text
+
+
 def test_suspicious_parse_rate_flagged(monkeypatch, tmp_path):
     """issue #97: проход помечен suspicious → в отчёте видно алерт с медианой."""
     monkeypatch.setitem(

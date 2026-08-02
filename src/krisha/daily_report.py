@@ -97,6 +97,15 @@ def _invariants(stats: dict | None, db_path: Path, scope: str) -> list[tuple[boo
 
     if stats.get("failed_shards"):
         checks.append((False, f"шардов не покрыто: {len(stats['failed_shards'])}"))
+    if stats.get("starved_shards"):
+        # issue #168: заморозка шарда для очереди докачки — тот же класс
+        # дефекта, что и #166: данные тихо перестают собираться. Порог серии
+        # живёт в rescrape.STARVED_SHARD_STREAK, сюда приходит уже факт.
+        checks.append((
+            False,
+            f"шардов с backlog'ом и нулевой квотой серией проходов: "
+            f"{len(stats['starved_shards'])}",
+        ))
     if stats.get("banned"):
         checks.append((False, f"бан на фазе «{stats.get('banned_phase') or '?'}»"))
     if stats.get("time_budget_hit"):
@@ -241,6 +250,14 @@ def build_daily_report(scope: str = "sale", summary_path: Path | str | None = No
             )
         if stats.get("failed_shards"):
             lines.append("⚠️ Сбойные шарды: " + ", ".join(stats["failed_shards"]))
+        if stats.get("starved_shards"):
+            # issue #168: имена важны — «шард без квоты» без указания района
+            # неотличим от шума, а так видно, какой угол города заморожен.
+            lines.append(
+                "🥶 Шарды с backlog'ом и нулевой квотой серией проходов "
+                "(заморожены для докачки, квотой не лечится — нужно покрытие): "
+                + ", ".join(stats["starved_shards"])
+            )
         if stats.get("delist_blocked"):
             share = stats.get("delist_share")
             share_txt = f"{share * 100:.0f}%" if isinstance(share, (int, float)) else "?"

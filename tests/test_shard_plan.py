@@ -12,6 +12,7 @@
 - суммарное число запросов за проход не выросло.
 """
 
+import logging
 import math
 
 import pytest
@@ -26,7 +27,7 @@ from krisha.db import (
 )
 from krisha.scraping import rescrape
 from krisha.scraping.client import BanDetected
-from krisha.scraping.rescrape import shard_urls, sweep
+from krisha.scraping.rescrape import STARVED_SHARD_STREAK, shard_urls, sweep
 from krisha.scraping.shard_plan import (
     largest_remainder_quotas,
     rotated,
@@ -383,6 +384,57 @@ def test_cursor_wraps_to_head_when_bottom_reached(tmp_path, monkeypatch):
     assert wrapped, "после исчерпания лотов ниже отметки окно обязано завернуться на голову"
 
 
+# ---------- замороженный шард: событие, а не тишина (issue #168) ----------
+
+
+def test_starved_shard_raises_flag_after_streak(tmp_path, monkeypatch, caplog):
+    """Приёмочный критерий issue #168: шард с непустым backlog'ом и нулевой
+    квотой STARVED_SHARD_STREAK проходов подряд поднимает флаг в итогах
+    прохода (stats["starved_shards"]) и logger.error. Сценарий прода: шард
+    хронически не покрыт (выдача глубже max_pages → сток NULL → без строки в
+    last_known_shard_stock → квота 0 на каждом проходе), атрибуция при этом
+    есть — unattributed_backlog_count молчит и TVD порции шард не видит."""
+    db = tmp_path / "test.db"
+    init_db(db)
+    # Backlog с атрибуцией: два лота видены в шарде «Алатауский 2к» и ждут
+    # докачки деталей (title IS NULL).
+    with get_conn(db) as conn:
+        for lid in (1001, 1002):
+            conn.execute(
+                "INSERT INTO listings (id, url, is_active, first_seen) "
+                "VALUES (?, 'u', 1, datetime('now'))",
+                (lid,),
+            )
+    record_listing_shards([(1001, "Алатауский 2к"), (1002, "Алатауский 2к")], db)
+
+    # Выдача пуста: ни один шард не покрыт, сток нигде не замерен → все
+    # квоты 0, но backlog есть только у «Алатауский 2к».
+    client = FakeClient({})
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
+
+    # Порог серии — константа из rescrape: первые проходы серии ещё не флаг.
+    for pass_no in range(1, STARVED_SHARD_STREAK):
+        stats = sweep(max_pages=1, max_new_details=5, db_path=db)
+        assert stats["starved_shards"] == [], (pass_no, stats["starved_shards"])
+
+    with caplog.at_level(logging.ERROR, logger="krisha.scraping.rescrape"):
+        stats = sweep(max_pages=1, max_new_details=5, db_path=db)
+    assert stats["starved_shards"] == ["Алатауский 2к"]
+    assert any(
+        "Алатауский 2к" in r.getMessage() and "нулевой квотой" in r.getMessage()
+        for r in caplog.records
+    ), "ожидался logger.error про замороженный шард"
+
+    # Шард покрылся (сток замерен → квота появилась) — флаг сбрасывается,
+    # серия не липнет.
+    client = FakeClient(_pages_by_shard({"Алатауский 2к": [1001, 1002]}))
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    stats = sweep(max_pages=1, max_new_details=5, db_path=db)
+    assert stats["starved_shards"] == []
+    assert stats["details_fetched"] == 2  # и backlog наконец дренируется
+
+
 # ---------- обрыв прохода без систематического перекоса ----------
 
 
@@ -392,11 +444,12 @@ def test_interruption_hits_different_shards_on_consecutive_passes(tmp_path, monk
     поэтому ампутированный хвост гуляет по шардам, а не обрезает один и тот
     же район каждый день."""
     db = tmp_path / "test.db"
-    # Четыре шарда, которые ротация ставит первыми в проходах 0–3: смещение
-    # считается шагом, взаимно простым с 32 (ревью #166), поэтому это НЕ
-    # соседи по алфавиту — и это суть проверки.
+    # Четыре шарда, которые ротация ставит первыми в первых четырёх проходах:
+    # номер инкрементируется в начале прохода (issue #168), поэтому это
+    # проходы 1–4. Смещение считается шагом, взаимно простым с 32 (ревью
+    # #166), поэтому это НЕ соседи по алфавиту — и это суть проверки.
     all_shards = shard_urls()
-    first_labels = [all_shards[rotation_offset(seq, 32)][0] for seq in range(4)]
+    first_labels = [all_shards[rotation_offset(seq, 32)][0] for seq in range(1, 5)]
     assert len(set(first_labels)) == 4
     stock = {
         label: list(range((i + 1) * 1000, (i + 1) * 1000 + 25))
@@ -449,7 +502,11 @@ def test_rotation_offset_advances_between_passes(tmp_path, monkeypatch):
     """Номер прохода монотонен +1 и переживает перезапуск — даже если проходы
     идут в одну секунду (started_at вторичен). Смещение ротации считается из
     номера шагом, взаимно простым с 32 (ревью #166): +1 давал бы кластерные
-    серии непокрытия."""
+    серии непокрытия.
+
+    issue #168: номер инкрементируется в НАЧАЛЕ прохода, поэтому первый
+    проход работает уже под номером 1, а чтение счётчика до старта прохода
+    даёт номер ПРЕДЫДУЩЕГО завершённого (0 на холодной базе)."""
     db = tmp_path / "test.db"
     client = FakeClient({})
     monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
@@ -459,9 +516,62 @@ def test_rotation_offset_advances_between_passes(tmp_path, monkeypatch):
         with get_conn(db) as conn:
             seqs.append(sweep_pass_seq(conn, "prodazha"))
         sweep(max_pages=1, max_new_details=0, db_path=db)
-    assert seqs == [0, 1, 2]
-    offsets = [rotation_offset(seq, 32) for seq in seqs]
-    assert offsets == [0, rotation_step(32), (2 * rotation_step(32)) % 32]
+    assert seqs == [0, 1, 2]  # счётчик до старта: 0 — холодная база
+    with get_conn(db) as conn:
+        used = [
+            r[0]
+            for r in conn.execute(
+                "SELECT DISTINCT run_seq FROM sweep_shard_stats ORDER BY run_seq"
+            ).fetchall()
+        ]
+    assert used == [1, 2, 3]  # проход работает под УЖЕ инкрементированным номером
+    offsets = [rotation_offset(seq, 32) for seq in used]
+    step = rotation_step(32)
+    assert offsets == [step, (2 * step) % 32, (3 * step) % 32]
+
+
+def test_killed_pass_does_not_freeze_rotation(tmp_path, monkeypatch):
+    """Приёмочный критерий issue #168: проход, убитый до записи итогов
+    (исключение внутри sweep — аналог жёсткого kill раннера по
+    timeout-minutes, который рвёт job вместе с транзакцией итогов), НЕ
+    приводит к повторению смещения ротации на следующем запуске: pass_seq
+    инкрементируется в начале прохода отдельной транзакцией. До правки
+    счётчик жил в транзакции итогов — kill её рвал, следующий запуск
+    повторял то же смещение и ампутировал тот же хвост шардов, а причина
+    обрыва систематическая — значит, и перекос был бы систематическим."""
+    db = tmp_path / "test.db"
+    pages = _pages_by_shard({"Алатауский 2к": list(range(1000, 1010))})
+    monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
+
+    class ExplodingClient(FakeClient):
+        def get(self, url):
+            raise RuntimeError("kill -9 посреди фазы выдачи")
+
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: ExplodingClient(pages))
+    with pytest.raises(RuntimeError, match="kill -9"):
+        sweep(max_pages=1, max_new_details=5, db_path=db)
+    with get_conn(db) as conn:
+        # Убитый проход номер ПОЛУЧИЛ (номера не обязаны быть плотными),
+        # хотя итогов не записал.
+        assert sweep_pass_seq(conn, "prodazha") == 1
+        assert conn.execute("SELECT COUNT(*) FROM sweep_shard_stats").fetchone()[0] == 0
+
+    client = FakeClient(pages)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    sweep(max_pages=1, max_new_details=5, db_path=db)
+
+    with get_conn(db) as conn:
+        assert sweep_pass_seq(conn, "prodazha") == 2
+        run_seqs = {
+            r[0] for r in conn.execute("SELECT run_seq FROM sweep_shard_stats").fetchall()
+        }
+    # Живой проход ушёл под НОВЫМ номером — то есть с другим смещением
+    # ротации, а не с повтором убитого (до правки здесь был бы run_seq = 0).
+    assert run_seqs == {2}
+    # ...и порядок обхода реально другой: первый запрошенный шард выдачи —
+    # не нулевой элемент списка, а смещённый шагом 13.
+    first_search_url = next(u for u in client.requested if "/a/show/" not in u)
+    assert first_search_url == rotated(shard_urls(), rotation_offset(2, 32))[0][1]
 
 
 # ---------- ротация: шаг, взаимно простой с 32 (ревью #166) ----------
@@ -470,17 +580,52 @@ def test_rotation_offset_advances_between_passes(tmp_path, monkeypatch):
 def test_rotation_step_bounds_uncovered_runs():
     """Приёмочный критерий ревью: при покрытии k из 32 максимальная длина
     серии непокрытия одного шарда ограничена. Шаг +1 давал серию 32−k подряд
-    (12 дней при k=20); шаг 13 (gcd(13,32)=1) — одиночные пропуски при окне
-    непокрытия u ≤ 13 и серии ≤ 2 при u ≤ 16. Проверено перебором всех шардов
-    и 320 проходов (10 периодов ротации)."""
+    (12 дней при k=20); шаг 13 (gcd(13,32)=1) разносит непокрытие по всему
+    диапазону покрытий. Перебираются ВСЕ покрытия k от 1 до 31 (issue #168:
+    при жёстких обрывах покрывается меньше половины шардов — и граница
+    обязана держаться и там, где проблема опаснее всего).
+
+    Граница зависит от окна непокрытия u = 32−k и подтверждена тем же
+    перебором, что в тесте (32 шарда × 320 проходов = 10 полных периодов
+    ротации; walk по остаткам имеет период 32, поэтому 320 проходов дают
+    точный супремум по бесконечной последовательности):
+
+    - u ≤ 13 (= шагу): серия ≤ 1 — между двумя пропусками одного шарда
+      смещение проскакивает его дугу целиком;
+    - u ≤ 19 (= n − шаг): серия ≤ 2 — два подряд пропуска «стоят» 26 > 19
+      единиц длины дуги, третий не помещается;
+    - u ≤ 25 (= 2·шаг − 1): серия ≤ 4 — дуга шире двух шагов, обход
+      заворачивается (d−26 ≡ d+6 mod 32) и даёт ещё до двух попаданий;
+    - дальше серия растёт линейно (при k ≤ 6 покрытых позиций слишком мало,
+      чтобы чаще разбивать серию). При k = 1 серия 31 = u: это минимум для
+      ЛЮБОГО шага — каждый шард покрывается ровно раз за 32-проходный период
+      (шаг — биекция по mod 32), лучше не бывает; для k ≥ 2 граница строго
+      меньше u, тогда как шаг +1 дал бы ровно u подряд при любом k.
+    """
     n = 32
     step = rotation_step(n)
     assert step > 1, "шаг 1 сохраняет кластеризацию — регресс"
     assert math.gcd(step, n) == 1, "шаг обязан быть взаимно простым с числом шардов"
+
+    def bound(u: int) -> int:
+        if u <= step:
+            return 1
+        if u <= n - step:
+            return 2
+        if u <= 2 * step - 1:
+            return 4
+        return 5 * (u - (2 * step - 1)) + 1
+
     order = list(range(n))
-    for k in range(n - 16, n):  # покрытие от половины и выше — рабочий режим бюджета
+    for k in range(1, n):  # все покрытия: от «выжил один шард» до «не покрыт один»
         u = n - k
-        bound = 1 if u <= 13 else 2
+        b = bound(u)
+        # шаг +1 дал бы серию ровно u при любом k; шаг 13 строго лучше везде,
+        # кроме двух вырожденных концов: u = 1 (один непокрытый за проход —
+        # серия 1 даётся биекцией сама) и u = 31 (один покрытый — серия 31
+        # есть минимум для любого шага: каждый шард покрыт раз за период)
+        assert b <= u, (k, b)
+        assert b < u or u in (1, n - 1), (k, b)
         for shard in range(n):
             run = worst = 0
             for seq in range(320):
@@ -490,7 +635,7 @@ def test_rotation_step_bounds_uncovered_runs():
                 else:
                     run += 1
                     worst = max(worst, run)
-            assert worst <= bound, (k, shard, worst, bound)
+            assert worst <= b, (k, shard, worst, b)
 
 
 def test_shard_stats_keyed_by_run_seq_not_started_at(tmp_path, monkeypatch):
@@ -512,7 +657,9 @@ def test_shard_stats_keyed_by_run_seq_not_started_at(tmp_path, monkeypatch):
         ).fetchall()
         fallback = last_known_shard_stock(conn)
     rows = [tuple(r) for r in rows]
-    assert rows == [(0, 5), (1, 8)]  # обе строки живы, несмотря на общий started_at
+    # обе строки живы, несмотря на общий started_at; нумерация с 1 — номер
+    # инкрементируется в начале прохода (issue #168)
+    assert rows == [(1, 5), (2, 8)]
     assert fallback["Алатауский 2к"] == 8  # последний замер по run_seq
 
 
@@ -528,15 +675,20 @@ def _insert_detailed(db, lid, district, rooms):
         )
 
 
-def test_init_db_backfills_shards_from_details(tmp_path):
-    """Лоты с деталями получают точную атрибуцию из (district, rooms) разово
-    при init_db: фильтры шардов непересекаются, поэтому шард из деталей —
-    не оценка. Лоты вне 8 районов и без комнат/района пропускаются,
+def test_init_db_backfills_shards_from_details_once(tmp_path):
+    """Лоты с деталями получают точную атрибуцию из (district, rooms) РАЗОВО
+    (issue #168): бэкфилл — миграция под сентинелом sweep_state на первом
+    init_db базы, а не полный проход по listings при каждом старте (старт
+    API включительно). Фильтры шардов непересекаются, поэтому шард из
+    деталей — не оценка. Лоты вне 8 районов и без комнат/района пропускаются,
     sighting-only (title IS NULL) не атрибутируются — их шард знает только
-    выдача. Повторный init_db идемпотентен, свежую атрибуцию выдачи
-    (INSERT OR REPLACE) бэкфилл не перетирает."""
+    выдача. Свежую атрибуцию выдачи (INSERT OR REPLACE) бэкфилл не перетирает.
+    Лоты, появившиеся ПОСЛЕ миграции, init_db больше не атрибутирует (этим и
+    куплен дешёвый старт) — разовый инструмент остаётся доступен напрямую."""
+    from krisha.db import backfill_listing_shards_from_details
+
     db = tmp_path / "test.db"
-    init_db(db)
+    init_db(db)  # свежая база: миграция на пустой listings, сентинел встал
     _insert_detailed(db, 1, "Bostandykskiy_r-n", 2)
     _insert_detailed(db, 2, "Medeuskiy_r-n", 7)   # 4к+ = «4 и 5+»
     _insert_detailed(db, 3, "Saratov_r-n", 2)     # вне Алматы — шарда нет
@@ -548,11 +700,27 @@ def test_init_db_backfills_shards_from_details(tmp_path):
         conn.execute(
             "INSERT INTO listing_shards (listing_id, shard) VALUES (1, 'Алатауский 2к')"
         )  # свежая атрибуция выдачи — бэкфилл не должен её перетереть
-    init_db(db)
-    init_db(db)  # идемпотентность
+        # Симуляция прода, приехавшего релизом: там детальные лоты есть,
+        # а сентинела миграции нет (код #168 база ещё не видела) — снимаем
+        # его, и следующий init_db обязан доиграть миграцию ровно раз.
+        conn.execute("DELETE FROM sweep_state WHERE key LIKE 'migrate:%'")
+    init_db(db)  # миграция исполняется
+    init_db(db)  # повторный старт — сентинел на месте, полного прохода нет
     with get_conn(db) as conn:
         m = dict(conn.execute("SELECT listing_id, shard FROM listing_shards").fetchall())
     assert m == {1: "Алатауский 2к", 2: "Медеуский 4к+"}
+
+    # Лот, добавленный после миграции: init_db его больше НЕ атрибутирует
+    # (этим и куплен дешёвый старт), а разовый инструмент — атрибутирует.
+    _insert_detailed(db, 6, "Auezovskiy_r-n", 1)
+    init_db(db)
+    with get_conn(db) as conn:
+        m = dict(conn.execute("SELECT listing_id, shard FROM listing_shards").fetchall())
+    assert 6 not in m
+    backfill_listing_shards_from_details(db)
+    with get_conn(db) as conn:
+        m = dict(conn.execute("SELECT listing_id, shard FROM listing_shards").fetchall())
+    assert m[6] == "Ауэзовский 1к"
 
 
 # ---------- бан и усечение: частичные страницы и гард #152 (ревью #166) ----------
