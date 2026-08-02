@@ -3,7 +3,7 @@
 import pytest
 
 from krisha.config import ALMATY_DISTRICT_SLUGS, ROOM_SHARDS
-from krisha.db import get_conn, init_db, upsert_listing
+from krisha.db import get_conn, init_db, shard_backlog_window, upsert_listing
 from krisha.scraping import rescrape
 from krisha.scraping.rescrape import shard_urls, sweep
 
@@ -951,38 +951,42 @@ def test_mass_delist_block_after_gap_clears_itself_on_next_pass(tmp_path, monkey
     assert second["delisted"] == 40, "блокировка обязана сниматься сама, без человека"
 
 
-def test_detail_queue_is_round_robin_across_districts(tmp_path):
-    """issue #152: очередь шла FIFO по first_seen, а first_seen внутри прохода
-    = порядок обхода шардов = алфавит районов. Алатауский выедал весь бюджет:
-    7094 лота с деталями против 639 у Медеуского, причём Медеуский — один из
-    самых дорогих районов, где модель и так слепа."""
+def test_detail_queue_uses_shard_attribution_not_listing_columns(tmp_path):
+    """issue #166: «круговая» очередь #152 по колонкам listings.district/rooms
+    на сайтингах вырождалась — сайтинг пишет только id/url/price, поэтому у
+    всего backlog'а district/rooms = NULL, партиция одна, и порядок выходил
+    `ORDER BY id DESC`: свежесть публикации вместо географии (на проде TVD
+    дня 0.32–0.35). Теперь принадлежность лота к шарду берётся из
+    listing_shards (её знает фаза выдачи), а не из колонок listings."""
     db = tmp_path / "test.db"
     init_db(db)
     with get_conn(db) as conn:
-        # Алатауский нашли первым и много, Медеуский — последним и мало.
+        # Сайтинги без деталей: district/rooms NULL, как в проде. Алатауский
+        # свежий (большие id), Медеуский старый — id DESC отдал бы всё
+        # Алатаускому.
         for i in range(50):
             conn.execute(
-                "INSERT INTO listings (id, url, district, rooms, is_active, first_seen) "
-                "VALUES (?, 'u', 'Alatauskiy_r-n', 2, 1, datetime('now'))", (1000 + i,)
+                "INSERT INTO listings (id, url, is_active, first_seen) "
+                "VALUES (?, 'u', 1, datetime('now'))", (1000 + i,)
+            )
+            conn.execute(
+                "INSERT INTO listing_shards (listing_id, shard) VALUES (?, 'Алатауский 2к')",
+                (1000 + i,),
             )
         for i in range(5):
             conn.execute(
-                "INSERT INTO listings (id, url, district, rooms, is_active, first_seen) "
-                "VALUES (?, 'u', 'Medeuskiy_r-n', 2, 1, datetime('now'))", (2000 + i,)
+                "INSERT INTO listings (id, url, is_active, first_seen) "
+                "VALUES (?, 'u', 1, datetime('now'))", (200 + i,)
             )
-        rows = [
-            r[0] for r in conn.execute(
-                """
-                SELECT id FROM (
-                    SELECT id, ROW_NUMBER() OVER (
-                        PARTITION BY COALESCE(district, '?'), COALESCE(rooms, -1)
-                        ORDER BY id DESC
-                    ) AS rn
-                    FROM listings WHERE title IS NULL AND is_active = 1
-                ) ORDER BY rn, id DESC
-                """
-            ).fetchall()
-        ]
-    top10 = rows[:10]
-    medeu = sum(1 for r in top10 if r >= 2000)
-    assert medeu >= 4, f"недопредставленный район должен попасть в голову очереди, а не в хвост: {top10}"
+            conn.execute(
+                "INSERT INTO listing_shards (listing_id, shard) VALUES (?, 'Медеуский 2к')",
+                (200 + i,),
+            )
+        # Квота Медеуского по стоку — 2 из 10 (сток 50:5). Окно шарда обязано
+        # взять ЕГО лоты, несмотря на то что все они ниже алатауских по id.
+        window, wrapped = shard_backlog_window(conn, "Медеуский 2к", None, 2)
+        assert window == [204, 203]  # свежие первыми ВНУТРИ шарда (id DESC)
+        assert not wrapped
+        # У Алатауского — своё окно, своя квота.
+        window_a, _ = shard_backlog_window(conn, "Алатауский 2к", None, 8)
+        assert len(window_a) == 8 and min(window_a) > 1000

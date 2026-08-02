@@ -62,6 +62,37 @@ ROOM_SHARDS = {
     "3к": ("3",),
     "4к+": ("4", "5"),
 }
+
+# Транслит krisha.kz (колонка listings.district) → русское название района.
+# Каноничная копия живёт здесь (config — листовой модуль), stats.py и другие
+# реэкспортируют отсюда, чтобы не плодить расходящиеся копии маппинга.
+DISTRICT_RU = {
+    "Almalinskiy_r-n": "Алмалинский",
+    "Alatauskiy_r-n": "Алатауский",
+    "Auezovskiy_r-n": "Ауэзовский",
+    "Bostandykskiy_r-n": "Бостандыкский",
+    "Zhetysuskiy_r-n": "Жетысуский",
+    "Medeuskiy_r-n": "Медеуский",
+    "Nauryzbayskiy_r-n": "Наурызбайский",
+    "Turksibskiy_r-n": "Турксибский",
+}
+
+
+def listing_shard_label(district: str | None, rooms: int | None) -> str | None:
+    """Шард «район × комнаты» лота по его детальным полям, None если не мапится.
+
+    Фильтры выдачи по району и комнатам непересекаются, поэтому (district,
+    rooms) детальной страницы однозначно определяют шард — это не оценка,
+    а точная атрибуция (issue #166, бэкфилл listing_shards для лотов, у
+    которых детали уже есть). «4к+» по ROOM_SHARDS = 4 и «5 и более»,
+    поэтому rooms >= 4. Лоты вне 8 районов Алматы (district не из
+    DISTRICT_RU) шарда не имеют: в выдачу шардов они не попадают.
+    """
+    ru = DISTRICT_RU.get(district or "")
+    if ru is None or rooms is None:
+        return None
+    room_label = {1: "1к", 2: "2к", 3: "3к"}.get(int(rooms), "4к+")
+    return f"{ru} {room_label}"
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"

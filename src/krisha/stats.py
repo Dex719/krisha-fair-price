@@ -12,23 +12,16 @@ from pathlib import Path
 
 import pandas as pd
 
-from krisha.config import DB_PATH, MODELS_DIR
+from krisha.config import DB_PATH, DISTRICT_RU, MODELS_DIR
 
 logger = logging.getLogger(__name__)
 
 STATS_SNAPSHOT_PATH = MODELS_DIR / "stats.json"
 
-# Транслит krisha.kz → человеческое название района
-DISTRICT_RU = {
-    "Almalinskiy_r-n": "Алмалинский",
-    "Alatauskiy_r-n": "Алатауский",
-    "Auezovskiy_r-n": "Ауэзовский",
-    "Bostandykskiy_r-n": "Бостандыкский",
-    "Zhetysuskiy_r-n": "Жетысуский",
-    "Medeuskiy_r-n": "Медеуский",
-    "Nauryzbayskiy_r-n": "Наурызбайский",
-    "Turksibskiy_r-n": "Турксибский",
-}
+# DISTRICT_RU (транслит krisha.kz → человеческое название района) импортирован
+# выше: каноничная копия живёт в krisha.config (листовой модуль, доступен и
+# db.py без pandas), stats реэкспортирует для существующих импортов
+# (bot/alerts/forecast/...).
 
 # Границы корзин гистограммы цен (₸)
 PRICE_BINS = [0, 20, 30, 40, 50, 60, 80, 100, 150, 250, 10_000]  # млн ₸
