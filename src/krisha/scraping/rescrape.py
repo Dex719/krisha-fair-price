@@ -25,18 +25,28 @@ import statistics
 import time
 from pathlib import Path
 
-from krisha.config import ALMATY_DISTRICT_SLUGS, BASE_URL, DATA_DIR, ROOM_SHARDS
+from krisha.config import (
+    ALMATY_DISTRICT_SLUGS,
+    BASE_URL,
+    DATA_DIR,
+    REQUEST_DELAY_RANGE,
+    ROOM_SHARDS,
+)
 from krisha.db import (
     DB_PATH,
     _record_price_if_changed,
     advance_shard_cursor,
     advance_sweep_pass_seq,
+    consecutive_bans,
     get_conn,
     init_db,
     is_valid_price,
     known_ids,
     last_known_shard_stock,
+    last_sweep_mode,
     price_bounds_for,
+    recent_sweep_runs,
+    record_consecutive_bans,
     record_listing_shards,
     record_parse_anomaly,
     record_sighting,
@@ -53,8 +63,19 @@ from krisha.monitoring import ADMIN_CHAT_ENV
 from krisha.scraping.client import BanDetected, PoliteClient
 from krisha.scraping.detail_parser import parse_detail
 from krisha.scraping.listing_parser import has_next_page, parse_listing_prices
+from krisha.scraping.pass_plan import (
+    BAN_ROLLBACK_STREAK,
+    STEADY_MODE,
+    choose_mode,
+    estimate_new_inflow,
+    estimate_timings,
+    fit_detail_caps,
+    mode_by_name,
+    plan_pass,
+)
 from krisha.scraping.shard_plan import (
     largest_remainder_quotas,
+    redistribute_leftover,
     rotated,
     rotation_offset,
     shard_district,
@@ -182,6 +203,34 @@ def _alert_ban(exc: BanDetected) -> None:
         logger.warning("Не удалось отправить алерт о бане: %s", e)
 
 
+def _alert_ban_rollback(streak: int) -> None:
+    """Алерт админу при откате разгона по серии банов (issue #152).
+
+    Шлём один раз, на фронте серии (streak достиг порога): пока откат
+    активен, каждый проход несёт stats["ban_rollback"], и повторный алерт был
+    бы спамом; новая серия после чистого прохода — новый фронт, новый алерт.
+    """
+    chat_id = os.environ.get(ADMIN_CHAT_ENV)
+    if not chat_id:
+        logger.info("%s не задан — алерт об откате разгона не отправлен", ADMIN_CHAT_ENV)
+        return
+    from krisha.bot import tg_call
+
+    try:
+        tg_call(
+            "sendMessage",
+            chat_id=int(chat_id),
+            text=(
+                f"🐌 Krisha rescrape: {streak} прохода подряд с баном — разгон (#152) "
+                "откачен к steady-задержкам (2.0–4.0 с) до первого чистого прохода. "
+                "Разгон, который поймал бан и продолжает разгоняться, хуже отсутствия "
+                "разгона: потеряем и день, и IP."
+            ),
+        )
+    except Exception as e:  # noqa: BLE001 — алерт не должен уронить сам проход
+        logger.warning("Не удалось отправить алерт об откате разгона: %s", e)
+
+
 def _history_path(deal: str) -> Path:
     return DATA_DIR / f"rescrape_history_{deal}.json"
 
@@ -231,8 +280,8 @@ def _sweep_shard(
     label: str,
     base_url: str,
     max_pages: int,
-) -> tuple[dict[int, int | None], bool, BanDetected | None]:
-    """Обходит пагинацию одного шарда, возвращает ({id: цена}, покрыт_ли, бан).
+) -> tuple[dict[int, int | None], bool, BanDetected | None, int]:
+    """Обходит пагинацию одного шарда: ({id: цена}, покрыт_ли, бан, страниц).
 
     covered=False, если шард не покрыт: страница не загрузилась
     (сеть/блокировка), пойман BanDetected, страница похожа на анти-бот/капчу,
@@ -248,31 +297,37 @@ def _sweep_shard(
     при сетевом сбое (до #166 они выживали в общем словаре — поведение
     выровнено по ревью); решение об остановке прохода принимает sweep().
 
+    Четвёртый элемент — сколько страниц фактически запрошено (issue #152:
+    фактическая цена фазы выдачи для оценки прохода и записи таймингов в
+    sweep_runs; на упавшем шарде — честно сделанные запросы до обрыва).
+
     issue #166: шард возвращает СВОИХ найденных id отдельно, а не дописывает
     в общий котел — состав шарда это сток выдачи для квоты докачки и источник
     атрибуции id → шард (у лота без деталей district/rooms неизвестны,
     а «круговая» очередь #152 по колонкам listings на них вырождалась).
     """
     found: dict[int, int | None] = {}
+    pages_done = 0
     for page in range(1, max_pages + 1):
         url = base_url if page == 1 else f"{base_url}&page={page}"
         try:
             html = client.get(url)
         except BanDetected as exc:
-            return found, False, exc
+            return found, False, exc, pages_done
+        pages_done += 1
         if html is None:
             logger.error("Шард «%s»: стр. %s не загрузилась — стоп шарда", label, page)
-            return found, False, None
+            return found, False, None, pages_done
         if page == 1 and _looks_like_antibot(html):
             logger.error("Шард «%s»: похоже на анти-бот/капча страницу — стоп шарда", label)
-            return found, False, None
+            return found, False, None, pages_done
         page_prices = parse_listing_prices(html)
         if page == 1 and not page_prices:
             logger.warning(
                 "Шард «%s»: 0 валидных id на первой странице — подозрительно, шард не покрыт",
                 label,
             )
-            return found, False, None
+            return found, False, None, pages_done
         found.update(page_prices)
         if not has_next_page(html, page):
             break
@@ -286,19 +341,20 @@ def _sweep_shard(
             "Шард «%s»: выдача глубже max_pages=%s — покрытие неполное, delist запрещён",
             label, max_pages,
         )
-        return found, False, None
+        return found, False, None, pages_done
     logger.info("Шард «%s»: %s объявлений в выдаче", label, len(found))
-    return found, True, None
+    return found, True, None, pages_done
 
 
 def sweep(
     max_pages: int = 250,
-    max_new_details: int = 300,
+    max_new_details: int | None = None,
     db_path=DB_PATH,
     deal: str = "prodazha",
-    refresh_stale_days: int = 30,
-    max_refresh: int = 300,
+    refresh_stale_days: int | None = None,
+    max_refresh: int | None = None,
     time_budget_min: float = DEFAULT_TIME_BUDGET_MIN,
+    mode: str = "auto",
 ) -> dict:
     """Один проход рескрейпа по всем шардам. Возвращает счётчики для лога/отчёта.
 
@@ -306,6 +362,21 @@ def sweep(
     ≈ 200 страниц, так что 250 хватает с запасом).
     deal="arenda" — тот же проход по арендной выдаче (обычно в отдельную базу,
     см. RENT_DB_PATH), price = ₸/месяц.
+
+    issue #152: параметры интенсивности (max_new_details / max_refresh /
+    refresh_stale_days / паузы клиента) по умолчанию (None) берутся из
+    РЕЖИМА прохода, который выбирается по состоянию базы в его начале
+    (pass_plan.choose_mode по backlog'у с гистерезисом), а не по флагу
+    запуска и не по календарю: drain разгребает backlog (4500 новых/сутки
+    при паузах 1.5–3.0 с), steady поддерживает покрытие. Явные значения
+    аргументов и env KRISHA_DELAY_MIN/MAX — оверрайды поверх пресета
+    (ручные/диагностические запуски); mode="drain"/"steady" фиксирует
+    пресет в обход backlog'а. Решение (режим, причина, эффективные потолки)
+    пишется в итоги прохода. Потолок докачки перед фазой деталей подрезается
+    под фактический остаток бюджета и потолок вежливости (pass_plan.
+    fit_detail_caps) — проход, не влезающий по плану, урезает потолок сам,
+    а не упирается в дедлайн на середине. Два подряд прохода с баном —
+    возврат к steady-задержкам (pass_plan.BAN_ROLLBACK_STREAK).
 
     issue #102: карточка выдачи (found) обновляет только last_seen/цену — до
     этой правки площадь/этаж/описание/координаты, отредактированные продавцом,
@@ -337,6 +408,109 @@ def sweep(
     # проход отбраковывал каждую цену и krisha_rent.db не обновлялась вовсе.
     bounds = price_bounds_for(deal)
     seen_in_db = known_ids(db_path)
+
+    # --- issue #152: режим прохода по состоянию базы, до первого запроса ---
+    # Решение принимается в начале прохода (паузы влияют и на фазу выдачи)
+    # и пишется в итоги: из лога должно быть видно, в каком режиме шёл
+    # проход и почему. backlog здесь — ДО сайтингов этого прохода: режим
+    # описывает состояние базы, с которым проход стартовал.
+    with get_conn(db_path) as conn:
+        backlog_at_start = shard_backlog_count(conn)
+        prev_mode = last_sweep_mode(conn, deal)
+        ban_streak_at_start = consecutive_bans(conn, deal)
+    if mode != "auto":
+        preset = mode_by_name(mode)
+        mode_reason = f"пресет задан явно (mode={mode}), backlog {backlog_at_start} проигнорирован"
+    else:
+        preset, mode_reason = choose_mode(backlog_at_start, prev_mode)
+    # Разгребание завершилось на прошлом проходе: прежний режим drain,
+    # текущий steady при авто-выборе. Сигнал для отчёта: на полном покрытии
+    # пересчитывается статистика дедупликации (scripts/dedup_stats.py) —
+    # на текущем составе она одна, на полном будет другой.
+    drain_completed = (
+        mode == "auto" and prev_mode == "drain" and preset.name == "steady"
+    )
+    want_new = preset.max_new if max_new_details is None else max_new_details
+    want_refresh = preset.max_refresh if max_refresh is None else max_refresh
+    eff_stale_days = (
+        preset.refresh_stale_days if refresh_stale_days is None else refresh_stale_days
+    )
+    # Паузы: явный env-оверрайд (KRISHA_DELAY_MIN/MAX — их выставляет воркфлоу
+    # или оператор ручного прогона) побеждает пресет; иначе — паузы режима.
+    # Пустая строка (плейсхолдер input'а воркфлоу без значения) — НЕ оверрайд.
+    explicit_delay = any(
+        os.environ.get(name, "").strip()
+        for name in ("KRISHA_DELAY_MIN", "KRISHA_DELAY_MAX")
+    )
+    delay_range = REQUEST_DELAY_RANGE if explicit_delay else preset.delay_range
+    # Откат по бану (issue #152): два подряд прохода с BanDetected — темп
+    # возвращается к steady-задержкам независимо от режима. Потолки явно не
+    # трогаем: их урежет fit_detail_caps по бюджету времени с новыми паузами
+    # — одна точка правды про «сколько влезает».
+    ban_rollback = ban_streak_at_start >= BAN_ROLLBACK_STREAK
+    if ban_rollback and delay_range != STEADY_MODE.delay_range:
+        logger.error(
+            "Откат по бану: %s подряд прохода с BanDetected — паузы возвращены "
+            "к steady %.1f–%.1f с до первого чистого прохода",
+            ban_streak_at_start, *STEADY_MODE.delay_range,
+        )
+        delay_range = STEADY_MODE.delay_range
+    logger.info(
+        "Режим прохода: %s (%s); паузы %.1f–%.1f с%s; потолки: новых %s, "
+        "refresh %s (старше %s дн.)",
+        preset.name, mode_reason, delay_range[0], delay_range[1],
+        ", откат по банам" if ban_rollback else "",
+        want_new, want_refresh, eff_stale_days,
+    )
+    if drain_completed:
+        logger.warning(
+            "Backlog разобран (режим drain → steady): на полном покрытии "
+            "пересчитайте дедупликацию по fingerprint — scripts/dedup_stats.py"
+        )
+
+    # Оценка прохода до его начала (issue #152): тайминги фаз — фактические,
+    # из истории sweep_runs (после ~3 проходов с этой схемой), до того —
+    # откалиброванные по прод-телеметрии фолбэки. Проход, который по плану
+    # не влезает в бюджет, обязан урезать потолок сам — это делает
+    # fit_detail_caps после фазы выдачи с фактической её ценой.
+    runs_history = recent_sweep_runs(limit=7, deal=deal, db_path=db_path)
+    timings = estimate_timings(runs_history)
+    with get_conn(db_path) as conn:
+        # Бюджет тратят реальные очереди, а не потолки: очередь refresh при
+        # steady-пороге 45 дней может быть меньше пресетных 1200 — оценивать
+        # проход по потолку значило бы систематически завышать план.
+        refresh_queue_at_start = conn.execute(
+            "SELECT COUNT(*) FROM listings WHERE title IS NOT NULL AND is_active = 1 "
+            "AND julianday('now') - julianday(scraped_at) > ?",
+            (eff_stale_days,),
+        ).fetchone()[0]
+    want_refresh_q = min(want_refresh, refresh_queue_at_start)
+    # Очередь новых к фазе деталей = старый backlog + СВЕЖИЕ сайтинги этого
+    # прохода (приток из истории) — одним backlog'ом план занижался бы на
+    # органику, а на первом проходе по базе обнулялся бы вовсе.
+    want_new_est = min(want_new, backlog_at_start + estimate_new_inflow(runs_history))
+    plan_estimate = plan_pass(
+        want_new_est,
+        want_refresh_q,
+        timings,
+        time_budget_min,
+        delay_range,
+    )
+    logger.info(
+        "План прохода: ~%s запросов ≈ %.0f мин (выдача ~%s стр ≈ %.0f мин, "
+        "детали %s ≈ %.0f мин; навершие %.2f/%.2f с, замеров %s) при бюджете "
+        "%.0f мин, темп %.2f rps — %s",
+        plan_estimate.est_requests,
+        plan_estimate.est_seconds / 60,
+        plan_estimate.est_search_pages,
+        timings.search_pages * (sum(delay_range) / 2 + timings.overhead_search) / 60,
+        plan_estimate.est_detail_requests,
+        plan_estimate.est_detail_requests * (sum(delay_range) / 2 + timings.overhead_detail) / 60,
+        timings.overhead_search, timings.overhead_detail, timings.samples,
+        time_budget_min,
+        plan_estimate.mean_rps,
+        "влезает" if plan_estimate.fits else "НЕ ВЛЕЗАЕТ — потолок будет урезан заранее",
+    )
     with get_conn(db_path) as conn:
         active_in_db = conn.execute(
             "SELECT COUNT(*) FROM listings WHERE is_active = 1"
@@ -390,13 +564,18 @@ def sweep(
     failed_shards: list[str] = []
     banned = False
     banned_phase: str | None = None
-    deadline = _now() + time_budget_min * 60.0
+    pass_t0 = _now()
+    deadline = pass_t0 + time_budget_min * 60.0
     time_budget_hit = False
+    search_pages = 0  # issue #152: фактические запросы/секунды фаз — в план
+    search_seconds = 0.0  # и в тайминги sweep_runs для следующих проходов
+    detail_requests = 0
+    detail_seconds = 0.0
 
     def out_of_time() -> bool:
         return _now() >= deadline
 
-    with PoliteClient() as client:
+    with PoliteClient(delay_range=delay_range) as client:
         shards = shard_urls(deal)
         # issue #166: порядок обхода ротируется между запусками. Смещение
         # считается от монотонного номера прохода (счётчик в sweep_state)
@@ -423,6 +602,7 @@ def sweep(
                 "Ротация обхода: старт с шарда «%s» (смещение %s/%s)",
                 ordered_shards[0][0], rotation, len(shards),
             )
+        search_started = _now()
         for i, (label, base_url) in enumerate(ordered_shards):
             if out_of_time():
                 # Недообойдённые шарды — в failed_shards: их объявления не
@@ -436,7 +616,10 @@ def sweep(
                     time_budget_min, len(remaining),
                 )
                 break
-            shard_ids, covered, ban_exc = _sweep_shard(client, label, base_url, max_pages)
+            shard_ids, covered, ban_exc, shard_pages = _sweep_shard(
+                client, label, base_url, max_pages
+            )
+            search_pages += shard_pages
             if not covered:
                 failed_shards.append(label)
             else:
@@ -461,6 +644,8 @@ def sweep(
                 banned = True
                 _alert_ban(ban_exc)
                 break
+
+        search_seconds = _now() - search_started
 
         # issue #127: раньше в базу шли только первые max_new_details новых id
         # (в порядке обхода шардов) — остальные найденные теряли даже
@@ -507,6 +692,7 @@ def sweep(
             fallback_stock = last_known_shard_stock(conn)
             queue_size_before = shard_backlog_count(conn)
             unattributed = unattributed_backlog_count(conn)
+            backlog_map = {label: shard_backlog_count(conn, label) for label, _ in shards}
         if unattributed:
             logger.warning(
                 "В backlog %s лотов без атрибуции к шарду — не видны в выдаче с "
@@ -514,10 +700,45 @@ def sweep(
                 "в выдаче (получат шард) или delisted",
                 unattributed,
             )
+
+        # issue #152: потолок докачки — под фактический остаток бюджета и
+        # потолок вежливости, ДО входа в фазу докачки. Цена выдачи уже
+        # известна (запросы и секунды), цена детали — из истории проходов
+        # (навершие над паузой; сама пауза — фактическая, этого прохода).
+        # Желаемое ограничено реальной очередью после сайтингов этого
+        # прохода: потолок при мелкой очереди не расходует бюджет. Проход,
+        # который по плану не влезает, урезает потолок сам, а не упирается
+        # в дедлайн на середине очереди.
+        want_new_q = min(want_new, sum(backlog_map.values()))
+        requests_so_far = sum(getattr(client, "counters", {}).values()) or search_pages
+        fit = fit_detail_caps(
+            want_new_q,
+            want_refresh_q,
+            requests_so_far=requests_so_far,
+            elapsed_s=_now() - pass_t0,
+            budget_s=time_budget_min * 60.0,
+            t_detail=sum(delay_range) / 2 + timings.overhead_detail,
+        )
+        eff_max_new, eff_max_refresh = fit.max_new, fit.max_refresh
+        if fit.trimmed:
+            logger.warning(
+                "Потолок докачки урезан заранее: хотели %s+%s, влезает %s "
+                "(причина: %s; выдача уже израсходовала %s запросов за %.0f мин) — "
+                "новых %s, refresh %s",
+                want_new_q, want_refresh_q, fit.budget_requests, fit.reason,
+                requests_so_far, search_seconds / 60, eff_max_new, eff_max_refresh,
+            )
+        # Замеренный ЭТИМ проходом сток — отдельно от сведённого (с фолбэком):
+        # второй проход планировщика (#152) имеет дело только с замеренными
+        # шардами — у незамеренных нет строки стока для сверки batch-TVD.
+        measured_stock = {
+            label: (len(shard_found[label]) if label in shard_found else None)
+            for label, _ in shards
+        }
         stock = {
             label: (
-                len(shard_found[label])
-                if label in shard_found
+                measured_stock[label]
+                if measured_stock[label] is not None
                 # Шард не покрыт этим проходом (бан/сеть/таймаут) — квота по
                 # последнему известному стоку: его backlog всё равно надо
                 # разгребать. Без единого успешного замера — 0.
@@ -525,7 +746,22 @@ def sweep(
             )
             for label, _ in shards
         }
-        quotas = largest_remainder_quotas(stock, max_new_details)
+        quotas_base = largest_remainder_quotas(stock, eff_max_new)
+        # issue #152: второй проход планировщика — остаток квоты шардов с
+        # мелким backlog'ом (их окно недоберёт квоту) раздаётся пропорционально
+        # стоку замеренным шардам, чей backlog глубже квоты. Незамеренным —
+        # ничего (см. redistribute_leftover): инвариант «сбойный шард не
+        # отдаёт свою квоту соседям» из #166 сохраняется.
+        quota_extra = redistribute_leftover(quotas_base, backlog_map, measured_stock)
+        quotas = {s: quotas_base[s] + quota_extra.get(s, 0) for s in quotas_base}
+        redistributed_total = sum(quota_extra.values())
+        if redistributed_total:
+            logger.info(
+                "Остаток квоты от шардов с мелким backlog'ом перераспределён: "
+                "%s лотов (%s)",
+                redistributed_total,
+                ", ".join(f"{s} +{n}" for s, n in quota_extra.items() if n),
+            )
         # issue #168: осознанный ОТКАЗ от «пола» (минимальной квоты шарду с
         # непустым backlog'ом и нулевой долей). largest_remainder_quotas
         # трогать нельзя (проверена перебором в #167), а любой пол снаружи
@@ -542,21 +778,22 @@ def sweep(
             quota = quotas.get(label, 0)
             with get_conn(db_path) as conn:
                 window, wrapped = shard_backlog_window(conn, label, cursors.get(label), quota)
-                backlog_before = shard_backlog_count(conn, label)
             plan.append({
                 "shard": label,
-                "stock": stock[label] if label in shard_found else None,
+                "stock": measured_stock[label],
                 "quota": quota,
+                "quota_base": quotas_base.get(label, 0),
+                "quota_extra": quota_extra.get(label, 0),
                 "window": window,
                 "wrapped": wrapped,
-                "backlog_before": backlog_before,
+                "backlog_before": backlog_map[label],
                 "fetched": 0,
                 "last_ok": None,
             })
         logger.info(
             "План докачки: %s лотов (потолок %s) по шардам: %s",
             sum(p["quota"] for p in plan),
-            max_new_details,
+            eff_max_new,
             ", ".join(f"{p['shard']}={p['quota']}" for p in plan if p["quota"]),
         )
         # issue #168: шард с непустым backlog'ом и нулевой квотой N проходов
@@ -569,15 +806,28 @@ def sweep(
         # текущий план; флаг уезжает в stats["starved_shards"] → summary-json
         # → вердикт утреннего отчёта админу — путь до алерта уже существует.
         starved_shards: list[str] = []
-        with get_conn(db_path) as conn:
-            for p in plan:
-                if p["quota"] or not p["backlog_before"]:
-                    continue
-                streak = 1 + zero_quota_streak(
-                    conn, p["shard"], pass_seq, STARVED_SHARD_STREAK - 1
-                )
-                if streak >= STARVED_SHARD_STREAK:
-                    starved_shards.append(p["shard"])
+        if eff_max_new <= 0:
+            # issue #152 (хвост ревью #169): при нулевом потолке докачки
+            # (--max-new 0, диагностический прогон) quota=0 у ВСЕХ шардов
+            # сразу — через STARVED_SHARD_STREAK проходов в красный вердикт
+            # уезжали бы все 32. Заморозка — свойство конкретного шарда при
+            # работающей очереди; с выключенной очередью её нет вовсе.
+            # Диагностические строки sweep_shard_stats (pass_cap=0) серии
+            # не портят: zero_quota_streak их пропускает.
+            logger.info(
+                "Потолок докачки 0 (диагностический проход) — квоты не "
+                "раздаются, заморозка шардов не считается"
+            )
+        else:
+            with get_conn(db_path) as conn:
+                for p in plan:
+                    if p["quota"] or not p["backlog_before"]:
+                        continue
+                    streak = 1 + zero_quota_streak(
+                        conn, p["shard"], pass_seq, STARVED_SHARD_STREAK - 1
+                    )
+                    if streak >= STARVED_SHARD_STREAK:
+                        starved_shards.append(p["shard"])
         if starved_shards:
             logger.error(
                 "Шарды с непустым backlog'ом и нулевой квотой %s прохода подряд: "
@@ -589,6 +839,7 @@ def sweep(
             )
         new_count = 0
         stop_details = banned  # бан на выдаче — детали не качаем вовсе
+        details_started = _now()
         for p in plan:
             if stop_details:
                 break
@@ -603,6 +854,7 @@ def sweep(
                     break
                 try:
                     detail_html = client.get(f"https://krisha.kz/a/show/{lid}")
+                    detail_requests += 1
                 except BanDetected as exc:
                     logger.critical("%s — прерываем докачку деталей", exc)
                     if not banned:
@@ -650,6 +902,9 @@ def sweep(
                 "backlog_after": p["backlog_before"] - p["fetched"],
                 "cursor_after": cursor_updates.get(p["shard"], cursors.get(p["shard"])),
                 "wrapped": p["wrapped"],
+                # issue #152: действующий потолок прохода — диагностические
+                # прогоны (pass_cap=0) не портят серии zero_quota_streak.
+                "pass_cap": eff_max_new,
             }
             for p in plan
         ]
@@ -662,7 +917,7 @@ def sweep(
         # Самые давно не докачанные — первыми (ORDER BY scraped_at ASC).
         refresh_queue_size = 0
         refreshed_count = 0
-        if not banned and max_refresh > 0:
+        if not banned and eff_max_refresh > 0:
             with get_conn(db_path) as conn:
                 refresh_ids = [
                     r[0]
@@ -670,7 +925,7 @@ def sweep(
                         "SELECT id FROM listings WHERE title IS NOT NULL AND is_active = 1 "
                         "AND julianday('now') - julianday(scraped_at) > ? "
                         "ORDER BY scraped_at ASC LIMIT ?",
-                        (refresh_stale_days, max_refresh),
+                        (eff_stale_days, eff_max_refresh),
                     ).fetchall()
                 ]
             refresh_queue_size = len(refresh_ids)
@@ -681,6 +936,7 @@ def sweep(
                     break
                 try:
                     detail_html = client.get(f"https://krisha.kz/a/show/{lid}")
+                    detail_requests += 1
                 except BanDetected as exc:
                     logger.critical("%s — прерываем обновление устаревших деталей", exc)
                     if not banned:
@@ -696,6 +952,7 @@ def sweep(
                 if listing is not None:
                     upsert_listing(listing, db_path, price_bounds=bounds)
                     refreshed_count += 1
+        detail_seconds = _now() - details_started
 
     price_changes = 0
     known_seen = [lid for lid in found if lid in seen_in_db]
@@ -922,6 +1179,24 @@ def sweep(
             MAX_TEST_TVD,
         )
 
+    # Серия банов — фиксируется в конце прохода (issue #152): два подряд
+    # BanDetected → следующие проходы идут со steady-паузами, пока чистый
+    # проход не сбросит серию. Алерт — на фронте серии (переходе через
+    # порог), не каждый проход: повтор под активным откатом был бы спамом.
+    ban_streak_end = 0 if not banned else ban_streak_at_start + 1
+    with get_conn(db_path) as conn:
+        record_consecutive_bans(conn, deal, ban_streak_end)
+    if (
+        ban_streak_end >= BAN_ROLLBACK_STREAK
+        and ban_streak_at_start < BAN_ROLLBACK_STREAK
+    ):
+        logger.error(
+            "Откат по бану: %s подряд прохода с BanDetected — следующие "
+            "проходы пойдут со steady-паузами до первого чистого",
+            ban_streak_end,
+        )
+        _alert_ban_rollback(ban_streak_end)
+
     stats = {
         "found_in_search": len(found),
         "known_seen": len(known_seen),
@@ -979,7 +1254,10 @@ def sweep(
         # issue #154: потолок докачки нужен в отчёте, чтобы «докачано 1000»
         # можно было отличить от «докачано 1000 из 1000, то есть упёрлись».
         # Ровно эта неразличимость двенадцать дней подряд прятала отставание.
-        "max_new_details": max_new_details,
+        # С #152 это ЭФФЕКТИВНЫЙ потолок прохода (пресет режима/оверрайд,
+        # урезанный fit_detail_caps под бюджет и вежливость) — сравнение
+        # «докачано == потолок» в утреннем отчёте честно только с ним.
+        "max_new_details": eff_max_new,
         # issue #166: план квот по шардам и TVD фактически докачанной порции
         # против стока выдачи. Подробный план/факт по каждому шарду — в
         # таблице sweep_shard_stats.
@@ -991,6 +1269,53 @@ def sweep(
         # Пустой список — штатное состояние. Непустой уезжает в summary-json
         # и дальше в вердикт утреннего отчёта админу (daily_report).
         "starved_shards": starved_shards,
+        # issue #152: режим прохода и его обоснование — решение принято в
+        # начале прохода по состоянию базы и должно быть видно в итогах.
+        "mode": preset.name,
+        "mode_reason": mode_reason,
+        "drain_completed": drain_completed,
+        "backlog_at_start": backlog_at_start,
+        "delay_range": [delay_range[0], delay_range[1]],
+        # Откат по серии банов: паузы возвращены к steady (2 прохода подряд
+        # с BanDetected, см. pass_plan.BAN_ROLLBACK_STREAK).
+        "ban_rollback": ban_rollback,
+        "ban_streak": ban_streak_end,
+        # Оценка прохода до его начала (тайминги — фактические, из истории
+        # sweep_runs после мержа #152, до того — откалиброванные фолбэки).
+        "plan_estimate": {
+            "est_requests": plan_estimate.est_requests,
+            "est_seconds": round(plan_estimate.est_seconds, 1),
+            "budget_seconds": plan_estimate.budget_seconds,
+            "fits": plan_estimate.fits,
+            "mean_rps": round(plan_estimate.mean_rps, 3),
+            "timing_samples": timings.samples,
+        },
+        # Потолок, урезанный заранее (до фазы докачки) под фактический
+        # остаток бюджета/потолок вежливости; None — влезали без подрезки.
+        "plan_trimmed": (
+            {
+                "wanted_new": want_new_q,
+                "wanted_refresh": want_refresh_q,
+                "budget_requests": fit.budget_requests,
+                "reason": fit.reason,
+            }
+            if fit.trimmed
+            else None
+        ),
+        "max_refresh": eff_max_refresh,
+        "refresh_stale_days": eff_stale_days,
+        # Остаток квоты, перераспределённый вторым проходом планировщика
+        # от шардов с мелким backlog'ом замеренным шардам с глубоким.
+        "quota_redistributed": redistributed_total,
+        # Лоты backlog'а без атрибуции к шарду — второй способ тихой
+        # заморозки (первый — starved_shards); в утренний отчёт едут оба.
+        "unattributed_backlog": unattributed,
+        # Тайминги фаз — в sweep_runs, чтобы план следующих проходов
+        # считался по фактическим замерам, а не по константам.
+        "search_pages": search_pages,
+        "search_seconds": round(search_seconds, 1),
+        "detail_requests": detail_requests,
+        "detail_seconds": round(detail_seconds, 1),
     }
 
     # issue #154: история проходов едет в базе, а не в файле — раннер каждый
@@ -1002,6 +1327,13 @@ def sweep(
             "started_at": pass_started_at,
             "deal": deal,
             "failed_shards": len(failed_shards),
+            "search_pages": search_pages,
+            "search_seconds": round(search_seconds, 1),
+            "detail_requests": detail_requests,
+            "detail_seconds": round(detail_seconds, 1),
+            "delay_lo": delay_range[0],
+            "delay_hi": delay_range[1],
+            "mode": preset.name,
             **{k: stats.get(k) for k in (
                 "found_in_search", "discovered_new", "details_fetched",
                 "max_new_details", "detail_queue_after", "price_changes",

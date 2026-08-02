@@ -66,6 +66,14 @@ QUEUE_GROWTH_STREAK = 3
 # подряд «докачано 1000» читалось как успех, а означало «упёрлись».
 CAP_HIT_STREAK = 3
 MAX_RETRAIN_AGE_DAYS = 8
+# issue #152: шумовой порог для backlog'а без атрибуции к шарду. Единицы —
+# штатно: лот получил sighting, но ушёл с выдачи раньше, чем в ней
+# переобнаружился (атрибуции нет), и до delisted'а (3 дня) он висит в
+# backlog'е неатрибутированным. Красным делаем только материальную величину:
+# и заметную абсолютно (≥100), и заметную долю очереди (≥5%) — второй способ
+# тихой заморозки (первый — starved_shards) на возросшей глубине выдачи.
+UNATTRIBUTED_ALERT_MIN = 100
+UNATTRIBUTED_ALERT_SHARE = 0.05
 
 
 def _invariants(stats: dict | None, db_path: Path, scope: str) -> list[tuple[bool, str]]:
@@ -105,6 +113,24 @@ def _invariants(stats: dict | None, db_path: Path, scope: str) -> list[tuple[boo
             False,
             f"шардов с backlog'ом и нулевой квотой серией проходов: "
             f"{len(stats['starved_shards'])}",
+        ))
+    # issue #152: второй способ тихой заморозки — лоты backlog'а вообще без
+    # атрибуции к шарду (в очередь не берутся, starved-детектор их не видит).
+    # В отчёт едут оба, а не один.
+    unattributed = stats.get("unattributed_backlog") or 0
+    queue_after = stats.get("detail_queue_after") or 0
+    if (
+        unattributed >= UNATTRIBUTED_ALERT_MIN
+        and unattributed >= UNATTRIBUTED_ALERT_SHARE * max(1, queue_after)
+    ):
+        checks.append((
+            False,
+            f"backlog без атрибуции к шарду: {unattributed} — в очередь не берутся",
+        ))
+    if stats.get("ban_rollback"):
+        checks.append((
+            False,
+            "откат разгона по серии банов: паузы возвращены в steady",
         ))
     if stats.get("banned"):
         checks.append((False, f"бан на фазе «{stats.get('banned_phase') or '?'}»"))
@@ -238,6 +264,28 @@ def build_daily_report(scope: str = "sale", summary_path: Path | str | None = No
             f"изменений цены {stats.get('price_changes', '?')}, "
             f"{_delisted_fragment(stats)}"
         )
+        # issue #152: режим прохода (выбран по backlog'у, не по флагу) и его
+        # эффективные потолки — решение должно читаться из отчёта, а не
+        # восстанавливаться по воркфлоу.
+        if stats.get("mode"):
+            delay = stats.get("delay_range") or ["?", "?"]
+            lines.append(
+                f"Режим: <b>{stats['mode']}</b> ({stats.get('mode_reason', '?')}); "
+                f"паузы {delay[0]}–{delay[1]} с; потолок новых "
+                f"{stats.get('max_new_details', '?')}"
+                + (
+                    f", урезан заранее с {stats['plan_trimmed']['wanted_new']}"
+                    f"+{stats['plan_trimmed']['wanted_refresh']} "
+                    f"({stats['plan_trimmed']['reason']})"
+                    if stats.get("plan_trimmed")
+                    else ""
+                )
+            )
+        if stats.get("drain_completed"):
+            lines.append(
+                "🎉 Backlog разобран (drain → steady): на полном покрытии "
+                "пересчитать дедупликацию — scripts/dedup_stats.py"
+            )
         # issue #156: без этой строки восстановительный проход в отчёте
         # неотличим от удачного дня на рынке — «новых 20000» читается как
         # рекордный приток, хотя это то, что мы пропустили за перерыв.
@@ -270,6 +318,12 @@ def build_daily_report(scope: str = "sale", summary_path: Path | str | None = No
         queue_after = stats.get("detail_queue_after")
         if queue_after:
             lines.append(f"📥 Очередь деталей: {queue_after}")
+        if stats.get("unattributed_backlog"):
+            # issue #152: видно всегда при ненулевом значении — красным
+            # вердикт делают только материальные величины (см. _invariants).
+            lines.append(
+                f"🧩 из них без атрибуции к шарду: {stats['unattributed_backlog']}"
+            )
         if stats.get("suspicious"):
             active_before = stats.get("active_in_db_before")
             median = stats.get("parse_rate_median_7")

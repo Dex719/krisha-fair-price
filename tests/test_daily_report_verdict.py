@@ -139,3 +139,67 @@ def test_starved_shards_are_caught(tmp_path):
 
     assert "ПРОБЛЕМА" in lines[0]
     assert any("нулевой квотой" in line and "2" in line for line in lines)
+
+
+
+def _healthy_db_152(db):
+    """Здоровая строка истории, чтобы серийные проверки (рост очереди,
+    упирание в потолок) не шумели: нас интересуют только новые инварианты."""
+    record_sweep_run(
+        {
+            "started_at": "2026-08-03 04:00:00",
+            "deal": "prodazha",
+            "found_in_search": 39_000,
+            "discovered_new": 900,
+            "details_fetched": 300,
+            "max_new_details": 1500,
+            "detail_queue_after": 5000,
+            "price_changes": 300,
+            "delisted": 400,
+            "failed_shards": 0,
+            "recovery_pass": 0,
+            "suspicious": 0,
+        },
+        db,
+    )
+
+
+def test_unattributed_backlog_above_threshold_is_problem(tmp_path):
+    """issue #152 (хвост #169): масса backlog'а без атрибуции — второй способ
+    тихой заморозки — делает отчёт красным наряду со starved_shards."""
+    db = tmp_path / "t.db"
+    init_db(db)
+    _healthy_db_152(db)
+    stats = {**HEALTHY, "unattributed_backlog": 400, "detail_queue_after": 5000}
+
+    lines = _verdict_lines(stats, db, "sale")
+
+    assert any("ПРОБЛЕМА" in line for line in lines)
+    assert any("без атрибуции" in line for line in lines)
+
+
+def test_unattributed_backlog_below_threshold_is_ok(tmp_path):
+    """Порог И абсолютный (100), И долевой (5% очереди): 400 при очереди
+    5000 — красно, 60 при той же очереди — штатный фон (лот получил
+    sighting и ушёл с выдачи до переобнаружения)."""
+    db = tmp_path / "t.db"
+    init_db(db)
+    _healthy_db_152(db)
+    stats = {**HEALTHY, "unattributed_backlog": 60, "detail_queue_after": 5000}
+
+    lines = _verdict_lines(stats, db, "sale")
+
+    assert len(lines) == 1 and "ОК" in lines[0]
+
+
+def test_ban_rollback_is_problem(tmp_path):
+    """Откат разгона по серии банов — событие вердикта, а не строка внизу."""
+    db = tmp_path / "t.db"
+    init_db(db)
+    _healthy_db_152(db)
+    stats = {**HEALTHY, "ban_rollback": True}
+
+    lines = _verdict_lines(stats, db, "sale")
+
+    assert any("ПРОБЛЕМА" in line for line in lines)
+    assert any("бан" in line.lower() for line in lines)
