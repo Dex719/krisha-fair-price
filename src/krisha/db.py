@@ -218,7 +218,7 @@ CREATE TABLE IF NOT EXISTS sweep_shard_stats (
     PRIMARY KEY (run_seq, shard)
 );
 
--- issue #166: мелкое состояние прохода, которому нужна монотонность, а не
+-- issue #166: мелкое состояние, которому нужна монотонность, а не
 -- производность от истории. Первый вариант ротации порядка обхода считался от
 -- COUNT(sweep_runs), но started_at там секундной точности с INSERT OR
 -- REPLACE — два прохода в одну секунду (ручной перезапуск джобы) схлопываются
@@ -226,6 +226,9 @@ CREATE TABLE IF NOT EXISTS sweep_shard_stats (
 -- Хранится СЫРОЙ номер прохода (без модуля): он же run_seq в
 -- sweep_shard_stats, а смещение ротации вычисляется из него шагом, взаимно
 -- простым с числом шардов (см. shard_plan.rotation_offset).
+-- Здесь же — сентинелы разовых миграций (issue #168, ключи вида
+-- «migrate:...»): признак «уже сделано на этой базе» должен ехать вместе с
+-- базой через релиз, а не зависеть от окружения запуска.
 CREATE TABLE IF NOT EXISTS sweep_state (
     key         TEXT PRIMARY KEY,
     value       TEXT NOT NULL,
@@ -430,13 +433,35 @@ def _migrate(conn: sqlite3.Connection) -> None:
              AND julianday(first_seen) <=
                  (SELECT julianday(MIN(first_seen)) + 2 FROM listings)"""
     )
+    # issue #168: бэкфилл атрибуции id → шард из деталей (#166, ревью) —
+    # РАЗОВАЯ миграция под сентинелом, а не шаг каждого init_db. До этой
+    # правки он гонялся на каждом старте (включая API-процесс — init_db
+    # зовётся из api/app.py): полный проход по listings с десятками тысяч
+    # INSERT OR IGNORE за здоровую загрузку — цена, которую нельзя платить
+    # на каждом старте за таблицу, чей результат очередь не читает (очередь
+    # докачки — title IS NULL, бэкфилл атрибутирует title IS NOT NULL;
+    # пересечение пустое, см. честный разбор в docstring бэкфилла). После
+    # миграции атрибуцию новым лотам даёт фаза выдачи (record_listing_shards
+    # — для КАЖДОГО найденного id); лоты, минующие выдачу (первичный краул,
+    # предикты пользователей), шард не получают — допустимо ровно до
+    # появления потребителя детальных строк listing_shards: тогда версию
+    # ключа поднять (v1 → v2) и переиграть.
+    sentinel = "migrate:listing_shards_backfill:v1"
+    done = conn.execute(
+        "SELECT 1 FROM sweep_state WHERE key = ?", (sentinel,)
+    ).fetchone()
+    if done is None:
+        backfill_listing_shards_from_details(conn=conn)
+        conn.execute(
+            "INSERT INTO sweep_state (key, value) VALUES (?, datetime('now'))",
+            (sentinel,),
+        )
 
 
 def init_db(db_path: Path | str = DB_PATH) -> None:
     with get_conn(db_path) as conn:
         conn.executescript(SCHEMA)
         _migrate(conn)
-        backfill_listing_shards_from_details(conn=conn)
 
 
 def backfill_listing_shards_from_details(
@@ -451,8 +476,20 @@ def backfill_listing_shards_from_details(
     деталей (sighting-only backlog) здесь НЕ атрибутируются — их шард знает
     только выдача: они получают атрибуцию в проход, когда в ней встретятся.
 
-    Зовётся из init_db на каждом старте: идемпотентно (OR IGNORE), стоит
-    один индексированный проход по listings.
+    Честно про потребителя (issue #168): очередь докачки — `title IS NULL`,
+    а бэкфилл отбирает `title IS NOT NULL` — пересечение пустое, и на состав
+    дневной порции он не влияет НИКАК. Детальные строки listing_shards
+    сегодня никто не читает; ценность бэкфилла — целостность карты «у лота
+    с деталями есть шард», на которую сможет опереться будущий потребитель
+    (контроль состава любой очереди, не только докачки), плюс то, что
+    атрибуция из деталей — единственная, доступная без выдачи. Удалять уже
+    записанные на проде строки смысла нет — схему #166 задача не трогает.
+
+    Зовётся РАЗОВО, из _migrate под сентинелом sweep_state: до issue #168
+    он выполнялся на каждом init_db (старт API, начало каждого прохода) —
+    полным проходом по listings с десятками тысяч INSERT OR IGNORE, идемпо-
+    тентным, но небесплатным. Остаётся публичным как разовый инструмент:
+    вызов напрямую легален и идемпотентен.
     """
     with use_conn(conn, db_path) as conn:
         # Гипер-легаси схемы (миграции которых ещё не добавили title) —
@@ -1070,6 +1107,35 @@ def last_known_shard_stock(conn: sqlite3.Connection) -> dict[str, int]:
     return {r[0]: r[1] for r in rows}
 
 
+def zero_quota_streak(
+    conn: sqlite3.Connection,
+    shard: str,
+    run_seq: int,
+    limit: int,
+) -> int:
+    """Сколько из последних `limit` записанных проходов (строго до run_seq)
+    шард провёл с непустым backlog'ом и нулевой квотой — подряд, начиная со
+    свежего (issue #168).
+
+    Смотрит только на записанные проходы: убитый до итогов запуск квоты не
+    раздавал и backlog не дренировал — он не «нулевой проход» шарда, его
+    просто нет. Пропуски номеров run_seq (ранний инкремент счётчика, #168)
+    на подсчёт не влияют: берутся последние СТРОКИ, а не последние номера.
+    """
+    rows = conn.execute(
+        "SELECT quota, backlog_before FROM sweep_shard_stats "
+        "WHERE shard = ? AND run_seq < ? ORDER BY run_seq DESC LIMIT ?",
+        (shard, run_seq, limit),
+    ).fetchall()
+    streak = 0
+    for quota, backlog in rows:
+        if (quota or 0) == 0 and (backlog or 0) > 0:
+            streak += 1
+        else:
+            break
+    return streak
+
+
 def record_sweep_shard_stats(
     rows: list[dict[str, Any]],
     db_path: Path | str = DB_PATH,
@@ -1121,10 +1187,19 @@ def sweep_pass_seq(conn: sqlite3.Connection, deal: str) -> int:
     return int(row[0]) if row else 0
 
 
-def advance_sweep_pass_seq(conn: sqlite3.Connection, deal: str) -> None:
-    """+1 к номеру прохода. Зовётся в конце прохода в той же транзакции, что
-    и итоги: убитый на середине раннер номер не двигает, и это честно —
-    следующий запуск повторит порядок (и run_seq) прерванного прохода."""
+def advance_sweep_pass_seq(conn: sqlite3.Connection, deal: str) -> int:
+    """+1 к номеру прохода и возврат нового значения (issue #168).
+
+    Зовётся в НАЧАЛЕ прохода, отдельной транзакцией, до фазы выдачи. До этой
+    правки инкремент был в конце, в одной транзакции с итогами: мягкий
+    дедлайн (--time-budget-min) проход завершал и счётчик ехал, а жёсткий
+    kill раннера (timeout-minutes рубит job вместе с транзакцией) оставлял
+    номер прежним — следующий запуск повторял то же смещение ротации и
+    ампутировал тот же хвост шардов. Причина обрыва систематическая, значит
+    и перекос был систематическим — ровно то, от чего уходили шагом 13.
+    Цена раннего инкремента — пропуск номера при падении прохода на старте:
+    номера не обязаны быть плотными, от них нужна только монотонность
+    (источник ротации и run_seq в sweep_shard_stats)."""
     key = f"pass_seq:{deal}"
     conn.execute(
         "INSERT INTO sweep_state (key, value, updated_at) VALUES (?, '1', datetime('now')) "
@@ -1133,3 +1208,5 @@ def advance_sweep_pass_seq(conn: sqlite3.Connection, deal: str) -> None:
         "updated_at = excluded.updated_at",
         (key,),
     )
+    row = conn.execute("SELECT value FROM sweep_state WHERE key = ?", (key,)).fetchone()
+    return int(row[0])
