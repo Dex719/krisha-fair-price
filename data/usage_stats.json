@@ -214,10 +214,11 @@
       "bot": 0,
       "bot_users": [],
       "hours": {
-        "11": 1
+        "11": 4,
+        "17": 1
       },
-      "predict": 0,
-      "site": 1
+      "predict": 1,
+      "site": 4
     }
   }
 }
