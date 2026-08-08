@@ -201,20 +201,11 @@
       "predict": 0,
       "site": 2
     },
-    "2026-08-07": {
-      "bot": 0,
-      "bot_users": [],
-      "hours": {
-        "21": 4
-      },
-      "predict": 1,
-      "site": 3
-    },
     "2026-08-08": {
       "bot": 0,
       "bot_users": [],
       "hours": {
-        "9": 1
+        "20": 1
       },
       "predict": 0,
       "site": 1
