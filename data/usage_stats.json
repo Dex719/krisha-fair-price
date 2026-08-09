@@ -215,10 +215,10 @@
       "bot": 0,
       "bot_users": [],
       "hours": {
-        "0": 1
+        "0": 6
       },
-      "predict": 0,
-      "site": 1
+      "predict": 1,
+      "site": 5
     }
   }
 }
