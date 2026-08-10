@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import model_gate  # noqa: E402
+
 MODELS_DIR = ROOT / "models"
 MODEL_PATH = MODELS_DIR / "model.cbm"
 META_PATH = MODELS_DIR / "model_meta.json"
