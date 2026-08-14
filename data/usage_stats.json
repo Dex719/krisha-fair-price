@@ -221,20 +221,11 @@
       "predict": 1,
       "site": 6
     },
-    "2026-08-13": {
-      "bot": 0,
-      "bot_users": [],
-      "hours": {
-        "21": 4
-      },
-      "predict": 1,
-      "site": 3
-    },
     "2026-08-14": {
       "bot": 0,
       "bot_users": [],
       "hours": {
-        "10": 1
+        "21": 1
       },
       "predict": 0,
       "site": 1
