@@ -225,10 +225,11 @@
       "bot": 0,
       "bot_users": [],
       "hours": {
-        "20": 1
+        "20": 4,
+        "23": 1
       },
-      "predict": 0,
-      "site": 1
+      "predict": 1,
+      "site": 4
     }
   }
 }
