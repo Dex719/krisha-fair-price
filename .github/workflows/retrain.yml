@@ -11,6 +11,7 @@ concurrency:
 
 permissions:
   contents: write
+  actions: write # запуск deploy-hf после коммита модели (см. шаг Deploy)
 
 jobs:
   retrain:
@@ -52,17 +53,31 @@ jobs:
         run: python scripts/notify_retrain.py /tmp/old_meta.json models/model_meta.json --gate ${{ steps.gate.outcome }}
 
       - name: Commit new model
+        id: commit_model
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add models/ reports/
           if git diff --cached --quiet; then
             echo "Модель не изменилась — коммитить нечего"
+            echo "pushed=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git commit -m "model: weekly retrain $(date -u +%F)"
           git pull --rebase origin main
           git push origin main
+          echo "pushed=1" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Space
+        # Пуш, сделанный GITHUB_TOKEN'ом, по правилам GitHub Actions НЕ триггерит
+        # deploy-hf (анти-рекурсия) — из-за этого прод неделями работал на старой
+        # модели, пока кто-нибудь не пушил в main руками (retrain 16.08 доехал бы
+        # на Space только со следующим ручным коммитом). workflow_dispatch —
+        # документированное исключение: дергаем деплой явно.
+        if: steps.commit_model.outputs.pushed == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run deploy-hf.yml --ref main
 
       - name: Publish models release
         continue-on-error: true  # публикация вторична, пока есть коммит в main
