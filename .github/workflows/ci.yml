@@ -28,6 +28,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
@@ -37,6 +38,10 @@ jobs:
       - name: Install
         run: pip install -e ".[dev]"
       - name: Install Chromium
-        run: playwright install --with-deps chromium
+        # Без --with-deps: системные библиотеки Chromium на образах
+        # ubuntu-latest уже стоят, а apt-шаг --with-deps подвисал на зеркалах
+        # (первый прогон простоял 13+ минут). Если раннер однажды обеднеет,
+        # Playwright упадёт с внятным списком недостающих библиотек.
+        run: playwright install chromium
       - name: Browser e2e (герметичные — без базы и внешней сети)
         run: pytest -m e2e -q
