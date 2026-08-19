@@ -269,18 +269,45 @@ _rate: dict[str, deque] = defaultdict(deque)
 _rate_lock = threading.Lock()
 
 
+def _trusted_proxy_hops() -> int:
+    """Сколько доверенных reverse-proxy стоят перед приложением.
+
+    Читается функцией, а не константой на импорте: значение меняется
+    перезапуском без пересборки образа, а тесты подменяют его monkeypatch'ем.
+    Дефолт 1: и HF Spaces, и Railway ставят перед uvicorn ровно один роутер
+    (на HF он виден по заголовкам ответа x-proxied-host/replica). 0 —
+    приложение доступно напрямую, X-Forwarded-For не доверяем вовсе.
+    """
+    try:
+        return max(0, int(os.environ.get("TRUSTED_PROXY_HOPS", "1")))
+    except ValueError:
+        return 1
+
+
 def _client_ip(request: Request) -> str:
-    """IP для rate-limit; proxy-заголовок доверяем только при явной настройке."""
-    ip = (request.client.host if request.client else None) or "?"
-    if os.environ.get("TRUST_PROXY_HEADERS", "0") == "1":
+    """IP для rate-limit: адрес, вписанный ДОВЕРЕННЫМ ближайшим прокси.
+
+    Берём hops-й элемент X-Forwarded-For СПРАВА. Крайние левые элементы XFF
+    полностью подконтрольны клиенту — раньше брался нулевой (левый), и лимит
+    обходился сменой заголовка на каждый запрос (проверено на проде HF:
+    уникальный XFF снимал лимит, фиксированный — резал как надо). uvicorn как
+    источник не годится по той же причине: его ProxyHeadersMiddleware тоже
+    берёт крайний левый и кладёт в request.client, поэтому IP читаем из
+    заголовка сами. Правый элемент дописывает доверенный прокси HF/Railway —
+    на него клиент влиять не может.
+    """
+    hops = _trusted_proxy_hops()
+    if hops > 0:
         fwd = request.headers.get("x-forwarded-for")
         if fwd:
-            candidate = fwd.split(",")[0].strip()
-            try:
-                ip = str(ipaddress.ip_address(candidate))
-            except ValueError:
-                pass
-    return ip
+            parts = [p.strip() for p in fwd.split(",") if p.strip()]
+            if parts:
+                candidate = parts[-min(hops, len(parts))]
+                try:
+                    return str(ipaddress.ip_address(candidate))
+                except ValueError:
+                    pass
+    return (request.client.host if request.client else None) or "?"
 
 
 # issue #110: /api/predict раньше был sync def → крутился в общем anyio
