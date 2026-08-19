@@ -111,14 +111,7 @@ def test_demo_contract_depends_on_db_presence(api):
 
 
 def test_rate_limit_429_after_burst_over_real_socket(api):
-    """15 запросов проходят, 16-й — 429; XFF-заголовок НЕ пробивает лимит.
-
-    Замечание из чекапа: uvicorn по умолчанию доверяет X-Forwarded-For от
-    127.0.0.1 (proxy_headers=True + forwarded_allow_ips=127.0.0.1) и
-    подменяет request.client — поэтому подделка XFF с локального адреса
-    МОГЛА БЫ обойти лимит. Тест зафиксирует текущее поведение: burst без
-    XFF упирается в 429 (сам лимитер работает).
-    """
+    """15 запросов проходят, 16-й — 429 (сам лимитер работает на живом сокете)."""
     codes = []
     for _ in range(20):
         codes.append(api.get("/api/demo").status_code)
@@ -128,3 +121,23 @@ def test_rate_limit_429_after_burst_over_real_socket(api):
     # /api/demo без базы отвечает 503, но rate-limit срабатывает ДО обращения
     # к базе — важна сама смена 503 → 429.
     assert codes[-1] == 429
+
+
+def test_rate_limit_not_bypassed_by_rotating_left_xff(api):
+    """Обход закрыт на реальном HTTP-стеке: смена ЛЕВОГО элемента XFF на каждом
+    запросе не даёт нового бакета, когда правый (от «доверенного прокси») один.
+
+    Именно так обходился прод HF: uvicorn берёт крайний левый XFF и кладёт в
+    request.client, поэтому фикс обязан читать правый элемент из заголовка
+    сам — что и проверяется здесь через настоящий uvicorn, а не TestClient.
+    """
+    # Пауза на сброс окна rate-limit от предыдущего теста (RATE_WINDOW_S=60)
+    # не нужна: правый IP тут другой (198.51.100.7) — это отдельный бакет.
+    codes = []
+    for i in range(20):
+        r = api.get("/api/demo", headers={"x-forwarded-for": f"9.9.9.{i}, 198.51.100.7"})
+        codes.append(r.status_code)
+        if r.status_code == 429:
+            break
+    assert 429 in codes, f"меняющийся левый XFF обошёл лимит: {codes}"
+    assert codes.index(429) == 15, f"429 ожидался на 16-м запросе, коды: {codes}"
