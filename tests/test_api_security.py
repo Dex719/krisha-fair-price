@@ -21,24 +21,69 @@ def _assert_security_headers(resp):
     assert resp.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
 
 
-def test_forwarded_for_ignored_unless_proxy_is_trusted(monkeypatch):
+def _request_with_xff(xff: str | None, client: str = "198.51.100.5"):
     from starlette.requests import Request
 
-    scope = {
-        "type": "http",
-        "method": "GET",
-        "path": "/api/demo",
-        "headers": [(b"x-forwarded-for", b"203.0.113.10")],
-        "client": ("198.51.100.5", 1234),
-        "server": ("testserver", 80),
-        "scheme": "http",
-        "query_string": b"",
-    }
-    request = Request(scope)
-    monkeypatch.delenv("TRUST_PROXY_HEADERS", raising=False)
-    assert app_module._client_ip(request) == "198.51.100.5"
-    monkeypatch.setenv("TRUST_PROXY_HEADERS", "1")
-    assert app_module._client_ip(request) == "203.0.113.10"
+    headers = [(b"x-forwarded-for", xff.encode())] if xff is not None else []
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/demo",
+            "headers": headers,
+            "client": (client, 1234),
+            "server": ("testserver", 80),
+            "scheme": "http",
+            "query_string": b"",
+        }
+    )
+
+
+def test_client_ip_uses_proxy_written_rightmost_xff(monkeypatch):
+    """Берём IP, вписанный доверенным прокси (правый элемент XFF), а не
+    подконтрольный клиенту левый — иначе rate-limit обходится подделкой
+    заголовка (проверено на проде HF, см. _client_ip)."""
+    monkeypatch.delenv("TRUSTED_PROXY_HOPS", raising=False)  # дефолт 1 (HF/Railway)
+
+    # Клиент подделал левый элемент, прокси дописал реальный IP справа.
+    assert app_module._client_ip(_request_with_xff("6.6.6.6, 203.0.113.10")) == "203.0.113.10"
+    # Один элемент (прокси не аппендил) — правый = единственный.
+    assert app_module._client_ip(_request_with_xff("203.0.113.10")) == "203.0.113.10"
+    # Нет XFF → падаем на request.client.
+    assert app_module._client_ip(_request_with_xff(None)) == "198.51.100.5"
+    # Мусор в правом элементе → тоже fallback на client, а не крэш.
+    assert app_module._client_ip(_request_with_xff("not-an-ip")) == "198.51.100.5"
+
+
+def test_client_ip_zero_hops_ignores_xff(monkeypatch):
+    """TRUSTED_PROXY_HOPS=0 — приложение доступно напрямую, XFF не доверяем."""
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "0")
+    assert app_module._client_ip(_request_with_xff("203.0.113.10")) == "198.51.100.5"
+
+
+def test_client_ip_two_hops_picks_second_from_right(monkeypatch):
+    """Два доверенных прокси → берём второй справа (первый вписал внешний LB)."""
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "2")
+    xff = "6.6.6.6, 203.0.113.10, 10.0.0.1"
+    assert app_module._client_ip(_request_with_xff(xff)) == "203.0.113.10"
+
+
+def test_rate_limit_not_bypassed_by_spoofed_left_xff(monkeypatch):
+    """Регрессия обхода: смена крайнего ЛЕВОГО XFF не даёт нового бакета.
+
+    Модель HF: клиент управляет левыми элементами, доверенный прокси всегда
+    дописывает один и тот же реальный IP справа. Раньше ключ брался слева —
+    каждый запрос попадал в свой бакет, и лимит обходился одной строкой."""
+    monkeypatch.delenv("TRUSTED_PROXY_HOPS", raising=False)  # дефолт 1
+    app_module._rate.clear()
+    client = TestClient(app)
+
+    for i in range(app_module.RATE_LIMIT):
+        r = client.get("/api/demo", headers={"x-forwarded-for": f"9.9.9.{i}, 203.0.113.200"})
+        # demo без базы = 503, но _check_rate_limit срабатывает ДО обращения к БД
+        assert r.status_code in (200, 503)
+    blocked = client.get("/api/demo", headers={"x-forwarded-for": "9.9.9.250, 203.0.113.200"})
+    assert blocked.status_code == 429
 
 
 def test_security_headers_present():
