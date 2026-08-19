@@ -1,4 +1,4 @@
-.PHONY: install crawl crawl-full crawl-complexes rescrape train api test lint lock
+.PHONY: install crawl crawl-full crawl-complexes rescrape train api test test-e2e lint lock
 
 install:        ## зависимости (venv создай заранее: python -m venv .venv && source .venv/bin/activate)
 	pip install -e ".[dev]"
@@ -28,6 +28,9 @@ api:            ## запустить API + фронт на http://localhost:800
 
 test:
 	pytest -q
+
+test-e2e:       ## браузерные e2e: заранее `playwright install chromium`
+	pytest -m e2e -q
 
 lint:
 	ruff check src tests scripts

@@ -31,6 +31,7 @@ dev = [
     "scikit-learn>=1.4",
     "pytest>=8.0",
     "ruff>=0.4",
+    "pytest-playwright>=0.5",  # e2e: pytest -m e2e (нужен `playwright install chromium`)
 ]
 
 [build-system]
@@ -57,3 +58,12 @@ testpaths = ["tests"]
 # add the repo root to sys.path on its own — tests/test_runtime_lock.py
 # imports the non-package `scripts/` dir, so it needs the root explicit.
 pythonpath = ["."]
+# Браузерные e2e и live-smoke не входят в дефолтный прогон (make test / CI-юниты):
+# им нужен playwright+chromium, а live — ещё и реальная база с интернетом.
+# Запуск: `pytest -m e2e` / `pytest -m live` (флаг -m с командной строки
+# переопределяет этот из addopts).
+addopts = "-m 'not e2e and not live'"
+markers = [
+    "e2e: герметичные браузерные тесты (uvicorn + Playwright chromium, сеть замокана)",
+    "live: живой smoke — реальная база и один запрос к krisha.kz; только вручную",
+]
