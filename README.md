@@ -8,7 +8,7 @@
 **baǵam — справедливая цена квартиры в Алматы: вставьте ссылку на объявление и проверьте, цена выгодная, рыночная или завышенная**
 
 [![CI](https://github.com/Dex719/krisha-fair-price/actions/workflows/ci.yml/badge.svg)](https://github.com/Dex719/krisha-fair-price/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-488_passed-2ea44f)
+![tests](https://img.shields.io/badge/tests-519_passed-2ea44f)
 ![python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
 ![CatBoost](https://img.shields.io/badge/CatBoost-MAPE_7.7%25-FFCC00)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
@@ -131,10 +131,9 @@ python scripts/rescrape.py --deal arenda --max-new 1000
 | Метод | Путь | Что делает |
 |---|---|---|
 | `POST` | `/api/predict` | `{"url": "https://krisha.kz/a/show/..."}` → вердикт, справедливая цена, факторы, срок продажи |
-| `GET` | `/api/flags/{listing_id}` | догрузка бейджей по тексту объявления (залог, торг, мебель…) |
 | `GET` | `/api/stats` | срез рынка: районы, ₸/м², распределения цен, тренд по неделям |
 | `GET` | `/api/heatmap` | сетка ₸/м² для карты цен (ячейки ~400 м) |
-| `GET` | `/api/forecast` | прогноз ₸/м² на 3–6 месяцев по городу и районам |
+| `GET` | `/api/forecast` | прогноз ₸/м² на 3–6 месяцев (за фича-флагом `FEATURE_FORECAST`, по умолчанию 404) |
 | `GET` | `/api/demo` | случайное активное объявление для кнопки «Показать на примере» |
 | `GET` | `/api/health` | живость + статус модели, её медианная ошибка и Telegram-webhook |
 | `POST` | `/tg/webhook` | апдейты Telegram-бота (защищено секретом) |
@@ -156,7 +155,10 @@ src/krisha/
 └── db.py           # SQLite: схема, upsert по id, история цен
 static/             # фронт на дизайн-системе baǵam (design.css): оценка, рынок, о проекте
 tests/              # 488 тестов: парсеры (фикстуры с реальной разметкой), фичи, БД, бот, API, фронт-приёмка, train-smoke, артефакты модели
+tests/e2e/          # 34 браузерных e2e (pytest-playwright): герметичные против uvicorn+Chromium и live-smoke
 ```
+
+E2e-тесты не входят в `make test` (нужен Chromium): `pip install -e ".[dev]" && playwright install chromium`, затем `make test-e2e`. Живой smoke с реальной базой и одним походом на krisha.kz — `pytest -m live` (только вручную).
 
 ## 🏷 Версии
 
