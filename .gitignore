@@ -11,6 +11,8 @@ dist/
 
 # Данные и артефакты (не коммитим — большие)
 data/*.db
+data/*.db-shm
+data/*.db-wal
 data/*.csv
 data/rescrape_history_*.json
 # модель и метаданные коммитим — нужны деплою на Railway
