@@ -6,22 +6,24 @@
 оценивает прошлую модель на test_pool текущего ретрейна, здесь тот же
 test_pool скармливается N чекпойнтам.
 
-Воспроизведение фрейма эпохи 2026-08-09 (retrain-коммит c244821):
+Воспроизведение фрейма эпохи-якоря (последний retrain-коммит из ERAS,
+его мета лежит в models/model_meta.json):
 - датасет из SQLite «как при обучении»: те же фильтры, что load_dataset
   (source != "user", stale-фильтр, bbox), но с «сейчас», замороженным на
   metrics.trained_at из меты, плюс отсечка first_seen <= trained_at —
   строки, дописанные в базу после обучения, в фрейм не попадают;
 - дальше боевой пайплайн из krisha.train/krisha.features: clean →
   resolve_zones → dedup_relistings → time_based_split → purge;
-- фичи ЕДИНЫЕ для всех эпох — по картам train-среза 09.08 (ppsm_maps из
+- фичи ЕДИНЫЕ для всех эпох — по картам train-среза эпохи-якоря (ppsm_maps из
   models/model_meta.json, spatial_ref из models/spatial_ref.json), как
   гейт кормит старую модель картами НОВОГО train-среза. Старые эпохи
   получают чуть сдвинутые ковариаты, но сдвиг одинаков для всех — любая
   разница метрик изолирована до весов модели.
 
-Валидация по якорям обязательна: c244821 и e7c837e (metrics.old_model
-посчитана гейтом ровно на этом тесте) и baseline из меты должны сойтись
-с воспроизведёнными значениями; иначе фрейм собран не так — exit 1.
+Валидация по якорям обязательна: последняя эпоха ERAS (metrics.model),
+предпоследняя (metrics.old_model — посчитана гейтом ровно на этом тесте)
+и baseline из меты должны сойтись с воспроизведёнными значениями; иначе
+фрейм собран не так — exit 1.
 
 Запуск:
     python scripts/compare_models.py --eras-dir <dir с <commit>/model.cbm>
@@ -87,7 +89,9 @@ ERAS: list[dict[str, str]] = [
     {"commit": "e7c837e", "date": "2026-08-02",
      "label": "Weekly retrain 02.08: time-based holdout + purge"},
     {"commit": "c244821", "date": "2026-08-09",
-     "label": "Weekly retrain 09.08 (текущий прод)"},
+     "label": "Weekly retrain 09.08"},
+    {"commit": "974c893", "date": "2026-08-16",
+     "label": "Weekly retrain 16.08 (текущий прод)"},
 ]
 KNOWN_TRANSFORMS = {"log1p"}  # log1p → инверсия np.expm1
 
@@ -307,11 +311,12 @@ def main() -> None:
 
     # --- Валидация по якорям (критерий корректности всего пайплайна) ------
     by_commit = {r["commit"]: r for r in rows if r.get("commit")}
+    cur_era, prev_era = ERAS[-1]["commit"], ERAS[-2]["commit"]
     anchors = [
-        ("c244821 (metrics.model)", anchor_metrics["model"]["mape"],
-         by_commit.get("c244821", {}).get("mape")),
-        ("e7c837e (metrics.old_model)", anchor_metrics["old_model"]["mape"],
-         by_commit.get("e7c837e", {}).get("mape")),
+        (f"{cur_era} (metrics.model)", anchor_metrics["model"]["mape"],
+         by_commit.get(cur_era, {}).get("mape")),
+        (f"{prev_era} (metrics.old_model)", anchor_metrics["old_model"]["mape"],
+         by_commit.get(prev_era, {}).get("mape")),
         ("baseline (metrics.baseline)", anchor_metrics["baseline"]["mape"],
          baseline_row["mape"]),
     ]
@@ -361,7 +366,7 @@ def main() -> None:
         "caveats": caveats,
         "excluded_checkpoints": EXCLUDED_CHECKPOINTS,
         "map_strategy": (
-            "единый фрейм: тест эпохи 2026-08-09, фичи по картам её train-среза "
+            f"единый фрейм: тест эпохи {trained_at:%Y-%m-%d}, фичи по картам её train-среза "
             "(ppsm_maps из model_meta.json, spatial_ref.json) — как гейт кормит "
             "старую модель картами нового train; era-карты моделям не выдаются"
         ),
