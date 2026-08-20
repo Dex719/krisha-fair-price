@@ -67,7 +67,7 @@ def test_about_page_has_no_mock_numbers_for_live_metrics():
     ):
         assert fake not in html
     assert "Считается по активным объявлениям базы" in html
-    assert "Медианная ошибка последней опубликованной модели" in html
+    assert "Средняя ошибка последней опубликованной модели" in html
     assert "Живые значения появятся через пару секунд" in html
     assert "данные о модели временно недоступны" in html
 
@@ -81,7 +81,7 @@ def test_about_faq_matches_mockup_with_live_trust_metric():
     assert "Это независимый проект. Если когда-нибудь появятся платные функции" in html
     assert "Насколько можно доверять оценке?" in html
     assert "about-trust-answer" in html
-    assert "На проверочной выборке медианная ошибка — '+err" in html
+    assert "На проверочной выборке средняя ошибка — '+err" in html
     assert "Данные о точности модели временно недоступны" in html
     assert "Почему результат может отличаться от цены сделки?" not in html
     assert "Что делать после оценки?" not in html

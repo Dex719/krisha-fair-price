@@ -104,8 +104,8 @@
 <h2>Как считает модель</h2>
 <div class="steps">
 <div class="step"><span class="n">1</span><h3>Собираем рынок каждое утро</h3><p><span id="how-market-count">Объявления Алматы</span> с krisha.kz: цены, параметры, история изменений. Устаревшие лоты выбывают, новые попадают в выборку в день публикации.</p></div>
-<div class="step"><span class="n">2</span><h3>Сравниваем лот с похожими</h3><p>Модель находит аналоги в районе и корректирует медиану на 23 фактора конкретной квартиры — этаж, ремонт, год дома, метро, залог и другие.</p></div>
-<div class="step"><span class="n">3</span><h3>Показываем диапазон, а не «точную» цифру</h3><p id="accuracy-step">Точность модели — медианная ошибка на проверке по закрытым продажам. Если аналогов мало — диапазон честно расширяется.</p></div>
+<div class="step"><span class="n">2</span><h3>Сравниваем лот с похожими</h3><p>Модель находит аналоги в районе и корректирует медиану под факторы конкретной квартиры — этаж, ремонт, год дома, метро, залог и другие.</p></div>
+<div class="step"><span class="n">3</span><h3>Показываем диапазон, а не «точную» цифру</h3><p id="accuracy-step">Точность модели — средняя ошибка на проверке по свежим объявлениям. Если аналогов мало — диапазон честно расширяется.</p></div>
 </div>
 <div class="faq">
 <details><summary>Почему отличие от медианы не равно отличию от оценки?<span class="chev">▾</span></summary><p>Медиана района — усреднённый ориентир по похожим квартирам. Справедливая оценка корректирует её под конкретный лот: параметры квартиры могут поднять или снизить оценку относительно медианы.</p></details>
@@ -151,7 +151,7 @@ function pluralRu(n,one,few,many){const m10=n%10,m100=n%100;if(m10===1&&m100!==1
    (issue #81: хардкод ±9,5% устаревает с каждым weekly retrain). */
 let modelErrPct=null;
 function accuracySuffix(){return modelErrPct==null?'':' · точность модели ±'+fmtPct(modelErrPct)}
-async function loadModelAccuracy(){try{const r=await fetch('/api/health');if(!r.ok)return;const h=await r.json();if(h.model_error_pct==null)return;modelErrPct=+h.model_error_pct;const step=document.getElementById('accuracy-step');if(step)step.textContent='Точность ±'+fmtPct(modelErrPct)+' — медианная ошибка модели на проверке по закрытым продажам. Если аналогов мало — диапазон честно расширяется.';const meta=document.querySelector('.stage .meta');if(meta&&meta.dataset.acc==='pending'){delete meta.dataset.acc;meta.textContent+=accuracySuffix()}}catch(e){}}
+async function loadModelAccuracy(){try{const r=await fetch('/api/health');if(!r.ok)return;const h=await r.json();if(h.model_error_pct==null)return;modelErrPct=+h.model_error_pct;const step=document.getElementById('accuracy-step');if(step)step.textContent='Точность ±'+fmtPct(modelErrPct)+' — средняя ошибка модели на проверке по свежим объявлениям. Если аналогов мало — диапазон честно расширяется.';const meta=document.querySelector('.stage .meta');if(meta&&meta.dataset.acc==='pending'){delete meta.dataset.acc;meta.textContent+=accuracySuffix()}}catch(e){}}
 function fmtPpsm(v){return v==null||Number.isNaN(+v)?'—':fmtPrice(v)+'/м²'}
 function safeHref(url){try{const u=new URL(String(url),location.origin);if(u.protocol==='https:'&&/(^|\.)krisha\.kz$/.test(u.hostname))return u.href}catch(e){}return 'https://krisha.kz'}
 function showStatus(text,kind){statusEl.textContent=text||'';statusEl.classList.toggle('err',kind==='err');statusEl.classList.toggle('ok',kind!=='err');statusEl.setAttribute('aria-hidden',text?'false':'true')}
