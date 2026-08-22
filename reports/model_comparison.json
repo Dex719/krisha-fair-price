@@ -1,0 +1,195 @@
+{
+  "asof": "2026-08-16T07:01:30.364409+00:00",
+  "test_window": "2026-08-01..2026-08-16",
+  "n_test": 5434,
+  "caveats": {
+    "test_days_histogram": {
+      "2026-08-01": 1731,
+      "2026-08-02": 1593,
+      "2026-08-03": 753,
+      "2026-08-04": 52,
+      "2026-08-05": 65,
+      "2026-08-06": 102,
+      "2026-08-07": 94,
+      "2026-08-08": 57,
+      "2026-08-09": 53,
+      "2026-08-10": 37,
+      "2026-08-11": 64,
+      "2026-08-12": 95,
+      "2026-08-13": 143,
+      "2026-08-14": 148,
+      "2026-08-15": 272,
+      "2026-08-16": 175
+    },
+    "test_concentration": "75.0% тестовых лотов пришли за 3 самых плотных дня — test_window это span окна сплита, а не равномерные 14 дней",
+    "test_representativeness": {
+      "tvd": {
+        "district": 0.139,
+        "rooms": 0.027
+      },
+      "worst_tvd": 0.139,
+      "representative": true,
+      "threshold": 0.2
+    },
+    "temporal_validity": false,
+    "time_confounding": {
+      "confounded": true,
+      "worst_day_tvd": 0.745,
+      "threshold": 0.2
+    },
+    "note": "тест общий для всех эпох — относительное ранжирование честное; абсолютные MAPE/MAE не читать как типичную ошибку по всему рынку (см. test_representativeness/temporal_validity выше)"
+  },
+  "excluded_checkpoints": [
+    {
+      "commit": "700ba4b",
+      "date": "2026-07-02",
+      "reason": "тот же обученный артефакт, что c32ed2b (own MAPE в мете совпадает бит-в-бит, тот же день и seed): коммит добавил CQR-интервал, основную модель не менял — отдельной эпохи нет"
+    }
+  ],
+  "map_strategy": "единый фрейм: тест эпохи 2026-08-16, фичи по картам её train-среза (ppsm_maps из model_meta.json, spatial_ref.json) — как гейт кормит старую модель картами нового train; era-карты моделям не выдаются",
+  "anchors": [
+    {
+      "anchor": "974c893 (metrics.model)",
+      "expected_mape": 0.075763,
+      "actual_mape": 0.075051,
+      "delta": 0.000712,
+      "ok": true
+    },
+    {
+      "anchor": "c244821 (metrics.old_model)",
+      "expected_mape": 0.078931,
+      "actual_mape": 0.078125,
+      "delta": 0.000806,
+      "ok": true
+    },
+    {
+      "anchor": "baseline (metrics.baseline)",
+      "expected_mape": 0.165962,
+      "actual_mape": 0.16484,
+      "delta": 0.001122,
+      "ok": true
+    }
+  ],
+  "rows": [
+    {
+      "commit": "fd06da4",
+      "date": "2026-06-12",
+      "label": "Первая модель: CatBoost на 6075 объявлениях",
+      "n_features": 23,
+      "own_reported_mape": 0.105005,
+      "mape": 0.101857,
+      "mdape": 0.076774,
+      "mae": 5530702.24212,
+      "r2": 0.85319,
+      "note": ""
+    },
+    {
+      "commit": "29cf732",
+      "date": "2026-06-12",
+      "label": "Ретрейн на 7050 объявлениях (те же 23 фичи)",
+      "n_features": 23,
+      "own_reported_mape": 0.105655,
+      "mape": 0.102044,
+      "mdape": 0.076757,
+      "mae": 5379834.939286,
+      "r2": 0.871746,
+      "note": ""
+    },
+    {
+      "commit": "b160ff7",
+      "date": "2026-06-12",
+      "label": "+raw_params: ремонт, санузел, мебель, парковка, охрана",
+      "n_features": 32,
+      "own_reported_mape": 0.099814,
+      "mape": 0.098019,
+      "mdape": 0.073801,
+      "mae": 5280028.149914,
+      "r2": 0.866427,
+      "note": ""
+    },
+    {
+      "commit": "54a3752",
+      "date": "2026-06-12",
+      "label": "+справочник ЖК: застройщик, класс, год сдачи",
+      "n_features": 36,
+      "own_reported_mape": 0.098645,
+      "mape": 0.09629,
+      "mdape": 0.07072,
+      "mae": 5195363.86182,
+      "r2": 0.865555,
+      "note": ""
+    },
+    {
+      "commit": "b26a657",
+      "date": "2026-06-12",
+      "label": "+OSM POI: метро/школы/парки, walk_score",
+      "n_features": 45,
+      "own_reported_mape": 0.098074,
+      "mape": 0.095677,
+      "mdape": 0.071958,
+      "mae": 5117098.612066,
+      "r2": 0.873495,
+      "note": ""
+    },
+    {
+      "commit": "c32ed2b",
+      "date": "2026-07-02",
+      "label": "+H3-гексагоны; честная CV (dedup + group split), v0.2.0",
+      "n_features": 47,
+      "own_reported_mape": 0.094589,
+      "mape": 0.095629,
+      "mdape": 0.071466,
+      "mae": 5166922.220991,
+      "r2": 0.870991,
+      "note": ""
+    },
+    {
+      "commit": "e7c837e",
+      "date": "2026-08-02",
+      "label": "Weekly retrain 02.08: time-based holdout + purge",
+      "n_features": 47,
+      "own_reported_mape": 0.084941,
+      "mape": 0.084099,
+      "mdape": 0.062152,
+      "mae": 4515298.540377,
+      "r2": 0.897794,
+      "note": ""
+    },
+    {
+      "commit": "c244821",
+      "date": "2026-08-09",
+      "label": "Weekly retrain 09.08",
+      "n_features": 47,
+      "own_reported_mape": 0.076636,
+      "mape": 0.078125,
+      "mdape": 0.056354,
+      "mae": 4130708.813052,
+      "r2": 0.91347,
+      "note": ""
+    },
+    {
+      "commit": "974c893",
+      "date": "2026-08-16",
+      "label": "Weekly retrain 16.08 (текущий прод)",
+      "n_features": 47,
+      "own_reported_mape": 0.075763,
+      "mape": 0.075051,
+      "mdape": 0.054077,
+      "mae": 3950025.309787,
+      "r2": 0.915289,
+      "note": ""
+    },
+    {
+      "commit": null,
+      "date": null,
+      "label": "Бейзлайн: медиана ₸/м² (район × комнаты)",
+      "n_features": null,
+      "own_reported_mape": null,
+      "note": "не модель; train-часть общего сплита",
+      "mae": 9022624.368629,
+      "mape": 0.16484,
+      "mdape": 0.12789,
+      "r2": 0.724962
+    }
+  ]
+}
