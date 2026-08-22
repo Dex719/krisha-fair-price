@@ -118,9 +118,21 @@ def test_about_page_renders_and_dynamic_numbers_load(hermetic_page, mock_api, he
     expect(page.locator("h1")).to_contain_text("которую можно")
     # Числа базы подтягиваются из /api/stats и /api/health.
     expect(page.locator("[data-l=total]").first).to_have_text("18 680")
-    expect(page.locator("[data-l=mape]").first).not_to_have_text("")
-    expect(page.locator("[data-l=age]").first).to_contain_text("обновлено")
+    expect(page.locator("[data-l=mape]").first).to_have_text("7,6%")
+    expect(page.locator("[data-l=mdape]").first).to_have_text("5,1%")
+    expect(page.locator("[data-l=age]").first).to_have_text("обновлено 3 ч назад")
     assert errors == []
+
+
+def test_about_keeps_snapshot_age_when_health_has_no_data_age(hermetic_page, mock_api, hermetic_server, health_data):
+    """Сервер не знает возраст данных → остаётся подпись сборки, а не пустое место."""
+    page = hermetic_page
+    mock_api(health=dict(health_data, data_age_hours=None))
+    page.goto(hermetic_server + "/about")
+
+    expect(page.locator("[data-l=mape]").first).to_have_text("7,6%")
+    # текст снимка сборки не затёрт пустой строкой
+    expect(page.locator("[data-l=age]").first).to_have_text("обновление ежедневно")
 
 
 def test_404_page_is_branded_and_leads_back(hermetic_page, mock_api, hermetic_server):

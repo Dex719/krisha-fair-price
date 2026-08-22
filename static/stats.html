@@ -505,7 +505,7 @@ bagamTG(function(tg){
     if(h){
       if(h.model_error_pct)put('[data-l=mape]',pc(h.model_error_pct)+'%');
       if(h.model_median_error_pct)put('[data-l=mdape]',pc(h.model_median_error_pct)+'%');
-      put('[data-l=age]',age(h.data_age_hours));
+      if(h.data_age_hours!=null)put('[data-l=age]',age(h.data_age_hours));
       document.querySelectorAll('[data-l=status]').forEach(function(e){
         e.textContent=h.status==='ok'&&h.model_loaded?'сервис работает':'сервис недоступен';
         e.classList.toggle('off',!(h.status==='ok'&&h.model_loaded));

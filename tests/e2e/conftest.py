@@ -50,6 +50,24 @@ def heatmap_data() -> list:
 
 
 @pytest.fixture(scope="session")
+def health_data() -> dict:
+    """Ответ /api/health для герметичных тестов.
+
+    Настоящий сервер отвечает по состоянию машины (есть база — есть возраст
+    данных, нет — null), поэтому страницы с живыми числами мокаются и здесь:
+    иначе тест зелёный локально и красный в CI, где базы нет.
+    """
+    return {
+        "status": "ok",
+        "model_loaded": True,
+        "model_error_pct": 7.6,
+        "model_median_error_pct": 5.1,
+        "data_age_hours": 3.0,
+        "freshness": "fresh",
+    }
+
+
+@pytest.fixture(scope="session")
 def predict_fair() -> dict:
     """Реальный ответ /api/predict (вердикт FAIR) — база всех вариантов ниже."""
     return _load("predict_fair.json")
@@ -206,7 +224,7 @@ def hermetic_page(page, hermetic_server, stats_data, heatmap_data):
 
 
 @pytest.fixture
-def mock_api(hermetic_page, stats_data, heatmap_data):
+def mock_api(hermetic_page, stats_data, heatmap_data, health_data):
     """Хелпер: ставит JSON-ответы на ``/api/*`` для текущей страницы.
 
     Использование::
@@ -219,13 +237,17 @@ def mock_api(hermetic_page, stats_data, heatmap_data):
     def _install(predict: dict | None = None,
                  stats: dict | None = None,
                  heatmap: list | None = None,
+                 health: dict | None = None,
                  demo_url: str = "https://krisha.kz/a/show/761891663",
                  forecast_status: int = 404):
         stats = stats if stats is not None else stats_data
         heatmap = heatmap if heatmap is not None else heatmap_data
+        health = health if health is not None else health_data
 
         page.route("**/api/stats", lambda r: _fulfill(
             r, json.dumps(stats), "application/json"))
+        page.route("**/api/health", lambda r: _fulfill(
+            r, json.dumps(health), "application/json"))
         page.route("**/api/heatmap", lambda r: _fulfill(
             r, json.dumps(heatmap), "application/json"))
         page.route("**/api/demo", lambda r: _fulfill(
