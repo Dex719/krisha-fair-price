@@ -17,7 +17,9 @@ HEALTHY = {
 }
 
 
-def _run(db, started_at, *, queue, fetched=1000, cap=1000):
+def _run(db, started_at, *, queue, fetched=1000, cap=1000, eff=None):
+    """Строка истории прохода. eff=None имитирует легаси-строку (до #170):
+    тогда max_new_details и был сырым лимитом CLI."""
     record_sweep_run(
         {
             "started_at": started_at,
@@ -26,6 +28,7 @@ def _run(db, started_at, *, queue, fetched=1000, cap=1000):
             "discovered_new": 900,
             "details_fetched": fetched,
             "max_new_details": cap,
+            "max_new_effective": eff,
             "detail_queue_after": queue,
             "price_changes": 300,
             "delisted": 400,
@@ -110,6 +113,41 @@ def test_shrinking_queue_is_not_flagged(tmp_path):
     assert len(lines) == 1 and "ОК" in lines[0]
 
 
+def test_drained_queue_with_effective_cap_is_not_flagged(tmp_path):
+    """Регрессия ревью #170 (блокер): пост-#152 строки — заявленный потолок
+    1500 (пресет steady), эффективный 200 (= вся очередь), очередь разобрана
+    в ноль — три прохода подряд НЕ «упёрлись в потолок»: ограничением был
+    рынок, не лимит. До разделения потолков эффективный публиковался как
+    max_new_details, равенство «докачано == потолок» было тождеством, и
+    детектор краснел навсегда ровно в момент успеха разгребания."""
+    db = tmp_path / "t.db"
+    init_db(db)
+    for day in (21, 22, 23):
+        _run(db, f"2026-07-{day} 04:00:00", queue=0, fetched=200, cap=1500, eff=200)
+
+    lines = _verdict_lines(HEALTHY, db, "sale")
+
+    assert len(lines) == 1 and "ОК" in lines[0]
+
+
+def test_effective_cap_hit_with_nonempty_queue_is_flagged(tmp_path):
+    """Обратная сторона разделения: эффективный потолок выбран полностью И
+    очередь после прохода непуста — это и есть «сбор ограничен лимитом»
+    (подрезка по времени при этом сообщается отдельно, через plan_trimmed).
+    В сообщении — эффективный потолок, а не заявленный: именно он связал
+    проход."""
+    db = tmp_path / "t.db"
+    init_db(db)
+    for day in (21, 22, 23):
+        _run(db, f"2026-07-{day} 04:00:00", queue=800, fetched=200, cap=1500, eff=200)
+
+    lines = _verdict_lines(HEALTHY, db, "sale")
+
+    body = "\n".join(lines)
+    assert "ПРОБЛЕМА" in lines[0]
+    assert "упирается в потолок 200" in body
+
+
 def test_missing_summary_is_a_problem_not_silence(tmp_path):
     """Нет summary-JSON — значит рескрейп не доработал. Промолчать здесь
     означало бы вернуть ровно ту ситуацию, ради которой заведён вердикт."""
@@ -139,3 +177,67 @@ def test_starved_shards_are_caught(tmp_path):
 
     assert "ПРОБЛЕМА" in lines[0]
     assert any("нулевой квотой" in line and "2" in line for line in lines)
+
+
+
+def _healthy_db_152(db):
+    """Здоровая строка истории, чтобы серийные проверки (рост очереди,
+    упирание в потолок) не шумели: нас интересуют только новые инварианты."""
+    record_sweep_run(
+        {
+            "started_at": "2026-08-03 04:00:00",
+            "deal": "prodazha",
+            "found_in_search": 39_000,
+            "discovered_new": 900,
+            "details_fetched": 300,
+            "max_new_details": 1500,
+            "detail_queue_after": 5000,
+            "price_changes": 300,
+            "delisted": 400,
+            "failed_shards": 0,
+            "recovery_pass": 0,
+            "suspicious": 0,
+        },
+        db,
+    )
+
+
+def test_unattributed_backlog_above_threshold_is_problem(tmp_path):
+    """issue #152 (хвост #169): масса backlog'а без атрибуции — второй способ
+    тихой заморозки — делает отчёт красным наряду со starved_shards."""
+    db = tmp_path / "t.db"
+    init_db(db)
+    _healthy_db_152(db)
+    stats = {**HEALTHY, "unattributed_backlog": 400, "detail_queue_after": 5000}
+
+    lines = _verdict_lines(stats, db, "sale")
+
+    assert any("ПРОБЛЕМА" in line for line in lines)
+    assert any("без атрибуции" in line for line in lines)
+
+
+def test_unattributed_backlog_below_threshold_is_ok(tmp_path):
+    """Порог И абсолютный (100), И долевой (5% очереди): 400 при очереди
+    5000 — красно, 60 при той же очереди — штатный фон (лот получил
+    sighting и ушёл с выдачи до переобнаружения)."""
+    db = tmp_path / "t.db"
+    init_db(db)
+    _healthy_db_152(db)
+    stats = {**HEALTHY, "unattributed_backlog": 60, "detail_queue_after": 5000}
+
+    lines = _verdict_lines(stats, db, "sale")
+
+    assert len(lines) == 1 and "ОК" in lines[0]
+
+
+def test_ban_rollback_is_problem(tmp_path):
+    """Откат разгона по серии банов — событие вердикта, а не строка внизу."""
+    db = tmp_path / "t.db"
+    init_db(db)
+    _healthy_db_152(db)
+    stats = {**HEALTHY, "ban_rollback": True}
+
+    lines = _verdict_lines(stats, db, "sale")
+
+    assert any("ПРОБЛЕМА" in line for line in lines)
+    assert any("бан" in line.lower() for line in lines)

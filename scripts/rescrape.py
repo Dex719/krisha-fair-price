@@ -24,21 +24,38 @@ from krisha.scraping.rescrape import sweep  # noqa: E402
 def main() -> None:
     parser = argparse.ArgumentParser(description="Рескрейп Krisha.kz: цены и ликвидность")
     parser.add_argument("--pages", type=int, default=250, help="Максимум страниц выдачи на один шард")
-    parser.add_argument("--max-new", type=int, default=300, help="Максимум новых детальных страниц")
+    parser.add_argument(
+        "--mode",
+        choices=["auto", "drain", "steady"],
+        default="auto",
+        help="issue #152: режим прохода. auto (дефолт) — выбирается по "
+        "backlog'у базы с гистерезисом; drain/steady — принудительный пресет "
+        "(ручные запуски). Эффективные параметры видны в итогах прохода",
+    )
+    parser.add_argument(
+        "--max-new",
+        type=int,
+        default=None,
+        help="Максимум новых детальных страниц. Дефолт — из режима (issue #152: "
+        "drain 4500 / steady 1500); явное значение — оверрайд (0 — "
+        "диагностический проход без докачки)",
+    )
     parser.add_argument(
         "--refresh-stale-days",
         type=int,
-        default=30,
+        default=None,
         help="issue #102: активные лоты с деталями старше N дней с последнего "
         "scraped_at докачиваются повторно (площадь/этаж/описание/координаты, "
-        "отредактированные продавцом, иначе никогда не обновляются)",
+        "отредактированные продавцом, иначе никогда не обновляются). "
+        "Дефолт — из режима (drain 30 / steady 45)",
     )
     parser.add_argument(
         "--max-refresh",
         type=int,
-        default=300,
+        default=None,
         help="Максимум повторных детальных докачек устаревших активных лотов за проход "
-        "(0 — выключить обновление устаревших деталей)",
+        "(0 — выключить обновление устаревших деталей). Дефолт — из режима "
+        "(drain 800 / steady 1200)",
     )
     parser.add_argument(
         "--deal",
@@ -84,6 +101,7 @@ def main() -> None:
         refresh_stale_days=args.refresh_stale_days,
         max_refresh=args.max_refresh,
         time_budget_min=args.time_budget_min,
+        mode=args.mode,
     )
 
     if args.summary_json:

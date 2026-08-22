@@ -66,6 +66,39 @@ QUEUE_GROWTH_STREAK = 3
 # подряд «докачано 1000» читалось как успех, а означало «упёрлись».
 CAP_HIT_STREAK = 3
 MAX_RETRAIN_AGE_DAYS = 8
+# issue #152: шумовой порог для backlog'а без атрибуции к шарду. Единицы —
+# штатно: лот получил sighting, но ушёл с выдачи раньше, чем в ней
+# переобнаружился (атрибуции нет), и до delisted'а (3 дня) он висит в
+# backlog'е неатрибутированным. Красным делаем только материальную величину:
+# и заметную абсолютно (≥100), и заметную долю очереди (≥5%) — второй способ
+# тихой заморозки (первый — starved_shards) на возросшей глубине выдачи.
+UNATTRIBUTED_ALERT_MIN = 100
+UNATTRIBUTED_ALERT_SHARE = 0.05
+
+
+def _hit_cap(r: dict) -> bool:
+    """Проход действительно упёрся в лимит докачки (issue #154, ревью #170).
+
+    Сравнивать надо с ЭФФЕКТИВНЫМ потолком (max_new_effective — после
+    подрезки реальной очередью и бюджетом), а не с заявленным: именно он
+    ограничивал проход. Но и этого мало — при очереди мельче потолка
+    эффективный сжимается до очереди, докачивается вся очередь, и равенство
+    «докачано == потолок» выполняется тождественно: здоровое «очередь
+    разобрана в ноль» рапортовалось бы как «упёрлись» (инверсия детектора,
+    найдена на ревью #170). Поэтому обязательное второе условие — очередь
+    ПОСЛЕ прохода непуста: пустая очередь означает, что ограничением был
+    рынок, а не лимит. Подрезка потолка по времени сообщается отдельно
+    (plan_trimmed) и сюда не должна просачиваться.
+
+    Легаси-строки (до #170) не имеют max_new_effective — там max_new_details
+    и был сырым лимитом CLI, сравнение с ним честно; NULL очереди (совсем
+    старые строки) трактуем как «неизвестно» и детектор не гасим.
+    """
+    cap = r["max_new_effective"] or r["max_new_details"]
+    if not cap or r["details_fetched"] is None or r["details_fetched"] < cap:
+        return False
+    queue_after = r["detail_queue_after"]
+    return queue_after is None or queue_after > 0
 
 
 def _invariants(stats: dict | None, db_path: Path, scope: str) -> list[tuple[bool, str]]:
@@ -106,6 +139,24 @@ def _invariants(stats: dict | None, db_path: Path, scope: str) -> list[tuple[boo
             f"шардов с backlog'ом и нулевой квотой серией проходов: "
             f"{len(stats['starved_shards'])}",
         ))
+    # issue #152: второй способ тихой заморозки — лоты backlog'а вообще без
+    # атрибуции к шарду (в очередь не берутся, starved-детектор их не видит).
+    # В отчёт едут оба, а не один.
+    unattributed = stats.get("unattributed_backlog") or 0
+    queue_after = stats.get("detail_queue_after") or 0
+    if (
+        unattributed >= UNATTRIBUTED_ALERT_MIN
+        and unattributed >= UNATTRIBUTED_ALERT_SHARE * max(1, queue_after)
+    ):
+        checks.append((
+            False,
+            f"backlog без атрибуции к шарду: {unattributed} — в очередь не берутся",
+        ))
+    if stats.get("ban_rollback"):
+        checks.append((
+            False,
+            "откат разгона по серии банов: паузы возвращены в steady",
+        ))
     if stats.get("banned"):
         checks.append((False, f"бан на фазе «{stats.get('banned_phase') or '?'}»"))
     if stats.get("time_budget_hit"):
@@ -132,14 +183,12 @@ def _invariants(stats: dict | None, db_path: Path, scope: str) -> list[tuple[boo
         else:
             checks.append((True, f"очередь деталей: {queues[0]}"))
 
-    capped = [
-        r for r in runs[:CAP_HIT_STREAK]
-        if r["max_new_details"] and r["details_fetched"] == r["max_new_details"]
-    ]
+    capped = [r for r in runs[:CAP_HIT_STREAK] if _hit_cap(r)]
     if len(capped) >= CAP_HIT_STREAK:
+        cap = capped[0]["max_new_effective"] or capped[0]["max_new_details"]
         checks.append((
             False,
-            f"докачка упирается в потолок {capped[0]['max_new_details']} "
+            f"докачка упирается в потолок {cap} "
             f"{len(capped)} прохода подряд — сбор ограничен лимитом, не рынком",
         ))
 
@@ -238,6 +287,30 @@ def build_daily_report(scope: str = "sale", summary_path: Path | str | None = No
             f"изменений цены {stats.get('price_changes', '?')}, "
             f"{_delisted_fragment(stats)}"
         )
+        # issue #152: режим прохода (выбран по backlog'у, не по флагу) и его
+        # эффективные потолки — решение должно читаться из отчёта, а не
+        # восстанавливаться по воркфлоу.
+        if stats.get("mode"):
+            delay = stats.get("delay_range") or ["?", "?"]
+            lines.append(
+                f"Режим: <b>{stats['mode']}</b> ({stats.get('mode_reason', '?')}); "
+                f"паузы {delay[0]}–{delay[1]} с; потолок новых "
+                # эффективный (после подрезки очередью/бюджетом), fallback —
+                # заявленный для старых summary без нового поля
+                f"{stats.get('max_new_effective') or stats.get('max_new_details', '?')}"
+                + (
+                    f", урезан заранее с {stats['plan_trimmed']['wanted_new']}"
+                    f"+{stats['plan_trimmed']['wanted_refresh']} "
+                    f"({stats['plan_trimmed']['reason']})"
+                    if stats.get("plan_trimmed")
+                    else ""
+                )
+            )
+        if stats.get("drain_completed"):
+            lines.append(
+                "🎉 Backlog разобран (drain → steady): на полном покрытии "
+                "пересчитать дедупликацию — scripts/dedup_stats.py"
+            )
         # issue #156: без этой строки восстановительный проход в отчёте
         # неотличим от удачного дня на рынке — «новых 20000» читается как
         # рекордный приток, хотя это то, что мы пропустили за перерыв.
@@ -270,6 +343,12 @@ def build_daily_report(scope: str = "sale", summary_path: Path | str | None = No
         queue_after = stats.get("detail_queue_after")
         if queue_after:
             lines.append(f"📥 Очередь деталей: {queue_after}")
+        if stats.get("unattributed_backlog"):
+            # issue #152: видно всегда при ненулевом значении — красным
+            # вердикт делают только материальные величины (см. _invariants).
+            lines.append(
+                f"🧩 из них без атрибуции к шарду: {stats['unattributed_backlog']}"
+            )
         if stats.get("suspicious"):
             active_before = stats.get("active_in_db_before")
             median = stats.get("parse_rate_median_7")

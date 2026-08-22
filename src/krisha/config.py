@@ -97,11 +97,26 @@ USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
+def _env_float(name: str, default: str) -> float:
+    """float из env с пустой строкой как «не задано» (issue #152).
+
+    Воркфлоу выставляет env плейсхолдером input'а (`KRISHA_DELAY_MIN:
+    "${{ github.event.inputs.delay_min }}"`) — без значения input'а это
+    ПУСТАЯ строка, и float("") валил бы импорт модуля до любой диагностики.
+    Пустое/пробельное значение читаем как дефолт: пустой input = «используй
+    пресет режима».
+    """
+    raw = _os.environ.get(name)
+    if raw is None or not raw.strip():
+        return float(default)
+    return float(raw)
+
+
 # Бережный режим: пауза между запросами (секунды, случайная в диапазоне).
 # Можно переопределить через env: KRISHA_DELAY_MIN / KRISHA_DELAY_MAX.
 REQUEST_DELAY_RANGE = (
-    float(_os.environ.get("KRISHA_DELAY_MIN", "2.0")),
-    float(_os.environ.get("KRISHA_DELAY_MAX", "4.0")),
+    _env_float("KRISHA_DELAY_MIN", "2.0"),
+    _env_float("KRISHA_DELAY_MAX", "4.0"),
 )
 REQUEST_TIMEOUT = 30.0
 MAX_RETRIES = 3

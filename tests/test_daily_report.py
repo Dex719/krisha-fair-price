@@ -183,3 +183,49 @@ def test_health_first_run_down_alerts(monkeypatch, tmp_path):
     health_check.main()  # нет прошлого состояния, но уже плохо → алерт сразу
     assert len(sent) == 1
     assert "есть проблемы" in sent[0]
+
+
+def test_report_shows_mode_and_trim(monkeypatch, tmp_path):
+    """issue #152: режим (выбран по backlog'у, не по флагу) и заранее
+    урезанный потолок читаются из отчёта, а не восстанавливаются по воркфлоу."""
+    db = tmp_path / "krisha.db"
+    _make_db(db)
+    monkeypatch.setitem(daily_report._SCOPES, "sale", ("🌅 Утренний отчёт: продажа", db, tmp_path / "none.json"))
+    summary = _summary(
+        tmp_path / "stats.json",
+        mode="drain",
+        mode_reason="backlog 31743 ≥ порога разгона 5000",
+        delay_range=[1.5, 3.0],
+        max_new_details=4140,
+        plan_trimmed={"wanted_new": 4500, "wanted_refresh": 800, "reason": "time"},
+    )
+
+    text = build_daily_report("sale", summary)
+
+    assert "Режим: <b>drain</b>" in text
+    assert "backlog 31743" in text
+    assert "урезан заранее с 4500+800 (time)" in text
+
+
+def test_report_shows_drain_completed_and_unattributed(monkeypatch, tmp_path):
+    """Переход drain → steady — событие «backlog разобран» с напоминанием о
+    пересчёте дедупликации; backlog без атрибуции виден всегда при ненуле."""
+    db = tmp_path / "krisha.db"
+    _make_db(db)
+    monkeypatch.setitem(daily_report._SCOPES, "sale", ("🌅 Утренний отчёт: продажа", db, tmp_path / "none.json"))
+    summary = _summary(
+        tmp_path / "stats.json",
+        mode="steady",
+        mode_reason="backlog 1200 < порога выхода 3000",
+        delay_range=[2.0, 4.0],
+        max_new_details=1200,
+        drain_completed=True,
+        detail_queue_after=1200,
+        unattributed_backlog=45,
+    )
+
+    text = build_daily_report("sale", summary)
+
+    assert "Backlog разобран" in text
+    assert "dedup_stats.py" in text
+    assert "без атрибуции к шарду: 45" in text

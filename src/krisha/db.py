@@ -150,13 +150,31 @@ CREATE TABLE IF NOT EXISTS sweep_runs (
     found_in_search    INTEGER,
     discovered_new     INTEGER,
     details_fetched    INTEGER,
-    max_new_details    INTEGER,   -- потолок, в который упиралась докачка
+    -- issue #152 (ревью #170): потолок разделён на заявленный (пресет
+    -- режима или явный оверрайд — то, чем сбор ограничен ЗАМЫСЛОМ) и
+    -- эффективный (после подрезки реальной очередью и бюджетом). Детектор
+    -- «упёрлись в лимит» сравнивает докачку с эффективным И требует
+    -- непустой очереди после прохода; иначе здоровое «очередь разобрана
+    -- в ноль» рапортовалось бы как «упёрлись» (очередь < потолка сжимает
+    -- эффективный до очереди, и равенство выполнялось бы тождественно).
+    max_new_details    INTEGER,   -- заявленный потолок режима/оверрайда
+    max_new_effective  INTEGER,   -- потолок после подрезки очередью/бюджетом
     detail_queue_after INTEGER,
     price_changes      INTEGER,
     delisted           INTEGER,   -- NULL = детект пропущен
     failed_shards      INTEGER,
     recovery_pass      INTEGER,
-    suspicious         INTEGER
+    suspicious         INTEGER,
+    -- issue #152: фактические тайминги фаз и режим прохода. Без них «план
+    -- прохода по фактическим таймингам» невозможен — до мержа в таблице был
+    -- только started_at. Старые строки держат NULL и игнорируются оценщиком.
+    search_pages       INTEGER,   -- страниц выдачи обойдено (запросов фазы)
+    search_seconds     REAL,      -- стенные часы фазы выдачи
+    detail_requests    INTEGER,   -- запросов докачки (new + refresh + неудачи)
+    detail_seconds     REAL,      -- стенные часы фазы докачки
+    delay_lo           REAL,      -- фактические паузы клиента этого прохода
+    delay_hi           REAL,      -- (нужны, чтобы отделить паузу от latency)
+    mode               TEXT       -- drain|steady — режим по backlog'у (#152)
 );
 
 CREATE TABLE IF NOT EXISTS data_gaps (
@@ -215,6 +233,11 @@ CREATE TABLE IF NOT EXISTS sweep_shard_stats (
     backlog_after   INTEGER,
     cursor_after    INTEGER,            -- водяная отметка после прохода
     wrapped         INTEGER,            -- 1 = окно завернулось на голову выдачи
+    -- issue #152: действующий потолок докачки этого прохода. Диагностический
+    -- прогон (--max-new 0) пишет строки (свежий замер стока ценен для
+    -- last_known_shard_stock), но его quota=0 НЕ означает заморозку шарда:
+    -- zero_quota_streak такие строки пропускает по этой колонке.
+    pass_cap        INTEGER,
     PRIMARY KEY (run_seq, shard)
 );
 
@@ -390,11 +413,40 @@ _MIGRATION_COLUMNS = {
 }
 
 
+# issue #152: колонки sweep_runs для таймингов фаз и режима прохода и
+# pass_cap для sweep_shard_stats (см. SCHEMA — комментарии при колонках).
+_MIGRATION_SWEEP_RUN_COLUMNS = {
+    "search_pages": "INTEGER",
+    "search_seconds": "REAL",
+    "detail_requests": "INTEGER",
+    "detail_seconds": "REAL",
+    "delay_lo": "REAL",
+    "delay_hi": "REAL",
+    "mode": "TEXT",
+    # issue #152 (ревью #170): эффективный потолок отдельно от заявленного —
+    # детектору «упёрлись в лимит» нужны оба (см. SCHEMA).
+    "max_new_effective": "INTEGER",
+}
+_MIGRATION_SWEEP_SHARD_COLUMNS = {
+    "pass_cap": "INTEGER",
+}
+
+
 def _migrate(conn: sqlite3.Connection) -> None:
     existing = {r[1] for r in conn.execute("PRAGMA table_info(listings)")}
     for col, decl in _MIGRATION_COLUMNS.items():
         if col not in existing:
             conn.execute(f"ALTER TABLE listings ADD COLUMN {col} {decl}")
+    # CREATE TABLE IF NOT EXISTS не добавляет колонки в уже существующие
+    # таблицы — тем же паттерном, что и _MIGRATION_COLUMNS для listings.
+    for table, cols in (
+        ("sweep_runs", _MIGRATION_SWEEP_RUN_COLUMNS),
+        ("sweep_shard_stats", _MIGRATION_SWEEP_SHARD_COLUMNS),
+    ):
+        existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for col, decl in cols.items():
+            if col not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
     # Индекс здесь, а не в SCHEMA: колонка fingerprint появляется миграцией.
     # Без него find_duplicate_id() делает full-scan на каждый предикт.
     conn.execute(
@@ -451,11 +503,18 @@ def _migrate(conn: sqlite3.Connection) -> None:
         "SELECT 1 FROM sweep_state WHERE key = ?", (sentinel,)
     ).fetchone()
     if done is None:
-        backfill_listing_shards_from_details(conn=conn)
-        conn.execute(
-            "INSERT INTO sweep_state (key, value) VALUES (?, datetime('now'))",
-            (sentinel,),
-        )
+        # issue #152 (хвост ревью #169): сентинел — только по факту выполнения
+        # бэкфилла. Раньше он записывался и при раннем выходе на легаси-схеме
+        # (нет title/district/rooms — бэкфилл не исполнялся), и миграция
+        # навсегда помечалась сделанной, хотя не делалась. None = «не смог»:
+        # без сентинела следующий init_db (схема к тому моменту может быть
+        # уже дотащена миграциями) попробует снова.
+        backfilled = backfill_listing_shards_from_details(conn=conn)
+        if backfilled is not None:
+            conn.execute(
+                "INSERT INTO sweep_state (key, value) VALUES (?, datetime('now'))",
+                (sentinel,),
+            )
 
 
 def init_db(db_path: Path | str = DB_PATH) -> None:
@@ -467,7 +526,7 @@ def init_db(db_path: Path | str = DB_PATH) -> None:
 def backfill_listing_shards_from_details(
     db_path: Path | str = DB_PATH,
     conn: sqlite3.Connection | None = None,
-) -> int:
+) -> int | None:
     """Бэкфилл атрибуции id → шард для лотов, у которых уже есть детали
     (issue #166, ревью): (district, rooms) однозначно определяют шард —
     фильтры выдачи непересекаются, — поэтому атрибуция из деталей точная,
@@ -475,6 +534,12 @@ def backfill_listing_shards_from_details(
     (INSERT OR REPLACE в record_listing_shards) всегда выигрывает. Лоты без
     деталей (sighting-only backlog) здесь НЕ атрибутируются — их шард знает
     только выдача: они получают атрибуцию в проход, когда в ней встретятся.
+
+    Возврат (issue #152): число записанных строк; None — схема не позволяет
+    исполнить бэкфилл (гипер-легаси listings без title/district/rooms), чтобы
+    вызывающий (_migrate) НЕ ставил сентинел миграции за работу, которая не
+    выполнялась. 0 — исполнено честно, просто нечего атрибутировать:
+    сентинел ставится.
 
     Честно про потребителя (issue #168): очередь докачки — `title IS NULL`,
     а бэкфилл отбирает `title IS NOT NULL` — пересечение пустое, и на состав
@@ -493,10 +558,12 @@ def backfill_listing_shards_from_details(
     """
     with use_conn(conn, db_path) as conn:
         # Гипер-легаси схемы (миграции которых ещё не добавили title) —
-        # не наша забота: бэкфилл без сентинела sighting-only не определить.
+        # бэкфилл невозможен: None, чтобы сентинел миграции не встал за
+        # несделанную работу (issue #152), и повторная попытка при следующем
+        # init_db осталась возможной.
         cols = {r[1] for r in conn.execute("PRAGMA table_info(listings)")}
         if not {"title", "district", "rooms"} <= cols:
-            return 0
+            return None
         rows = conn.execute(
             "SELECT id, district, rooms FROM listings "
             "WHERE title IS NOT NULL AND district IS NOT NULL AND rooms IS NOT NULL"
@@ -903,8 +970,12 @@ def known_ids(db_path: Path | str = DB_PATH) -> set[int]:
 
 _SWEEP_RUN_COLUMNS = (
     "started_at", "deal", "found_in_search", "discovered_new", "details_fetched",
-    "max_new_details", "detail_queue_after", "price_changes", "delisted",
-    "failed_shards", "recovery_pass", "suspicious",
+    "max_new_details", "max_new_effective", "detail_queue_after", "price_changes",
+    "delisted", "failed_shards", "recovery_pass", "suspicious",
+    # issue #152: тайминги фаз, фактические паузы и режим — для оценщика
+    # плана прохода (pass_plan.estimate_timings) и гистерезиса режима.
+    "search_pages", "search_seconds", "detail_requests", "detail_seconds",
+    "delay_lo", "delay_hi", "mode",
 )
 
 
@@ -1121,10 +1192,18 @@ def zero_quota_streak(
     раздавал и backlog не дренировал — он не «нулевой проход» шарда, его
     просто нет. Пропуски номеров run_seq (ранний инкремент счётчика, #168)
     на подсчёт не влияют: берутся последние СТРОКИ, а не последние номера.
+
+    issue #152: проходы с нулевым потолком докачки (диагностика --max-new 0,
+    pass_cap = 0) из подсчёта исключены: там quota=0 у ВСЕХ шардов сразу —
+    это режим прохода, а не заморозка конкретного шарда; диагностический
+    проход ни наращивает серию, ни обрывает её. NULL pass_cap (строки до
+    #152) читаем как обычный проход с ненулевым потолком — тогда диагностики
+    в принципе не было.
     """
     rows = conn.execute(
         "SELECT quota, backlog_before FROM sweep_shard_stats "
-        "WHERE shard = ? AND run_seq < ? ORDER BY run_seq DESC LIMIT ?",
+        "WHERE shard = ? AND run_seq < ? AND COALESCE(pass_cap, 1) > 0 "
+        "ORDER BY run_seq DESC LIMIT ?",
         (shard, run_seq, limit),
     ).fetchall()
     streak = 0
@@ -1150,7 +1229,7 @@ def record_sweep_shard_stats(
         return
     cols = (
         "run_seq", "shard", "started_at", "stock", "quota", "fetched",
-        "backlog_before", "backlog_after", "cursor_after", "wrapped",
+        "backlog_before", "backlog_after", "cursor_after", "wrapped", "pass_cap",
     )
     payload = [
         {**{c: r.get(c) for c in cols}, "wrapped": int(bool(r.get("wrapped")))}
@@ -1210,3 +1289,46 @@ def advance_sweep_pass_seq(conn: sqlite3.Connection, deal: str) -> int:
     )
     row = conn.execute("SELECT value FROM sweep_state WHERE key = ?", (key,)).fetchone()
     return int(row[0])
+
+
+def consecutive_bans(conn: sqlite3.Connection, deal: str) -> int:
+    """Сколько подряд проходов завершились BanDetected (issue #152).
+
+    Состояние — в sweep_state, а не выводится из sweep_runs: записи о проходе
+    могут не быть (жёсткий kill раннера до итогов), а серия банов — ровно тот
+    сигнал, который нельзя терять вместе с убитым проходом. Ключ per deal:
+    бан арендного прохода не должен откатывать продажный (разные базы,
+    разные расписания, общий IP — но решение об откате принимает каждый
+    проход по своей истории).
+    """
+    row = conn.execute(
+        "SELECT value FROM sweep_state WHERE key = ?", (f"ban_streak:{deal}",)
+    ).fetchone()
+    return int(row[0]) if row else 0
+
+
+def record_consecutive_bans(conn: sqlite3.Connection, deal: str, streak: int) -> None:
+    """Записать серию банов после прохода: +1 при бане, 0 при чистом проходе."""
+    conn.execute(
+        "INSERT INTO sweep_state (key, value, updated_at) VALUES (?, ?, datetime('now')) "
+        "ON CONFLICT(key) DO UPDATE SET "
+        "value = excluded.value, updated_at = excluded.updated_at",
+        (f"ban_streak:{deal}", str(int(streak))),
+    )
+
+
+def last_sweep_mode(conn: sqlite3.Connection, deal: str) -> str | None:
+    """Режим последнего прохода (drain|steady) из sweep_runs — для гистерезиса
+    choose_mode (issue #152). NULL у старых строк (режим появился в #152)
+    пропускаем: «прежнего режима» у них не существовало. None, если истории
+    нет вообще — тогда choose_mode между порогами берёт steady по умолчанию.
+    """
+    try:
+        row = conn.execute(
+            "SELECT mode FROM sweep_runs WHERE COALESCE(deal, 'prodazha') = ? "
+            "AND mode IS NOT NULL ORDER BY started_at DESC LIMIT 1",
+            (deal,),
+        ).fetchone()
+    except sqlite3.OperationalError:  # таблицы ещё нет (холодная база)
+        return None
+    return row[0] if row else None

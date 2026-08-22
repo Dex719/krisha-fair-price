@@ -154,7 +154,7 @@ def test_daily_batch_matches_stock_composition(tmp_path, monkeypatch):
         "Турксибский 1к": list(range(4000, 4010)),     # 10%
     }
     client = FakeClient(_pages_by_shard(stock))
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
 
     stats = sweep(max_pages=1, max_new_details=40, db_path=db)
@@ -195,7 +195,7 @@ def test_plan_vs_fact_written_per_shard(tmp_path, monkeypatch):
     db = tmp_path / "test.db"
     stock = {"Алатауский 2к": list(range(1000, 1020)), "Медеуский 1к": list(range(2000, 2010))}
     client = FakeClient(_pages_by_shard(stock))
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
 
     sweep(max_pages=1, max_new_details=6, db_path=db)
@@ -240,7 +240,7 @@ def test_partial_failed_shard_keeps_its_sightings(tmp_path, monkeypatch):
         + '<a class="paginator__btn--next" href="?page=2">2</a>',
     }
     client = FailOnPage2Client(pages)
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
 
     stats = sweep(max_pages=3, max_new_details=5, db_path=db)
@@ -287,7 +287,7 @@ def test_failing_shard_keeps_quota_unused_in_same_pass(tmp_path, monkeypatch):
             return super().get(url)
 
     client = FlakyClient(pages)
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
 
     stats = sweep(max_pages=1, max_new_details=10, db_path=db)
@@ -324,7 +324,7 @@ def test_cursors_survive_restart_and_walk_without_skips(tmp_path, monkeypatch):
 
     for _ in range(3):
         client = FakeClient(_pages_by_shard(stock))
-        monkeypatch.setattr(rescrape, "PoliteClient", lambda c=client: c)
+        monkeypatch.setattr(rescrape, "PoliteClient", lambda c=client, **_kw: c)
         parse_calls: list[int] = []
 
         def parse_spy(html, url, _calls=parse_calls):
@@ -410,7 +410,7 @@ def test_starved_shard_raises_flag_after_streak(tmp_path, monkeypatch, caplog):
     # Выдача пуста: ни один шард не покрыт, сток нигде не замерен → все
     # квоты 0, но backlog есть только у «Алатауский 2к».
     client = FakeClient({})
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
 
     # Порог серии — константа из rescrape: первые проходы серии ещё не флаг.
@@ -429,7 +429,7 @@ def test_starved_shard_raises_flag_after_streak(tmp_path, monkeypatch, caplog):
     # Шард покрылся (сток замерен → квота появилась) — флаг сбрасывается,
     # серия не липнет.
     client = FakeClient(_pages_by_shard({"Алатауский 2к": [1001, 1002]}))
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     stats = sweep(max_pages=1, max_new_details=5, db_path=db)
     assert stats["starved_shards"] == []
     assert stats["details_fetched"] == 2  # и backlog наконец дренируется
@@ -442,7 +442,15 @@ def test_interruption_hits_different_shards_on_consecutive_passes(tmp_path, monk
     """Приёмочный критерий: обрыв прохода в разных точках не даёт
     систематического перекоса — порядок обхода ротируется между запусками,
     поэтому ампутированный хвост гуляет по шардам, а не обрезает один и тот
-    же район каждый день."""
+    же район каждый день.
+
+    До issue #152 обрыв гнался дорогими деталями: бюджет умирал на середине
+    очереди докачки. Теперь проход с невлезающим планом обязан урезать
+    потолок САМ, до фазы докачки (fit_detail_caps) — дедлайн на деталях стал
+    не нормой, а признаком промаха оценки. Выживший механизм обрыва — фаза
+    выдачи (мягкий дедлайн в цикле шардов), её и проверяем: дорогие страницы
+    выдачи, покрывается только префикс порядка обхода.
+    """
     db = tmp_path / "test.db"
     # Четыре шарда, которые ротация ставит первыми в первых четырёх проходах:
     # номер инкрементируется в начале прохода (issue #168), поэтому это
@@ -461,40 +469,30 @@ def test_interruption_hits_different_shards_on_consecutive_passes(tmp_path, monk
 
     class ClockClient(FakeClient):
         def get(self, url):
-            # Выдача быстрая (6 сек/стр), детали дорогие (2 мин/шт) — бюджет
-            # кончается на докачке после первого же шарда.
-            clock[0] += 120.0 if "/a/show/" in url else 6.0
+            # Выдача дорогая (2 мин/стр → бюджета 6 мин хватает на 2–3 шарда
+            # из 32), детали мгновенные: обрыв случается в фазе выдачи.
+            clock[0] += 0.01 if "/a/show/" in url else 120.0
             return super().get(url)
 
-    fetched_by_pass: list[set[int]] = []
+    covered_by_pass: list[set[str]] = []
     for _ in range(4):
         client = ClockClient(pages)
-        monkeypatch.setattr(rescrape, "PoliteClient", lambda c=client: c)
+        monkeypatch.setattr(rescrape, "PoliteClient", lambda c=client, **_kw: c)
         monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
         stats = sweep(max_pages=1, max_new_details=8, db_path=db, time_budget_min=6)
         assert stats["time_budget_hit"] is True
-        with get_conn(db) as conn:
-            fetched_by_pass.append(
-                {
-                    r[0]
-                    for r in conn.execute(
-                        "SELECT s.shard FROM listings l "
-                        "JOIN listing_shards s ON s.listing_id = l.id "
-                        "WHERE l.title IS NOT NULL"
-                    ).fetchall()
-                }
-            )
+        covered_by_pass.append(set(stock) - set(stats["failed_shards"]))
 
-    # Каждый проход успел докачать (хотя бы один лот) только первый шард
-    # своей ротации — и это КАЖДЫЙ РАЗ ДРУГОЙ шард: за 4 оборванных прохода
-    # все 4 шарда получили свою квоту, систематического «дня одного района»
-    # нет (при шаге +1 это были бы 4 соседа по алфавиту).
-    cumulative: set[int] = set()
-    daily: list[set[int]] = []
-    for pass_set in fetched_by_pass:
+    # Каждый проход покрыл только ПРЕФИКС своей ротации (2–3 шарда), и это
+    # КАЖДЫЙ РАЗ ДРУГОЙ префикс: за 4 оборванных прохода все 4 целевых шарда
+    # покрыты, систематического «дня одного района» нет (при шаге +1 это
+    # были бы 4 соседа по алфавиту).
+    cumulative: set[str] = set()
+    daily: list[set[str]] = []
+    for pass_set in covered_by_pass:
         daily.append(pass_set - cumulative)
         cumulative |= pass_set
-    assert all(len(d) == 1 for d in daily), daily
+    assert all(len(d) >= 1 for d in daily), daily
     assert cumulative == set(stock), cumulative
 
 
@@ -509,7 +507,7 @@ def test_rotation_offset_advances_between_passes(tmp_path, monkeypatch):
     даёт номер ПРЕДЫДУЩЕГО завершённого (0 на холодной базе)."""
     db = tmp_path / "test.db"
     client = FakeClient({})
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
     seqs = []
     for _ in range(3):
@@ -547,7 +545,7 @@ def test_killed_pass_does_not_freeze_rotation(tmp_path, monkeypatch):
         def get(self, url):
             raise RuntimeError("kill -9 посреди фазы выдачи")
 
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: ExplodingClient(pages))
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: ExplodingClient(pages))
     with pytest.raises(RuntimeError, match="kill -9"):
         sweep(max_pages=1, max_new_details=5, db_path=db)
     with get_conn(db) as conn:
@@ -557,7 +555,7 @@ def test_killed_pass_does_not_freeze_rotation(tmp_path, monkeypatch):
         assert conn.execute("SELECT COUNT(*) FROM sweep_shard_stats").fetchone()[0] == 0
 
     client = FakeClient(pages)
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     sweep(max_pages=1, max_new_details=5, db_path=db)
 
     with get_conn(db) as conn:
@@ -647,7 +645,7 @@ def test_shard_stats_keyed_by_run_seq_not_started_at(tmp_path, monkeypatch):
     stock2 = {"Алатауский 2к": list(range(1000, 1008))}
     for stock in (stock1, stock2):
         client = FakeClient(_pages_by_shard(stock))
-        monkeypatch.setattr(rescrape, "PoliteClient", lambda c=client: c)
+        monkeypatch.setattr(rescrape, "PoliteClient", lambda c=client, **_kw: c)
         monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
         sweep(max_pages=1, max_new_details=0, db_path=db)  # без backdate — та же секунда
     with get_conn(db) as conn:
@@ -747,7 +745,7 @@ def test_banned_shard_keeps_partial_sightings(tmp_path, monkeypatch):
         + '<a class="paginator__btn--next" href="?page=2">2</a>',
     }
     client = BanOnPage2Client(pages)
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
     monkeypatch.setattr(rescrape, "_alert_ban", lambda exc: None)
 
@@ -781,7 +779,7 @@ def test_shard_deeper_than_max_pages_is_not_covered(tmp_path, monkeypatch):
         target_url: _card(1001) + nxt,
         f"{target_url}&page=2": _card(1002) + nxt,  # и дальше есть страницы
     })
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(rescrape, "parse_detail", _parse_detail_by_url)
 
     stats = sweep(max_pages=2, max_new_details=5, db_path=db)
