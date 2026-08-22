@@ -8,6 +8,10 @@ FIRST VIEWPORT: заголовок на всю ширину с плавающи�
 FINISH: unreviewed and undocumented is unfinished.
 */
 *{margin:0;padding:0;box-sizing:border-box}
+/* hidden должен прятать: у блоков с собственным display (.rwarn, .rextra и т.п.)
+   правило класса перебивает браузерное [hidden]{display:none} — без этого пустые
+   плашки предупреждений и истории цены висят на карточке как пустые полосы. */
+[hidden]{display:none!important}
 :root{--bg:#0A100C;--ink:#F1F2EB;--dim:#8FA093;--lime:#3ADC7C;--vio:#E9B44C;--panel:#101711;--line:#1F2A21;
 --good:#4ADE80;--warn:#FBBF24;--bad:#F87171;
 --onl:#06130B;--limeink:#3ADC7C;--violink:#E9B44C;--navbg:rgba(10,16,12,.92);

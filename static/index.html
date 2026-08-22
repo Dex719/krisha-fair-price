@@ -371,6 +371,8 @@ st.innerHTML = st.textContent.trim().split(/\s+/).map(w=>{
 const words = [...document.querySelectorAll('#fillTxt .w')];
 function finishStatic(){
   words.forEach(w=>w.classList.add('lit'));
+  /* если разбор живого лота уже отрисован, демо-цифру не возвращаем */
+  if (window.__live) return;
   const c = document.getElementById('count');
   c.firstChild.textContent = (27500000).toLocaleString('ru-RU') + ' ';
 }
@@ -485,7 +487,8 @@ else {
   const VERD = {
     GOOD_DEAL: ['Выгодно', 'цена ниже справедливой — торг не обязателен', ''],
     FAIR: ['В рынке', 'цена внутри интервала модели — это нормальный рынок', 'warn'],
-    OVERPRICED: ['Переплата', 'цена выше справедливой — есть за что торговаться', 'bad']
+    OVERPRICED: ['Переплата', 'цена выше справедливой — есть за что торговаться', 'bad'],
+    NO_PRICE: ['Оценка модели', 'в объявлении нет цены — сравнивать не с чем, показываем оценку', 'warn']
   };
   /* Человеческие имена признаков модели. Единственный список: если модель отдаст
      незнакомый ключ, фактор не показываем вовсе — сырой snake_case на странице
@@ -632,20 +635,30 @@ else {
 
   function render(r){
     window.__live = true;
-    const [word, sub, cls] = VERD[r.verdict] || VERD.FAIR;
+    /* Объявление без цены: сравнивать не с чем — показываем оценку модели и
+       убираем всё, что без цены превратилось бы в ноль (процент, «цена в
+       объявлении», метка объявления на шкале). */
+    const noPrice = r.actual_price == null;
+    const [word, sub, cls] = noPrice ? VERD.NO_PRICE : (VERD[r.verdict] || VERD.FAIR);
     const v = $('.verdict');
     v.className = 'verdict' + (cls ? ' ' + cls : '');
     $('.vbig').textContent = word;
     $('.vsub').textContent = sub;
-    $('.vpct').textContent = pct(r.diff_pct);
+    const vpct = $('.vpct');
+    vpct.hidden = noPrice;
+    vpct.textContent = noPrice ? '' : pct(r.diff_pct);
     const cnt = $('#count');
-    cnt.firstChild.textContent = ru(r.actual_price) + ' ';
+    cnt.firstChild.textContent = noPrice ? '— ' : ru(r.actual_price) + ' ';
+    const cntUnit = cnt.querySelector('small');
+    if (cntUnit) cntUnit.style.display = noPrice ? 'none' : '';
+    cnt.previousElementSibling.textContent = noPrice ? 'Цена в объявлении не указана' : 'Цена в объявлении';
     $('#rFair').firstChild.textContent = ru(r.fair_price) + ' ';
     const area = parseFloat(((r.details.find(x => x.label === 'Площадь') || {}).value || '').replace(',', '.'));
-    if (area) $('#rPpsm').firstChild.textContent = ru(r.actual_price / area) + ' ';
+    if (area) $('#rPpsm').firstChild.textContent = ru((noPrice ? r.fair_price : r.actual_price) / area) + ' ';
     // шкала
     const lo = r.fair_price_low, hi = r.fair_price_high;
-    const min = Math.min(lo, r.actual_price), max = Math.max(hi, r.actual_price);
+    const min = noPrice ? Math.min(lo, r.fair_price) : Math.min(lo, r.actual_price),
+          max = noPrice ? Math.max(hi, r.fair_price) : Math.max(hi, r.actual_price);
     const pad = (max - min) * 0.08, a = min - pad, b = max + pad;
     const at = x => ((x - a) / (b - a) * 100).toFixed(1) + '%';
     $('.rband').style.left = at(lo);
@@ -658,9 +671,10 @@ else {
       el.classList.toggle('edgeL', v < 16);
       el.classList.toggle('edgeR', v > 84);
     };
-    place(ask, r.actual_price);
+    ask.style.display = noPrice ? 'none' : '';
+    if (!noPrice) place(ask, r.actual_price);
     place(fair, r.fair_price);
-    ask.querySelector('span').textContent = 'объявление · ' + mln(r.actual_price);
+    if (!noPrice) ask.querySelector('span').textContent = 'объявление · ' + mln(r.actual_price);
     fair.querySelector('span').textContent = 'справедливая · ' + mln(r.fair_price);
     const band = $('#rBand');
     if (band && lo && hi && r.fair_price)
@@ -771,7 +785,9 @@ else {
         }
         const data = await res.json();
         render(data);
-        status.textContent = 'Готово: ' + (VERD[data.verdict] || VERD.FAIR)[0] + ', ' + pct(data.diff_pct);
+        status.textContent = data.actual_price == null
+          ? 'Готово: ' + VERD.NO_PRICE[0]
+          : 'Готово: ' + (VERD[data.verdict] || VERD.FAIR)[0] + ', ' + pct(data.diff_pct);
       } catch (ex){
         const em = (ex && ex.message) || '';
         const net = /failed to fetch|network ?error|load failed|networkrequest|timed? ?out|abort/i.test(em);

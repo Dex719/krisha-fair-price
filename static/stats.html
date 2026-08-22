@@ -657,6 +657,10 @@ document.addEventListener('click',e=>{
   var one = function(n){ return (Math.round(n * 10) / 10).toString().replace('.', ','); };
   var esc = function(t){ return String(t == null ? '' : t).replace(/[&<>"']/g, function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
+  /* Предложный падеж названия района: «Медеуский» → «в Медеуском».
+     Все районы Алматы — прилагательные на -ский/-ый/-ий, поэтому одного
+     правила хватает; незнакомую форму оставляем как есть. */
+  var loc = function(name){ return esc(String(name || '').replace(/(ы|и)й$/, 'ом')); };
 
   /* Catmull-Rom → кубические Безье: та же мягкая линия, что рисует сборщик. */
   function smooth(xs, ys){
@@ -752,8 +756,8 @@ document.addEventListener('click',e=>{
     var top = ds.slice().sort(function(a, b){ return b.median_ppsm - a.median_ppsm; });
     var big = ds.slice().sort(function(a, b){ return b.n - a.n; })[0];
     var note = document.querySelector('[data-note=districts]');
-    if (note && top.length > 1 && big) note.innerHTML = 'Дороже всего метр в ' + esc(top[0].district) +
-      ' и ' + esc(top[1].district) + ' районах. Больше всего выбора в ' + esc(big.district) +
+    if (note && top.length > 1 && big) note.innerHTML = 'Дороже всего метр — в ' + loc(top[0].district) +
+      ' и ' + loc(top[1].district) + '. Больше всего выбора в ' + loc(big.district) +
       ': <b>' + ru(big.n) + ' активных лотов</b>.';
   }
 
