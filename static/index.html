@@ -1,229 +1,958 @@
 <!doctype html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
+<html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<script>(function(){try{var t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme');if(!t)t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();</script>
+<script>
+(function(){
+  var d=document.documentElement, c=navigator.connection||{},
+      rm=matchMedia('(prefers-reduced-motion: reduce)').matches,
+      weak=!!c.saveData
+          ||/(^|-)(slow-2g|2g)$/.test(c.effectiveType||'')
+          ||(navigator.deviceMemory&&navigator.deviceMemory<=2)
+          ||(navigator.hardwareConcurrency&&navigator.hardwareConcurrency<=4
+             &&navigator.deviceMemory&&navigator.deviceMemory<=4),
+      lite=rm||weak;
+  d.classList.add(lite?'lite':'anim');
+  window.bagamLite=lite;
+  var q=[];
+  function flushTG(){var tg=window.Telegram&&window.Telegram.WebApp;if(!tg)return;while(q.length)q.shift()(tg);}
+  window.bagamTG=function(cb){q.push(cb);flushTG();};
+  var inTG=/tgWebApp/i.test(location.search+location.hash)||!!window.TelegramWebviewProxy||/Telegram/i.test(navigator.userAgent);
+  if(inTG){var s=document.createElement('script');s.src='https://telegram.org/js/telegram-web-app.js';s.async=true;s.onload=flushTG;document.head.appendChild(s);}
+  window.bagamBoot=function(cb){
+    if(lite){cb();return;}
+    var fired=false,fin=function(){if(fired)return;fired=true;cb();};
+    var guard=setTimeout(fin,7000);
+    function load(src,next){
+      var el=document.createElement('script');el.src=src;el.async=false;
+      el.onload=next;el.onerror=function(){clearTimeout(guard);fin();};
+      document.head.appendChild(el);
+    }
+    var start=function(){
+      /* Сеть сама себя измерила: если html полз дольше двух секунд,
+         анимации не грузим — 65 КБ библиотеки важнее украшений. */
+      var nv=performance.getEntriesByType('navigation')[0];
+      if(nv&&(nv.responseEnd-nv.requestStart)>2000){d.classList.remove('anim');d.classList.add('lite');window.bagamLite=true;fin();return;}
+      load('/static/js/gsap.min.js',function(){
+      load('/static/js/ScrollTrigger.min.js',function(){clearTimeout(guard);fin();});});};
+    if(document.readyState==='complete')start();
+    else addEventListener('load',function(){('requestIdleCallback' in window)?requestIdleCallback(start,{timeout:1200}):setTimeout(start,80);});
+  };
+})();
+</script>
 <title>Справедливая цена квартиры в Алматы по ссылке с Krisha │ baǵam</title>
 <meta name="description" content="baǵam сравнивает объявление Krisha с рынком Алматы, показывает справедливую цену, диапазон модели и факторы, которые двигают цену.">
+<link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/onest-cyr.woff2">
+<link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/unb-cyr.woff2">
+<style>
+@font-face{font-family:'Onest';font-style:normal;font-weight:300 700;font-display:swap;src:url(/static/fonts/onest-cyr.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:'Onest';font-style:normal;font-weight:300 700;font-display:swap;src:url(/static/fonts/onest-lat.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'Unbounded';font-style:normal;font-weight:400 800;font-display:swap;src:url(/static/fonts/unb-cyr.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:'Unbounded';font-style:normal;font-weight:400 800;font-display:swap;src:url(/static/fonts/unb-lat.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+/* ǵ в слове baǵam: этой буквы нет в обычных наборах, без неё логотип рисуется системным шрифтом */
+@font-face{font-family:'Unbounded';font-style:normal;font-weight:400 800;font-display:swap;src:url(/static/fonts/unb-gacute.woff2) format('woff2');unicode-range:U+01F5}
+/* запасные шрифты с теми же метриками: подмена не двигает строки */
+@font-face{font-family:'OnestFB';src:local('Arial'),local('Helvetica'),local('Roboto');size-adjust:106.4%;ascent-override:91.1%;descent-override:28.7%;line-gap-override:0%}
+@font-face{font-family:'UnboundedFB';src:local('Arial'),local('Helvetica'),local('Roboto');size-adjust:139%;ascent-override:71.6%;descent-override:17.6%;line-gap-override:0%}
+@font-face{font-family:'DataFB';src:local('Courier New'),local('DejaVu Sans Mono'),local('Roboto Mono');size-adjust:100%;ascent-override:102%;descent-override:30%;line-gap-override:0%}
+</style>
+<style>
+/* Гибридный «дата»-шрифт: латиница/цифры — JetBrains Mono, кириллица — Onest (моно-кириллица читается плохо) */
+@font-face{font-family:'Data';font-weight:400 600;font-display:swap;
+src:url(/static/fonts/jbm-lat.woff2) format('woff2');
+unicode-range:U+0021-00FF,U+2000-206F,U+20A0-20BF,U+2116,U+2190-21FF,U+25A0-25FF,U+2070-209F,U+2212,U+2215,U+2248,U+2264-2265;}
+@font-face{font-family:'Data';font-weight:400 600;font-display:swap;size-adjust:103%;
+src:url(/static/fonts/onest-cyr.woff2) format('woff2');
+unicode-range:U+0020,U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1;}
+</style>
 <link rel="stylesheet" href="/static/design.css">
-<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
-</head>
-<body>
-
-
-<header class="topbar" id="topbar">
-<div class="nav">
-<a class="logo" href="/">baǵam</a>
-<nav class="links">
-<a class="nl on" href="/">Оценка</a>
-<a class="nl" href="/stats">Рынок</a>
-<a class="nl" href="/about">О проекте</a>
-</nav>
-<span class="soc">
-<a class="pill" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg><span class="pl">Telegram-бот</span></a>
-<a class="pill pill-th" href="https://www.threads.net/@bagam.kz" target="_blank" rel="noopener"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg><span class="pl">Threads</span></a>
-<button class="theme-btn" aria-label="Сменить тему"><svg class="i sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.3 17.7-1.4 1.4"/><path d="m19.1 4.9-1.4 1.4"/></svg><svg class="i moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button>
-</span>
+<style>
+/* ---------- скорость: вход героя без JS ---------- */
+@keyframes bgmup{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@keyframes bgmfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-16px)}}
+html.anim h1 span{animation:bgmup .85s cubic-bezier(.16,1,.3,1) both}
+html.anim h1 span:nth-child(2){animation-delay:.08s}
+html.anim h1 span:nth-child(3){animation-delay:.16s}
+html.anim h1 span:nth-child(4){animation-delay:.24s}
+html.anim .herorow{animation:bgmup .8s cubic-bezier(.16,1,.3,1) .3s both}
+html.anim .lede{animation:bgmup .8s cubic-bezier(.16,1,.3,1) .42s both}
+html.anim .shw{animation:bgmfloat 6s ease-in-out infinite}
+html.anim .sh2{animation-duration:7.4s;animation-delay:-1.2s}
+html.anim .sh3{animation-duration:5.6s;animation-delay:-2.4s}
+/* ---------- слабое устройство или экономия трафика: только суть ---------- */
+html.lite .grain{display:none}
+html.lite nav{backdrop-filter:none;background:var(--bg)}
+html.lite .shw{display:none}
+html.lite *{box-shadow:none!important}
+html.lite .cityband img{will-change:auto;height:100%}
+html.lite [style*="filter:blur"],html.lite .glow{filter:none!important}
+/* ---------- скелетоны ---------- */
+@keyframes bgmsk{0%{background-position:100% 0}100%{background-position:-100% 0}}
+.sk{position:relative;color:transparent!important;border-radius:8px;
+ background:linear-gradient(90deg,var(--soft) 25%,var(--hover) 37%,var(--soft) 63%);
+ background-size:250% 100%;animation:bgmsk 1.3s linear infinite}
+.sk *{visibility:hidden}
+html.lite .sk{animation:none}
+@media (prefers-reduced-motion:reduce){.sk,.sheet.busy .vbig,.sheet.busy .vpct,.sheet.busy .vsub,
+ .sheet.busy .rv,.sheet.busy .rsub,.sheet.busy .rmk,.sheet.busy .rends,.sheet.busy .fxv,
+ .sheet.busy .fxn,.sheet.busy .rchip{animation:none}}
+.sheet.busy{opacity:1!important}
+.sheet.busy .vbig,.sheet.busy .vpct,.sheet.busy .vsub,.sheet.busy .rv,.sheet.busy .rsub,
+.sheet.busy .rmk,.sheet.busy .rends,.sheet.busy .fxv,.sheet.busy .fxn,.sheet.busy .rchip{
+ color:transparent!important;
+ background:linear-gradient(90deg,var(--soft) 25%,var(--hover) 37%,var(--soft) 63%);
+ background-size:250% 100%;animation:bgmsk 1.3s linear infinite;border-radius:8px}
+.sheet.busy .rv *,.sheet.busy .rchip *,.sheet.busy .rmk *,.sheet.busy .rends *,
+.sheet.busy .fxv *,.sheet.busy .fxn *,.sheet.busy .vbig *,.sheet.busy .vsub *,
+.sheet.busy .rchip::before,.sheet.busy .rchip::after,.sheet.busy .rchip *::before,
+.sheet.busy .rmk::before,.sheet.busy .rmk::after,.sheet.busy .rends::before{color:transparent!important}
+.sheet.busy .verdict{background:var(--panel)!important;border:1px solid var(--line)}
+.sheet.busy .fxb i,.sheet.busy .rband{opacity:.25}
+.waitmsg{display:none;margin-top:12px;font-family:'Data','JetBrains Mono',monospace;font-size:13px;color:var(--dim)}
+.waitmsg.on{display:block}
+.offbar{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:80;display:none;
+ align-items:center;gap:9px;padding:11px 17px;border:1px solid var(--line);border-radius:13px;
+ background:var(--panel);color:var(--ink);font:500 14px Onest;box-shadow:0 12px 34px var(--shadow)}
+.offbar.on{display:flex}
+.offbar i{width:8px;height:8px;border-radius:50%;background:var(--warn);display:block}
+</style><link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="canonical" href="https://dex719-krisha-fair-price.hf.space/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://dex719-krisha-fair-price.hf.space/">
+<meta property="og:title" content="Справедливая цена квартиры в Алматы по ссылке с Krisha │ baǵam">
+<meta property="og:description" content="baǵam сравнивает объявление Krisha с рынком Алматы, показывает справедливую цену, диапазон модели и факторы, которые двигают цену.">
+<meta property="og:image" content="https://dex719-krisha-fair-price.hf.space/static/img/city-1400.webp">
+<meta property="og:locale" content="ru_RU">
+<meta name="twitter:card" content="summary_large_image">
+</head><body>
+<a class="skip" href="#main">Перейти к содержимому</a>
+<div class="grain"></div>
+<div class="progress" id="prog"></div>
+<nav><div class="wrap nrow">
+<a class="logo" href="/" aria-label="baǵam — на главную">baǵam<span>.</span></a>
+<div class="menu"><a class="on" href="#" aria-current="page">Оценка</a><a href="/stats">Рынок</a><a href="/about">О проекте</a></div>
+<button class="thbtn" type="button" data-theme-toggle aria-label="Сменить тему"><svg class="tm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg><svg class="ts" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button><a class="tgbtn" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><span class="tgn">Telegram-бот</span><span class="tghw"><span class="tgh">@fairprice_kzbot</span></span><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.9"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.9"/></svg></a>
+<button class="burg" type="button" aria-label="Меню" aria-expanded="false" aria-controls="mmenu"><span></span><span></span></button>
+</div></nav>
+<div class="mmenu" id="mmenu" aria-label="Меню" aria-hidden="true">
+<a class="ml" data-href="/" href="/">Оценка<i>главная</i></a>
+<a class="ml" data-href="/stats" href="/stats">Рынок<i>цены по районам</i></a>
+<a class="ml" data-href="/about" href="/about">О проекте<i>как считает модель</i></a>
+<div class="msub">
+<a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">Telegram-бот · @fairprice_kzbot</a>
+<a href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener">Открытый код на GitHub</a>
+<button class="mth" type="button" data-theme-toggle><span>Тема оформления</span><b data-theme-label>тёмная</b></button>
+<span>данные krisha.kz · Алматы</span>
 </div>
+</div>
+<script>
+(function(){
+  const b=document.querySelector('.burg'), m=document.getElementById('mmenu');
+  if(!b||!m) return;
+  m.querySelectorAll('.ml').forEach(a=>{ if(location.href.split('#')[0]===a.dataset.href) a.classList.add('on'); });
+  let open=false;
+  function set(v){
+    open=v;
+    b.setAttribute('aria-expanded', v?'true':'false');
+    b.setAttribute('aria-label', v?'Закрыть меню':'Меню');
+    document.body.classList.toggle('mopen', v);
+    m.setAttribute('aria-hidden', v?'false':'true');
+    m.classList.toggle('open', v);
+    if(v) m.querySelector('.ml').focus({preventScroll:true}); else b.focus({preventScroll:true});
+  }
+  b.addEventListener('click',()=>set(!open));
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&open) set(false); });
+  m.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>{ if(a.classList.contains('on')){ set(false); } }));
+})();
+</script>
+
+<main id="main">
+
+<header class="hero"><div class="wrap">
+<h1>
+<span class="l1">Сколько</span>
+<span class="l2"><em>на самом деле</em></span>
+<span class="l3">стоит квартира?</span>
+</h1>
+<span class="shw sh1"><svg class="shape" width="72" height="72" viewBox="0 0 72 72"><path d="M12 14h48M12 30h48M36 30v30" stroke="#3ADC7C" stroke-width="10" stroke-linecap="round" fill="none"/></svg></span>
+<span class="shw sh2"><svg class="shape" width="66" height="46" viewBox="0 0 66 46"><path d="M6 40 L33 8 L60 40" stroke="#E9B44C" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span>
+<span class="shw sh3"><svg class="shape" width="34" height="34" viewBox="0 0 34 34"><rect x="2" y="2" width="13" height="13" rx="3" fill="#F1F2EB"/><rect x="19" y="2" width="13" height="13" rx="3" fill="#3ADC7C"/><rect x="2" y="19" width="13" height="13" rx="3" fill="#3ADC7C"/><rect x="19" y="19" width="13" height="13" rx="3" fill="#F1F2EB" opacity=".4"/></svg></span>
+<div class="herorow">
+<div class="lede"><div class="ledetag">как это работает</div><p>Вставьте ссылку с krisha.kz. Модель сверит лот с <b><span data-l="total">20 729</span> живыми объявлениями</b> Алматы и ответит: выгодно, в рынке или переплата.</p></div>
+<div>
+<form class="inbar" data-check novalidate><label class="vh" for="lotUrl">Ссылка на объявление с krisha.kz</label><input id="lotUrl" name="url" type="url" inputmode="url" autocomplete="url" enterkeyhint="go" spellcheck="false" placeholder="krisha.kz/a/show/1012607661"><button class="pastebtn" type="button" data-paste aria-label="Вставить ссылку из буфера" title="Вставить из буфера"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1.6" stroke="currentColor" stroke-width="1.8"/><path d="M8 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="pbl">Вставить</span></button><button class="gobtn" type="submit">Проверить <i>→</i></button></form><p class="inerr" data-err role="alert"></p><button class="demolink" type="button" data-demo hidden>показать на примере активного объявления</button>
+</div>
+</div>
+</div>
+<div class="cityband" style="background:url(data:image/webp;base64,UklGRnIAAABXRUJQVlA4IGYAAACQAwCdASoYABAAPsFQoUqnpKMhsAgA8BgJZwAAW8cm/VNi2cx4AP71lOxeFteOIgW5e4skJ/Pv8gvNL7cB0eX8J9WVRcKbUMOqudtAU3Vizi0SEkQvadwnhcrvcJQbUWCF931AAAA=) center/cover"><img src="/static/img/city-860.webp" srcset="/static/img/city-860.webp 860w, /static/img/city-1400.webp 1400w" sizes="100vw" width="860" height="573" decoding="async" fetchpriority="high" alt="Алматы ночью: жилые кварталы на фоне Заилийского Алатау" id="cityimg" decoding="async" fetchpriority="high" width="860" height="573"><div class="cityfade"></div></div>
+<section class="dband"><div class="wrap">
+<div class="shead"><div class="shl"><h2 class="shttl">Цена метра по районам</h2><p class="shsub">Медиана активных объявлений Алматы — от предгорий до окраин.</p></div><span class="shmeta"><b data-l="total">20 729</b> активных лотов<br>медиана города <b class="nw" data-l="ppsmk">742 тыс ₸/м²</b></span></div>
+<div class="dbars"><div class="dmed" style="bottom:40.8%"><span class="dmedl">медиана города</span></div><div class="dcol hi"><span class="dbar" style="height:92.0%"></span></div><div class="dcol hi"><span class="dbar" style="height:84.6%"></span></div><div class="dcol hi"><span class="dbar" style="height:61.3%"></span></div><div class="dcol lo"><span class="dbar" style="height:38.7%"></span></div><div class="dcol lo"><span class="dbar" style="height:22.3%"></span></div><div class="dcol lo"><span class="dbar" style="height:14.6%"></span></div><div class="dcol lo"><span class="dbar" style="height:14.6%"></span></div><div class="dcol lo"><span class="dbar" style="height:12.7%"></span></div></div>
+<div class="dlabels"><div class="dl hi"><span class="dpx">970<i>тыс ₸/м²</i></span><span class="dnm">Медеуский</span><span class="ddl"><b>+31%</b> к медиане</span><span class="dhbar"><i style="width:92.0%"></i></span></div><div class="dl hi"><span class="dpx">937<i>тыс ₸/м²</i></span><span class="dnm">Бостандыкский</span><span class="ddl"><b>+26%</b> к медиане</span><span class="dhbar"><i style="width:84.6%"></i></span></div><div class="dl hi"><span class="dpx">833<i>тыс ₸/м²</i></span><span class="dnm">Алмалинский</span><span class="ddl"><b>+12%</b> к медиане</span><span class="dhbar"><i style="width:61.3%"></i></span></div><div class="dl lo"><span class="dpx">732<i>тыс ₸/м²</i></span><span class="dnm">Ауэзовский</span><span class="ddl"><b>−1%</b> к медиане</span><span class="dhbar"><i style="width:38.7%"></i></span></div><div class="dl lo"><span class="dpx">659<i>тыс ₸/м²</i></span><span class="dnm">Наурызбайский</span><span class="ddl"><b>−11%</b> к медиане</span><span class="dhbar"><i style="width:22.3%"></i></span></div><div class="dl lo"><span class="dpx">625<i>тыс ₸/м²</i></span><span class="dnm">Алатауский</span><span class="ddl"><b>−16%</b> к медиане</span><span class="dhbar"><i style="width:14.6%"></i></span></div><div class="dl lo"><span class="dpx">625<i>тыс ₸/м²</i></span><span class="dnm">Жетысуский</span><span class="ddl"><b>−16%</b> к медиане</span><span class="dhbar"><i style="width:14.6%"></i></span></div><div class="dl lo"><span class="dpx">616<i>тыс ₸/м²</i></span><span class="dnm">Турксибский</span><span class="ddl"><b>−17%</b> к медиане</span><span class="dhbar"><i style="width:12.7%"></i></span></div></div>
+</div></section>
 </header>
 
-<main>
-<div class="band">
-<div class="wrap">
+<section class="rep" id="razbor"><div class="wrap">
+<p class="vh" id="checkStatus" role="status" aria-live="polite"></p>
+<div class="shead"><div class="shl"><h2 class="shttl">Разбор объявления</h2></div><span class="shmeta" id="repSrc"><b>krisha.kz/a/show/1012607661</b> · обновлено сегодня</span></div>
+<div class="sheet">
+ <div class="verdict"><span class="vbig">Выгодно</span><span class="vsub">цена ниже справедливой — торг не обязателен</span><span class="vpct">−4,2%</span></div>
+ <div class="rwarn" id="rWarn" hidden></div>
+ <div class="rnums">
+  <div class="rn"><span class="rl">Цена в объявлении</span><span class="rv" id="count" data-target="27500000">0 <small>₸</small></span></div>
+  <div class="rn"><span class="rl">Справедливая оценка</span><span class="rv acc" id="rFair">28 700 000 <small>₸</small></span><span class="rsub" id="rBand">интервал модели по этому лоту</span></div>
+  <div class="rn"><span class="rl">Цена метра</span><span class="rv" id="rPpsm">561 224 <small>₸/м²</small></span><span class="rsub">медиана города <span data-l="ppsm">741 935</span> ₸/м²</span></div>
+ </div>
+ <div class="rscale">
+  <div class="rsttl">Где лот на шкале модели</div>
+  <div class="rax">
+   <div class="rtrack"></div>
+   <div class="rband"></div>
+   <div class="rmk ask" style="left:29.9%"><span>объявление · 27,5 млн</span><i></i></div>
+   <div class="rmk fair" style="left:43.7%"><span>справедливая · 28,7 млн</span><i></i></div>
+  </div>
+  <div class="rends"><span id="rEndLo">нижняя граница · 24,9 млн ₸</span><span id="rEndHi">верхняя граница · 33,6 млн ₸</span></div>
+ </div>
+ <div class="rwhy">
+  <div class="rwhd"><h3 class="rwttl">Что повлияло на оценку</h3><span class="rwsub">вклад признаков в справедливую цену</span></div>
+  <div class="fxlist" id="fxList"><div class="fx pos"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20V5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 11.5 6.5-6.5 6.5 6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>повышает</span><span class="fxv">+1,9 млн</span><span class="fxn">Площадь 49 м²</span><div class="fxb"><i style="--w:1.000"></i></div></div><div class="fx pos"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20V5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 11.5 6.5-6.5 6.5 6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>повышает</span><span class="fxv">+0,6 млн</span><span class="fxn">Этаж 7 из 10</span><div class="fxb"><i style="--w:0.320"></i></div></div><div class="fx neg"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v15" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 12.5 6.5 6.5 6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>снижает</span><span class="fxv">−1,4 млн</span><span class="fxn">Наурызбайский район</span><div class="fxb"><i style="--w:0.740"></i></div></div><div class="fx neg"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v15" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 12.5 6.5 6.5 6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>снижает</span><span class="fxv">−0,3 млн</span><span class="fxn">Возраст дома</span><div class="fxb"><i style="--w:0.160"></i></div></div></div>
+ </div>
+ <div class="rextra" id="rHist" hidden></div>
+ <div class="rextra" id="rSim" hidden></div>
+ <div class="rfoot">
+  <span class="rchip">2-комнатная, 49 м², 7/10<b>Алтын орда 6/64</b></span>
+  <span class="rchip">похожие уходят за <b>~3 дня</b></span>
+  <span class="rchip">сравнили с <b data-l="total">20 729</b> активными лотами</span>
+ </div>
+</div>
+</div></section>
 
-<div class="hero">
-<h1>Сколько на самом деле стоит эта квартира</h1>
-<div>
-<p class="lead">Вставьте ссылку с krisha.kz — модель сравнит лот с <b id="market-count">рынком Алматы</b> и покажет, где цена честная.</p>
-<form id="form" class="searchbar" autocomplete="off">
-<input id="url" name="url" type="url" inputmode="url" required placeholder="krisha.kz/a/show/…" aria-label="Ссылка на объявление krisha.kz">
-<button class="btn-paste" id="paste-btn" type="button" aria-label="Вставить ссылку из буфера" title="Вставить из буфера"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button>
-<button id="btn" class="btn btn-primary btn-eval" type="submit" disabled aria-disabled="true"><span>Оценить</span><svg class="i arr" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg></button>
-</form>
-<p class="fstat" id="status" role="status" aria-live="polite" aria-hidden="true"></p>
-<p class="hint loadnote" id="market-loadnote" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4"/><path d="m16.2 7.8 2.8-2.8"/><path d="M18 12h4"/><path d="M12 18v4"/><path d="m5 19 2.8-2.8"/><path d="M2 12h4"/></svg><span>Загружаем свежие данные рынка — обычно это пара секунд</span></p>
-</div>
-</div>
+<section class="statement"><div class="wrap">
+<h2 id="fillTxt">Модель ошибается на 7,6%. Риелтор и продавец ошибаются ровно настолько, насколько им выгодно.</h2>
+</div></section>
 
-<div class="stage">
-<div class="k">
-<span class="lbl"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="2" y1="14" x2="6" y2="14"/><line x1="10" y1="8" x2="14" y2="8"/><line x1="18" y1="16" x2="22" y2="16"/></svg>Рынок сегодня · цена за м², Алматы</span>
-<span class="meta" id="market-meta"><span class="sk sk-on" style="width:300px;max-width:64vw;height:13px"></span></span>
+<section><div class="wrap bento">
+<div class="card c1">
+<h3 class="hrow"><span class="icw"><svg class="ic2 icb icd" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M22 2 11 13" stroke="var(--vio)" stroke-width="1.7"/></svg></span>Вердикт прямо в Telegram</h3>
+<p>Telegram-бот умеет три вещи: оценить квартиру по ссылке или тексту, следить за лотом через /track и присылать алерты через /alerts, когда на рынке появляется подходящий вариант.</p>
+<div class="iph" role="img" aria-label="Скриншот переписки с ботом baǵam в Telegram: ссылка на объявление, вердикт «Выгодно −4,2%», команда /track и алерт о снижении цены">
+<div class="iscr">
+ <div class="isb"><span class="isle">21:04</span><span class="iisl"></span><span class="isri"><svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor" aria-hidden="true"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0.5" width="3" height="11.5" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="none" aria-hidden="true"><path d="M1 4.2a10.6 10.6 0 0 1 14 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M3.6 6.9a7 7 0 0 1 8.8 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M6.2 9.5a3.2 3.2 0 0 1 3.6 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none" aria-hidden="true"><rect x="0.7" y="0.7" width="21" height="10.6" rx="3.2" stroke="currentColor" stroke-opacity=".45" stroke-width="1.1"/><rect x="2.3" y="2.3" width="17.8" height="7.4" rx="2" fill="currentColor"/><path d="M23.4 4.3v3.4a2 2 0 0 0 0-3.4Z" fill="currentColor" fill-opacity=".45"/></svg></span></div>
+ <div class="tghd"><span class="tgbk"><svg viewBox="0 0 9 15" fill="none" aria-hidden="true"><path d="M7.6 1.4 1.7 7.5l5.9 6.1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="tgttl"><b>baǵam</b><i>бот · онлайн</i></span><span class="tgav">b</span></div>
+ <div class="tgch">
+  <span class="tgday">Сегодня</span>
+  <div class="tgb out"><span class="mono">krisha.kz/a/show/1012607661</span><span class="tgt">21:04<svg viewBox="0 0 18 11" fill="none" aria-hidden="true"><path d="M1.2 6.3 4 9.1l5.6-6.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m7.6 8.6.9.9 6-7.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+  <div class="tgb in"><strong>Выгодно −4,2%</strong><span class="ln">Справедливая цена: <b>28,7&nbsp;млн&nbsp;₸</b></span><span class="ln">В объявлении: 27,5&nbsp;млн&nbsp;₸</span><span class="ln">2-комн., 49 м², Алтын орда</span><span class="tgt">21:04</span></div>
+  <div class="tgb out"><span class="mono">/track</span><span class="tgt">21:05<svg viewBox="0 0 18 11" fill="none" aria-hidden="true"><path d="M1.2 6.3 4 9.1l5.6-6.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m7.6 8.6.9.9 6-7.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+  <div class="tgb in">Слежу за этим лотом. Напишу, как только цена изменится.<span class="tgt">21:05</span></div>
+  <div class="tgb in">Цена снижена: <b>26,9&nbsp;млн&nbsp;₸</b> — минус 600 тысяч.<span class="tgt">08:12</span></div>
+ </div>
+ <div class="tgin"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 11.5 12.1 19.4a5 5 0 0 1-7.1-7.1l8.4-8.4a3.4 3.4 0 1 1 4.8 4.8l-8.3 8.3a1.8 1.8 0 1 1-2.5-2.5l7.6-7.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tgfl">Сообщение</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="2.6" width="6" height="11.4" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M5.5 11.4a6.5 6.5 0 0 0 13 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M12 18v3.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></div>
 </div>
-<div class="chart-box" data-n="48" data-w="1120" data-h="210" hidden aria-hidden="true"></div>
-<div class="skchart" id="market-skeleton" aria-hidden="true"><i style="height:10%;animation-delay:.0s"></i><i style="height:28%;animation-delay:.08s"></i><i style="height:44%;animation-delay:.16s"></i><i style="height:72%;animation-delay:.24s"></i><i style="height:96%;animation-delay:.32s"></i><i style="height:78%;animation-delay:.40s"></i><i style="height:62%;animation-delay:.48s"></i><i style="height:38%;animation-delay:.56s"></i><i style="height:22%;animation-delay:.64s"></i><i style="height:14%;animation-delay:.72s"></i></div>
-<div class="axis" id="market-axis"><span class="sk sk-on" style="width:82px;height:12px"></span><span class="sk sk-on" style="width:124px;height:12px"></span><span class="sk sk-on" style="width:74px;height:12px"></span></div>
-<p class="sr-only" id="market-sr">Данные рынка загружаются.</p>
-<div class="hlegend" id="market-legend"><span class="sk sk-on" style="width:190px;height:13px"></span><span class="sk sk-on" style="width:230px;height:13px"></span></div>
 </div>
+</div>
+<div class="card c2">
+<h3 class="hrow"><span class="icw"><svg class="ic2 icb" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16" stroke="currentColor" stroke-width="1.7"/><path d="M8 17v-3" stroke="currentColor" stroke-width="1.7"/><path d="M13 17V5" stroke="var(--vio)" stroke-width="1.7"/><path d="M18 17V9" stroke="currentColor" stroke-width="1.7"/></svg></span>Не «примерно», а с опубликованной ошибкой</h3>
+<p>Еженедельное переобучение с гейтом качества: новая модель заезжает, только если не хуже старой на свежем тесте. Методика открыта.</p>
+<div class="mets">
+<div class="met"><b class="cnt" data-l="mape" data-v="7,6%">7,6%</b><span>MAPE модели</span></div>
+<div class="met"><b class="cnt" data-v="0.911">0.911</b><span>R² на holdout</span></div>
+<div class="met"><b class="cnt" data-l="total" data-v="20 729">20 729</b><span>живых лотов</span></div>
+</div>
+</div>
+<div class="card c3">
+<h3 class="hrow"><span class="icw"><svg class="ic2 icb" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5 10.5 5.5v4L7 11.5 3.5 9.5v-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M17 3.5 20.5 5.5v4L17 11.5 13.5 9.5v-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M12 12.5 15.5 14.5v4L12 20.5 8.5 18.5v-4Z" fill="var(--vio)" fill-opacity=".18" stroke="var(--vio)" stroke-width="1.7"/></svg></span>Карта цен всего города</h3>
+<p>Медианы по <b>8 районам</b> и гексагональная карта ₸/м². Подписка на район в один тап: бот напишет, когда появится выгодный лот.</p>
+<svg class="hexmap" viewBox="0 0 320 96">
+<g stroke="#4A3A12" stroke-width="1.5">
+<polygon points="30,10 52,22 52,46 30,58 8,46 8,22" fill="#2A2109"/>
+<polygon points="76,10 98,22 98,46 76,58 54,46 54,22" fill="#E9B44C"/>
+<polygon points="122,10 144,22 144,46 122,58 100,46 100,22" fill="#57430F"/>
+<polygon points="168,10 190,22 190,46 168,58 146,46 146,22" fill="#E9B44C" opacity=".75"/>
+<polygon points="214,10 236,22 236,46 214,58 192,46 192,22" fill="#2A2109"/>
+<polygon points="260,10 282,22 282,46 260,58 238,46 238,22" fill="#3B2F0B"/>
+<polygon points="53,48 75,60 75,84 53,96 31,84 31,60" fill="#57430F"/>
+<polygon points="99,48 121,60 121,84 99,96 77,84 77,60" fill="#E9B44C" opacity=".55"/>
+<polygon points="145,48 167,60 167,84 145,96 123,84 123,60" fill="#2A2109"/>
+<polygon points="191,48 213,60 213,84 191,96 169,84 169,60" fill="#3B2F0B"/>
+<polygon points="237,48 259,60 259,84 237,96 215,84 215,60" fill="#E9B44C" opacity=".4"/>
+</g></svg>
+</div>
+</div></section>
 
-</div>
-</div>
+<section class="cta"><div class="wrap">
+<h2>Проверьте, пока<br>не <em>переплатили</em></h2>
+<form class="inbar" data-check novalidate><label class="vh" for="lotUrl2">Ссылка на объявление с krisha.kz</label><input id="lotUrl2" name="url" type="url" inputmode="url" autocomplete="url" enterkeyhint="go" spellcheck="false" placeholder="krisha.kz/a/show/1012607661"><button class="pastebtn" type="button" data-paste aria-label="Вставить ссылку из буфера" title="Вставить из буфера"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1.6" stroke="currentColor" stroke-width="1.8"/><path d="M8 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="pbl">Вставить</span></button><button class="gobtn" type="submit">Проверить <i>→</i></button></form><p class="inerr" data-err role="alert"></p>
+</div></section>
 
-<div class="wrap sheet">
-<section id="loading" class="receipt-skeleton" hidden aria-hidden="true">
-<div class="sk-head"></div>
-<div class="sk-body">
-<div><span class="skel t"></span><span class="skel p"></span><span class="skel l"></span><span class="skel l" style="width:86%"></span></div>
-<div><span class="skel t" style="width:62%"></span><span class="skel scale-s"></span><span class="skel row"></span><span class="skel row" style="width:78%"></span></div>
+<section class="next"><div class="wrap">
+<div class="shead"><div class="shl"><h2 class="shttl">Куда дальше</h2><p class="shsub">Живая статистика рынка, устройство модели и исходный код.</p></div></div>
+<div class="ncards">
+<a class="ncard g" href="/stats"><span class="ntop"><span class="nidx">01</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M6.5 40.4h35" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><g stroke="currentColor" stroke-width="4.6" stroke-linecap="round"><path d="M13 35.4V28.6"/><path d="M22 35.4V23.4"/><path d="M31 35.4V26.2"/><path d="M40 35.4V13.4"/></g></svg></span></span><span class="nttl">Рынок Алматы</span><span class="nbot"><span class="nmeta">медиана 742 тыс ₸/м²<br>8 районов</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard v" href="/about"><span class="ntop"><span class="nidx">02</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><circle cx="24" cy="10" r="4.4" fill="currentColor"/><path d="M24 14.4v3.8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M11 27.4v-6.2a3 3 0 0 1 3-3h20a3 3 0 0 1 3 3v6.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M24 18.2v9.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="11" cy="32" r="4.4" stroke="currentColor" stroke-width="2.2"/><circle cx="24" cy="32" r="4.4" fill="currentColor" opacity=".45"/><circle cx="37" cy="32" r="4.4" stroke="currentColor" stroke-width="2.2"/></svg></span></span><span class="nttl">О проекте</span><span class="nbot"><span class="nmeta">как считает модель<br>ошибка <span data-l="mape">7,6%</span></span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard w" href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener"><span class="ntop"><span class="nidx">03</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><g transform="scale(2)" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></g></svg></span></span><span class="nttl">GitHub</span><span class="nbot"><span class="nmeta">открытый код<br>FastAPI + CatBoost</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard g" href="https://t.me/Dex719" target="_blank" rel="noopener"><span class="ntop"><span class="nidx">04</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><g transform="scale(2)" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 2.6 10.4 13.6"/><path d="M21.4 2.6 14.5 22.1l-4.1-8.5L2 9.5Z"/></g></svg></span></span><span class="nttl">Автор в Telegram</span><span class="nbot"><span class="nmeta">вопросы, баги, идеи<br>отвечаю сам</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
 </div>
-</section>
-<section class="receipt" id="receipt" aria-busy="true" aria-label="Отчёт об оценке загружается">
-<div class="r-head">
-<span><b>Отчёт об оценке</b> · <span class="sk sk-rh" style="width:220px;max-width:52vw;height:13px"></span></span>
-<span class="sk sk-rh" style="width:120px;height:13px"></span>
-</div>
-<div class="verdict">
-<div>
-<div class="eyebrow">Цена в объявлении</div>
-<span class="sk" style="width:260px;max-width:100%;height:36px;margin:4px 0 14px"></span>
-<span class="sk skln" style="width:100%"></span>
-<span class="sk skln" style="width:86%"></span>
-<span class="sk skln" style="width:64%"></span>
-</div>
-<div>
-<span class="sk skln" style="width:82%;height:13px;margin-bottom:18px"></span>
-<span class="sk" style="width:100%;height:8px;border-radius:999px;margin:10px 0 26px"></span>
-<span class="sk skln" style="width:92%"></span>
-<span class="sk skln" style="width:76%"></span>
-<div class="ctx">
-<span class="sk skln" style="width:100%"></span>
-<span class="sk skln" style="width:86%"></span>
-</div>
-</div>
-</div>
-<div class="cols">
-<div><span class="sk skln" style="width:170px"></span><span class="sk skln" style="width:96%"></span><span class="sk skln" style="width:82%"></span><span class="sk skln" style="width:90%"></span></div>
-<div><span class="sk skln" style="width:150px"></span><span class="sk skln" style="width:76%"></span><span class="sk skln" style="width:94%"></span><span class="sk skln" style="width:68%"></span></div>
-</div>
-<div class="foot-sec"><span class="sk" style="width:220px;max-width:100%;height:42px"></span><span class="sk" style="width:150px;height:42px"></span><span class="sk skln" style="width:180px"></span></div>
-</section>
+</div></section>
 
-<section class="how" id="how">
-<h2>Как считает модель</h2>
-<div class="steps">
-<div class="step"><span class="n">1</span><h3>Собираем рынок каждое утро</h3><p><span id="how-market-count">Объявления Алматы</span> с krisha.kz: цены, параметры, история изменений. Устаревшие лоты выбывают, новые попадают в выборку в день публикации.</p></div>
-<div class="step"><span class="n">2</span><h3>Сравниваем лот с похожими</h3><p>Модель находит аналоги в районе и корректирует медиану под факторы конкретной квартиры — этаж, ремонт, год дома, метро, залог и другие.</p></div>
-<div class="step"><span class="n">3</span><h3>Показываем диапазон, а не «точную» цифру</h3><p id="accuracy-step">Точность модели — средняя ошибка на проверке по свежим объявлениям. Если аналогов мало — диапазон честно расширяется.</p></div>
-</div>
-<div class="faq">
-<details><summary>Почему отличие от медианы не равно отличию от оценки?<span class="chev">▾</span></summary><p>Медиана района — усреднённый ориентир по похожим квартирам. Справедливая оценка корректирует её под конкретный лот: параметры квартиры могут поднять или снизить оценку относительно медианы.</p></details>
-<details><summary>Откуда данные и не устарели ли они?<span class="chev">▾</span></summary><p>Данные собираются с krisha.kz и пересобираются каждое утро. Время последнего обновления указано над графиком распределения.</p></details>
-<details><summary>Что будет с нестандартной квартирой?<span class="chev">▾</span></summary><p>Если рядом мало аналогов — новостройка, пентхаус, редкая планировка — модель расширит диапазон и прямо укажет на низкую уверенность вместо ложной точности.</p></details>
-</div>
-<div class="cta-band">
-<div><h3>Telegram-бот умеет</h3><p>Может оценить квартиру по ссылке или тексту, следить за лотом через /track и присылать алерты через /alerts с фильтрами по району, комнатам и бюджету.</p></div>
-<a class="btn btn-primary" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>Открыть Telegram-бот</a>
-</div>
-</section>
-
-<footer>
-<span class="fbrand">baǵam</span>
-<span class="fl">
-<a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>Telegram-бот</a>
-<a href="https://www.threads.net/@bagam.kz" target="_blank" rel="noopener"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>Threads</a>
-</span>
-<span>данные принадлежат их владельцам</span>
-</footer>
-</div>
 </main>
-
-<div class="microbar" id="microbar">
-<span></span>
-<a class="btn btn-primary" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">Следить в боте</a>
+<footer><div class="wrap">
+<div class="fgrid">
+ <div>
+  <a class="flogo" href="/" aria-label="baǵam — на главную">baǵam<span>.</span></a>
+  <p class="ftag">Считаем справедливую цену квартиры в Алматы по объявлению с krisha.kz — за секунду и бесплатно.</p>
+  <div class="fchips"><span class="fchip"><b data-l="total">20 729</b> активных лотов</span><span class="fchip">ошибка <b data-l="mape">7,6%</b></span><span class="fchip"><b data-l="age">обновление ежедневно</b></span></div>
+ </div>
+ <div>
+  <div class="fh">Продукт</div>
+  <div class="flinks">
+   <a class="flink" href="#">Оценка объявления</a>
+   <a class="flink" href="/stats">Рынок Алматы</a>
+   <a class="flink" href="/about">О проекте</a>
+  </div>
+ </div>
+ <div>
+  <div class="fh">Проект</div>
+  <div class="flinks">
+   <a class="flink" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.7"/></svg>Telegram-бот</a>
+   <a class="flink" href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48l-.01-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.35 4.68-4.58 4.93.36.31.68.92.68 1.85l-.01 2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>Исходный код</a>
+   <a class="flink" href="https://t.me/Dex719" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.7"/></svg>Автор</a>
+  </div>
+ </div>
+ <div>
+  <div class="fh">Как это работает</div>
+  <p class="fnote">Модель <b>CatBoost</b> сравнивает объявление с активными лотами Алматы. Средняя ошибка <b data-l="mape">7,6%</b> на отложенной выборке. Оценка справочная и не является офертой.</p>
+ </div>
 </div>
+
+<div class="fbot">
+ <span>© 2026 baǵam · данные krisha.kz · Алматы</span>
+ <button class="ftop" type="button" aria-label="Наверх"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="1.9"/></svg>наверх</button>
+</div>
+
+</div>
+<div class="fmarkband"><svg class="fmark" viewBox="-4 -203 921 196" preserveAspectRatio="xMidYMin meet" aria-hidden="true" focusable="false"><defs><linearGradient id="markgrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3ADC7C" stop-opacity=".16"/><stop offset="1" stop-color="#3ADC7C" stop-opacity=".025"/></linearGradient></defs><text x="0" y="0">baǵam</text></svg></div>
+<script>
+(function(){
+  var btn=document.querySelector('.ftop');if(!btn)return;
+  var root=document.documentElement;
+  btn.addEventListener('click',function(){
+    var from=window.pageYOffset||root.scrollTop;
+    if(from<2)return;
+    if(matchMedia('(prefers-reduced-motion: reduce)').matches){window.scrollTo(0,0);return;}
+    var prev=root.style.scrollBehavior;root.style.scrollBehavior='auto';
+    var dur=Math.min(2400,Math.max(1200,from*0.7)),t0=performance.now(),stopped=false;
+    function stop(){stopped=true}
+    addEventListener('wheel',stop,{passive:true,once:true});
+    addEventListener('touchstart',stop,{passive:true,once:true});
+    function done(){root.style.scrollBehavior=prev;removeEventListener('wheel',stop);removeEventListener('touchstart',stop)}
+    function frame(t){
+      if(stopped){done();return}
+      var pr=Math.min(1,(t-t0)/dur),e=pr<0.5?4*pr*pr*pr:1-Math.pow(-2*pr+2,3)/2;
+      window.scrollTo(0,from*(1-e));
+      if(pr<1){requestAnimationFrame(frame)}else{done()}
+    }
+    requestAnimationFrame(frame);
+  });
+})();
+</script>
+</footer>
 
 <script>
+bagamBoot(function(){
+const staticMode = location.search.includes('static') || matchMedia('(prefers-reduced-motion: reduce)').matches || !window.gsap;
+// split statement into words
+const st = document.getElementById('fillTxt');
+st.innerHTML = st.textContent.trim().split(/\s+/).map(w=>{
+  const acc = /7,6%|выгодно/i.test(w) ? ' acc' : '';
+  return `<span class="w${acc}">${w}</span>`;
+}).join(' ');
+const words = [...document.querySelectorAll('#fillTxt .w')];
+function finishStatic(){
+  words.forEach(w=>w.classList.add('lit'));
+  const c = document.getElementById('count');
+  c.firstChild.textContent = (27500000).toLocaleString('ru-RU') + ' ';
+}
+if (staticMode) { finishStatic(); }
+else {
+  gsap.registerPlugin(ScrollTrigger);
+  // hero entrance
 
-/* ===== production data glue ===== */
-const ICONS={chart:'<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="2" y1="14" x2="6" y2="14"/><line x1="10" y1="8" x2="14" y2="8"/><line x1="18" y1="16" x2="22" y2="16"/></svg>',tag:'<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>',pin:'<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>',bell:'<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',share:'<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="m16 6-4-4-4 4"/><path d="M12 2v13"/></svg>'};
-const FEATURE_NAMES={area:'Площадь',rooms:'Комнаты',floor:'Этаж',total_floors:'Этажность',floor_ratio:'Положение по этажам',is_first_floor:'Первый этаж',is_last_floor:'Последний этаж',year_built:'Год постройки',building_age:'Возраст дома',ceiling:'Потолки',lat:'Широта',lon:'Долгота',dist_center_km:'Расстояние до центра',district:'Район',microdistrict:'Микрорайон',building_type:'Тип дома',complex_name:'Жилой комплекс',user_type:'Продавец',category:'Категория',photos_count:'Кол-во фото',district_median_ppsm:'Уровень цен района',micro_median_ppsm:'Уровень цен микрорайона',is_new_building:'Новостройка',district_ppsm:'Уровень цен района',microdistrict_ppsm:'Уровень цен микрорайона',renovation:'Ремонт',toilet:'Санузел',furniture:'Мебель',parking:'Парковка',balcony:'Балкон',has_security_guard:'Охрана',has_intercom:'Домофон',has_video_surveillance:'Видеонаблюдение',security_count:'Опции безопасности',housing_class:'Класс жилья',developer:'Застройщик',completion_year:'Год сдачи ЖК',apartments_count:'Размер ЖК',dist_metro_km:'Близость метро',dist_school_km:'Близость школы',dist_kindergarten_km:'Близость детсада',dist_park_km:'Близость парка',dist_supermarket_km:'Близость супермаркета',dist_bus_stop_km:'Близость остановки',dist_big_road_km:'Близость магистрали',dist_industrial_km:'Близость промзоны',walk_score:'Пешая доступность',hex7_ppsm:'Уровень цен в округе (~2 км)',hex8_ppsm:'Уровень цен квартала (~500 м)',knn_ppsm:'Цены ближайших домов',knn_n:'Предложений по соседству',district_mismatch:'Район не совпадает с координатами'};
-const WARNED_FEATURES=new Set();
-const receipt=document.getElementById('receipt'),loading=document.getElementById('loading'),form=document.getElementById('form'),urlInput=document.getElementById('url'),statusEl=document.getElementById('status'),btn=document.getElementById('btn'),microbar=document.getElementById('microbar');
-let hasRealReceipt=false,demoUrl=null,marketStatsLoading=true,lastReport=null;
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function fmtPrice(v){if(v==null||Number.isNaN(+v))return '—';return String(Math.round(+v)).replace(/\B(?=(\d{3})+(?!\d))/g,'\u00A0')+'\u00A0₸'}
-function fmtMln(v){if(v==null||Number.isNaN(+v))return '—';return (+v/1e6).toFixed(1).replace('.',',').replace(',0','')+' млн'}
-function fmtPct(v){return Math.abs(+v||0).toFixed(1).replace('.',',').replace(',0','')+'%'}
-function pluralRu(n,one,few,many){const m10=n%10,m100=n%100;if(m10===1&&m100!==11)return one;if(m10>=2&&m10<=4&&(m100<12||m100>14))return few;return many}
-/* Живая точность модели из /api/health — как на странице «О проекте»
-   (issue #81: хардкод ±9,5% устаревает с каждым weekly retrain). */
-let modelErrPct=null;
-function accuracySuffix(){return modelErrPct==null?'':' · точность модели ±'+fmtPct(modelErrPct)}
-async function loadModelAccuracy(){try{const r=await fetch('/api/health');if(!r.ok)return;const h=await r.json();if(h.model_error_pct==null)return;modelErrPct=+h.model_error_pct;const step=document.getElementById('accuracy-step');if(step)step.textContent='Точность ±'+fmtPct(modelErrPct)+' — средняя ошибка модели на проверке по свежим объявлениям. Если аналогов мало — диапазон честно расширяется.';const meta=document.querySelector('.stage .meta');if(meta&&meta.dataset.acc==='pending'){delete meta.dataset.acc;meta.textContent+=accuracySuffix()}}catch(e){}}
-function fmtPpsm(v){return v==null||Number.isNaN(+v)?'—':fmtPrice(v)+'/м²'}
-function safeHref(url){try{const u=new URL(String(url),location.origin);if(u.protocol==='https:'&&/(^|\.)krisha\.kz$/.test(u.hostname))return u.href}catch(e){}return 'https://krisha.kz'}
-function showStatus(text,kind){statusEl.textContent=text||'';statusEl.classList.toggle('err',kind==='err');statusEl.classList.toggle('ok',kind!=='err');statusEl.setAttribute('aria-hidden',text?'false':'true')}
-function setEvaluateDisabled(disabled){btn.disabled=!!disabled;if(disabled)btn.setAttribute('aria-disabled','true');else btn.removeAttribute('aria-disabled')}
-function setMarketLoading(loading){marketStatsLoading=!!loading;setEvaluateDisabled(loading);const note=document.getElementById('market-loadnote');if(!note)return;note.classList.remove('load-error');if(loading){note.hidden=false;note.innerHTML='<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4"/><path d="m16.2 7.8 2.8-2.8"/><path d="M18 12h4"/><path d="M12 18v4"/><path d="m5 19 2.8-2.8"/><path d="M2 12h4"/></svg><span>Загружаем свежие данные рынка — обычно это пара секунд</span>'}else note.hidden=true}
-function showMarketStatsError(){const note=document.getElementById('market-loadnote');if(!note)return;note.hidden=false;note.classList.add('load-error');note.innerHTML='<span>Статистика рынка временно недоступна — оценку можно запустить.</span>'}
-function setMarketSkeleton(visible){const sk=document.getElementById('market-skeleton'),box=document.querySelector('.chart-box');if(sk)sk.hidden=!visible;if(box){box.hidden=visible;box.setAttribute('aria-hidden',visible?'true':'false')}}
-function bindDemoButton(){const demoBtn=document.getElementById('demo-link');if(!demoBtn)return;if(demoUrl)demoBtn.hidden=false;if(demoBtn.dataset.bound)return;demoBtn.dataset.bound='1';demoBtn.addEventListener('click',()=>{if(!demoUrl)return;urlInput.value=demoUrl;form.requestSubmit()})}
-function renderEmptyReceipt(){if(hasRealReceipt)return;receipt.removeAttribute('aria-busy');receipt.removeAttribute('aria-label');receipt.innerHTML=`
-<div class="r-head"><span><b>Отчёт об оценке</b></span><span>оценка ещё не выполнялась</span></div>
-<div class="r-empty">
-<svg class="rei" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v18l-2.33-1.5L14.33 21 12 19.5 9.67 21 7.33 19.5 5 21z"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="13" y2="12"/></svg>
-<p class="re-t">Здесь появится отчёт об оценке</p>
-<p class="re-s">Вставьте ссылку на объявление с krisha.kz — модель сравнит лот с активными объявлениями района и покажет, честная ли цена и почему.</p>
-<button class="btn btn-sec" id="demo-link" type="button" hidden>Показать на примере</button>
-<div class="re-ghost" aria-hidden="true"><span class="gr"><span class="gl" style="width:128px"></span><span class="gd"></span><span class="gv" style="width:74px"></span></span><span class="gr"><span class="gl" style="width:96px"></span><span class="gd"></span><span class="gv" style="width:58px"></span></span><span class="gr"><span class="gl" style="width:150px"></span><span class="gd"></span><span class="gv" style="width:66px"></span></span></div>
-</div>`;bindDemoButton()}
-function allDetails(data){return [...(data.details||[]),...(data.complex_details||[]),...(data.location_details||[])]}
-function detail(data,names){const pats=names.map(x=>String(x).toLowerCase());const row=allDetails(data).find(d=>pats.some(p=>String(d.label||'').toLowerCase().includes(p)));return row?String(row.value):''}
-function numFrom(s){const m=String(s||'').replace(',','.').match(/\d+(?:\.\d+)?/);return m?+m[0]:null}
-function areaOf(data){return numFrom(detail(data,['площад']))||numFrom(data.title)}
-function districtOf(data){return detail(data,['район'])||((data.address||'').split(',').find(x=>/р-н|район/i.test(x))||'Алматы').trim()}
-function floorLine(data){const floor=detail(data,['этаж']);const year=detail(data,['год']);return [floor,year].filter(Boolean).join(' · ')}
-function factorImpactLabel(f){const pct=f.impact_pct;const up=(pct!=null?pct:f.impact)>=0;const arrow=up?'↑':'↓';if(pct==null||Math.abs(pct)<.05)return arrow+' '+(up?'повышает':'понижает');let out=arrow+' '+(up?'+':'−')+fmtPct(pct);if(f.impact_tenge&&Math.abs(f.impact_tenge)>=100000)out+=' ('+(f.impact_tenge>0?'+':'−')+fmtMln(Math.abs(f.impact_tenge))+')';return out}
-function featureName(key){const name=FEATURE_NAMES[key];if(name)return name;if(!WARNED_FEATURES.has(key)){WARNED_FEATURES.add(key);console.warn('Неизвестный фактор скрыт:',key)}return null}
-function factorShort(f){const v=f.value_label??f.value??f.display_value;return v==null||String(v).trim()===''?'':' <span class="sub">· '+esc(v)+'</span>'}
-function bindFactorHints(){document.querySelectorAll('.fr.has-hint').forEach(row=>{if(row.dataset.tipBound)return;row.dataset.tipBound='1';row.addEventListener('click',e=>{document.querySelectorAll('.fr.has-hint.tip-open').forEach(x=>{if(x!==row)x.classList.remove('tip-open')});row.classList.toggle('tip-open');e.stopPropagation()});row.addEventListener('keydown',e=>{if(e.key==='Escape')row.classList.remove('tip-open')})});if(!bindFactorHints._doc){bindFactorHints._doc=true;document.addEventListener('click',e=>{if(!e.target.closest('.fr.has-hint'))document.querySelectorAll('.fr.has-hint.tip-open').forEach(x=>x.classList.remove('tip-open'))})}}
-function trackHref(data){const id=data.listing_id||String(data.url||'').match(/krisha\.kz\/a\/show\/(\d+)/i)?.[1];return id?'https://t.me/fairprice_kzbot?start=track_'+encodeURIComponent(id):'https://t.me/fairprice_kzbot'}
-function verdictLabel(data){if(data.verdict==null)return 'без цены';if(data.verdict==='OVERPRICED')return 'завышено';if(data.verdict==='FAIR')return 'справедливо';if(data.verdict==='GOOD_DEAL')return 'занижено';return 'без цены'}
-function sayLine(data){if(data.actual_price==null)return 'Справедливая оценка модели — '+fmtMln(data.fair_price)+'. Диапазон показывает, где цена выглядит рыночной для похожих лотов.';const below=(data.diff_pct||0)<0;const word=below?'ниже':'выше';return 'Это на '+fmtPct(data.diff_pct)+' '+word+' справедливой оценки — '+fmtMln(data.fair_price)+' ₸. Проверьте факторы ниже: они объясняют, почему модель двигает цену от медианы района.'}
-function renderFactors(data){const fs=(data.top_factors||[]).map((f,i)=>({...f,_name:featureName(f.feature),_idx:i})).filter(f=>f._name).slice(0,9);if(!fs.length)return '<div class="fr"><span>Факторы модели</span><span class="lead-dots"></span><span class="v">нет данных</span></div>';return fs.map((f,i)=>{const id='fh-'+i+'-'+String(f.feature).replace(/[^a-z0-9_-]/gi,'');const hint=f.hint?'<span class="ftip" id="'+id+'" role="tooltip">'+esc(f.hint)+'</span>':'';return '<div class="fr '+(i>3?'xfr ':'')+(f.hint?'has-hint':'')+'" '+(f.hint?'tabindex="0" aria-describedby="'+id+'"':'')+'><span><span class="fname">'+esc(f._name)+'</span>'+factorShort(f)+hint+'</span><span class="lead-dots"></span><span class="v '+(((f.impact_pct??f.impact)>=0)?'up':'dn')+'">'+esc(factorImpactLabel(f))+'</span></div>'}).join('')}
-function renderFlags(data){const box=document.getElementById('flags-box');if(!box)return;const chips=[];if(data.duplicate_of)chips.unshift('<span class="chip warn">Похож на перезалив №'+esc(data.duplicate_of)+'</span>');let riskNote='';if(data.scam_risk){chips.unshift('<span class="chip warn">'+(data.scam_risk.level==='high'?'Сильно ниже рынка':'Ниже ожидаемой')+'</span>');const reasons=(data.scam_risk.reasons||[]).map(esc).join(' · ');riskNote='<p class="scam-note">'+(reasons?reasons.replace(/\.$/,'')+'. ':'')+'Не вносите задаток до просмотра квартиры и проверки документов.</p>'}if(data.renovation)chips.push('<span class="chip">Ремонт: '+esc(data.renovation.label)+'</span>');box.innerHTML=chips.join('')+riskNote;box.hidden=!chips.length&&!riskNote}
-function renderAnalogs(data){const analogs=(data.analogs||[]).slice(0,3);if(!analogs.length)return '<div class="fr"><span>Похожие объявления</span><span class="lead-dots"></span><span class="v">появятся после накопления аналогов</span></div>';return analogs.map(a=>{const meta=[a.area?`${a.area} м²`:null,a.district,a.floor?`${a.floor}${a.total_floors?'/'+a.total_floors:''} эт.`:null,a.year_built?`${a.year_built}`:null].filter(Boolean).join(' · ');const ppsm=a.ppsm?Math.round(a.ppsm/1000)+' тыс ₸/м²':'—';return '<a class="fr" href="'+esc(safeHref(a.url))+'" target="_blank" rel="noopener noreferrer"><span>'+esc(a.title||('Объявление '+a.id))+' <span class="sub">· '+esc(meta)+'</span></span><span class="lead-dots"></span><span class="v">'+esc(ppsm)+' <span class="sub">· '+esc(fmtMln(a.price))+'</span> <span class="go">→</span></span></a>'}).join('')}
-function histDate(value){return new Date(String(value||'').replace(' ','T'))}
-function fmtHistDate(value){try{return new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long'}).format(histDate(value))}catch(e){return 'дата наблюдения'}}
-function renderPriceHistory(data){const hist=(data.price_history||[]).map(p=>({price:+p.price,observed_at:p.observed_at,ts:+histDate(p.observed_at)})).filter(p=>Number.isFinite(p.price)&&p.price>0&&Number.isFinite(p.ts)).sort((a,b)=>a.ts-b.ts).reduce((acc,p)=>{if(!acc.length||acc.at(-1).price!==p.price)acc.push(p);return acc},[]);if(hist.length<2)return '';const first=hist[0],last=hist.at(-1),delta=last.price-first.price;if(!delta)return '';const summary=delta<0?'продавец снизил цену на '+fmtPrice(Math.abs(delta))+' с '+fmtHistDate(first.observed_at):'продавец поднял цену на '+fmtPrice(Math.abs(delta))+' с '+fmtHistDate(first.observed_at);const rows=hist.slice(1).map((p,i)=>{const prev=hist[i],d=p.price-prev.price;if(!d)return '';const down=d<0,word=down?'снижение':'повышение',sign=down?'−':'+';return '<div class="fr"><span>'+esc(fmtHistDate(p.observed_at))+' <span class="sub">· '+word+'</span></span><span class="lead-dots"></span><span class="v '+(down?'dn':'up')+'">'+sign+esc(fmtPrice(Math.abs(d)))+' <span class="sub">до '+esc(fmtPrice(p.price))+'</span></span></div>'}).join('');return '<div class="cols price-history"><div><div class="st">'+ICONS.chart+'История цены</div><p class="expl">'+esc(summary)+'</p><div class="factors">'+rows+'</div></div></div>'}
-function scaleModel(data){const fair=+data.fair_price||0,actual=data.actual_price==null?fair:+data.actual_price,low=+(data.fair_price_low??fair*.9),high=+(data.fair_price_high??fair*1.1);const min=Math.min(actual,low,fair)*.92,max=Math.max(actual,high,fair)*1.08;const pos=x=>Math.min(96,Math.max(4,((x-min)/(max-min))*100));const zl=pos(low),zh=pos(high);return {fair,actual,low,high,pin:pos(actual),tick:pos(fair),zleft:zl,zwidth:Math.max(4,zh-zl)}}
-function renderReceipt(data){lastReport=data;receipt.removeAttribute('aria-busy');receipt.removeAttribute('aria-label');const s=scaleModel(data),area=areaOf(data),ppsm=(data.actual_price&&area)?Math.round(data.actual_price/area):null,liq=data.liquidity,days=liq?.band_median_days??liq?.median_days??null,liqSample=liq==null?null:(liq.band_median_days!=null?liq.band_sample:liq.sample),dist=districtOf(data),cur=verdictLabel(data);const head=[data.title||'Объявление',data.address].filter(Boolean).join(' · ');receipt.innerHTML=`
-<div class="r-head"><span><b>Отчёт об оценке</b> · ${esc(head)}</span><span>${new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date())}</span></div>
-<div class="verdict">
-<div><div class="eyebrow">${data.actual_price==null?'Оценка модели':'Цена в объявлении'}</div><div class="price" data-price="${esc(data.actual_price??data.fair_price)}">${fmtPrice(data.actual_price??data.fair_price)}</div><p class="say">${esc(sayLine(data))}</p></div>
-<div><div class="scale-l"><b class="cur">${esc(cur)}</b><span>справедливо</span><span>завышено</span></div><div class="scale"><span class="zone" style="left:${s.zleft}%;width:${s.zwidth}%" title="Зона «справедливо» — диапазон модели ${fmtMln(s.low)}–${fmtMln(s.high)}"></span><span class="tick" style="left:${s.tick}%"></span><span class="pin" style="left:${s.pin}%"></span><span class="zl z1" style="left:${s.zleft}%">${fmtMln(s.low)}</span><span class="zl z2" style="left:${s.zleft+s.zwidth}%">${fmtMln(s.high)}</span></div><div class="srow">${data.actual_price==null?'':'<span><span class="g gdot"></span>цена лота · <b>'+fmtMln(data.actual_price)+'</b></span>'}<span><span class="g gtick"></span>справедливая оценка · <b>${fmtMln(data.fair_price)}</b></span><span><span class="g gzone"></span>диапазон модели · <b>${fmtMln(s.low)}–${fmtMln(s.high)}</b></span></div><div class="ctx"><div class="cr"><span><span class="lb-l">Похожие уходят с продажи</span><span class="lb-s">Скорость продажи</span></span><span class="lead-dots"></span><span><b>${days?('за ~'+days+' дней'):'нет данных'}</b> <span class="sub">· ${liqSample?liqSample+' снятых аналогов':'оценка обновится при новых данных'}</span></span></div><div class="cr"><span><span class="lb-l">Цена за м²</span><span class="lb-s nw">₸/м²</span></span><span class="lead-dots"></span><span><b>${ppsm?fmtPrice(ppsm):'—'}</b> <span class="sub">· ${esc(dist)}</span></span></div><p class="expl">Медиана района — общий ориентир. Справедливая оценка корректирует её на факторы именно этого лота — поэтому проценты могут отличаться.</p></div></div>
-</div>
-${renderPriceHistory(data)}
-<div class="cols"><div><div class="st">${ICONS.chart}Что двигает цену</div><div class="factors">${renderFactors(data)}</div>${(data.top_factors||[]).length>4?(n=>'<button class="more" type="button" aria-expanded="false">Ещё '+n+' '+pluralRu(n,'фактор','фактора','факторов')+' <span class="chev">▾</span></button>')(Math.max(0,(data.top_factors||[]).length-4)):''}</div><div><div class="st">${ICONS.tag}В описании найдено</div><div class="chips" id="flags-box"></div><div class="st">${ICONS.pin}Похожие рядом</div>${renderAnalogs(data)}</div></div>
-<div class="foot-sec actions-grow"><a class="btn btn-primary btn-bell" href="${esc(trackHref(data))}" target="_blank" rel="noopener">${ICONS.bell}Следить за ценой в Telegram-боте</a><button class="btn btn-sec btn-share" type="button">${ICONS.share}Поделиться отчётом</button><a class="klink" id="source-link" href="${esc(safeHref(data.url))}" target="_blank" rel="noopener noreferrer">Открыть на krisha.kz <span class="ar">→</span></a><span class="note">Оценка — ориентир, не оферта</span></div>`;renderFlags(data);bindFactorToggle();bindFactorHints();bindShare();hasRealReceipt=true;receipt.classList.remove('flash');void receipt.offsetWidth;receipt.classList.add('flash');if(microbar)microbar.querySelector('span').innerHTML='<b>'+fmtMln(data.actual_price??data.fair_price)+' ₸</b> · '+(data.diff_pct!=null?(fmtPct(data.diff_pct)+' '+((data.diff_pct||0)<0?'ниже':'выше')+' оценки'):'оценка готова')}
-function bindFactorToggle(){document.querySelectorAll('.more').forEach(moreBtn=>{if(moreBtn.dataset.bound)return;moreBtn.dataset.bound='1';const factors=moreBtn.closest('div')?.querySelector('.factors');if(!factors)return;moreBtn.addEventListener('click',function(){const open=factors.classList.toggle('open');moreBtn.setAttribute('aria-expanded',open?'true':'false');moreBtn.innerHTML=open?'Свернуть <span class="chev" style="transform:rotate(180deg)">▾</span>':(n=>'Ещё '+n+' '+pluralRu(n,'фактор','фактора','факторов')+' <span class="chev">▾</span>')(Math.max(0,factors.querySelectorAll('.xfr').length))})})}
-function reportShareText(data){if(!data)return 'baǵam — справедливая цена квартир в Алматы\n'+location.origin+'/';const s=scaleModel(data),title=data.title||'Отчёт об оценке квартиры',fair=fmtPrice(data.fair_price),range=fmtPrice(s.low)+'–'+fmtPrice(s.high),verdict=verdictLabel(data),source=data.url?safeHref(data.url):'';return [title,data.actual_price==null?null:'Цена в объявлении: '+fmtPrice(data.actual_price),'Справедливая оценка: '+fair,'Диапазон модели: '+range,'Вердикт: '+verdict,source?'Объявление: '+source:null,'baǵam — справедливая цена квартир в Алматы',location.origin+'/'].filter(Boolean).join('\n')}
-function bindShare(){document.querySelectorAll('.btn-share').forEach(b=>{if(b.dataset.bound)return;b.dataset.bound='1';b.addEventListener('click',function(){const text=reportShareText(lastReport);if(navigator.share)navigator.share({title:'Отчёт baǵam',text}).catch(function(){});else navigator.clipboard?.writeText(text).then(()=>showStatus('Скопировано','ok'))})})}
-function initTelegramMiniApp(){const tg=window.Telegram&&window.Telegram.WebApp;if(!tg||!tg.initData)return;document.documentElement.classList.add('in-telegram','tg-miniapp');document.body.classList.toggle('dark',tg.colorScheme==='dark');try{tg.ready();tg.expand()}catch(e){}}
-function initTheme(){const themeBtn=document.querySelector('.theme-btn');try{const saved=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme');if(saved==='dark'||(!saved&&matchMedia('(prefers-color-scheme:dark)').matches))document.body.classList.add('dark')}catch(e){}themeBtn?.addEventListener('click',function(){document.body.classList.add('theme-anim');document.body.classList.toggle('dark');clearTimeout(themeBtn._t);themeBtn._t=setTimeout(()=>document.body.classList.remove('theme-anim'),450);try{const v=document.body.classList.contains('dark')?'dark':'light';localStorage.setItem('bagam-theme',v);localStorage.setItem('kfp-theme',v)}catch(e){}})}
-function initTopbar(){const tb=document.getElementById('topbar');let lastY=scrollY,acc=0;addEventListener('scroll',function(){const y=scrollY,d=y-lastY;lastY=y;tb?.classList.toggle('scrolled',y>24);acc=d>0?Math.max(acc,0)+d:Math.min(acc,0)+d;if(y<=150||acc<-24)tb?.classList.remove('hid');else if(acc>24)tb?.classList.add('hid')},{passive:true})}
-function chart(el){let hist=[];try{hist=JSON.parse(el.dataset.hist||'[]')}catch(e){hist=[]}if(!hist.length){el.innerHTML='<div class="chart-empty">Статистика рынка загружается…</div>';return}const narrow=el.clientWidth>0&&el.clientWidth<520;const n=hist.length,W=narrow?560:(+el.dataset.w||1120),HT=narrow?190:(+el.dataset.h||210),max=HT-28,bw=W/n,peak=Math.max(...hist.map(x=>+x.count||0),1);let s='';for(let i=0;i<n;i++){const cnt=+hist[i].count||0;const v=Math.max(6,Math.round(max*cnt/peak));s+='<rect x="'+(i*bw+2)+'" y="'+(HT-v)+'" width="'+Math.max(4,bw-5)+'" height="'+v+'" rx="2" class="cbar" style="animation-delay:'+(0.25+i*0.02).toFixed(3)+'s"><title>'+esc(hist[i].label||'')+': '+cnt+'</title></rect>'}const med=Math.max(0,Math.min(n-1,+(el.dataset.medianIndex||Math.floor(n/2))));const mx=med*bw+bw/2;s+='<line x1="'+mx+'" y1="10" x2="'+mx+'" y2="'+HT+'" class="cmed"/>';let lx=-1,ly=HT-20;if(el.dataset.lotIndex){const li=Math.max(0,Math.min(n-1,+el.dataset.lotIndex||0));lx=li*bw+bw/2;const hv=Math.max(18,Math.round(max*((+hist[li]?.count||0)/peak)));ly=Math.max(18,HT-hv-8);s+='<line x1="'+lx+'" y1="'+Math.max(12,ly+8)+'" x2="'+lx+'" y2="'+HT+'" class="clot"/><circle cx="'+lx+'" cy="'+ly+'" r="5.5" class="cdot"/><circle cx="'+lx+'" cy="'+ly+'" r="7" class="cring"/>'}el.innerHTML='<svg viewBox="0 0 '+W+' '+HT+'" role="img" aria-label="Распределение цен за м² по рынку Алматы">'+s+'</svg>';if(el._tip)el.appendChild(el._tip);let ml=el._ml;if(!ml){ml=document.createElement('span');ml.className='cmed-label';el._ml=ml}ml.textContent=el.dataset.medianLabel||'медиана рынка';ml.style.left=((mx/W)*100)+'%';el.appendChild(ml);el._geo={W:W,H:HT,bx1:Math.max(0,mx-bw/2),bx2:Math.min(W,mx+bw/2),lx1:lx<0?-1:Math.max(0,lx-16),lx2:lx<0?-1:Math.min(W,lx+16),ly:ly};el._narrow=narrow}
-function initChartTips(){document.querySelectorAll('.chart-box').forEach(function(box){if(box.dataset.tipBound)return;box.dataset.tipBound='1';const tip=document.createElement('div');tip.className='ctip';box.appendChild(tip);box._tip=tip;let on=false;function setLot(show){if(show===on)return;on=show;const svg=box.querySelector('svg');if(!svg)return;svg.classList.toggle('lot-hot',show);box.style.cursor=show?'pointer':'';if(!show){tip.classList.remove('show');return}const g=box._geo,sr=svg.getBoundingClientRect(),k=sr.width/g.W;tip.innerHTML=box.dataset.tipLot||'<b>Этот лот</b> относительно медианы рынка.';tip.classList.add('show');const x=((g.lx1+g.lx2)/2)*k;tip.style.left=Math.min(Math.max(x,140),sr.width-140)+'px';tip.style.top=Math.max(6,g.ly*(sr.height/g.H)-tip.offsetHeight-10)+'px'}box.addEventListener('mousemove',function(e){const svg=box.querySelector('svg'),g=box._geo;if(!svg||!g||g.lx1<0)return setLot(false);const sr=svg.getBoundingClientRect();const sx=(e.clientX-sr.left)/(sr.width/g.W),sy=(e.clientY-sr.top)/(sr.height/g.H);setLot(sx>=g.lx1&&sx<=g.lx2&&sy>=g.ly-12&&sy<=g.H)});box.addEventListener('mouseleave',()=>setLot(false))})}
-function initCharts(){document.querySelectorAll('.chart-box').forEach(chart);initChartTips()}
-function formatCount(n){return new Intl.NumberFormat('ru-RU').format(Math.round(+n||0))}
-function formatDate(value){try{return new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long'}).format(new Date(value))}catch(e){return 'недавно'}}
-function histBinIndex(hist,value){const v=+value||0;if(!hist.length)return 0;const first=+hist[0].from_ppsm,last=+hist[hist.length-1].to_ppsm;if(first&&v<first)return 0;if(last&&v>last)return hist.length-1;for(let i=0;i<hist.length;i++){const a=+hist[i].from_ppsm,b=+hist[i].to_ppsm;if(a&&b&&v>=a&&v<=b)return i}return Math.max(0,Math.min(hist.length-1,Math.round(hist.length/2)))}
-function axisK(v,plus){return Math.round((+v||0)/1000)+' тыс'+(plus?'+':'')+' ₸/м²'}
-function ppsmAxis(hist){if(!hist.length)return '<span>дешевле</span><span>медиана рынка</span><span>дороже</span>';const first=hist[0],mid=hist[Math.floor(hist.length/2)],last=hist[hist.length-1];return '<span>'+axisK(first.from_ppsm,false)+'</span><span>'+axisK(mid.from_ppsm,false)+'</span><span>'+axisK(last.to_ppsm,true)+'</span>'}
-async function loadMarketStats(){const box=document.querySelector('.chart-box'),meta=document.querySelector('.stage .meta'),legend=document.getElementById('market-legend'),lead=document.getElementById('market-count'),how=document.getElementById('how-market-count'),sr=document.getElementById('market-sr'),axis=document.getElementById('market-axis');let failed=false;setMarketLoading(true);setMarketSkeleton(true);try{const resp=await fetch('/api/stats');if(!resp.ok)throw new Error('stats unavailable');const stats=await resp.json();const hist=Array.isArray(stats.ppsm_hist)?stats.ppsm_hist:[];if(stats.total_listings){const count=formatCount(stats.total_listings);if(lead)lead.textContent=count+' объявлениями Алматы';if(how)how.textContent=count+' объявлений Алматы'}if(meta){meta.textContent=(stats.total_listings?formatCount(stats.total_listings)+' активных лотов':'рынок Алматы')+' · обновлено '+formatDate(stats.updated_at)+accuracySuffix();if(modelErrPct==null)meta.dataset.acc='pending'}if(axis)axis.innerHTML=ppsmAxis(hist);setMarketSkeleton(false);if(box&&hist.length){box.dataset.hist=JSON.stringify(hist);box.dataset.medianIndex=histBinIndex(hist,stats.median_ppsm);box.dataset.medianLabel='медиана рынка — '+fmtPpsm(stats.median_ppsm);delete box.dataset.lotIndex;chart(box);initChartTips()}else if(box){box.innerHTML='<div class="chart-empty">Статистика рынка временно недоступна</div>'}if(legend)legend.innerHTML='<span class="hl hl-med"><span class="sw med"></span>медиана рынка — <b>'+fmtPpsm(stats.median_ppsm)+'</b></span><span class="hl hl-ghost"><span class="sw lot"></span>ваш лот появится здесь после оценки</span>';if(sr)sr.textContent='Распределение цен за м² по рынку Алматы построено из /api/stats.'}catch(e){failed=true;if(meta)meta.textContent='Статистика рынка временно недоступна · оценку можно запустить';if(axis)axis.innerHTML='<span>статистика</span><span>временно недоступна</span><span>оценка доступна</span>';setMarketSkeleton(false);if(box)box.innerHTML='<div class="chart-empty">Статистика рынка временно недоступна</div>';if(legend)legend.innerHTML='<span class="hl">Статистика рынка временно недоступна</span>'}finally{setMarketLoading(false);if(failed)showMarketStatsError();renderEmptyReceipt();initDemo()}}
-function updateHeroChart(data){const area=areaOf(data),ppsm=(data.actual_price&&area)?Math.round(data.actual_price/area):null,dist=districtOf(data),box=document.querySelector('.chart-box');if(ppsm&&box){box.dataset.tipLot='<b>Этот лот</b> — '+fmtPpsm(ppsm)+'. Сравните с медианой рынка и аналогами ниже.';try{const hist=JSON.parse(box.dataset.hist||'[]');if(hist.length){box.dataset.lotIndex=histBinIndex(hist,ppsm);chart(box);initChartTips()}}catch(e){}const legend=document.getElementById('market-legend');if(legend){document.getElementById('lot-legend')?.remove();legend.insertAdjacentHTML('afterbegin','<span class="hl" id="lot-legend"><span class="sw lot"></span>этот лот — <b>'+fmtPpsm(ppsm)+'</b> · '+esc(dist)+'</span>')}}const meta=document.querySelector('.stage .meta');if(meta){delete meta.dataset.acc;meta.textContent=((data.analogs||[]).length?data.analogs.length+' ближайших аналогов':'данные модели')+accuracySuffix()}}
-function initMicrobar(){const mb=document.getElementById('microbar'),ctaBand=document.querySelector('.cta-band');let ctaVis=false;function mbUpd(){const r=(document.querySelector('.verdict')||receipt).getBoundingClientRect();mb?.classList.toggle('show',hasRealReceipt&&innerWidth<=768&&r.bottom<0&&!ctaVis)}if('IntersectionObserver'in window&&ctaBand){new IntersectionObserver(en=>{ctaVis=en[0].isIntersecting;mbUpd()}).observe(ctaBand)}addEventListener('scroll',mbUpd,{passive:true});addEventListener('resize',mbUpd)}
-function initPaste(){const pasteBtn=document.getElementById('paste-btn');if(!pasteBtn)return;if(!(navigator.clipboard&&navigator.clipboard.readText)){pasteBtn.remove();return}pasteBtn.addEventListener('click',function(){navigator.clipboard.readText().then(t=>{if(t)urlInput.value=t.trim();urlInput.focus()}).catch(()=>urlInput.focus())})}
-async function submitUrl(e){e.preventDefault();if(marketStatsLoading){showStatus('Подождите пару секунд — загружаем свежие данные рынка','ok');return}const v=urlInput.value.trim();if(!/krisha\.kz\/a\/show\//i.test(v)){showStatus('Похоже, это не ссылка на объявление — нужна ссылка вида krisha.kz/a/show/…','err');urlInput.focus();return}setEvaluateDisabled(true);showStatus('Сравниваем с похожими лотами — обычно 5–10 секунд…','ok');let shown=false;const timer=setTimeout(()=>{shown=true;receipt.hidden=true;loading.hidden=false;loading.setAttribute('aria-hidden','false')},300);try{const resp=await fetch('/api/predict',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:v})});const data=await resp.json().catch(()=>({detail:'Что-то пошло не так'}));
-// detail от FastAPI при 422 — это МАССИВ объектов, и `err.message` показывал
-// пользователю «[object Object]». Разбираем оба вида ответа.
-if(!resp.ok){const d=data&&data.detail;throw new Error(typeof d==='string'?d:(Array.isArray(d)?'Ссылка слишком длинная — пришлите короткий вид krisha.kz/a/show/123456789':'Что-то пошло не так'))}clearTimeout(timer);loading.hidden=true;loading.setAttribute('aria-hidden','true');receipt.hidden=false;renderReceipt(data);updateHeroChart(data);showStatus('', 'ok');setTimeout(()=>receipt.scrollIntoView({behavior:'smooth',block:'start'}),shown?80:0)}catch(err){clearTimeout(timer);loading.hidden=true;loading.setAttribute('aria-hidden','true');receipt.hidden=false;showStatus(err.message||'Не удалось обработать объявление','err')}finally{setEvaluateDisabled(false)}}
-async function initDemo(){if(initDemo._started){bindDemoButton();return}initDemo._started=true;try{const resp=await fetch('/api/demo');if(!resp.ok)throw new Error('demo unavailable');const data=await resp.json();demoUrl=data.url||null}catch(e){demoUrl=null}bindDemoButton()}
-form.addEventListener('submit',submitUrl);
-initTelegramMiniApp();initTheme();initTopbar();loadModelAccuracy();loadMarketStats();bindFactorToggle();bindShare();initMicrobar();initPaste();
+  // floating shapes
 
+
+
+  // counter
+  const c = document.getElementById('count');
+  const obj = {n:0};
+  ScrollTrigger.create({trigger:'.sheet',start:'top 78%',once:true,onEnter:()=>{
+    if(window.__live) return;
+    gsap.to(obj,{n:27500000,duration:1.6,ease:'expo.out',onUpdate:()=>{
+      c.firstChild.textContent = Math.round(obj.n).toLocaleString('ru-RU') + ' ';
+    }});
+    gsap.from('.rmk',{opacity:0,y:10,duration:.8,stagger:.12,ease:'expo.out',clearProps:'transform'});
+    gsap.from('.fxb i.pos',{scaleX:0,duration:.9,stagger:.12,delay:.25,ease:'expo.out',clearProps:'transform'});
+    gsap.from('.fxb i.neg',{scaleX:0,duration:.9,stagger:.12,delay:.25,ease:'expo.out',clearProps:'transform'});
+  }});
+  // statement fill
+  ScrollTrigger.create({trigger:'.statement',start:'top 70%',end:'bottom 65%',scrub:.4,
+    onUpdate:s=>{const k=Math.floor(s.progress*words.length);
+      words.forEach((w,i)=>w.classList.toggle('lit', i<=k));}});
+  // bento reveal
+  gsap.utils.toArray('.card').forEach((el,i)=>{
+    gsap.from(el,{y:44,opacity:0,duration:.9,delay:i*.08,ease:'expo.out',clearProps:'transform',
+      scrollTrigger:{trigger:el,start:'top 85%',once:true}});
+  });
+  gsap.to('#cityimg',{yPercent:-14,ease:'none',scrollTrigger:{trigger:'.cityband',start:'top bottom',end:'bottom top',scrub:.5}});
+  gsap.from('.icw',{scale:0,rotation:-20,duration:.7,ease:'back.out(2)',stagger:.1,
+    scrollTrigger:{trigger:'.bento',start:'top 80%',once:true}});
+  gsap.from('.fgrid > div',{y:24,opacity:0,duration:.7,stagger:.08,ease:'expo.out',clearProps:'transform',
+    scrollTrigger:{trigger:'footer',start:'top 92%',once:true}});
+
+  gsap.from('.ncard',{y:28,opacity:0,duration:.75,stagger:.07,ease:'expo.out',clearProps:'transform',
+    scrollTrigger:{trigger:'.ncards',start:'top 88%',once:true}});
+  gsap.from('.cta h2',{y:40,opacity:0,duration:1,ease:'expo.out',clearProps:'transform',
+    scrollTrigger:{trigger:'.cta',start:'top 75%',once:true}});
+  // scroll progress bar
+  gsap.to('#prog',{width:'100%',ease:'none',scrollTrigger:{start:0,end:'max',scrub:.3}});
+  // sheet reveal
+  gsap.from('.sheet',{y:50,opacity:0,duration:1,ease:'expo.out',clearProps:'transform',scrollTrigger:{trigger:'.rep',start:'top 84%',once:true}});
+  // stat count-ups (7,6% / 0.911 / 20 729)
+  document.querySelectorAll('.cnt').forEach(el=>{
+    const fin = el.dataset.v, num = parseFloat(fin.replace(/\s/g,'').replace(',','.'));
+    const o = {n:0};
+    ScrollTrigger.create({trigger:el,start:'top 88%',once:true,onEnter:()=>{
+      gsap.to(o,{n:num,duration:1.4,ease:'expo.out',onUpdate:()=>{
+        if(fin.includes('%')) el.textContent = o.n.toFixed(1).replace('.',',')+'%';
+        else if(fin.includes('.')) el.textContent = o.n.toFixed(3);
+        else el.textContent = Math.round(o.n).toLocaleString('ru-RU').replace(/\u00a0/g,' ');
+      },onComplete:()=>{el.textContent = fin;}});
+    }});
+  });
+  // hexmap stagger pop
+  gsap.from('.hexmap polygon',{scale:0,opacity:0,transformOrigin:'center',duration:.5,stagger:.06,ease:'back.out(2.2)',clearProps:'transform',
+    scrollTrigger:{trigger:'.c3',start:'top 80%',once:true}});
+  // district bars grow
+  gsap.from('.dbar',{scaleY:0,transformOrigin:'bottom',duration:.9,stagger:.07,ease:'expo.out',clearProps:'transform',
+    scrollTrigger:{trigger:'.dband',start:'top 86%',once:true}});
+  gsap.from('.dl',{y:16,opacity:0,duration:.6,stagger:.05,ease:'expo.out',clearProps:'transform',
+    scrollTrigger:{trigger:'.dband',start:'top 86%',once:true}});
+  // city band scale-in
+  gsap.from('#cityimg',{scale:1.12,duration:1.2,ease:'expo.out',scrollTrigger:{trigger:'.cityband',start:'top 85%',once:true}});
+  // chat messages pop in sequence
+  gsap.from('.chat .msg, .cmds .cmd',{y:16,opacity:0,duration:.55,stagger:.16,ease:'back.out(1.6)',clearProps:'transform',
+    scrollTrigger:{trigger:'.c1',start:'top 72%',once:true}});
+  // lede border draw
+
+  // card icon spin on hover (gsap, no css conflict)
+  if (matchMedia('(pointer:fine)').matches){
+    document.querySelectorAll('.card').forEach(card=>{
+      const ic = card.querySelector('.icw'); if(!ic) return;
+      card.addEventListener('mouseenter',()=>gsap.to(ic,{rotation:-10,scale:1.14,duration:.5,ease:'back.out(2)'}));
+      card.addEventListener('mouseleave',()=>gsap.to(ic,{rotation:0,scale:1,duration:.5,ease:'power2.out'}));
+    });
+  }
+  // magnetic buttons (desktop only) — one tween owns transform, incl. scale
+  if (matchMedia('(pointer:fine)').matches){
+    document.querySelectorAll('.gobtn').forEach(btn=>{
+      const hov = btn.classList.contains('gobtn') ? 1.04 : 1.02;
+      const kx = .14, ky = .16, cap = 7;
+      const clamp = v => Math.max(-cap, Math.min(cap, v));
+      btn.addEventListener('mouseenter',()=>gsap.to(btn,{scale:hov,duration:.35,ease:'power2.out'}));
+      btn.addEventListener('mousemove',e=>{
+        const r = btn.getBoundingClientRect();
+        gsap.to(btn,{x:clamp((e.clientX-r.left-r.width/2)*kx), y:clamp((e.clientY-r.top-r.height/2)*ky),
+          duration:.45, ease:'power3.out', overwrite:'auto'});
+      });
+      btn.addEventListener('mouseleave',()=>gsap.to(btn,{x:0,y:0,scale:1,duration:.5,ease:'power3.out',overwrite:'auto'}));
+    });
+  }
+}
+});
 </script>
-</body>
-</html>
+<script>
+/* ---- живая проверка объявления через API сервиса ---- */
+(function(){
+  const API = '/api/predict';
+  const RX = /krisha\.kz\/a\/show\/(\d+)/i;
+  const ru = n => Math.round(n).toLocaleString('ru-RU');
+  const mln = n => (n/1e6).toFixed(1).replace('.', ',') + ' млн';
+  const pct = n => (n>0?'+':'−') + Math.abs(n).toFixed(1).replace('.', ',') + '%';
+  const $ = s => document.querySelector(s);
+  const sheet = $('.sheet');
+  const status = $('#checkStatus');
+  const VERD = {
+    GOOD_DEAL: ['Выгодно', 'цена ниже справедливой — торг не обязателен', ''],
+    FAIR: ['В рынке', 'цена внутри интервала модели — это нормальный рынок', 'warn'],
+    OVERPRICED: ['Переплата', 'цена выше справедливой — есть за что торговаться', 'bad']
+  };
+  /* Человеческие имена признаков модели. Единственный список: если модель отдаст
+     незнакомый ключ, фактор не показываем вовсе — сырой snake_case на странице
+     выглядит как утечка внутренностей. */
+  const NAMES = {
+    area:'Площадь', rooms:'Комнаты', floor:'Этаж', total_floors:'Этажность дома',
+    floor_ratio:'Положение по этажам', is_first_floor:'Первый этаж', is_last_floor:'Последний этаж',
+    year_built:'Возраст дома', building_age:'Возраст дома', house_age:'Возраст дома',
+    ceiling:'Высота потолков', ceiling_height:'Высота потолков',
+    lat:'Расположение на карте', lon:'Расположение на карте',
+    dist_center:'Удалённость от центра', dist_center_km:'Удалённость от центра',
+    district:'Район', microdistrict:'Микрорайон', building_type:'Тип дома',
+    complex_name:'Жилой комплекс', user_type:'Продавец', category:'Категория',
+    photos_count:'Количество фото', condition:'Состояние и ремонт', renovation:'Ремонт',
+    toilet:'Санузел', bathroom:'Санузел', furniture:'Мебель', parking:'Парковка', balcony:'Балкон',
+    has_security_guard:'Охрана', has_intercom:'Домофон', has_video_surveillance:'Видеонаблюдение',
+    security_count:'Опции безопасности', housing_class:'Класс жилья', developer:'Застройщик',
+    completion_year:'Год сдачи ЖК', apartments_count:'Размер ЖК',
+    dist_metro_km:'Близость метро', dist_school_km:'Близость школы',
+    dist_kindergarten_km:'Близость детсада', dist_park_km:'Близость парка',
+    dist_supermarket_km:'Близость супермаркета', dist_bus_stop_km:'Близость остановки',
+    dist_big_road_km:'Близость магистрали', dist_industrial_km:'Близость промзоны',
+    walk_score:'Пешая доступность', is_new_building:'Новостройка',
+    district_ppsm:'Уровень цен района', district_median_ppsm:'Уровень цен района',
+    microdistrict_ppsm:'Уровень цен микрорайона', micro_median_ppsm:'Уровень цен микрорайона',
+    hex7_ppsm:'Цены в округе ~2 км', hex8_ppsm:'Цены в квартале ~500 м',
+    knn_ppsm:'Цены ближайших домов', knn_n:'Предложений по соседству',
+    district_mismatch:'Район не совпадает с координатами'
+  };
+  function label(f, det){
+    let base = NAMES[f] || f.replace(/_/g, ' ');
+    const d = k => (det.find(x => x.label === k) || {}).value;
+    if (f === 'area' && d('Площадь')) base += ' ' + d('Площадь');
+    if (f === 'floor' && d('Этаж')) base += ' ' + d('Этаж');
+    if (f === 'rooms' && d('Комнаты')) base += ': ' + d('Комнаты');
+    if ((f === 'district' || f === 'district_ppsm') && d('Район')) base = d('Район') + ' район';
+    return base;
+  }
+
+  const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const WARN_ICON = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+    + '<path d="M12 4.5 2.8 20h18.4L12 4.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>'
+    + '<path d="M12 10v4.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'
+    + '<circle cx="12" cy="17.4" r="1.05" fill="currentColor"/></svg>';
+
+  /* Подозрительно низкая цена, перезалив, оценка ремонта — то, что важно увидеть
+     до задатка, а не в мелком тексте. */
+  function renderWarn(r){
+    const box = $('#rWarn');
+    if (!box) return;
+    const parts = [];
+    if (r.scam_risk){
+      const reasons = (r.scam_risk.reasons || []).map(esc).join(' · ');
+      parts.push('<div><b>' + (r.scam_risk.level === 'high' ? 'Цена сильно ниже рынка' : 'Цена ниже ожидаемой') +
+        '</b><i>' + (reasons ? reasons.replace(/\.$/, '') + '. ' : '') +
+        'Не вносите задаток до просмотра квартиры и проверки документов.</i></div>');
+    }
+    if (r.duplicate_of){
+      parts.push('<div><b>Похоже на перезалив объявления №' + esc(r.duplicate_of) + '</b>' +
+        '<i>Тот же набор характеристик уже встречался в базе — проверьте, не поднимали ли цену при переразмещении.</i></div>');
+    }
+    box.innerHTML = parts.length ? WARN_ICON + parts.join('') : '';
+    box.hidden = !parts.length;
+  }
+
+  const histDate = v => new Date(String(v || '').replace(' ', 'T'));
+  const fmtHistDate = v => {
+    try { return new Intl.DateTimeFormat('ru-RU', {day:'numeric', month:'short'}).format(histDate(v)); }
+    catch (e){ return ''; }
+  };
+
+  /* История цены: только реальные точки из базы, соседние повторы схлопываем. */
+  function renderHist(r){
+    const box = $('#rHist');
+    if (!box) return;
+    const hist = (r.price_history || [])
+      .map(p => ({price: +p.price, at: p.observed_at, ts: +histDate(p.observed_at)}))
+      .filter(p => Number.isFinite(p.price) && p.price > 0 && Number.isFinite(p.ts))
+      .sort((a, b) => a.ts - b.ts)
+      .reduce((acc, p) => { if (!acc.length || acc[acc.length-1].price !== p.price) acc.push(p); return acc; }, []);
+    if (hist.length < 2){ box.hidden = true; box.innerHTML = ''; return; }
+    const first = hist[0], last = hist[hist.length - 1], delta = last.price - first.price;
+    if (!delta){ box.hidden = true; box.innerHTML = ''; return; }
+    const summary = (delta < 0 ? 'продавец снизил цену на ' : 'продавец поднял цену на ')
+      + mln(Math.abs(delta)) + ' ₸ с ' + fmtHistDate(first.at);
+    const rows = hist.slice(1).map((p, i) => {
+      const d = p.price - hist[i].price;
+      return '<div class="rxr"><span class="rxd">' + esc(fmtHistDate(p.at)) + '</span>' +
+        '<span class="rxn">' + ru(hist[i].price) + ' → ' + ru(p.price) + ' ₸</span>' +
+        '<span class="rxv ' + (d < 0 ? 'dn' : 'up') + '">' + (d < 0 ? '−' : '+') + mln(Math.abs(d)) + '</span></div>';
+    }).join('');
+    box.innerHTML = '<div class="rxttl">История цены</div><div class="rxsum">' + summary + '</div>' + rows;
+    box.hidden = false;
+  }
+
+  /* Похожие активные лоты — чтобы вердикт можно было проверить руками. */
+  function renderSimilar(r){
+    const box = $('#rSim');
+    if (!box) return;
+    const list = (r.analogs || []).slice(0, 3);
+    if (!list.length){ box.hidden = true; box.innerHTML = ''; return; }
+    const rows = list.map(a => {
+      const area1 = a.area ? String(Math.round(a.area * 10) / 10).replace('.', ',') : null;
+      const meta = [area1 ? area1 + ' м²' : null,
+        a.district ? a.district + ' район' : null,
+        a.floor ? a.floor + (a.total_floors ? '/' + a.total_floors : '') + ' этаж' : null]
+        .filter(Boolean).join(' · ');
+      const url = /^https:\/\/krisha\.kz\//.test(a.url || '') ? a.url : 'https://krisha.kz/a/show/' + a.id;
+      return '<a class="rxr" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' +
+        '<span class="rxd">' + (a.ppsm ? ru(a.ppsm) : '—') + '</span>' +
+        '<span class="rxn">' + esc(meta || ('объявление ' + a.id)) + '</span>' +
+        '<span class="rxv">' + mln(a.price) + ' ↗</span></a>';
+    }).join('');
+    box.innerHTML = '<div class="rxttl">Похожие активные лоты</div>' +
+      '<div class="rxsum">с ними модель и сравнивала, цена за метр слева</div>' + rows;
+    box.hidden = false;
+  }
+
+  /* Текст отчёта для «поделиться»: делимся содержанием, а не ссылкой на страницу —
+     у получателя нет доступа к чужому объявлению по адресу нашего сайта. */
+  function reportShareText(r){
+    if (!r) return 'baǵam — справедливая цена квартир в Алматы\n' + location.origin + '/';
+    const VW = {GOOD_DEAL:'занижено', FAIR:'справедливо', OVERPRICED:'завышено'};
+    return [
+      r.title || 'Отчёт об оценке квартиры',
+      r.actual_price == null ? null : 'Цена в объявлении: ' + ru(r.actual_price) + ' ₸',
+      'Справедливая оценка: ' + ru(r.fair_price) + ' ₸',
+      (r.fair_price_low && r.fair_price_high)
+        ? 'Диапазон модели: ' + ru(r.fair_price_low) + '–' + ru(r.fair_price_high) + ' ₸' : null,
+      'Вердикт: ' + (VW[r.verdict] || 'без цены'),
+      r.url ? 'Объявление: ' + r.url : null,
+      'baǵam — справедливая цена квартир в Алматы',
+      location.origin + '/'
+    ].filter(Boolean).join('\n');
+  }
+
+  /* Слежение за ценой: бот открывается сразу на этом объявлении. */
+  function trackHref(r){
+    const id = r.listing_id || (String(r.url || '').match(/krisha\.kz\/a\/show\/(\d+)/i) || [])[1];
+    return id ? 'https://t.me/fairprice_kzbot?start=track_' + encodeURIComponent(id)
+              : 'https://t.me/fairprice_kzbot';
+  }
+
+  function render(r){
+    window.__live = true;
+    const [word, sub, cls] = VERD[r.verdict] || VERD.FAIR;
+    const v = $('.verdict');
+    v.className = 'verdict' + (cls ? ' ' + cls : '');
+    $('.vbig').textContent = word;
+    $('.vsub').textContent = sub;
+    $('.vpct').textContent = pct(r.diff_pct);
+    const cnt = $('#count');
+    cnt.firstChild.textContent = ru(r.actual_price) + ' ';
+    $('#rFair').firstChild.textContent = ru(r.fair_price) + ' ';
+    const area = parseFloat(((r.details.find(x => x.label === 'Площадь') || {}).value || '').replace(',', '.'));
+    if (area) $('#rPpsm').firstChild.textContent = ru(r.actual_price / area) + ' ';
+    // шкала
+    const lo = r.fair_price_low, hi = r.fair_price_high;
+    const min = Math.min(lo, r.actual_price), max = Math.max(hi, r.actual_price);
+    const pad = (max - min) * 0.08, a = min - pad, b = max + pad;
+    const at = x => ((x - a) / (b - a) * 100).toFixed(1) + '%';
+    $('.rband').style.left = at(lo);
+    $('.rband').style.right = (100 - parseFloat(at(hi))).toFixed(1) + '%';
+    const ask = $('.rmk.ask'), fair = $('.rmk.fair');
+    /* у самого края подпись разворачиваем внутрь шкалы, иначе её срезает */
+    const place = (el, x) => {
+      const v = parseFloat(at(x));
+      el.style.left = v + '%';
+      el.classList.toggle('edgeL', v < 16);
+      el.classList.toggle('edgeR', v > 84);
+    };
+    place(ask, r.actual_price);
+    place(fair, r.fair_price);
+    ask.querySelector('span').textContent = 'объявление · ' + mln(r.actual_price);
+    fair.querySelector('span').textContent = 'справедливая · ' + mln(r.fair_price);
+    const band = $('#rBand');
+    if (band && lo && hi && r.fair_price)
+      band.textContent = 'интервал модели ±' + ((hi - lo) / 2 / r.fair_price * 100).toFixed(1).replace('.', ',') + '%';
+    $('#rEndLo').textContent = 'нижняя граница · ' + mln(lo) + ' ₸';
+    $('#rEndHi').textContent = 'верхняя граница · ' + mln(hi) + ' ₸';
+    // факторы
+    const fx = (r.top_factors || []).filter(f => {
+      if (!f.impact_tenge) return false;
+      if (!NAMES[f.feature]){ console.warn('Неизвестный фактор скрыт:', f.feature); return false; }
+      return true;
+    }).slice(0, 5);
+    const mx = Math.max(...fx.map(f => Math.abs(f.impact_tenge)), 1);
+    const AUP = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20V5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 11.5 6.5-6.5 6.5 6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const ADN = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v15" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 12.5 6.5 6.5 6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    $('#fxList').innerHTML = fx.map(f => {
+      const p = f.impact_tenge > 0, w = (Math.abs(f.impact_tenge) / mx).toFixed(3);
+      const k = p ? 'pos' : 'neg';
+      return '<div class="fx ' + k + '"><span class="fxd">' + (p ? AUP : ADN) + (p ? 'повышает' : 'снижает') + '</span>' +
+        '<span class="fxv">' + (p ? '+' : '−') + mln(Math.abs(f.impact_tenge)) + '</span>' +
+        '<span class="fxn">' + label(f.feature, r.details) + '</span>' +
+        (f.hint ? '<span class="fxh">' + esc(f.hint) + '</span>' : '') +
+        '<div class="fxb"><i style="--w:' + w + '"></i></div></div>';
+    }).join('');
+    // подпись и чипы
+    const chips = [];
+    if (r.title) chips.push('<span class="rchip">' +
+      r.title.replace(' квартира', '').replace(/(\d)\.(\d)/g, '$1,$2').replace(/[\s·,]+$/, '') +
+      (r.address ? ' · <b>' + r.address + '</b>' : '') + '</span>');
+    const days = (r.liquidity || {}).median_days;
+    if (days) chips.push('<span class="rchip">похожие уходят за <b>~' + days + ' дн.</b></span>');
+    if (r.days_on_market) chips.push('<span class="rchip">в продаже <b>' + r.days_on_market + ' дн.</b></span>');
+    chips.push('<span class="rchip"><a href="' + r.url + '" target="_blank" rel="noopener">открыть объявление ↗</a></span>');
+    chips.push('<span class="rchip"><a href="' + trackHref(r) + '" target="_blank" rel="noopener">следить за ценой в боте ↗</a></span>');
+    chips.push('<button type="button" class="rchip rshare">поделиться отчётом</button>');
+    $('.rfoot').innerHTML = chips.join('');
+    renderWarn(r); renderHist(r); renderSimilar(r);
+    const share = $('.rshare');
+    if (share) share.addEventListener('click', () => {
+      const text = reportShareText(r);
+      if (navigator.share) navigator.share({title: 'Отчёт baǵam', text}).catch(() => {});
+      else if (navigator.clipboard) navigator.clipboard.writeText(text)
+        .then(() => { status.textContent = 'Отчёт скопирован'; share.textContent = 'скопировано'; });
+    });
+    $('#repSrc').innerHTML = '<b>' + r.url.replace(/^https?:\/\//, '') + '</b> · разбор только что';
+    if (window.gsap) gsap.fromTo(sheet, {opacity:.45}, {opacity:1, duration:.4, ease:'power2.out'});
+  }
+  function fail(err, msg){
+    err.textContent = msg;
+    err.classList.add('on');
+  }
+  document.querySelectorAll('form[data-check]').forEach(form => {
+    const inp = form.querySelector('input');
+    const btn = form.querySelector('.gobtn');
+    const paste = form.querySelector('[data-paste]');
+    const err = form.parentElement.querySelector('[data-err]');
+    if (paste){
+      if (!navigator.clipboard || !navigator.clipboard.readText) paste.remove();
+      else paste.addEventListener('click', async () => {
+        try {
+          const t = (await navigator.clipboard.readText() || '').trim();
+          if (t) { inp.value = t; err.classList.remove('on'); inp.removeAttribute('aria-invalid'); }
+          inp.focus();
+        } catch (e) { inp.focus(); }
+      });
+    }
+    inp.addEventListener('input', () => { err.classList.remove('on'); inp.removeAttribute('aria-invalid'); });
+    /* «Показать на примере»: берём случайный активный лот у сервиса, чтобы
+       человек без ссылки под рукой всё равно увидел живой разбор. */
+    const demo = form.parentElement.querySelector('[data-demo]');
+    if (demo){
+      fetch('/api/demo').then(r => r.ok ? r.json() : null).then(d => {
+        if (!d || !d.url) return;
+        demo.hidden = false;
+        demo.addEventListener('click', () => {
+          inp.value = d.url;
+          err.classList.remove('on');
+          form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event('submit', {cancelable:true}));
+        });
+      }).catch(() => {});
+    }
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const val = inp.value.trim();
+      const m = val.match(RX);
+      if (!m){
+        inp.setAttribute('aria-invalid', 'true');
+        fail(err, 'Нужна ссылка на объявление вида krisha.kz/a/show/1012607661');
+        inp.focus();
+        return;
+      }
+      err.classList.remove('on');
+      inp.removeAttribute('aria-invalid');
+      const label0 = btn.innerHTML;
+      btn.disabled = true;
+      btn.textContent = 'Считаем…';
+      sheet.classList.add('busy');
+      status.textContent = 'Считаем оценку объявления';
+      sheet.scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center'});
+      try {
+        const res = await fetch(API, {method:'POST', headers:{'content-type':'application/json'},
+          body: JSON.stringify({url: 'https://krisha.kz/a/show/' + m[1]})});
+        if (!res.ok){
+          const t = res.status === 422 ? 'Такое объявление не открывается — проверьте ссылку'
+            : res.status === 429 ? 'Слишком много запросов подряд. Попробуйте через минуту'
+            : 'Сервис сейчас не отвечает. Попробуйте ещё раз через минуту';
+          throw new Error(t);
+        }
+        const data = await res.json();
+        render(data);
+        status.textContent = 'Готово: ' + (VERD[data.verdict] || VERD.FAIR)[0] + ', ' + pct(data.diff_pct);
+      } catch (ex){
+        const em = (ex && ex.message) || '';
+        const net = /failed to fetch|network ?error|load failed|networkrequest|timed? ?out|abort/i.test(em);
+        fail(err, net ? 'Сервис сейчас не отвечает. Попробуйте ещё раз через минуту'
+          : em && em.length < 120 ? em : 'Не удалось получить оценку. Попробуйте ещё раз');
+        status.textContent = 'Не удалось получить оценку';
+        form.scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center'});
+        inp.focus({preventScroll: true});
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = label0;
+        sheet.classList.remove('busy');
+      }
+    });
+  });
+  // приход с подстраницы: /#check=<id> — сразу считаем
+  const h = location.hash.match(/check=(\d+)/);
+  if (h){
+    const f = document.querySelector('form[data-check]');
+    if (f){ f.querySelector('input').value = 'https://krisha.kz/a/show/' + h[1]; f.requestSubmit(); }
+  }
+})();
+</script>
+
+<script>
+/* ---------- тема ---------- */
+(function(){
+  var root=document.documentElement;
+  function label(){
+    var v=root.getAttribute('data-theme')==='light'?'светлая':'тёмная';
+    document.querySelectorAll('[data-theme-label]').forEach(function(e){e.textContent=v;});
+    document.querySelectorAll('[data-theme-toggle]').forEach(function(b){
+      b.setAttribute('aria-label', root.getAttribute('data-theme')==='light'?'Включить тёмную тему':'Включить светлую тему');
+    });
+  }
+  function set(v){
+    root.setAttribute('data-theme',v);
+    try{localStorage.setItem('bagam-theme',v);localStorage.setItem('kfp-theme',v);}catch(e){}
+    label();
+    var tg=window.Telegram&&window.Telegram.WebApp;
+    if(tg&&tg.setHeaderColor){try{tg.setHeaderColor(v==='light'?'#F1F4EC':'#0A100C');}catch(e){}}
+  }
+  document.addEventListener('click',function(e){
+    var b=e.target.closest&&e.target.closest('[data-theme-toggle]');
+    if(!b)return;
+    e.preventDefault();
+    set(root.getAttribute('data-theme')==='light'?'dark':'light');
+  });
+  label();
+})();
+
+/* ---------- Telegram Mini App ---------- */
+bagamTG(function(tg){
+  if(!tg.initData&&!(tg.platform&&tg.platform!=='unknown'))return;
+  document.documentElement.classList.add('tma');
+  try{
+    tg.ready();tg.expand();
+    if(tg.setHeaderColor)tg.setHeaderColor(document.documentElement.getAttribute('data-theme')==='light'?'#F1F4EC':'#0A100C');
+    if(tg.BackButton&&!/bagam-v4|\/$/.test(location.pathname)){
+      tg.BackButton.show();
+      tg.BackButton.onClick(function(){history.length>1?history.back():(location.href=HOME_URL);});
+    }
+  }catch(e){}
+});
+
+/* ---------- живые цифры ---------- */
+(function(){
+  var API='';
+  function ru(n){return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ');}
+  function pc(n){return (Math.round(n*10)/10).toString().replace('.',',');}
+  function put(sel,val){document.querySelectorAll(sel).forEach(function(e){e.textContent=val;if(e.dataset.v!==undefined)e.dataset.v=val;});}
+  function age(h){
+    if(h==null)return '';
+    if(h<1.5)return 'обновлено только что';
+    if(h<24)return 'обновлено '+Math.round(h)+' ч назад';
+    var d=Math.round(h/24);return 'обновлено '+d+' '+(d===1?'день':(d<5?'дня':'дней'))+' назад';
+  }
+  function j(p){var a=('AbortController' in window)&&new AbortController();
+    if(a)setTimeout(function(){a.abort();},12000);
+    return fetch(API+p,{cache:'no-store',signal:a?a.signal:undefined}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});}
+  function apply(s,h){
+    if(s){
+      put('[data-l=total]',ru(s.total_listings));
+      put('[data-l=ppsm]',ru(s.median_ppsm));
+      put('[data-l=ppsmk]',Math.round(s.median_ppsm/1000)+' тыс ₸/м²');
+      put('[data-l=medprice]',ru(s.median_price));
+      put('[data-l=medpricem]',(Math.round(s.median_price/1e5)/10).toString().replace('.',',')+' млн ₸');
+      window.__stats=s;
+      document.dispatchEvent(new CustomEvent('stats',{detail:s}));
+    }
+    if(h){
+      if(h.model_error_pct)put('[data-l=mape]',pc(h.model_error_pct)+'%');
+      if(h.model_median_error_pct)put('[data-l=mdape]',pc(h.model_median_error_pct)+'%');
+      put('[data-l=age]',age(h.data_age_hours));
+      document.querySelectorAll('[data-l=status]').forEach(function(e){
+        e.textContent=h.status==='ok'&&h.model_loaded?'сервис работает':'сервис недоступен';
+        e.classList.toggle('off',!(h.status==='ok'&&h.model_loaded));
+      });
+    }
+  }
+
+  try{
+    var cc=JSON.parse(localStorage.getItem('bagam-stats')||'null');
+    if(cc&&Date.now()-cc.t<86400000)apply(cc.s,cc.h);
+  }catch(e){}
+  Promise.all([j('/api/stats'),j('/api/health')]).then(function(res){
+    var s=res[0],h=res[1];
+    if(s||h){try{localStorage.setItem('bagam-stats',JSON.stringify({t:Date.now(),s:s,h:h}));}catch(e){}}
+    if(!s&&!h){
+      document.querySelectorAll('[data-l=age]').forEach(function(e){e.textContent='цифры из последнего успешного обновления';});
+      return;
+    }
+    apply(s,h);
+  });
+})();
+</script>
+
+
+<script>
+/* Столбики районов на главной: разметка приходит со снимком сборки, но как только
+   /api/stats ответит, перерисовываем их живыми цифрами. Иначе страница месяцами
+   показывала бы медианы того дня, когда её собрали. */
+(function(){
+  function ru(n){return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ');}
+  function esc(t){return String(t==null?'':t).replace(/[&<>"']/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function draw(s){
+    var ds=(s&&s.by_district||[]).filter(function(d){return d&&d.median_ppsm;});
+    var cols=document.querySelector('.dbars'), labs=document.querySelector('.dlabels');
+    if(!cols||!labs||ds.length<3)return;
+    var medline=cols.querySelector('.dmed');
+    var med=s.median_ppsm, mx=Math.max.apply(null,ds.map(function(d){return d.median_ppsm;}));
+    var mn=Math.min.apply(null,ds.map(function(d){return d.median_ppsm;}));
+    var span=(mx-mn)||1;
+    /* линию медианы сохраняем: она часть шкалы, а не столбик */
+    cols.innerHTML=(medline?medline.outerHTML:'')+ds.map(function(d){
+      var h=12+((d.median_ppsm-mn)/span)*88;
+      return '<div class="dcol '+(d.median_ppsm>=med?'hi':'lo')+'"><span class="dbar" style="height:'+h.toFixed(1)+'%"></span></div>';
+    }).join('');
+    var ml=cols.querySelector('.dmed');
+    if(ml)ml.style.bottom=(12+((med-mn)/span)*88).toFixed(1)+'%';
+    labs.innerHTML=ds.map(function(d){
+      var dl=(d.median_ppsm-med)/med*100;
+      var w=12+((d.median_ppsm-mn)/span)*88;
+      return '<div class="dl '+(d.median_ppsm>=med?'hi':'lo')+'">'+
+        '<span class="dpx">'+Math.round(d.median_ppsm/1000)+'<i>тыс ₸/м²</i></span>'+
+        '<span class="dnm">'+esc(d.district)+'</span>'+
+        '<span class="ddl"><b>'+(dl>=0?'+':'−')+Math.abs(dl).toFixed(0)+'%</b> к медиане</span>'+
+        '<span class="dhbar"><i style="width:'+w.toFixed(1)+'%"></i></span></div>';
+    }).join('');
+  }
+  if(window.__stats)draw(window.__stats);
+  document.addEventListener('stats',function(e){draw(e.detail);});
+})();
+</script>
+<script>
+/* ---------- устойчивость к медленной сети ---------- */
+(function(){
+  /* 1. Пропала сеть — говорим об этом, а не молчим */
+  var bar=document.createElement('div');
+  bar.className='offbar';bar.setAttribute('role','status');
+  bar.innerHTML='<i></i>Нет сети. Показываем последние сохранённые цифры';
+  document.body.appendChild(bar);
+  function net(){bar.classList.toggle('on',!navigator.onLine);}
+  addEventListener('online',net);addEventListener('offline',net);net();
+
+  /* 2. Долгий ответ модели: скелетон и честный статус вместо пустого ожидания */
+  var sheet=document.querySelector('.sheet');
+  if(!sheet)return;
+  var msg=document.createElement('p');msg.className='waitmsg';msg.setAttribute('role','status');
+  sheet.appendChild(msg);
+  var timers=[];
+  function stop(){timers.forEach(clearTimeout);timers=[];msg.classList.remove('on');}
+  new MutationObserver(function(){
+    if(sheet.classList.contains('busy')){
+      if(timers.length)return;
+      msg.classList.add('on');msg.textContent='Считаем: тянем объявление и сравниваем с базой…';
+      timers.push(setTimeout(function(){msg.textContent='Сервер просыпается — это занимает до 30 секунд.';},6000));
+      timers.push(setTimeout(function(){msg.textContent='Ещё немного. Если не дождётесь — оценку пришлёт бот @fairprice_kzbot.';},18000));
+    } else stop();
+  }).observe(sheet,{attributes:true,attributeFilter:['class']});
+})();
+</script>
+<!--opt-v1--></body></html>

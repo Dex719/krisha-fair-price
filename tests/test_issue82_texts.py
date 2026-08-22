@@ -28,7 +28,7 @@ def test_site_bot_showcase_lists_same_three_real_features():
     about = _static("about.html")
 
     for html in (home, about):
-        assert "Telegram-бот умеет" in html
+        assert "Telegram-бот умеет три вещи" in html
         assert "оценить квартиру по ссылке или тексту" in html
         assert "следить за лотом через /track" in html
         assert "присылать алерты через /alerts" in html

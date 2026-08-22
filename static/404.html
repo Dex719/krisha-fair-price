@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<script>(function(){try{var t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme');if(!t)t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();</script>
+<script>
+(function(){
+  var d=document.documentElement, c=navigator.connection||{},
+      rm=matchMedia('(prefers-reduced-motion: reduce)').matches,
+      weak=!!c.saveData
+          ||/(^|-)(slow-2g|2g)$/.test(c.effectiveType||'')
+          ||(navigator.deviceMemory&&navigator.deviceMemory<=2)
+          ||(navigator.hardwareConcurrency&&navigator.hardwareConcurrency<=4
+             &&navigator.deviceMemory&&navigator.deviceMemory<=4),
+      lite=rm||weak;
+  d.classList.add(lite?'lite':'anim');
+  window.bagamLite=lite;
+  var q=[];
+  function flushTG(){var tg=window.Telegram&&window.Telegram.WebApp;if(!tg)return;while(q.length)q.shift()(tg);}
+  window.bagamTG=function(cb){q.push(cb);flushTG();};
+  var inTG=/tgWebApp/i.test(location.search+location.hash)||!!window.TelegramWebviewProxy||/Telegram/i.test(navigator.userAgent);
+  if(inTG){var s=document.createElement('script');s.src='https://telegram.org/js/telegram-web-app.js';s.async=true;s.onload=flushTG;document.head.appendChild(s);}
+  window.bagamBoot=function(cb){
+    if(lite){cb();return;}
+    var fired=false,fin=function(){if(fired)return;fired=true;cb();};
+    var guard=setTimeout(fin,7000);
+    function load(src,next){
+      var el=document.createElement('script');el.src=src;el.async=false;
+      el.onload=next;el.onerror=function(){clearTimeout(guard);fin();};
+      document.head.appendChild(el);
+    }
+    var start=function(){
+      /* Сеть сама себя измерила: если html полз дольше двух секунд,
+         анимации не грузим — 65 КБ библиотеки важнее украшений. */
+      var nv=performance.getEntriesByType('navigation')[0];
+      if(nv&&(nv.responseEnd-nv.requestStart)>2000){d.classList.remove('anim');d.classList.add('lite');window.bagamLite=true;fin();return;}
+      load('/static/js/gsap.min.js',function(){
+      load('/static/js/ScrollTrigger.min.js',function(){clearTimeout(guard);fin();});});};
+    if(document.readyState==='complete')start();
+    else addEventListener('load',function(){('requestIdleCallback' in window)?requestIdleCallback(start,{timeout:1200}):setTimeout(start,80);});
+  };
+})();
+</script>
+<title>Страница не найдена │ baǵam</title>
+<meta name="description" content="Такой страницы нет. Вернитесь к оценке квартиры по ссылке с Krisha.">
+<link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/onest-cyr.woff2">
+<link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/unb-cyr.woff2">
+<style>
+@font-face{font-family:'Onest';font-style:normal;font-weight:300 700;font-display:swap;src:url(/static/fonts/onest-cyr.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:'Onest';font-style:normal;font-weight:300 700;font-display:swap;src:url(/static/fonts/onest-lat.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'Unbounded';font-style:normal;font-weight:400 800;font-display:swap;src:url(/static/fonts/unb-cyr.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:'Unbounded';font-style:normal;font-weight:400 800;font-display:swap;src:url(/static/fonts/unb-lat.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+/* ǵ в слове baǵam: этой буквы нет в обычных наборах, без неё логотип рисуется системным шрифтом */
+@font-face{font-family:'Unbounded';font-style:normal;font-weight:400 800;font-display:swap;src:url(/static/fonts/unb-gacute.woff2) format('woff2');unicode-range:U+01F5}
+/* запасные шрифты с теми же метриками: подмена не двигает строки */
+@font-face{font-family:'OnestFB';src:local('Arial'),local('Helvetica'),local('Roboto');size-adjust:106.4%;ascent-override:91.1%;descent-override:28.7%;line-gap-override:0%}
+@font-face{font-family:'UnboundedFB';src:local('Arial'),local('Helvetica'),local('Roboto');size-adjust:139%;ascent-override:71.6%;descent-override:17.6%;line-gap-override:0%}
+@font-face{font-family:'DataFB';src:local('Courier New'),local('DejaVu Sans Mono'),local('Roboto Mono');size-adjust:100%;ascent-override:102%;descent-override:30%;line-gap-override:0%}
+</style>
+<style>
+/* Гибридный «дата»-шрифт: латиница/цифры — JetBrains Mono, кириллица — Onest (моно-кириллица читается плохо) */
+@font-face{font-family:'Data';font-weight:400 600;font-display:swap;
+src:url(/static/fonts/jbm-lat.woff2) format('woff2');
+unicode-range:U+0021-00FF,U+2000-206F,U+20A0-20BF,U+2116,U+2190-21FF,U+25A0-25FF,U+2070-209F,U+2212,U+2215,U+2248,U+2264-2265;}
+@font-face{font-family:'Data';font-weight:400 600;font-display:swap;size-adjust:103%;
+src:url(/static/fonts/onest-cyr.woff2) format('woff2');
+unicode-range:U+0020,U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1;}
+</style>
+<link rel="stylesheet" href="/static/design.css">
+<style>
+.nf{min-height:70vh;display:flex;flex-direction:column;justify-content:center;padding:150px 0 90px;position:relative;overflow:hidden}
+.nfnum{display:block;width:min(760px,100%);height:auto;user-select:none}
+.nfnum text{font-family:Unbounded,UnboundedFB,sans-serif;font-weight:700;font-size:290px;letter-spacing:-.04em;fill:#2C3A30}
+.nfnum .z{fill:var(--lime)}
+.nfh{font-family:Unbounded,UnboundedFB,sans-serif;font-weight:600;font-size:clamp(23px,3.2vw,42px);line-height:1.16;letter-spacing:-.02em;margin:30px 0 18px;max-width:800px}
+.nfh em{font-style:normal;color:var(--vio)}
+.nfp{color:var(--dim);font-size:17px;line-height:1.65;max-width:560px}
+.nfp b{color:var(--ink)}
+.nfrow{display:flex;gap:14px;flex-wrap:wrap;margin-top:42px}
+.nfbtn{display:inline-flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:999px;padding:16px 26px;font-weight:600;font-size:16px;color:var(--ink);transition:border-color .25s,color .25s,background .25s}
+.nfbtn svg{width:19px;height:19px}
+.nfbtn:hover{border-color:var(--lime);color:var(--lime)}
+.nfbtn.hot{background:var(--lime);border-color:var(--lime);color:#0A100C}
+.nfbtn.hot:hover{background:#5AEB95;border-color:#5AEB95}
+@media(max-width:560px){.nf{padding-top:120px}.nfbtn{padding:14px 20px;font-size:15px}}
+
+/* ---------- скорость: вход героя без JS ---------- */
+@keyframes bgmup{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@keyframes bgmfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-16px)}}
+html.anim h1 span{animation:bgmup .85s cubic-bezier(.16,1,.3,1) both}
+html.anim h1 span:nth-child(2){animation-delay:.08s}
+html.anim h1 span:nth-child(3){animation-delay:.16s}
+html.anim h1 span:nth-child(4){animation-delay:.24s}
+html.anim .herorow{animation:bgmup .8s cubic-bezier(.16,1,.3,1) .3s both}
+html.anim .lede{animation:bgmup .8s cubic-bezier(.16,1,.3,1) .42s both}
+html.anim .shw{animation:bgmfloat 6s ease-in-out infinite}
+html.anim .sh2{animation-duration:7.4s;animation-delay:-1.2s}
+html.anim .sh3{animation-duration:5.6s;animation-delay:-2.4s}
+/* ---------- слабое устройство или экономия трафика: только суть ---------- */
+html.lite .grain{display:none}
+html.lite nav{backdrop-filter:none;background:var(--bg)}
+html.lite .shw{display:none}
+html.lite *{box-shadow:none!important}
+html.lite .cityband img{will-change:auto;height:100%}
+html.lite [style*="filter:blur"],html.lite .glow{filter:none!important}
+/* ---------- скелетоны ---------- */
+@keyframes bgmsk{0%{background-position:100% 0}100%{background-position:-100% 0}}
+.sk{position:relative;color:transparent!important;border-radius:8px;
+ background:linear-gradient(90deg,var(--soft) 25%,var(--hover) 37%,var(--soft) 63%);
+ background-size:250% 100%;animation:bgmsk 1.3s linear infinite}
+.sk *{visibility:hidden}
+html.lite .sk{animation:none}
+@media (prefers-reduced-motion:reduce){.sk,.sheet.busy .vbig,.sheet.busy .vpct,.sheet.busy .vsub,
+ .sheet.busy .rv,.sheet.busy .rsub,.sheet.busy .rmk,.sheet.busy .rends,.sheet.busy .fxv,
+ .sheet.busy .fxn,.sheet.busy .rchip{animation:none}}
+.sheet.busy{opacity:1!important}
+.sheet.busy .vbig,.sheet.busy .vpct,.sheet.busy .vsub,.sheet.busy .rv,.sheet.busy .rsub,
+.sheet.busy .rmk,.sheet.busy .rends,.sheet.busy .fxv,.sheet.busy .fxn,.sheet.busy .rchip{
+ color:transparent!important;
+ background:linear-gradient(90deg,var(--soft) 25%,var(--hover) 37%,var(--soft) 63%);
+ background-size:250% 100%;animation:bgmsk 1.3s linear infinite;border-radius:8px}
+.sheet.busy .rv *,.sheet.busy .rchip *,.sheet.busy .rmk *,.sheet.busy .rends *,
+.sheet.busy .fxv *,.sheet.busy .fxn *,.sheet.busy .vbig *,.sheet.busy .vsub *,
+.sheet.busy .rchip::before,.sheet.busy .rchip::after,.sheet.busy .rchip *::before,
+.sheet.busy .rmk::before,.sheet.busy .rmk::after,.sheet.busy .rends::before{color:transparent!important}
+.sheet.busy .verdict{background:var(--panel)!important;border:1px solid var(--line)}
+.sheet.busy .fxb i,.sheet.busy .rband{opacity:.25}
+.waitmsg{display:none;margin-top:12px;font-family:'Data','JetBrains Mono',monospace;font-size:13px;color:var(--dim)}
+.waitmsg.on{display:block}
+.offbar{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:80;display:none;
+ align-items:center;gap:9px;padding:11px 17px;border:1px solid var(--line);border-radius:13px;
+ background:var(--panel);color:var(--ink);font:500 14px Onest;box-shadow:0 12px 34px var(--shadow)}
+.offbar.on{display:flex}
+.offbar i{width:8px;height:8px;border-radius:50%;background:var(--warn);display:block}
+</style><link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<meta name="robots" content="noindex">
+</head><body>
+<a class="skip" href="#main">Перейти к содержимому</a>
+<div class="grain"></div>
+<div class="progress" id="prog"></div>
+<nav><div class="wrap nrow">
+<a class="logo" href="/" aria-label="baǵam — на главную">baǵam<span>.</span></a>
+<div class="menu"><a href="/">Оценка</a><a href="/stats">Рынок</a><a href="/about">О проекте</a></div>
+<button class="thbtn" type="button" data-theme-toggle aria-label="Сменить тему"><svg class="tm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg><svg class="ts" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button><a class="tgbtn" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><span class="tgn">Telegram-бот</span><span class="tghw"><span class="tgh">@fairprice_kzbot</span></span><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.9"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.9"/></svg></a>
+<button class="burg" type="button" aria-label="Меню" aria-expanded="false" aria-controls="mmenu"><span></span><span></span></button>
+</div></nav>
+<div class="mmenu" id="mmenu" aria-label="Меню" aria-hidden="true">
+<a class="ml" data-href="/" href="/">Оценка<i>главная</i></a>
+<a class="ml" data-href="/stats" href="/stats">Рынок<i>цены по районам</i></a>
+<a class="ml" data-href="/about" href="/about">О проекте<i>как считает модель</i></a>
+<div class="msub">
+<a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">Telegram-бот · @fairprice_kzbot</a>
+<a href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener">Открытый код на GitHub</a>
+<button class="mth" type="button" data-theme-toggle><span>Тема оформления</span><b data-theme-label>тёмная</b></button>
+<span>данные krisha.kz · Алматы</span>
+</div>
+</div>
+<script>
+(function(){
+  const b=document.querySelector('.burg'), m=document.getElementById('mmenu');
+  if(!b||!m) return;
+  m.querySelectorAll('.ml').forEach(a=>{ if(location.href.split('#')[0]===a.dataset.href) a.classList.add('on'); });
+  let open=false;
+  function set(v){
+    open=v;
+    b.setAttribute('aria-expanded', v?'true':'false');
+    b.setAttribute('aria-label', v?'Закрыть меню':'Меню');
+    document.body.classList.toggle('mopen', v);
+    m.setAttribute('aria-hidden', v?'false':'true');
+    m.classList.toggle('open', v);
+    if(v) m.querySelector('.ml').focus({preventScroll:true}); else b.focus({preventScroll:true});
+  }
+  b.addEventListener('click',()=>set(!open));
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&open) set(false); });
+  m.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>{ if(a.classList.contains('on')){ set(false); } }));
+})();
+</script>
+<main id="main">
+<section class="nf"><div class="wrap">
+<svg class="nfnum" viewBox="0 0 760 300" aria-hidden="true"><text x="-8" y="252">4<tspan class="z">0</tspan>4</text></svg>
+<h1 class="nfh">Такой страницы нет.<br>Зато есть <em>20 729</em> живых объявлений.</h1>
+<p class="nfp">Ссылка устарела или в адрес закралась опечатка. Вернитесь на главную и проверьте квартиру — это занимает <b>секунду</b>.</p>
+<div class="nfrow">
+<a class="nfbtn hot" href="/">Проверить квартиру<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
+<a class="nfbtn" href="/stats">Рынок Алматы</a>
+<a class="nfbtn" href="/about">О проекте</a>
+</div>
+</div></section>
+</main>
+<footer><div class="wrap">
+<div class="fgrid">
+ <div>
+  <a class="flogo" href="/" aria-label="baǵam — на главную">baǵam<span>.</span></a>
+  <p class="ftag">Считаем справедливую цену квартиры в Алматы по объявлению с krisha.kz — за секунду и бесплатно.</p>
+  <div class="fchips"><span class="fchip"><b data-l="total">20 729</b> активных лотов</span><span class="fchip">ошибка <b data-l="mape">7,6%</b></span><span class="fchip"><b data-l="age">обновление ежедневно</b></span></div>
+ </div>
+ <div>
+  <div class="fh">Продукт</div>
+  <div class="flinks">
+   <a class="flink" href="#">Оценка объявления</a>
+   <a class="flink" href="/stats">Рынок Алматы</a>
+   <a class="flink" href="/about">О проекте</a>
+  </div>
+ </div>
+ <div>
+  <div class="fh">Проект</div>
+  <div class="flinks">
+   <a class="flink" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.7"/></svg>Telegram-бот</a>
+   <a class="flink" href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48l-.01-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.35 4.68-4.58 4.93.36.31.68.92.68 1.85l-.01 2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>Исходный код</a>
+   <a class="flink" href="https://t.me/Dex719" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.7"/></svg>Автор</a>
+  </div>
+ </div>
+ <div>
+  <div class="fh">Как это работает</div>
+  <p class="fnote">Модель <b>CatBoost</b> сравнивает объявление с активными лотами Алматы. Средняя ошибка <b data-l="mape">7,6%</b> на отложенной выборке. Оценка справочная и не является офертой.</p>
+ </div>
+</div>
+
+<div class="fbot">
+ <span>© 2026 baǵam · данные krisha.kz · Алматы</span>
+ <button class="ftop" type="button" aria-label="Наверх"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="1.9"/></svg>наверх</button>
+</div>
+
+</div>
+<div class="fmarkband"><svg class="fmark" viewBox="-4 -203 921 196" preserveAspectRatio="xMidYMin meet" aria-hidden="true" focusable="false"><defs><linearGradient id="markgrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3ADC7C" stop-opacity=".16"/><stop offset="1" stop-color="#3ADC7C" stop-opacity=".025"/></linearGradient></defs><text x="0" y="0">baǵam</text></svg></div>
+<script>
+(function(){
+  var btn=document.querySelector('.ftop');if(!btn)return;
+  var root=document.documentElement;
+  btn.addEventListener('click',function(){
+    var from=window.pageYOffset||root.scrollTop;
+    if(from<2)return;
+    if(matchMedia('(prefers-reduced-motion: reduce)').matches){window.scrollTo(0,0);return;}
+    var prev=root.style.scrollBehavior;root.style.scrollBehavior='auto';
+    var dur=Math.min(2400,Math.max(1200,from*0.7)),t0=performance.now(),stopped=false;
+    function stop(){stopped=true}
+    addEventListener('wheel',stop,{passive:true,once:true});
+    addEventListener('touchstart',stop,{passive:true,once:true});
+    function done(){root.style.scrollBehavior=prev;removeEventListener('wheel',stop);removeEventListener('touchstart',stop)}
+    function frame(t){
+      if(stopped){done();return}
+      var pr=Math.min(1,(t-t0)/dur),e=pr<0.5?4*pr*pr*pr:1-Math.pow(-2*pr+2,3)/2;
+      window.scrollTo(0,from*(1-e));
+      if(pr<1){requestAnimationFrame(frame)}else{done()}
+    }
+    requestAnimationFrame(frame);
+  });
+})();
+</script>
+</footer>
+<script>
+/* ---------- тема ---------- */
+(function(){
+  var root=document.documentElement;
+  function label(){
+    var v=root.getAttribute('data-theme')==='light'?'светлая':'тёмная';
+    document.querySelectorAll('[data-theme-label]').forEach(function(e){e.textContent=v;});
+    document.querySelectorAll('[data-theme-toggle]').forEach(function(b){
+      b.setAttribute('aria-label', root.getAttribute('data-theme')==='light'?'Включить тёмную тему':'Включить светлую тему');
+    });
+  }
+  function set(v){
+    root.setAttribute('data-theme',v);
+    try{localStorage.setItem('bagam-theme',v);localStorage.setItem('kfp-theme',v);}catch(e){}
+    label();
+    var tg=window.Telegram&&window.Telegram.WebApp;
+    if(tg&&tg.setHeaderColor){try{tg.setHeaderColor(v==='light'?'#F1F4EC':'#0A100C');}catch(e){}}
+  }
+  document.addEventListener('click',function(e){
+    var b=e.target.closest&&e.target.closest('[data-theme-toggle]');
+    if(!b)return;
+    e.preventDefault();
+    set(root.getAttribute('data-theme')==='light'?'dark':'light');
+  });
+  label();
+})();
+
+/* ---------- Telegram Mini App ---------- */
+bagamTG(function(tg){
+  if(!tg.initData&&!(tg.platform&&tg.platform!=='unknown'))return;
+  document.documentElement.classList.add('tma');
+  try{
+    tg.ready();tg.expand();
+    if(tg.setHeaderColor)tg.setHeaderColor(document.documentElement.getAttribute('data-theme')==='light'?'#F1F4EC':'#0A100C');
+    if(tg.BackButton&&!/bagam-v4|\/$/.test(location.pathname)){
+      tg.BackButton.show();
+      tg.BackButton.onClick(function(){history.length>1?history.back():(location.href=HOME_URL);});
+    }
+  }catch(e){}
+});
+
+/* ---------- живые цифры ---------- */
+(function(){
+  var API='';
+  function ru(n){return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ');}
+  function pc(n){return (Math.round(n*10)/10).toString().replace('.',',');}
+  function put(sel,val){document.querySelectorAll(sel).forEach(function(e){e.textContent=val;if(e.dataset.v!==undefined)e.dataset.v=val;});}
+  function age(h){
+    if(h==null)return '';
+    if(h<1.5)return 'обновлено только что';
+    if(h<24)return 'обновлено '+Math.round(h)+' ч назад';
+    var d=Math.round(h/24);return 'обновлено '+d+' '+(d===1?'день':(d<5?'дня':'дней'))+' назад';
+  }
+  function j(p){var a=('AbortController' in window)&&new AbortController();
+    if(a)setTimeout(function(){a.abort();},12000);
+    return fetch(API+p,{cache:'no-store',signal:a?a.signal:undefined}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});}
+  function apply(s,h){
+    if(s){
+      put('[data-l=total]',ru(s.total_listings));
+      put('[data-l=ppsm]',ru(s.median_ppsm));
+      put('[data-l=ppsmk]',Math.round(s.median_ppsm/1000)+' тыс ₸/м²');
+      put('[data-l=medprice]',ru(s.median_price));
+      put('[data-l=medpricem]',(Math.round(s.median_price/1e5)/10).toString().replace('.',',')+' млн ₸');
+      window.__stats=s;
+      document.dispatchEvent(new CustomEvent('stats',{detail:s}));
+    }
+    if(h){
+      if(h.model_error_pct)put('[data-l=mape]',pc(h.model_error_pct)+'%');
+      if(h.model_median_error_pct)put('[data-l=mdape]',pc(h.model_median_error_pct)+'%');
+      put('[data-l=age]',age(h.data_age_hours));
+      document.querySelectorAll('[data-l=status]').forEach(function(e){
+        e.textContent=h.status==='ok'&&h.model_loaded?'сервис работает':'сервис недоступен';
+        e.classList.toggle('off',!(h.status==='ok'&&h.model_loaded));
+      });
+    }
+  }
+
+  try{
+    var cc=JSON.parse(localStorage.getItem('bagam-stats')||'null');
+    if(cc&&Date.now()-cc.t<86400000)apply(cc.s,cc.h);
+  }catch(e){}
+  Promise.all([j('/api/stats'),j('/api/health')]).then(function(res){
+    var s=res[0],h=res[1];
+    if(s||h){try{localStorage.setItem('bagam-stats',JSON.stringify({t:Date.now(),s:s,h:h}));}catch(e){}}
+    if(!s&&!h){
+      document.querySelectorAll('[data-l=age]').forEach(function(e){e.textContent='цифры из последнего успешного обновления';});
+      return;
+    }
+    apply(s,h);
+  });
+})();
+</script>

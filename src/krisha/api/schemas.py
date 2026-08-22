@@ -102,6 +102,7 @@ class HealthResponse(BaseModel):
     status: str
     model_loaded: bool
     model_error_pct: float | None = None
+    model_median_error_pct: float | None = None  # медианная ошибка (MDAPE)
     data_age_hours: float | None = None
     freshness: Literal["ok", "stale"] = "stale"
     # Статус Telegram-webhook: ok | unset | mismatch | no_token | no_public_url |
