@@ -104,6 +104,11 @@ class HealthResponse(BaseModel):
     model_error_pct: float | None = None
     model_median_error_pct: float | None = None  # медианная ошибка (MDAPE)
     model_r2: float | None = None  # R² на отложенной выборке — доля, не проценты
+    model_mae: float | None = None  # средняя абсолютная ошибка, ₸
+    # issue #158: подтверждена ли временная валидность оценки. False означает,
+    # что число точности описывает текущий сток, а не экстраполяцию вперёд —
+    # страница обязана сказать это вслух, а не показывать голый процент.
+    model_temporal_validity: bool | None = None
     data_age_hours: float | None = None
     freshness: Literal["ok", "stale"] = "stale"
     # Статус Telegram-webhook: ok | unset | mismatch | no_token | no_public_url |
