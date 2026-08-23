@@ -9,6 +9,7 @@ issue #68).
 
 from fastapi.testclient import TestClient
 
+from krisha import predict_gate
 from krisha.api import app as app_module
 from krisha.api.app import MAX_BODY_BYTES, app
 
@@ -75,10 +76,11 @@ def test_rate_limit_not_bypassed_by_spoofed_left_xff(monkeypatch):
     дописывает один и тот же реальный IP справа. Раньше ключ брался слева —
     каждый запрос попадал в свой бакет, и лимит обходился одной строкой."""
     monkeypatch.delenv("TRUSTED_PROXY_HOPS", raising=False)  # дефолт 1
+    monkeypatch.setattr(app_module, "DEMO_RATE_LIMIT", 5)
     app_module._rate.clear()
     client = TestClient(app)
 
-    for i in range(app_module.RATE_LIMIT):
+    for i in range(app_module.DEMO_RATE_LIMIT):
         r = client.get("/api/demo", headers={"x-forwarded-for": f"9.9.9.{i}, 203.0.113.200"})
         # demo без базы = 503, но _check_rate_limit срабатывает ДО обращения к БД
         assert r.status_code in (200, 503)
@@ -271,7 +273,7 @@ def test_internal_value_error_does_not_leak_as_422(monkeypatch):
     def boom(*_a, **_kw):
         raise _json.JSONDecodeError("Expecting value", '{"features": <мусор>}', 12)
 
-    monkeypatch.setattr(app_module, "predict_from_url", boom)
+    monkeypatch.setattr(predict_gate, "predict_from_url", boom)
     client = TestClient(app, raise_server_exceptions=False)
 
     resp = client.post("/api/predict", json={"url": "https://krisha.kz/a/show/1"})

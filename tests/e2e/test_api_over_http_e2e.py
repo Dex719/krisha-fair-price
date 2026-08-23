@@ -146,16 +146,39 @@ def test_demo_contract_depends_on_db_presence(api):
 
 
 def test_rate_limit_429_after_burst_over_real_socket(api):
-    """15 запросов проходят, 16-й — 429 (сам лимитер работает на живом сокете)."""
+    """Бакет /api/demo (25 в профиле тестов) исчерпывается, дальше — 429.
+
+    Сервер тестов поднят с RATE_LIMIT_PER_WINDOW=15 и
+    DEMO_RATE_LIMIT_PER_WINDOW=25 (см. conftest): у демо СВОЙ, более широкий
+    бакет — его дёргает каждая загрузка главной, а за одним адресом
+    мобильного оператора сидит пол-города. Здесь проверяется, что лимитер
+    живёт на настоящем сокете и что демо считается по своему бакету, а не по
+    строгому лимиту предикта.
+    """
+    # Свой правый XFF — свой бакет, чтобы тест не зависел от запросов выше.
+    headers = {"x-forwarded-for": "203.0.113.11"}
     codes = []
-    for _ in range(20):
-        codes.append(api.get("/api/demo").status_code)
+    for _ in range(30):
+        codes.append(api.get("/api/demo", headers=headers).status_code)
         if codes[-1] == 429:
             break
     assert 429 in codes, f"после {len(codes)} запросов 429 не наступил: {codes}"
     # /api/demo без базы отвечает 503, но rate-limit срабатывает ДО обращения
     # к базе — важна сама смена 503 → 429.
     assert codes[-1] == 429
+    assert codes.index(429) == 25, f"429 ожидался на 26-м запросе, коды: {codes}"
+
+
+def test_retry_after_header_is_sent_with_429(api):
+    """429 без Retry-After — это «приходи когда-нибудь»: клиент долбится дальше."""
+    headers = {"x-forwarded-for": "203.0.113.12"}
+    last = None
+    for _ in range(30):
+        last = api.get("/api/demo", headers=headers)
+        if last.status_code == 429:
+            break
+    assert last is not None and last.status_code == 429
+    assert last.headers.get("retry-after", "").isdigit()
 
 
 def test_rate_limit_not_bypassed_by_rotating_left_xff(api):
@@ -169,10 +192,10 @@ def test_rate_limit_not_bypassed_by_rotating_left_xff(api):
     # Пауза на сброс окна rate-limit от предыдущего теста (RATE_WINDOW_S=60)
     # не нужна: правый IP тут другой (198.51.100.7) — это отдельный бакет.
     codes = []
-    for i in range(20):
+    for i in range(30):
         r = api.get("/api/demo", headers={"x-forwarded-for": f"9.9.9.{i}, 198.51.100.7"})
         codes.append(r.status_code)
         if r.status_code == 429:
             break
     assert 429 in codes, f"меняющийся левый XFF обошёл лимит: {codes}"
-    assert codes.index(429) == 15, f"429 ожидался на 16-м запросе, коды: {codes}"
+    assert codes.index(429) == 25, f"429 ожидался на 26-м запросе, коды: {codes}"

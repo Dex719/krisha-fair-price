@@ -44,6 +44,7 @@ class PoliteClient:
         max_retries: int = MAX_RETRIES,
         throttle_wait_s: float = 30.0,
         ban_streak_threshold: int = 3,
+        timeout: float | httpx.Timeout | None = None,
     ):
         self.delay_range = delay_range
         self.max_retries = max(1, int(max_retries))
@@ -59,9 +60,15 @@ class PoliteClient:
         }
         self._latencies: list[float] = []
         self._throttled_down = False
+        # timeout настраивается по контексту: краулеру не жалко ждать 30 с,
+        # а пользовательский путь (веб/бот) обязан ответить за секунды. При
+        # подвисшем коннекте краулерный бюджет давал worst-case
+        # max_retries × REQUEST_TIMEOUT ≈ минуту на ОДИН запрос — и десять
+        # таких намертво занимали слоты предикта.
+        self.timeout = REQUEST_TIMEOUT if timeout is None else timeout
         self._client = httpx.Client(
             headers={"User-Agent": USER_AGENT, "Accept-Language": "ru"},
-            timeout=REQUEST_TIMEOUT,
+            timeout=self.timeout,
             follow_redirects=True,
         )
 
