@@ -1,4 +1,8 @@
-"""Acceptance checks for issue #79 homepage/design-system transfer."""
+"""Контракт главной страницы после редизайна baǵam.
+
+Проверяем не красоту, а то, что легко потерять при правке вёрстки: мета-теги,
+живые источники данных, отсутствие зашитых цифр, работающие пути ошибок.
+"""
 
 from pathlib import Path
 
@@ -26,156 +30,123 @@ def test_home_uses_bagam_meta_design_css_and_local_favicon():
     assert '<meta name="description"' in html
     assert 'href="/static/design.css"' in html
     assert 'rel="icon" type="image/svg+xml" href="/static/favicon.svg"' in html
-    assert '<a class="nl" href="/about">О проекте</a>' in html
+    assert '<a href="/stats">Рынок</a>' in html
+    assert '<a href="/about">О проекте</a>' in html
+    # карточка для соцсетей и канонический адрес — их легко потерять при пересборке
+    assert 'property="og:title"' in html and 'property="og:image"' in html
+    assert 'rel="canonical"' in html
+    # ничего чужого: шрифты и анимации со своего домена
     assert "fonts.googleapis.com" not in html
     assert "fonts.gstatic.com" not in html
+    assert "cdnjs.cloudflare.com" not in html
 
 
-def test_design_css_contains_master_tokens_and_components():
+def test_design_css_holds_tokens_and_key_components():
     css = _static("design.css")
 
     for token in (
-        "--band:#16382B",
-        "--green:#2E6E52",
-        "--paper:#F4F3EF",
-        "--surface:#FBFAF7",
-        "--ink:#191B1A",
-        "--rule:#E4E4E0",
+        "--bg:#0A100C",
+        "--ink:#F1F2EB",
+        "--dim:#8FA093",
+        "--lime:#3ADC7C",
+        "--vio:#E9B44C",
+        "--panel:#101711",
+        "--line:#1F2A21",
     ):
-        assert token in css
-    assert "body.dark" in css
+        assert token in css, f"пропал токен {token}"
+    assert "html[data-theme=light]" in css, "светлая тема"
     for component in (
-        ".btn-primary",
-        ".btn-sec",
-        ".klink",
-        ".chip",
-        ".pill",
-        ".lead-dots",
-        ".scale",
-        ".zone",
-        ".pin",
-        ".receipt-skeleton",
-        ".r-empty",
-        ".skchart",
-        ".loadnote",
-        ".sk",
+        ".sheet",          # карточка разбора
+        ".verdict",        # плашка вердикта
+        ".rwarn",          # предупреждения по объявлению
+        ".rextra",         # история цены и похожие лоты
+        ".fx",             # факторы модели
+        ".rchip",          # чипы под отчётом
+        ".inbar",          # строка ввода ссылки
     ):
-        assert component in css
+        assert component in css, f"пропал компонент {component}"
+    page = _static("index.html")
+    assert ".sk" in page, "скелетон ожидания"
+    assert ".offbar" in page, "плашка «нет сети»"
 
 
-def test_design_css_self_hosts_golos_text_weights():
-    css = _static("design.css")
+def test_design_css_self_hosts_own_fonts():
+    css = _static("index.html")  # @font-face лежит в шапке страницы
 
-    assert '@font-face' in css
-    assert 'font-family:"Golos Text"' in css or 'font-family: "Golos Text"' in css
-    assert "font-display:swap" in css or "font-display: swap" in css
+    assert "@font-face" in css
     assert "/static/fonts/" in css
-    for weight in ("400", "500", "600", "700"):
-        assert f"font-weight:{weight}" in css or f"font-weight: {weight}" in css
+    assert "font-display:swap" in css
+    for family in ("'Onest'", "'Unbounded'", "'Data'"):
+        assert f"font-family:{family}" in css
+    # запасные шрифты с подогнанными метриками: подмена не двигает текст
+    for fallback in ("OnestFB", "UnboundedFB", "DataFB"):
+        assert fallback in css
+    assert "size-adjust" in css
+    # ǵ в логотипе: своим файлом, иначе браузер подставит системный шрифт
+    assert "unb-gacute.woff2" in css
+    for f in ("onest-cyr", "onest-lat", "unb-cyr", "unb-lat", "jbm-lat"):
+        assert (STATIC / "fonts" / f"{f}.woff2").exists(), f"нет файла шрифта {f}"
 
 
-def test_home_keeps_api_flow_theme_and_delayed_skeleton():
+def test_home_keeps_api_flow_theme_and_skeleton():
     html = _static("index.html")
 
-    assert 'id="form"' in html
-    assert 'id="url"' in html and 'type="url"' in html and 'inputmode="url"' in html
+    assert 'id="lotUrl"' in html and 'type="url"' in html and 'inputmode="url"' in html
     assert "/api/predict" in html
-    assert "localStorage.setItem" in html
-    assert "receipt-skeleton" in html
-    assert "setTimeout" in html and "300" in html
-    assert "spinner" not in html
+    assert "localStorage" in html and "bagam-theme" in html
+    # состояние ожидания: карточка мерцает, статус читается голосом
+    assert "sheet.classList.add('busy')" in html
+    assert 'id="checkStatus"' in html and 'aria-live="polite"' in html
+    # честные тексты ошибок вместо «что-то пошло не так»
+    assert "Сервис сейчас не отвечает" in html
+    assert "Слишком много запросов подряд" in html
+    assert "Нужна ссылка на объявление вида krisha.kz/a/show/" in html
 
 
-def test_home_uses_live_stats_demo_endpoint_and_empty_first_visit():
+def test_home_uses_live_sources_and_has_no_frozen_numbers():
     html = _static("index.html")
 
-    assert "/api/stats" in html
-    assert "/api/demo" in html
+    assert "/api/stats" in html and "/api/health" in html and "/api/demo" in html
     assert "telegram-web-app.js" in html
-    assert "tg.ready" in html and "tg.expand" in html
-    assert "r-empty" in html
-    assert "Здесь появится отчёт об оценке" in html
-    assert "оценка ещё не выполнялась" in html
-    assert "re-ghost" in html
-    assert "Показать на примере" in html
-    assert "hasRealReceipt" in html
-    assert "scam-note" in html
-    assert "Пример отчёта" not in html
-    for fake in (
-        "11 357",
-        "1 214",
-        "716 тыс",
-        "760000000",
-        "5 июля 2026",
-        "данные обновлены сегодня утром",
-        "33 700 000",
-        "33,7 млн",
-        "38,5 млн",
-        "36,2",
-        "41,1",
-        "Мамыр-4",
-        "Мамыр-1",
-        "Аксай-3",
-        "692 тыс",
-        "705 тыс",
-        "689 тыс",
+    # цифры подставляются из API, а не живут в разметке навсегда
+    for hook in ("[data-l=total]", "[data-l=ppsm]", "[data-l=mape]", "[data-l=age]"):
+        assert hook in html, f"нет подстановки {hook}"
+    assert "by_district" in html, "столбики районов должны перерисовываться живыми данными"
+    # запас на случай молчащего API — говорим правду, а не показываем свежесть
+    assert "цифры из последнего успешного обновления" in html
+    assert "Нет сети" in html or "нет сети" in html
+
+
+def test_home_report_shows_everything_prod_showed():
+    """Редизайн не должен терять блоки, которые уже работали в проде."""
+    html = _static("index.html")
+
+    assert "renderWarn" in html and "scam_risk" in html and "duplicate_of" in html
+    assert "Не вносите задаток до просмотра квартиры" in html
+    assert "renderHist" in html and "price_history" in html
+    assert "продавец снизил цену" in html and "продавец поднял цену" in html
+    assert "renderSimilar" in html and "analogs" in html
+    assert "function trackHref" in html and "?start=track_" in html
+    assert "reportShareText" in html and "navigator.share" in html
+    assert "Справедливая оценка: " in html and "Диапазон модели: " in html
+
+
+def test_home_hides_unknown_model_features():
+    html = _static("index.html")
+
+    for key in (
+        "completion_year", "apartments_count", "dist_big_road_km", "dist_industrial_km",
+        "hex7_ppsm", "hex8_ppsm", "knn_n", "district_mismatch", "is_new_building",
+        "security_count", "has_security_guard", "has_intercom", "has_video_surveillance",
+        "category", "lat", "lon", "dist_center_km", "district_ppsm",
+        "microdistrict_ppsm", "floor_ratio",
     ):
-        assert fake not in html
+        assert f"{key}:" in html, f"нет человеческого имени для {key}"
+    assert "console.warn('Неизвестный фактор скрыт:', f.feature)" in html
+    assert "f.hint" in html, "подсказка модели по фактору"
 
 
-def test_home_has_stats_loading_skeleton_and_button_unlock_paths():
-    html = _static("index.html")
-
-    assert "skchart" in html
-    assert "market-skeleton" in html
-    assert 'aria-busy="true"' in html
-    assert "Загружаем свежие данные рынка — обычно это пара секунд" in html
-    assert 'disabled aria-disabled="true"' in html
-    assert "setMarketLoading(true)" in html
-    assert "setMarketLoading(false)" in html
-    assert "Статистика рынка временно недоступна — оценку можно запустить" in html
-    assert "showMarketStatsError" in html
-    assert "renderEmptyReceipt" in html
-    assert "initChartTips()" in html
-    assert 'id="lot-legend"' in html
-    assert "document.getElementById('lot-legend')?.remove()" in html
-
-
-def test_home_chart_uses_ppsm_units_for_ppsm_hist():
-    html = _static("index.html")
-
-    assert "Рынок сегодня · цена за м², Алматы" in html
-    assert "stats.ppsm_hist" in html
-    assert "stats.price_hist" not in html
-    assert "box.dataset.medianLabel='медиана рынка — '+fmtPpsm(stats.median_ppsm)" in html
-    assert "fmtPpsm(stats.median_ppsm):fmtMln(stats.median_price)" not in html
-
-
-def test_home_result_tracking_button_uses_listing_deeplink():
-    html = _static("index.html")
-
-    assert "function trackHref(data)" in html
-    assert "?start=track_" in html
-    assert 'href="${esc(trackHref(data))}"' in html
-    assert 'href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">${ICONS.bell}' not in html
-
-
-def test_home_result_price_history_uses_real_history_only():
-    html = _static("index.html")
-
-    assert "function renderPriceHistory(data)" in html
-    assert "const hist=(data.price_history||[])" in html
-    assert "if(hist.length<2)return ''" in html
-    assert "История цены" in html
-    assert "продавец снизил цену" in html
-    assert "продавец поднял цену" in html
-    assert "lead-dots" in html
-    assert "${renderPriceHistory(data)}" in html
-    assert "mockPriceHistory" not in html
-    assert "синтетическая история" not in html
-
-
-def test_csp_keeps_fonts_self_hosted_only():
+def test_csp_keeps_everything_self_hosted():
     assert "default-src 'self'" in CSP
     assert "font-src 'self'" in CSP
     assert "fonts.googleapis.com" not in CSP
@@ -220,12 +191,7 @@ def test_demo_endpoint_returns_active_listing_url_and_is_rate_limited(tmp_path, 
 
 
 def test_home_has_no_llm_flag_hydration_left():
-    """issue #157: путь LLM-бейджей убран целиком, включая догрузку на фронте.
-
-    Проверяем именно отсутствие: висячий fetch к удалённому эндпоинту дал бы
-    404 в консоли на каждой оценке, а чип «анализ текста…» — обещание разбора
-    описания, которого больше не происходит.
-    """
+    """issue #157: путь LLM-бейджей убран целиком, включая догрузку на фронте."""
     html = _static("index.html")
 
     for leftover in ("/api/flags", "flags_pending", "text_flags",

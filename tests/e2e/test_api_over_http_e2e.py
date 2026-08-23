@@ -32,11 +32,46 @@ def test_health_ok_with_security_headers(api):
 
 
 def test_pages_serve_html_with_csp(api):
-    for path, marker in (("/", 'id="form"'), ("/stats", 'id="price-map"'), ("/about", "Оценка")):
+    # Маркеры — по разметке редизайна: поле ввода на главной, таблица районов
+    # на «Рынке», заголовок на «О проекте».
+    for path, marker in (("/", 'id="lotUrl"'), ("/stats", 'class="drows"'), ("/about", "Оценка")):
         r = api.get(path)
         assert r.status_code == 200, path
         assert marker in r.text, path
         assert "content-security-policy" in r.headers, path
+
+
+def test_all_pages_share_the_same_shell(api):
+    """Шапка, меню и переключатель темы одинаковы на всех четырёх страницах.
+
+    Подстраницы собираются из шеллов главной: если шелл забыли пере-извлечь,
+    страницы разъезжаются — ловится это только здесь.
+    """
+    for path in ("/", "/stats", "/about", "/no-such-page"):
+        html = api.get(path, headers={"accept": "text/html"}).text
+        assert "data-theme-toggle" in html, path
+        assert 'id="mmenu"' in html, path
+        for link in ('href="/"', 'href="/stats"', 'href="/about"'):
+            assert link in html, f"{path}: нет ссылки {link}"
+
+
+def test_unknown_path_serves_branded_404_html(api):
+    """Браузеру — оформленная 404, API-клиенту — прежний JSON."""
+    r = api.get("/no-such-page", headers={"accept": "text/html"})
+    assert r.status_code == 404
+    assert r.headers["content-type"].startswith("text/html")
+    assert "Такой страницы нет" in r.text
+    assert "content-security-policy" in r.headers
+
+    j = api.get("/no-such-page", headers={"accept": "application/json"})
+    assert j.status_code == 404
+    assert j.headers["content-type"].startswith("application/json")
+    assert j.json()["detail"]
+
+    # /api/* остаётся JSON даже для браузера.
+    a = api.get("/api/no-such-endpoint", headers={"accept": "text/html"})
+    assert a.status_code == 404
+    assert a.headers["content-type"].startswith("application/json")
 
 
 def test_predict_invalid_url_is_422_with_friendly_detail(api):

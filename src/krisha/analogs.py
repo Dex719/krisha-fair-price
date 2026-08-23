@@ -13,7 +13,7 @@ import math
 import sqlite3
 from typing import Any
 
-from krisha.config import DB_PATH
+from krisha.config import DB_PATH, DISTRICT_RU
 from krisha.db import use_conn
 
 logger = logging.getLogger(__name__)
@@ -114,7 +114,9 @@ def find_analogs(
                 "floor": r["floor"],
                 "total_floors": r["total_floors"],
                 "year_built": r["year_built"],
-                "district": r["district"],
+                # наружу отдаём человеческое имя района: единственный источник
+                # маппинга — config.DISTRICT_RU, дублировать его на фронте нельзя
+                "district": DISTRICT_RU.get(r["district"], r["district"]),
                 "ppsm": round(r["price"] / r["area"]) if r["area"] else None,
             }
         )

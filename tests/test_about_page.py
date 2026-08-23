@@ -38,65 +38,47 @@ def test_about_page_uses_bagam_chrome_meta_and_live_sources():
     assert '<meta name="description"' in html
     assert 'href="/static/design.css"' in html
     assert 'rel="icon" type="image/svg+xml" href="/static/favicon.svg"' in html
-    assert '<a class="nl on" href="/about">О проекте</a>' in html
-    assert '<a class="nl" href="/stats">Рынок</a>' in html
+    assert 'href="/about"' in html and 'href="/stats"' in html
     assert "/api/stats" in html
     assert "/api/health" in html
     assert "model_error_pct" in html
     assert "m3.css" not in html
     assert "FairPrice" not in html
     assert "Manrope" not in html
+    assert "fonts.gstatic.com" not in html
 
 
-def test_about_page_has_no_mock_numbers_for_live_metrics():
+def test_about_page_has_no_frozen_numbers_for_live_metrics():
+    """Точность модели показывается живыми числами из /api/health."""
     html = _static("about.html")
 
-    for fake in (
-        "11 357",
-        "9 364",
-        "±9,5%",
-        "±9.5%",
-        "23 факторам",
-        "данные обновляются каждое утро",
-        "без числа из макета",
-        "устаревшие значения макета",
-        "`/api/stats`",
-        "`/api/health`",
-        "health недоступен",
-        "Все числа в этом блоке пришли из API",
-    ):
-        assert fake not in html
-    assert "Считается по активным объявлениям базы" in html
-    assert "Средняя ошибка последней опубликованной модели" in html
-    assert "Живые значения появятся через пару секунд" in html
-    assert "данные о модели временно недоступны" in html
+    for hook in ('data-l="mape"', 'data-l="mdape"', 'data-l="total"', 'data-l="age"'):
+        assert hook in html, f"нет живой подстановки {hook}"
+    # ширина интервала зависит от лота, поэтому фиксированного числа быть не должно
+    assert "±9,5%" not in html
+    assert "model_error_pct" in html
+    assert "цифры из последнего успешного обновления" in html
 
 
-def test_about_faq_matches_mockup_with_live_trust_metric():
+def test_about_lists_only_real_bot_features():
     html = _static("about.html")
 
-    assert "Откуда данные и законно ли это?" in html
-    assert "Мы собираем только открытые объявления" in html
-    assert "Почему бесплатно?" in html
-    assert "Это независимый проект. Если когда-нибудь появятся платные функции" in html
-    assert "Насколько можно доверять оценке?" in html
-    assert "about-trust-answer" in html
-    assert "На проверочной выборке средняя ошибка — '+err" in html
-    assert "Данные о точности модели временно недоступны" in html
-    assert "Почему результат может отличаться от цены сделки?" not in html
-    assert "Что делать после оценки?" not in html
+    assert "Telegram-бот умеет три вещи" in html
+    assert "/track" in html and "/alerts" in html
+    for promise in ("скоро добавим", "скоро появится", "в разработке"):
+        assert promise not in html.lower()
 
 
 def test_about_css_and_nav_are_connected():
     css = _static("design.css")
+    about = _static("about.html")
     index = _static("index.html")
     market = _static("stats.html")
 
-    assert ".prose" in css
-    assert ".about-live" in css
-    assert ".about-band" in css
-    assert '<a class="nl" href="/about">О проекте</a>' in index
-    assert '<a class="nl" href="/about">О проекте</a>' in market
+    assert 'class="prose"' in about   # текстовые блоки страницы на месте
+    assert ".shead" in css       # общая шапка секции — в общем файле
+    assert 'href="/about"' in index
+    assert 'href="/about"' in market
 
 
 def test_health_exposes_model_error_pct_without_csp_changes():
