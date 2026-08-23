@@ -139,6 +139,11 @@ def _start_server(hermetic: bool) -> tuple[subprocess.Popen, str]:
         # равно кормится роутами-моками, база серверу для отдачи статики не нужна.
         env["KRISHA_DB_AUTO"] = "0"
         env["KRISHA_MODEL_AUTO"] = "0"
+        # Лимиты фиксируем явно: у /api/demo свой бакет (на проде он куда
+        # шире — CGNAT), и тест про сам механизм лимитера не должен зависеть
+        # от того, каким выбран прод-дефолт. Дефолты проверяются юнитами.
+        env["RATE_LIMIT_PER_WINDOW"] = "15"
+        env["DEMO_RATE_LIMIT_PER_WINDOW"] = "25"
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "krisha.api.app:app", "--port", str(port)],
         cwd=str(ROOT),

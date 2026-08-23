@@ -1,6 +1,6 @@
 """Тесты Telegram-бота: форматирование и обработка апдейтов (без сети)."""
 
-from krisha import bot
+from krisha import bot, predict_gate
 
 SAMPLE_RESULT = {
     "listing_id": 123,
@@ -157,7 +157,7 @@ def test_handle_update_no_url_hint(monkeypatch):
 def test_handle_update_predicts_and_sends_photo(monkeypatch):
     calls = []
     monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
-    monkeypatch.setattr(bot, "predict_from_url", lambda url: SAMPLE_RESULT)
+    monkeypatch.setattr(predict_gate, "predict_from_url", lambda url, live_vision=True, timeout=None: SAMPLE_RESULT)
     bot.handle_update({"message": {"chat": {"id": 42}, "text": "https://krisha.kz/a/show/123"}})
     methods = [m for m, _ in calls]
     assert "sendChatAction" in methods

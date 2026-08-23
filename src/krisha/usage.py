@@ -76,6 +76,18 @@ def load_state() -> dict:
     return {"days": {}}
 
 
+def warm() -> None:
+    """Читает состояние с диска заранее (вызывается на старте приложения).
+
+    Иначе первый же посетитель после рестарта делает это под глобальным
+    локом: чтение json с диска в момент, когда на сайт валится наплыв.
+    """
+    global _state
+    with _lock:
+        if _state is None:
+            _state = load_state()
+
+
 def record_event(kind: str, user_id: int | str | None = None) -> None:
     """Регистрирует событие. Никогда не бросает исключений."""
     try:

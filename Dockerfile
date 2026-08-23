@@ -33,8 +33,11 @@ COPY --chown=app static ./static
 USER app
 # HF free tier обычно даёт 2 vCPU: ограничиваем native-пулы потоков,
 # чтобы один predict не забивал весь Space и latency был стабильнее.
+# OMP_NUM_THREADS=1 (было 2): предикт ОДНОЙ квартиры от второго OMP-потока
+# почти ничего не выигрывает, а 2 воркера × 2 потока на 2 vCPU — это
+# оверсабскрипшн ровно в тот момент, когда CPU нужен отдаче страниц.
 ENV PYTHONUNBUFFERED=1 \
-    OMP_NUM_THREADS=2 \
+    OMP_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
     NUMEXPR_NUM_THREADS=1
