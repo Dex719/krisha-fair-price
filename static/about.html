@@ -85,6 +85,8 @@ unicode-range:U+0020,U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1;}
 .met4 b{display:block;margin-top:14px;font-family:Unbounded,UnboundedFB,sans-serif;font-weight:700;font-size:clamp(26px,3vw,38px);letter-spacing:-.03em;color:var(--ink)}
 .met4 b.acc{color:var(--lime)}
 .met4 span.s{display:block;margin-top:10px;font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:12.5px;color:var(--dim);line-height:1.5}
+/* оговорка под метриками: цифра точности без неё читается как обещание */
+.mnote{margin:16px 2px 0;max-width:78ch;font-size:14.5px;line-height:1.65;color:var(--dim)}
 /* steps */
 .steps{border-top:1px solid var(--line)}
 .step{position:relative;isolation:isolate;overflow:hidden;display:grid;grid-template-columns:76px 320px 1fr;gap:26px;align-items:start;padding:30px 20px;border-bottom:1px solid var(--line);color:var(--ink)}
@@ -275,10 +277,11 @@ html.lite .sk{animation:none}
 <section class="sect"><div class="wrap">
 <div class="mets4">
  <div class="met4"><span class="rl">Средняя ошибка</span><b class="acc" data-l="mape">7,3%</b><span class="s">MAPE последней опубликованной модели</span></div>
- <div class="met4"><span class="rl">Ошибка в деньгах</span><b>4,04 <small>млн ₸</small></b><span class="s">MAE на отложенной выборке</span></div>
+ <div class="met4"><span class="rl">Ошибка в деньгах</span><b><span data-l="mae">3,69</span> <small>млн ₸</small></b><span class="s">MAE на отложенной выборке</span></div>
  <div class="met4"><span class="rl">Качество подгонки</span><b data-l="r2">0.937</b><span class="s">R² на отложенной выборке</span></div>
  <div class="met4"><span class="rl">Доля ошибки под 10%</span><b data-l="mdape">5,6%</b><span class="s">медианная ошибка: половина оценок точнее этого</span></div>
 </div>
+<p class="mnote" data-l="tvnote">Как читать эти цифры: они измерены на отложенной выборке текущего рынка. Пока сбор данных неравномерен по дням, это оценка «насколько модель попадает по сегодняшнему стоку», а не обещание такой же точности на будущих объявлениях.</p>
 </div></section>
 <section class="sect"><div class="wrap">
 <div class="shead"><div class="shl"><h2 class="shttl">Как считает модель</h2><p class="shsub">Четыре шага от ссылки на объявление до вердикта.</p></div><span class="shmeta">CatBoost<br>переобучение на свежих данных</span></div>
@@ -466,6 +469,8 @@ bagamTG(function(tg){
       if(h.model_error_pct)put('[data-l=mape]',pc(h.model_error_pct)+'%');
       if(h.model_median_error_pct)put('[data-l=mdape]',pc(h.model_median_error_pct)+'%');
       if(h.model_r2)put('[data-l=r2]',h.model_r2.toFixed(3));
+      if(h.model_mae)put('[data-l=mae]',(Math.round(h.model_mae/1e5)/10).toString().replace('.',','));
+      if(h.model_temporal_validity===true)put('[data-l=tvnote]','Как читать эти цифры: временная валидность оценки подтверждена — состав данных не меняется вместе с временем, поэтому число описывает и будущие объявления, а не только сегодняшний сток.');
       if(h.data_age_hours!=null)put('[data-l=age]',age(h.data_age_hours));
       document.querySelectorAll('[data-l=status]').forEach(function(e){
         e.textContent=h.status==='ok'&&h.model_loaded?'сервис работает':'сервис недоступен';

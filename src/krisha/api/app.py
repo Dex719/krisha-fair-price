@@ -262,6 +262,8 @@ def health(response: Response) -> HealthResponse:
         model_error_pct=_model_error_pct(),
         model_median_error_pct=_model_metric_pct("mdape"),
         model_r2=_model_r2(),
+        model_mae=_model_mae(),
+        model_temporal_validity=_model_temporal_validity(),
         data_age_hours=data_age_hours,
         freshness=freshness,
         tg_webhook=bot.webhook_status(),
@@ -376,6 +378,25 @@ def _model_r2() -> float | None:
     """R² на отложенной выборке. Не процент — показываем как 0.937."""
     value = _model_metric("r2")
     return None if value is None else round(value, 3)
+
+
+def _model_mae() -> float | None:
+    """MAE в тенге. Раньше страница «О проекте» держала это число в разметке
+    руками — и оно разъехалось с метой на 0.35 млн ₸."""
+    value = _model_metric("mae")
+    return None if value is None else round(value)
+
+
+def _model_temporal_validity() -> bool | None:
+    """Подтверждена ли временная валидность оценки (issue #158).
+
+    Отдаём наружу, потому что цифра точности без этой оговорки читается как
+    «средняя ошибка модели по рынку Алматы», а это неправда, пока состав
+    данных меняется вместе с временем.
+    """
+    meta = _model_meta()
+    value = (meta.get("metrics") or {}).get("temporal_validity")
+    return None if value is None else bool(value)
 
 
 # Анти-спам: скользящее окно запросов на IP (живём в одном процессе — хватает).
