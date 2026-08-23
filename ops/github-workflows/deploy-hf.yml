@@ -8,6 +8,7 @@ on:
       - "data/tracked.json"
       - "data/usage_stats.json"
       - "data/channel_posted.json" # state канала — не повод пересобирать Space
+      - "data/prediction_log.json" # лог предиктов пишет сам рантайм (PR #181)
   workflow_dispatch:
 
 concurrency:
