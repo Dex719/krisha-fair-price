@@ -64,6 +64,14 @@ CREATE TABLE IF NOT EXISTS listings (
 CREATE INDEX IF NOT EXISTS idx_listings_district ON listings(district);
 CREATE INDEX IF NOT EXISTS idx_listings_rooms ON listings(rooms);
 
+-- Дедуп апдейтов Telegram МЕЖДУ процессами: при нескольких воркерах uvicorn
+-- (WEB_CONCURRENCY) ретрай одного и того же update_id может прилететь в
+-- другой процесс, где памяти о нём нет, — и бот ответит дважды.
+CREATE TABLE IF NOT EXISTS tg_updates (
+    update_id  INTEGER PRIMARY KEY,
+    seen_at    TEXT DEFAULT (datetime('now'))
+);
+
 -- Этап 4: история цены объявления. Строка добавляется при первом появлении
 -- и при каждом изменении цены, замеченном рескрейпом.
 CREATE TABLE IF NOT EXISTS price_history (
@@ -359,6 +367,13 @@ def get_conn(db_path: Path | str = DB_PATH) -> Iterator[sqlite3.Connection]:
         # committed-транзакции — только при крэше ОС/питания, не самого процесса)
         # и заметно быстрее дефолтного FULL на каждый fsync при частых upsert'ах.
         conn.execute("PRAGMA synchronous = NORMAL")
+        # Чтение через mmap вместо read(): страницы базы попадают в page cache
+        # ОС один раз и переиспользуются всеми потоками, без копирования в
+        # буфер на каждый запрос. 256 МБ — с запасом на текущие 168 МБ базы.
+        conn.execute("PRAGMA mmap_size = 268435456")
+        # 8 МБ страниц на соединение (дефолт — 2 МБ): под наплывом одни и те же
+        # горячие страницы (индексы, свежие лоты) перестают вымываться.
+        conn.execute("PRAGMA cache_size = -8000")
     except sqlite3.OperationalError:
         pass  # read-only ФС и т.п. — работаем как раньше
     try:
@@ -452,6 +467,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_listings_fingerprint ON listings(fingerprint)"
     )
+    # /api/health на каждый заход на сайт спрашивает MAX(last_seen): без
+    # индекса SQLite читает всю таблицу (на проде 168 МБ и ~80 мс на запрос),
+    # с индексом берёт последнюю запись сразу. Тем же индексом идёт выборка
+    # свежих активных лотов для демо-кнопки. Здесь, а не в SCHEMA: в старых
+    # базах колонка last_seen появляется миграцией строкой выше.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_listings_last_seen ON listings(last_seen)")
     # Бэкфилл: для старых записей точка отсчёта — момент скрейпа
     conn.execute("UPDATE listings SET first_seen = scraped_at WHERE first_seen IS NULL")
     conn.execute("UPDATE listings SET last_seen = scraped_at WHERE last_seen IS NULL")
@@ -1332,3 +1353,35 @@ def last_sweep_mode(conn: sqlite3.Connection, deal: str) -> str | None:
     except sqlite3.OperationalError:  # таблицы ещё нет (холодная база)
         return None
     return row[0] if row else None
+
+
+def remember_update_id(update_id: int, db_path: Path | str = DB_PATH, keep: int = 5000) -> bool:
+    """True — апдейт видим впервые, False — уже обрабатывали.
+
+    Общая для всех воркеров память о телеграм-апдейтах (в самом процессе есть
+    ещё быстрый deque — сюда доходят только те, кого он не отсеял). Fail-soft:
+    если базы нет или она недоступна на запись, возвращаем True — лучше
+    редкий дубль ответа, чем молчащий бот.
+    """
+    try:
+        with get_conn(db_path) as conn:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS tg_updates ("
+                "update_id INTEGER PRIMARY KEY, seen_at TEXT DEFAULT (datetime('now')))"
+            )
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO tg_updates (update_id) VALUES (?)", (int(update_id),)
+            )
+            if cur.rowcount == 0:
+                return False
+            # Чистим хвост, чтобы таблица не росла: держим последние `keep`.
+            conn.execute(
+                "DELETE FROM tg_updates WHERE update_id < ("
+                "SELECT MIN(update_id) FROM (SELECT update_id FROM tg_updates "
+                "ORDER BY update_id DESC LIMIT ?))",
+                (keep,),
+            )
+            return True
+    except sqlite3.Error:
+        logger.warning("tg_updates недоступна — дедуп только в памяти", exc_info=True)
+        return True

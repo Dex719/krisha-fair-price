@@ -3,26 +3,29 @@
 Запуск: `uvicorn krisha.api.app:app --reload`
 """
 
+import fcntl
 import functools
 import hmac
 import ipaddress
 import json
 import logging
 import os
+import random
 import sqlite3
 import threading
 import time
 from collections import defaultdict, deque
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
 
 import anyio
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from krisha import __version__, bot, db_release, usage
+from krisha.api.cache import TTLCache
 from krisha.api.schemas import (
     DemoResponse,
     HealthResponse,
@@ -36,8 +39,8 @@ from krisha.config import (
     ROOT_DIR,
     feature_forecast,
 )
-from krisha.db import get_conn
-from krisha.predict import InvalidListingUrl, predict_from_url
+from krisha.db import get_conn, remember_update_id
+from krisha.predict import KRISHA_URL_RE, InvalidListingUrl, predict_from_url
 from krisha.stats import get_stats, heatmap_points
 
 logging.basicConfig(level=logging.INFO)
@@ -191,11 +194,26 @@ async def _security_headers(request: Request, call_next):
     return _apply_security_headers(response)
 
 
+# Кэши горячего пути. /api/health зовут все четыре страницы при каждой
+# загрузке, HEALTHCHECK контейнера раз в минуту и keepalive — а внутри он
+# читает базу и разбирает JSON метрик. Под наплывом это была самая дорогая
+# ручка сайта (issue: бэк под поток людей). TTL секунд не портит смысл ответа:
+# возраст данных показывается в часах, метрики меняются раз в переобучение.
+HEALTH_CACHE_TTL_S = float(os.environ.get("HEALTH_CACHE_TTL_S", "60"))
+# stale_ttl: если база в этот момент занята скрейпером — отдаём прошлый ответ,
+# а не 500 всем сразу.
+_freshness_cache = TTLCache(ttl=HEALTH_CACHE_TTL_S, stale_ttl=900, maxsize=8)
+_model_meta_cache = TTLCache(ttl=300, stale_ttl=3600, maxsize=8)
+
+
 @app.get("/api/health", response_model=HealthResponse)
-def health() -> HealthResponse:
+def health(response: Response) -> HealthResponse:
+    # Пусть браузер минуту не переспрашивает: страницы дёргают health при
+    # каждой загрузке и в каждой вкладке, а ответ меняется раз в час.
+    response.headers["Cache-Control"] = "public, max-age=60"
     # webhook_status() заодно самолечит webhook (не чаще раза в час):
     # keepalive-пинг каждые 6 часов держит бота живым без ручных действий
-    data_age_hours, freshness = _data_freshness()
+    data_age_hours, freshness = _data_freshness_cached()
     return HealthResponse(
         status="ok",
         model_loaded=MODEL_PATH.exists(),
@@ -210,6 +228,15 @@ def health() -> HealthResponse:
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _data_freshness_cached() -> tuple[float | None, str]:
+    """То же, что _data_freshness, но не чаще раза в HEALTH_CACHE_TTL_S.
+
+    Ключ — путь к базе: тесты подменяют DB_PATH, и каждая база считается
+    отдельно, а не наследует чужой закэшированный ответ.
+    """
+    return _freshness_cache.get_or_call(str(DB_PATH), _data_freshness)
 
 
 def _data_freshness() -> tuple[float | None, str]:
@@ -256,17 +283,39 @@ def _model_metric(name: str) -> float | None:
     переобучение меняет их само. `name` — ключ внутри metrics.model
     (mape, mdape, r2).
     """
-    if not MODEL_META_PATH.exists():
-        return None
+    meta = _model_meta()
     try:
-        meta = json.loads(MODEL_META_PATH.read_text(encoding="utf-8"))
         value = meta.get("metrics", {}).get("model", {}).get(name)
         if value is None:
             return None
         return float(value)
-    except (OSError, ValueError, TypeError):
+    except (AttributeError, ValueError, TypeError):
         logger.warning("health: не удалось прочитать метрику %s", name, exc_info=True)
         return None
+
+
+def _model_meta() -> dict:
+    """Содержимое models/model_meta.json с кэшем: файл меняется раз в
+    переобучение, а health его читал и парсил на каждый запрос (трижды —
+    по разу на метрику)."""
+
+    def read() -> dict:
+        if not MODEL_META_PATH.exists():
+            return {}
+        try:
+            data = json.loads(MODEL_META_PATH.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            logger.warning("health: не удалось прочитать model_meta.json", exc_info=True)
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    # Ключ с mtime: переобучение подменяет файл — свежие метрики видны сразу
+    # после записи, не дожидаясь истечения TTL.
+    try:
+        mtime = MODEL_META_PATH.stat().st_mtime
+    except OSError:
+        mtime = 0.0
+    return _model_meta_cache.get_or_call((str(MODEL_META_PATH), mtime), read)
 
 
 def _model_metric_pct(name: str) -> float | None:
@@ -286,9 +335,19 @@ def _model_r2() -> float | None:
     return None if value is None else round(value, 3)
 
 
-# Анти-спам: скользящее окно запросов на IP (живём в одном процессе — хватает)
-RATE_LIMIT = 15  # запросов
-RATE_WINDOW_S = 60.0
+# Анти-спам: скользящее окно запросов на IP (живём в одном процессе — хватает).
+# Значения читаются из окружения: за общим NAT мобильного оператора под одним
+# адресом сидит целый город, и при наплыве людей 15/мин режет живых
+# пользователей. Поднять лимит на проде = переменная + рестарт, без пересборки.
+def _env_int(name: str, default: int) -> int:
+    try:
+        return max(1, int(os.environ.get(name, default)))
+    except ValueError:
+        return default
+
+
+RATE_LIMIT = _env_int("RATE_LIMIT_PER_WINDOW", 15)  # запросов
+RATE_WINDOW_S = float(_env_int("RATE_LIMIT_WINDOW_S", 60))
 _rate: dict[str, deque] = defaultdict(deque)
 # /api/predict — async def, но _check_rate_limit сам по себе синхронный и
 # вызывается из разных потоков threadpool'а (остальные sync-хендлеры вроде
@@ -363,20 +422,57 @@ def _check_rate_limit(request: Request) -> None:
         while q and now - q[0] > RATE_WINDOW_S:
             q.popleft()
         if len(q) >= RATE_LIMIT:
-            raise HTTPException(status_code=429, detail="Слишком много запросов, подожди минуту")
+            # Retry-After: клиенту (и Telegram-боту, и браузеру) видно, через
+            # сколько секунд окно освободится, — вместо гадания и долбёжки.
+            retry_after = max(1, int(RATE_WINDOW_S - (now - q[0])) + 1)
+            raise HTTPException(
+                status_code=429,
+                detail="Слишком много запросов, подожди минуту",
+                headers={"Retry-After": str(retry_after)},
+            )
         q.append(now)
+
+
+# Кэш готовых разборов по id лота. Главный сценарий наплыва — пост в большом
+# канале: тысяча человек за минуту вставляет ОДНУ И ТУ ЖЕ ссылку. Без кэша это
+# тысяча походов на krisha.kz (по чужому серверу — из пушки), тысяча
+# CatBoost-инференсов и тысяча upsert'ов одной строки. С кэшем — один разбор,
+# остальные читают память. TTL короткий: цена в объявлении за десять минут не
+# меняется, а «свежесть» отчёта пользователю видна по истории цены.
+PREDICT_CACHE_TTL_S = float(os.environ.get("PREDICT_CACHE_TTL_S", "600"))
+_predict_cache = TTLCache(ttl=PREDICT_CACHE_TTL_S, maxsize=2048)
+
+
+def _predict_cache_key(url: str) -> str:
+    """Ключ = id объявления. Один лот открывают по разным ссылкам
+    (utm-хвосты, http/https, /a/show/ID?query) — это один и тот же разбор."""
+    match = KRISHA_URL_RE.search(url or "")
+    return match.group(1) if match else (url or "").strip()[:200]
 
 
 @app.post("/api/predict", response_model=PredictResponse)
 async def predict(req: PredictRequest, request: Request) -> PredictResponse:
     _check_rate_limit(request)
+    cache_key = _predict_cache_key(req.url)
+    cached = _predict_cache.peek(cache_key)
+    if cached is not None and cached[0] < PREDICT_CACHE_TTL_S:
+        # Событие статистики считаем и для попадания в кэш: это живой человек.
+        await anyio.to_thread.run_sync(functools.partial(usage.record_event, "predict"))
+        return PredictResponse(**cached[1])
     try:
         # live_vision=False: веб отвечает сразу и не ходит в Gemini Vision
         # (он и так за фича-флагом, issue #157) — живой запрос только у бота.
         # issue #110: явный CapacityLimiter вместо дефолтного sync-threadpool —
         # тяжёлый путь (скрейп + CatBoost + SQLite) не делит пул с health/site.
+        # get_or_call в рабочем потоке: если десять человек прислали один и
+        # тот же лот одновременно, на krisha.kz уйдёт ровно один запрос,
+        # остальные девять дождутся его результата (single-flight).
         result = await anyio.to_thread.run_sync(
-            functools.partial(predict_from_url, req.url, live_vision=False),
+            functools.partial(
+                _predict_cache.get_or_call,
+                cache_key,
+                functools.partial(predict_from_url, req.url, live_vision=False),
+            ),
             limiter=_PREDICT_LIMITER,
         )
     except InvalidListingUrl as exc:
@@ -412,67 +508,82 @@ async def predict(req: PredictRequest, request: Request) -> PredictResponse:
 # при каждом рестарте Space. Фронт больше не догружает флаги.
 
 
-@app.get("/api/demo", response_model=DemoResponse)
-def demo(request: Request) -> DemoResponse:
-    """URL живого активного объявления для кнопки «Показать на примере»."""
-    _check_rate_limit(request)
-    if not DB_PATH.exists():
-        raise HTTPException(status_code=503, detail="Демо-объявление временно недоступно")
+# Пул кандидатов для «Показать на примере». Было `ORDER BY RANDOM() LIMIT 1`:
+# SQLite для этого читает ВСЕ активные объявления, считает каждому случайный
+# ключ и сортирует — 130+ мс на запрос и полный проход по 168-мегабайтной
+# базе на каждое нажатие кнопки. Берём сотню свежих лотов раз в DEMO TTL и
+# кидаем кубик уже в памяти: случайность для пользователя та же.
+DEMO_POOL_TTL_S = float(os.environ.get("DEMO_POOL_TTL_S", "600"))
+DEMO_POOL_SIZE = 100
+_demo_pool_cache = TTLCache(ttl=DEMO_POOL_TTL_S, stale_ttl=3600, maxsize=4)
+
+
+def _demo_pool() -> list[tuple[int, str]]:
     with get_conn(DB_PATH) as conn:
-        row = conn.execute(
+        rows = conn.execute(
             """
             SELECT id, url
             FROM listings
             WHERE is_active = 1
               AND url IS NOT NULL
               AND url LIKE '%krisha.kz/a/show/%'
-            ORDER BY RANDOM()
-            LIMIT 1
-            """
-        ).fetchone()
-    if row is None:
+            ORDER BY last_seen DESC
+            LIMIT ?
+            """,
+            (DEMO_POOL_SIZE,),
+        ).fetchall()
+    return [(int(r["id"]), str(r["url"])) for r in rows]
+
+
+@app.get("/api/demo", response_model=DemoResponse)
+def demo(request: Request) -> DemoResponse:
+    """URL живого активного объявления для кнопки «Показать на примере»."""
+    _check_rate_limit(request)
+    if not DB_PATH.exists():
         raise HTTPException(status_code=503, detail="Демо-объявление временно недоступно")
-    return DemoResponse(listing_id=int(row["id"]), url=str(row["url"]))
+    pool = _demo_pool_cache.get_or_call(str(DB_PATH), _demo_pool)
+    if not pool:
+        raise HTTPException(status_code=503, detail="Демо-объявление временно недоступно")
+    listing_id, url = random.choice(pool)
+    return DemoResponse(listing_id=listing_id, url=url)
 
 
-_stats_cache: dict = {"data": None, "ts": 0.0}
 STATS_CACHE_TTL = 600  # секунд
+# Раньше это был dict со временем: пока значение свежее — хорошо, но в момент
+# истечения TTL под нагрузкой в get_stats() проваливались ВСЕ запросы разом
+# (сто параллельных читателей — сто полных пересчётов по базе, каждый под GIL).
+# TTLCache пускает внутрь одного, остальные ждут его результат.
+_stats_cache = TTLCache(ttl=STATS_CACHE_TTL, stale_ttl=3600, maxsize=2)
 
 
 @app.get("/api/stats")
-def stats() -> dict:
+def stats(response: Response) -> dict:
     """Статистика рынка: всего объявлений, ₸/м² по районам, распределение цен."""
-    now = time.monotonic()
-    if _stats_cache["data"] is not None and now - _stats_cache["ts"] < STATS_CACHE_TTL:
-        return _stats_cache["data"]
+    # max-age меньше серверного TTL: на сервере значение живёт 10 минут,
+    # у клиента 5 — никто не увидит цифры старше, чем они есть на бэке.
+    response.headers["Cache-Control"] = "public, max-age=300"
     try:
-        data = get_stats()
+        return _stats_cache.get_or_call("stats", get_stats)
     except FileNotFoundError:
         logger.exception("stats: данные недоступны")
         raise HTTPException(status_code=503, detail="Статистика временно недоступна") from None
-    _stats_cache.update(data=data, ts=now)
-    return data
 
 
-_heatmap_cache: dict = {"data": None, "ts": 0.0}
+_heatmap_cache = TTLCache(ttl=STATS_CACHE_TTL, stale_ttl=3600, maxsize=2)
 
 
 @app.get("/api/heatmap")
-def heatmap() -> list[dict]:
+def heatmap(response: Response) -> list[dict]:
     """Сетка ₸/м² для карты: ячейки ~400 м по активным лотам с координатами."""
-    now = time.monotonic()
-    if _heatmap_cache["data"] is not None and now - _heatmap_cache["ts"] < STATS_CACHE_TTL:
-        return _heatmap_cache["data"]
+    response.headers["Cache-Control"] = "public, max-age=300"
     try:
-        data = heatmap_points()
+        return _heatmap_cache.get_or_call("heatmap", heatmap_points)
     except FileNotFoundError:
         logger.exception("heatmap: база недоступна")
         raise HTTPException(status_code=503, detail="Карта временно недоступна") from None
-    _heatmap_cache.update(data=data, ts=now)
-    return data
 
 
-_forecast_cache: dict = {"data": None, "ts": 0.0}
+_forecast_cache = TTLCache(ttl=STATS_CACHE_TTL, stale_ttl=3600, maxsize=2)
 
 
 @app.get("/api/forecast")
@@ -487,18 +598,13 @@ def forecast() -> dict:
     """
     if not feature_forecast():
         raise HTTPException(status_code=404, detail="Прогноз отключён")
-    now = time.monotonic()
-    if _forecast_cache["data"] is not None and now - _forecast_cache["ts"] < STATS_CACHE_TTL:
-        return _forecast_cache["data"]
     from krisha.forecast import build_forecast
 
     try:
-        data = build_forecast()
+        return _forecast_cache.get_or_call("forecast", build_forecast)
     except FileNotFoundError:
         logger.exception("forecast: база недоступна")
         raise HTTPException(status_code=503, detail="Прогноз временно недоступен") from None
-    _forecast_cache.update(data=data, ts=now)
-    return data
 
 
 # Дедуп апдейтов Telegram: медленный предикт внутри хендлера раньше приводил
@@ -542,11 +648,53 @@ def telegram_webhook(
         if update_id in _SEEN_UPDATE_IDS:
             return {"ok": True}
         _SEEN_UPDATE_IDS.append(update_id)
+        # Второй рубеж — общий для всех воркеров (см. WEB_CONCURRENCY): свой
+        # deque у каждого процесса, и ретрай, попавший в соседа, иначе
+        # обработался бы второй раз.
+        if DB_PATH.exists() and not remember_update_id(update_id):
+            return {"ok": True}
     background_tasks.add_task(_process_tg_update, update)
     return {"ok": True}
 
 
+@contextmanager
+def _startup_lock():
+    """Один воркер готовит окружение, остальные ждут.
+
+    При WEB_CONCURRENCY > 1 uvicorn поднимает несколько процессов, и каждый
+    выполняет _startup. Без блокировки два процесса одновременно качали бы
+    из релиза одну и ту же базу на 168 МБ и гнали бы миграции по одному
+    файлу (SQLite при этом ловит "database is locked"). Под флоком первый
+    делает работу, второй входит уже на готовое: база на месте — скачивание
+    пропускается, миграции идемпотентны.
+    """
+    lock_path = DB_PATH.parent / ".startup.lock"
+    handle = None
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(lock_path, "w")
+        fcntl.flock(handle, fcntl.LOCK_EX)
+    except OSError:  # read-only ФС и т.п. — работаем как раньше
+        logger.warning("не удалось взять стартовую блокировку", exc_info=True)
+        handle = None
+    try:
+        yield
+    finally:
+        if handle is not None:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_UN)
+            finally:
+                handle.close()
+
+
 def _startup() -> None:
+    with _startup_lock():
+        _prepare_data()
+    _warmup_runtime_caches()
+    bot.setup_webhook()
+
+
+def _prepare_data() -> None:
     # База не хранится в git — при старте скачиваем её из GitHub Release.
     db_release.ensure_db()
     # Модели пока коммитятся в main (переходный период issue #74) — скачиваем
@@ -559,8 +707,6 @@ def _startup() -> None:
         from krisha.db import init_db
 
         init_db()
-    _warmup_runtime_caches()
-    bot.setup_webhook()
 
 
 def _warmup_runtime_caches() -> None:
@@ -596,22 +742,28 @@ async def not_found(request: Request, exc):
     return _apply_security_headers(JSONResponse(status_code=404, content={"detail": detail}))
 
 
+# no-cache (не «не кэшировать», а «спроси ETag»): при повторном заходе браузер
+# получает 304 в пару килобайт вместо повторной загрузки страницы, но всегда
+# видит свежий релиз.
+_HTML_HEADERS = {"Cache-Control": "no-cache"}
+
+
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
     usage.record_event("site")
-    return FileResponse(STATIC_DIR / "index.html")
+    return FileResponse(STATIC_DIR / "index.html", headers=_HTML_HEADERS)
 
 
 @app.get("/stats", include_in_schema=False)
 def stats_page() -> FileResponse:
     usage.record_event("site")
-    return FileResponse(STATIC_DIR / "stats.html")
+    return FileResponse(STATIC_DIR / "stats.html", headers=_HTML_HEADERS)
 
 
 @app.get("/about", include_in_schema=False)
 def about_page() -> FileResponse:
     usage.record_event("site")
-    return FileResponse(STATIC_DIR / "about.html")
+    return FileResponse(STATIC_DIR / "about.html", headers=_HTML_HEADERS)
 
 
 # Кэш статики. Шрифты и картинки не меняются под тем же именем — их можно держать

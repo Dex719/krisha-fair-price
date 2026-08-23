@@ -117,7 +117,22 @@ def _record(kind: str, user_id: int | str | None, now: datetime) -> None:
         _prune(_state, now)
         _last_flush = now
         snapshot = copy.deepcopy(_state)
-    _flush(snapshot)
+    _flush_async(snapshot)
+
+
+def _flush_async(snapshot: dict) -> None:
+    """Флаш в отдельном потоке — запрос пользователя его не ждёт.
+
+    Раньше раз в полчаса одному невезучему посетителю сайта доставался ответ
+    на секунды дольше: его поток писал файл и делал PUT в api.github.com
+    (таймаут 15 с на каждый вызов). Под наплывом это же занимало поток
+    тредпула, который в этот момент нужен под запросы. Поток демонский:
+    выключение процесса он не задерживает.
+    """
+    if os.environ.get("USAGE_FLUSH_SYNC") == "1":  # тесты и CLI
+        _flush(snapshot)
+        return
+    threading.Thread(target=_flush, args=(snapshot,), name="usage-flush", daemon=True).start()
 
 
 def _prune(state: dict, now: datetime) -> None:
@@ -129,7 +144,38 @@ def _flush(state: dict) -> None:
     from krisha.subscriptions import save_json_state
 
     # encrypt=False: id уже захэшированы, агрегаты полезно видеть в репо глазами
-    save_json_state(USAGE_PATH, state, "data: статистика использования", encrypt=False)
+    save_json_state(USAGE_PATH, merge_states(load_state(), state), "data: статистика использования", encrypt=False)
+
+
+def merge_states(base: dict, incoming: dict) -> dict:
+    """Слияние двух снимков статистики: победитель — больший счётчик.
+
+    Нужно, когда сайт крутится в НЕСКОЛЬКИХ воркерах uvicorn (см.
+    WEB_CONCURRENCY в Dockerfile): у каждого процесса свои счётчики в памяти,
+    и тот, кто флашится вторым, раньше просто затирал файл соседа — половина
+    визитов пропадала. Каждый процесс считает свои события с общего значения,
+    прочитанного из файла при старте, поэтому максимум по каждому счётчику —
+    это «файл + вклад самого активного воркера»: не идеальная сумма, но без
+    потери целого воркера и без двойного счёта. Уникальные пользователи бота
+    объединяются множеством — там потерь нет вовсе.
+    """
+    merged: dict = {"days": {}}
+    days = set(base.get("days", {})) | set(incoming.get("days", {}))
+    for day in days:
+        a = base.get("days", {}).get(day) or {}
+        b = incoming.get("days", {}).get(day) or {}
+        row: dict = {}
+        for kind in KINDS:
+            row[kind] = max(int(a.get(kind, 0) or 0), int(b.get(kind, 0) or 0))
+        users = list(dict.fromkeys(list(a.get("bot_users") or []) + list(b.get("bot_users") or [])))
+        row["bot_users"] = users
+        hours: dict[str, int] = {}
+        for src in (a.get("hours") or {}, b.get("hours") or {}):
+            for hour, count in src.items():
+                hours[hour] = max(hours.get(hour, 0), int(count or 0))
+        row["hours"] = hours
+        merged["days"][day] = row
+    return merged
 
 
 def weekly_report(state: dict | None = None, now: datetime | None = None) -> str | None:
