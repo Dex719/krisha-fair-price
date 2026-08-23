@@ -8,9 +8,8 @@
 **baǵam — справедливая цена квартиры в Алматы: вставьте ссылку на объявление и проверьте, цена выгодная, рыночная или завышенная**
 
 [![CI](https://github.com/Dex719/krisha-fair-price/actions/workflows/ci.yml/badge.svg)](https://github.com/Dex719/krisha-fair-price/actions/workflows/ci.yml)
-![tests](https://img.shields.io/badge/tests-523_passed-2ea44f)
 ![python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
-![CatBoost](https://img.shields.io/badge/CatBoost-MAPE_7.6%25-FFCC00)
+[![CatBoost MAPE](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdex719-krisha-fair-price.hf.space%2Fapi%2Fhealth&query=%24.model_error_pct&suffix=%25&label=CatBoost%20MAPE&color=FFCC00)](https://dex719-krisha-fair-price.hf.space/about)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![version](https://img.shields.io/badge/version-0.5.0-blue)
 ![license](https://img.shields.io/badge/license-ELv2-lightgrey)
@@ -65,7 +64,23 @@
 | Бейзлайн: медиана ₸/м² (район × комнаты) | — | — | 16.5% | 12.8% | 9.0 млн ₸ | 0.73 |
 | Первая модель `fd06da4`: CatBoost на 6 075 объявлениях | 2026-06-12 | 23 | 10.2% | 7.7% | 5.5 млн ₸ | 0.85 |
 | v0.2.0 `c32ed2b`: 47 фичей — +ЖК, OSM POI, H3-гексагоны | 2026-07-02 | 47 | 9.6% | 7.2% | 5.2 млн ₸ | 0.87 |
-| **Текущая модель `974c893`: weekly retrain 16.08** | **2026-08-16** | **47** | **7.5%** | **5.4%** | **4.0 млн ₸** | **0.92** |
+| **Последняя веха на этом тесте `974c893`: weekly retrain 16.08** | **2026-08-16** | **47** | **7.5%** | **5.4%** | **4.0 млн ₸** | **0.92** |
+
+Таблица выше — история вех на ОДНОМ замороженном тесте (окно 01–16.08.2026); она не обновляется с каждым ретрейном и не описывает прод. Метрики модели, которая работает прямо сейчас:
+
+<!-- METRICS:BEGIN -->
+**Текущая прод-модель — ретрейн 2026-08-23.** Числа берутся из `models/model_meta.json`; на сайте те же метрики живые (`/api/health`), в README их обновляет `scripts/sync_readme_metrics.py`.
+
+| Метрика | Значение |
+|---|---|
+| MAPE | **7.29%** (95% ДИ 7.11–7.49%) |
+| MdAPE | 5.60% |
+| MAE | 3.69 млн ₸ |
+| R² | 0.9368 |
+| Обучено на | 36 206 строк, тест 4 889 |
+
+Временная валидность **не подтверждена**: пока состав данных меняется вместе с временем, число описывает попадание по текущему стоку, а не экстраполяцию вперёд (`time_confounding` в мете).
+<!-- METRICS:END -->
 
 Главный прирост после июля дали не новые фичи, а данные: еженедельные ретрейны на растущей базе (~7k → ~35k строк после дедупа). Абсолютные цифры не стоит читать как «типичную ошибку по всему рынку Алматы» — тестовое окно неравномерно по дням (`caveats` отчёта, `time_confounding` в `models/model_meta.json`); честным остаётся сравнение вех между собой на одном тесте.
 
