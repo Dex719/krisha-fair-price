@@ -83,7 +83,7 @@ def test_sweep_arenda_uses_rent_shards(tmp_path, monkeypatch):
     first_url = shards[0][1]
     pages = {first_url: _card(555, 300_000)}
     client = FakeClient(pages)
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(rescrape, "parse_detail", lambda html, url: _listing(555, 300_000))
 
     stats = sweep(max_pages=1, max_new_details=10, db_path=db, deal="arenda")
@@ -109,7 +109,7 @@ def test_sweep_walks_shards_and_updates_db(tmp_path, monkeypatch):
         f"{first_url}&page=2": _card(222, 20_000_000),
     }
     client = FakeClient(pages)
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(
         rescrape, "parse_detail", lambda html, url: _listing(222, 20_000_000)
     )
@@ -146,7 +146,7 @@ def test_sweep_skips_delist_if_shard_failed(tmp_path, monkeypatch):
             return None  # все страницы «не загрузились»
 
     client = FailingClient({})
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
 
     stats = sweep(max_pages=5, max_new_details=10, db_path=db)
 
@@ -170,7 +170,7 @@ def test_sweep_treats_all_empty_shards_as_uncovered_and_skips_delist(tmp_path, m
         conn.execute("UPDATE listings SET last_seen = datetime('now', '-10 days')")
 
     client = FakeClient({})  # все шарды загрузились, но карточек 0 (пустая выдача/антибот)
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
 
     stats = sweep(max_pages=5, max_new_details=10, db_path=db)
 
@@ -196,7 +196,7 @@ def test_sweep_delists_when_shards_report_nonempty_coverage(tmp_path, monkeypatc
             return _card(dummy_id, 5_000_000)
 
     client = CoveredClient({})
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(rescrape, "parse_detail", lambda html, url: None)
 
     stats = sweep(max_pages=5, max_new_details=10, db_path=db)
@@ -217,7 +217,7 @@ def test_sweep_shard_stops_on_antibot_signature(tmp_path, monkeypatch):
     first_url = shards[0][1]
     antibot_html = "<html><body>Подтвердите, что вы не робот" + _card(999, 1) + "</body></html>"
     client = FakeClient({first_url: antibot_html})
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
 
     stats = sweep(max_pages=5, max_new_details=10, db_path=db)
 
@@ -242,7 +242,7 @@ def test_sweep_marks_run_suspicious_on_parse_rate_drop(tmp_path, monkeypatch):
     # накапливаем историю found_in_search=32.
     for _ in range(3):
         client = CoveredClient({})
-        monkeypatch.setattr(rescrape, "PoliteClient", lambda c=client: c)
+        monkeypatch.setattr(rescrape, "PoliteClient", lambda c=client, **_kw: c)
         monkeypatch.setattr(rescrape, "parse_detail", lambda html, url: None)
         stats = sweep(max_pages=1, max_new_details=0, db_path=db, deal="prodazha")
         assert stats["suspicious"] is False
@@ -254,7 +254,7 @@ def test_sweep_marks_run_suspicious_on_parse_rate_drop(tmp_path, monkeypatch):
             return "<html></html>"  # все шарды пустые → 0 found
 
     client = DegradedClient({})
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     stats = sweep(max_pages=1, max_new_details=0, db_path=db, deal="prodazha")
 
     assert stats["found_in_search"] == 0
@@ -282,7 +282,7 @@ def test_sweep_marks_suspicious_via_active_db_baseline(tmp_path, monkeypatch):
             return "<html></html>"  # все шарды пустые → 0 found
 
     client = DegradedClient({})
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
 
     stats = sweep(max_pages=1, max_new_details=0, db_path=db, deal="prodazha")
 
@@ -308,7 +308,7 @@ def test_sweep_not_suspicious_when_too_few_active_in_db(tmp_path, monkeypatch):
             return "<html></html>"
 
     client = DegradedClient({})
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
 
     stats = sweep(max_pages=1, max_new_details=0, db_path=db, deal="prodazha")
 
@@ -331,7 +331,7 @@ def test_sweep_records_sighting_for_ids_beyond_detail_limit(tmp_path, monkeypatc
     # 3 новых id на первой странице первого шарда
     pages = {first_url: _card(1, 10_000_000) + _card(2, 20_000_000) + _card(3, 30_000_000)}
     client = FakeClient(pages)
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(rescrape, "parse_detail", lambda html, url: _listing(int(url.rsplit("/", 1)[-1])))
 
     stats = sweep(max_pages=1, max_new_details=1, db_path=db)  # лимит детали — только 1
@@ -385,7 +385,7 @@ def test_sweep_detail_queue_drains_backlog_not_just_current_pass(tmp_path, monke
     # в текущем проходе шард сразу находит новый id 999 первым
     pages = {first_url: _card(999, 5_000_000) + _card(100, 1) + _card(101, 1)}
     client = FakeClient(pages)
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(rescrape, "parse_detail", lambda html, url: _listing(int(url.rsplit("/", 1)[-1])))
 
     stats = sweep(max_pages=1, max_new_details=2, db_path=db)  # хватит на 2 из 3
@@ -423,7 +423,7 @@ def test_sweep_detail_queue_skips_delisted_sighting(tmp_path, monkeypatch):
     first_url = shards[0][1]
     pages = {first_url: _card(999, 5_000_000)}
     client = FakeClient(pages)
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(rescrape, "parse_detail", lambda html, url: _listing(int(url.rsplit("/", 1)[-1])))
 
     stats = sweep(max_pages=1, max_new_details=5, db_path=db)
@@ -463,7 +463,7 @@ def test_sweep_refreshes_stale_active_listing_details(tmp_path, monkeypatch):
     # устаревших деталей не должно зависеть от found в текущем проходе
     pages = {first_url: _card(999, 5_000_000)}
     client = FakeClient(pages)
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(
         rescrape,
         "parse_detail",
@@ -487,7 +487,7 @@ def test_sweep_does_not_refresh_recently_scraped_details(tmp_path, monkeypatch):
     shards = shard_urls()
     first_url = shards[0][1]
     client = FakeClient({first_url: _card(999, 5_000_000)})
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(rescrape, "parse_detail", lambda html, url: None)
 
     stats = sweep(max_pages=1, max_new_details=0, max_refresh=10, db_path=db)
@@ -508,7 +508,7 @@ def test_sweep_max_refresh_zero_disables_stale_refresh(tmp_path, monkeypatch):
     shards = shard_urls()
     first_url = shards[0][1]
     client = FakeClient({first_url: _card(999, 5_000_000)})
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(rescrape, "parse_detail", lambda html, url: None)
 
     stats = sweep(max_pages=1, max_new_details=0, max_refresh=0, db_path=db)
@@ -531,7 +531,7 @@ def test_sweep_quarantines_out_of_range_card_price_and_keeps_old(tmp_path, monke
     # карточка отдаёт битую цену (ниже PRICE_MIN) для знакомого id=600
     pages = {first_url: _card(600, 1)}
     client = FakeClient(pages)
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     monkeypatch.setattr(rescrape, "parse_detail", lambda html, url: None)
 
     stats = sweep(max_pages=1, max_new_details=0, max_refresh=0, db_path=db)
@@ -562,7 +562,7 @@ def test_sweep_aborts_early_on_ban_and_skips_delist(tmp_path, monkeypatch):
             raise BanDetected("3 URL подряд получили только HTTP 403")
 
     client = BannedClient({})
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
     alerts = []
     monkeypatch.setattr(rescrape, "_alert_ban", lambda exc: alerts.append(str(exc)))
 
@@ -612,7 +612,7 @@ def test_sweep_covers_shard_with_recaptcha_policy_footer(tmp_path, monkeypatch):
         "</body></html>"
     )
     client = FakeClient(dict.fromkeys([u for _, u in shard_urls()], page))
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
 
     stats = sweep(max_pages=1, max_new_details=0, db_path=db)
 
@@ -646,7 +646,7 @@ def test_time_budget_stops_softly_and_marks_shards_uncovered(tmp_path, monkeypat
 
     page = "<html><body>" + _card(4001, 30_000_000) + "</body></html>"
     client = _SlowClient(dict.fromkeys([u for _, u in shard_urls()], page), clock, step=120.0)
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
 
     # Бюджет 5 минут при 2 минутах на запрос — хватит на пару шардов.
     stats = sweep(max_pages=1, max_new_details=0, db_path=db, time_budget_min=5)
@@ -675,7 +675,7 @@ def test_mass_delist_is_blocked(tmp_path, monkeypatch):
     # Выдача отдаёт ровно один лот — остальные 200 выглядят «пропавшими».
     page = "<html><body>" + _card(9000, 30_000_000) + "</body></html>"
     client = FakeClient(dict.fromkeys([u for _, u in shard_urls()], page))
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
 
     stats = sweep(max_pages=1, max_new_details=0, db_path=db)
 
@@ -705,7 +705,7 @@ def test_recovery_pass_is_detected_from_observation_gap(tmp_path, monkeypatch):
         )
     page = "<html><body>" + _card(7000, 30_000_000) + "</body></html>"
     client = FakeClient(dict.fromkeys([u for _, u in shard_urls()], page))
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
 
     stats = sweep(max_pages=1, max_new_details=0, db_path=db)
 
@@ -733,7 +733,7 @@ def test_short_gap_is_not_flagged_as_recovery(tmp_path, monkeypatch, gap_days):
         )
     page = "<html><body>" + _card(7000, 30_000_000) + "</body></html>"
     client = FakeClient(dict.fromkeys([u for _, u in shard_urls()], page))
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
 
     stats = sweep(max_pages=1, max_new_details=0, db_path=db)
 
@@ -767,7 +767,7 @@ def test_user_visit_during_blackout_cannot_mask_the_gap(tmp_path, monkeypatch):
         )
     page = "<html><body>" + _card(7000, 30_000_000) + "</body></html>"
     client = FakeClient(dict.fromkeys([u for _, u in shard_urls()], page))
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
 
     stats = sweep(max_pages=1, max_new_details=0, db_path=db)
 
@@ -797,7 +797,7 @@ def test_recovery_pass_records_gap_and_marks_its_backfill_cohort(tmp_path, monke
     cards = [_card(7000, 30_000_000), _card(7100, 31_000_000), _card(7101, 32_000_000)]
     page = "<html><body>" + "".join(cards) + "</body></html>"
     client = FakeClient(dict.fromkeys([u for _, u in shard_urls()], page))
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
 
     stats = sweep(max_pages=1, max_new_details=0, db_path=db)
 
@@ -852,7 +852,7 @@ def test_grace_marking_applies_only_after_incomplete_recovery(tmp_path, monkeypa
     broken = shard_urls()[0][1]
     pages[broken] = "<html><body></body></html>"  # 0 валидных id → шард не покрыт
     client = FakeClient(pages)
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
 
     first = sweep(max_pages=1, max_new_details=0, db_path=db)
     assert first["recovery_pass"] is True
@@ -886,7 +886,7 @@ def test_gap_is_not_recorded_twice_on_repeated_pass(tmp_path, monkeypatch):
         )
     page = "<html><body>" + _card(7000, 30_000_000) + _card(7100, 31_000_000) + "</body></html>"
     client = FakeClient(dict.fromkeys([u for _, u in shard_urls()], page))
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
 
     first = sweep(max_pages=1, max_new_details=0, db_path=db)
     assert first["cohort_marked"] == 1
@@ -932,7 +932,7 @@ def test_mass_delist_block_after_gap_clears_itself_on_next_pass(tmp_path, monkey
     cards += [_card(20_000 + i, 30_000_000) for i in range(200)]
     page = "<html><body>" + "".join(cards) + "</body></html>"
     client = FakeClient(dict.fromkeys([u for _, u in shard_urls()], page))
-    monkeypatch.setattr(rescrape, "PoliteClient", lambda: client)
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda **_kw: client)
 
     first = sweep(max_pages=1, max_new_details=0, db_path=db)
 

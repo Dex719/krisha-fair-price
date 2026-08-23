@@ -52,3 +52,36 @@ def test_fail_below_passes_above_threshold(monkeypatch):
     stats = {"found_in_search": 40000, "suspicious": False}
     _run(monkeypatch, ["--fail-below", "20000"], stats)
     rescrape_cli.main()
+
+
+def _capture(monkeypatch, argv):
+    """Возвращает kwargs, с которыми CLI вызвал sweep."""
+    captured = {}
+    monkeypatch.setattr(rescrape_cli, "sweep", lambda **kw: captured.update(kw) or {"found_in_search": 1, "suspicious": False})
+    monkeypatch.setattr(sys, "argv", ["rescrape.py", *argv])
+    rescrape_cli.main()
+    return captured
+
+
+def test_mode_defaults_to_auto_and_caps_to_preset(monkeypatch):
+    """issue #152: без флагов режим — auto (по backlog'у), потолки — None
+    (берутся из пресета режима внутри sweep, а не зашиты в CLI)."""
+    captured = _capture(monkeypatch, [])
+    assert captured["mode"] == "auto"
+    assert captured["max_new_details"] is None
+    assert captured["max_refresh"] is None
+    assert captured["refresh_stale_days"] is None
+
+
+def test_mode_and_caps_passed_through(monkeypatch):
+    """Явные флаги доезжают до sweep как есть: ручной запуск режима и
+    диагностический --max-new 0 (не None!) не должны теряться."""
+    captured = _capture(
+        monkeypatch,
+        ["--mode", "drain", "--max-new", "0", "--max-refresh", "50",
+         "--refresh-stale-days", "20"],
+    )
+    assert captured["mode"] == "drain"
+    assert captured["max_new_details"] == 0
+    assert captured["max_refresh"] == 50
+    assert captured["refresh_stale_days"] == 20
