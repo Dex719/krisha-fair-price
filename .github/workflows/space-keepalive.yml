@@ -25,17 +25,33 @@ jobs:
           echo "Рестарт запрошен, жду минуту перед проверкой"
           sleep 60
 
-      - name: Ping /api/health
-        run: |
-          for i in $(seq 1 10); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
-              https://dex719-krisha-fair-price.hf.space/api/health || true)
-            if [ "$code" = "200" ]; then
-              echo "Space жив (попытка $i)"
-              exit 0
-            fi
-            echo "Попытка $i: HTTP $code — жду 30с (Space может просыпаться/собираться)"
-            sleep 30
-          done
-          echo "Space не ответил 200 за ~5 минут" >&2
-          exit 1
+      # Состояние прошлой проверки живёт между запусками: скрипт шлёт алерт
+      # только на СМЕНУ состояния (упал / ожил / деградировал), а не 4 раза в
+      # сутки. Без кэша каждый запуск выглядел бы как первый.
+      - name: Restore previous health state
+        uses: actions/cache/restore@v4
+        with:
+          path: health_state.json
+          key: health-state-${{ github.run_id }}
+          restore-keys: health-state-
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      # Скрипт нарочно на голом stdlib: ставить зависимости проекта ради
+      # одного HTTP-запроса — это несколько минут catboost на каждый прогон.
+      - name: Health check + alert on state change
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
+        run: python scripts/health_check.py --state-file health_state.json
+
+      - name: Save health state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: health_state.json
+          key: health-state-${{ github.run_id }}
