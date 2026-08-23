@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 
 import anyio
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -168,6 +169,10 @@ class _ChunkedBodyLimitMiddleware:
 
 app.add_middleware(_ChunkedBodyLimitMiddleware, max_bytes=MAX_BODY_BYTES)
 
+# Сжатие ответов. До этого Space отдавал всё как есть: главная 47 КБ вместо ~10 КБ,
+# design.css 34 КБ вместо ~7 КБ. Порог в 600 байт — мелочь жать дороже, чем отдать.
+app.add_middleware(GZipMiddleware, minimum_size=600)
+
 
 @app.middleware("http")
 async def _security_headers(request: Request, call_next):
@@ -195,6 +200,8 @@ def health() -> HealthResponse:
         status="ok",
         model_loaded=MODEL_PATH.exists(),
         model_error_pct=_model_error_pct(),
+        model_median_error_pct=_model_metric_pct("mdape"),
+        model_r2=_model_r2(),
         data_age_hours=data_age_hours,
         freshness=freshness,
         tg_webhook=bot.webhook_status(),
@@ -242,19 +249,41 @@ def _parse_db_datetime(value: str) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
-def _model_error_pct() -> float | None:
-    """Процентная ошибка модели из models/model_meta.json для публичных страниц."""
+def _model_metric(name: str) -> float | None:
+    """Сырая метрика модели из models/model_meta.json.
+
+    Сайт показывает точность живыми числами, а не переписанными руками: любое
+    переобучение меняет их само. `name` — ключ внутри metrics.model
+    (mape, mdape, r2).
+    """
     if not MODEL_META_PATH.exists():
         return None
     try:
         meta = json.loads(MODEL_META_PATH.read_text(encoding="utf-8"))
-        mape = meta.get("metrics", {}).get("model", {}).get("mape")
-        if mape is None:
+        value = meta.get("metrics", {}).get("model", {}).get(name)
+        if value is None:
             return None
-        return round(float(mape) * 100, 1)
+        return float(value)
     except (OSError, ValueError, TypeError):
-        logger.warning("health: не удалось прочитать model_error_pct", exc_info=True)
+        logger.warning("health: не удалось прочитать метрику %s", name, exc_info=True)
         return None
+
+
+def _model_metric_pct(name: str) -> float | None:
+    """Доля из meta в процентах — для метрик ошибки (mape, mdape)."""
+    value = _model_metric(name)
+    return None if value is None else round(value * 100, 1)
+
+
+def _model_error_pct() -> float | None:
+    """Средняя процентная ошибка модели (MAPE)."""
+    return _model_metric_pct("mape")
+
+
+def _model_r2() -> float | None:
+    """R² на отложенной выборке. Не процент — показываем как 0.937."""
+    value = _model_metric("r2")
+    return None if value is None else round(value, 3)
 
 
 # Анти-спам: скользящее окно запросов на IP (живём в одном процессе — хватает)
@@ -556,6 +585,17 @@ def _warmup_runtime_caches() -> None:
         logger.warning("runtime warmup failed", exc_info=True)
 
 
+@app.exception_handler(404)
+async def not_found(request: Request, exc):
+    """Браузеру — оформленная страница, любому клиенту API — обычный JSON."""
+    wants_html = "text/html" in request.headers.get("accept", "")
+    page = STATIC_DIR / "404.html"
+    if wants_html and not request.url.path.startswith("/api/") and page.exists():
+        return _apply_security_headers(FileResponse(page, status_code=404))
+    detail = getattr(exc, "detail", "Не найдено")
+    return _apply_security_headers(JSONResponse(status_code=404, content={"detail": detail}))
+
+
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
     usage.record_event("site")
@@ -574,5 +614,22 @@ def about_page() -> FileResponse:
     return FileResponse(STATIC_DIR / "about.html")
 
 
+# Кэш статики. Шрифты и картинки не меняются под тем же именем — их можно держать
+# у клиента год. Стили и скрипты меняются вместе с релизом, поэтому им no-cache:
+# браузер спросит ETag и почти всегда получит 304 вместо повторной загрузки.
+IMMUTABLE_SUFFIXES = (".woff2", ".woff", ".webp", ".png", ".jpg", ".svg", ".ico")
+
+
+class _CachedStatic(StaticFiles):
+    def file_response(self, *args, **kwargs):  # type: ignore[override]
+        response = super().file_response(*args, **kwargs)
+        path = str(getattr(response, "path", ""))
+        if path.endswith(IMMUTABLE_SUFFIXES):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    app.mount("/static", _CachedStatic(directory=STATIC_DIR), name="static")

@@ -1,4 +1,4 @@
-"""Acceptance checks for issue #80 market page redesign."""
+"""Контракт страницы «Рынок» после редизайна baǵam."""
 
 from pathlib import Path
 
@@ -19,83 +19,53 @@ def test_market_page_uses_bagam_chrome_meta_and_design_css():
     assert '<meta name="description"' in html
     assert 'href="/static/design.css"' in html
     assert 'rel="icon" type="image/svg+xml" href="/static/favicon.svg"' in html
-    assert '<a class="nl on" href="/stats">Рынок</a>' in html
-    assert '<a class="nl" href="/about">О проекте</a>' in html
+    assert '<a href="/">Оценка</a>' in html
+    assert '<a href="/about">О проекте</a>' in html
     assert "m3.css" not in html
     assert "FairPrice" not in html
-    assert "Manrope" not in html
     assert "chart.js" not in html.lower()
+    assert "fonts.gstatic.com" not in html
 
 
-def test_market_page_keeps_live_data_endpoints_and_no_mock_numbers():
+def test_market_numbers_come_from_api_and_are_redrawn_live():
+    """Разметка приходит со снимком сборки, но живой ответ её перерисовывает.
+
+    Без этого страница месяцами показывала бы медианы того дня, когда её собрали,
+    и подпись «обновлено» врала бы.
+    """
     html = _static("stats.html")
 
-    for endpoint in ("/api/stats", "/api/heatmap", "/api/forecast"):
-        assert endpoint in html
-    for fake in (
-        "740 тыс",
-        "9 364",
-        "5 июля 2026",
-        "707 до 740",
-        "1 052",
-        "968 тыс",
-        "842 тыс",
-        "716 тыс",
-        "557 тыс",
-        "2 043",
-        "1 214",
-        "~31 день",
-        "+4,6%",
-        "+0,7%",
-        "обновлено 1 июля 2026",
-    ):
-        assert fake not in html
-    assert "без подстановок" in html
-    assert "Источник всех чисел — /api/stats" in html
-    assert "подписка на район в один тап" in html
-    assert "market_'+districtSlug(name)" in html
-    assert "Строка района открывает Telegram-бот" not in html
+    assert "/api/stats" in html and "/api/health" in html
+    for field in ("by_district", "price_hist", "by_rooms", "by_category", "trend"):
+        assert field in html, f"нет перерисовки по полю {field}"
+    assert "drawTrend" in html and "drawDistricts" in html
+    assert "drawHist" in html and "drawRooms" in html
+    assert "document.addEventListener('stats'" in html
+    assert "Без подстановок" in html
+    # если источник молчит — честная подпись, а не свежая дата
+    assert "цифры из последнего успешного обновления" in html
 
 
-def test_market_page_has_skeletons_fail_soft_and_v24_chart_rules():
-    html = _static("stats.html")
-    css = _static("design.css")
-
-    assert "skchart" in html
-    assert "chart-empty" in html
-    assert "Данные рынка временно недоступны" in html
-    assert "Карта временно недоступна" in html
-    assert "Прогноз временно недоступен" in html
-    assert "grid-line" in html
-    assert "ylab" in html
-    assert "Шкала Y явно подписана HTML-метками" in html
-    assert ".grid-line" in css
-    assert ".ylab" in css
-    assert ".mrow" in css
-    assert ".map-legend" in css
-    assert "border:1px dashed var(--rule2)" in css
-    assert ".band .chart-empty" in css
-
-
-def test_market_map_preserves_leaflet_and_required_zoom_controls():
+def test_market_charts_stay_interactive_after_redraw():
+    """Обработчики делегированы документу: перерисованные столбики тоже кликаются."""
     html = _static("stats.html")
 
-    assert "leaflet@1.9.4" in html
-    assert "L.map" in html
-    assert "scrollWheelZoom:false" in html
-    assert "mouseenter" in html and "map.scrollWheelZoom.enable()" in html
-    assert "mouseleave" in html and "map.scrollWheelZoom.disable()" in html
-    assert 'data-map-zoom="in"' in html
-    assert 'data-map-zoom="out"' in html
-    assert "map.zoomIn()" in html and "map.zoomOut()" in html
-    assert "touchZoom:true" in html
-    assert "basemaps.cartocdn.com" in html
+    assert "e.target.closest('.hcol')" in html
+    assert "e.target.closest('.cband')" in html
+    assert "querySelectorAll('.hcol').forEach(c=>{" not in html
+    assert "querySelectorAll('.cband').forEach(b=>{" not in html
+
+
+def test_market_page_has_no_removed_map_leftovers():
+    """Карту сняли по решению продукта — на странице не должно остаться её следов."""
+    html = _static("stats.html")
+
+    for leftover in ("leaflet", "L.map", "basemaps.cartocdn.com", "map-legend"):
+        assert leftover not in html, f"остался хвост карты: {leftover}"
 
 
 def test_csp_not_weakened_for_market_page():
     assert "default-src 'self'" in CSP
     assert "font-src 'self'" in CSP
-    assert "img-src 'self' data: https://*.kcdn.online https://*.basemaps.cartocdn.com" in CSP
-    assert "https://cdn.jsdelivr.net" in CSP  # existing Leaflet/legacy allowance, not broadened
     assert "fonts.googleapis.com" not in CSP
     assert "fonts.gstatic.com" not in CSP
