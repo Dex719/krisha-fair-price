@@ -151,3 +151,39 @@ def test_dockerfile_runs_several_workers():
     text = DOCKERFILE.read_text(encoding="utf-8")
     assert re.search(r"--workers \$\{WEB_CONCURRENCY", text), "воркеры задаются переменной"
     assert "ENV WEB_CONCURRENCY=" in text
+
+
+# --- Лимит на IP при нескольких воркерах ----------------------------------
+
+def test_rate_limit_is_split_between_workers():
+    """Счётчик лимита живёт в памяти процесса, а процессов два.
+
+    Настроенные «15 запросов в минуту на IP» на деле означали до 30: запросы
+    одного клиента раскладываются по обоим воркерам, каждый считает свои.
+    Заявленное число обязано означать то, что написано.
+    """
+    from krisha.api import app as app_module
+
+    assert app_module._per_process_limit(30, 2) == 15
+    assert app_module._per_process_limit(15, 2) == 8   # округление вверх
+    assert app_module._per_process_limit(15, 1) == 15
+
+
+def test_rate_limit_never_degenerates_to_single_request():
+    """Обратная крайность: доля не должна выродиться в 1–2 запроса, иначе
+    живой человек ловит 429 на второй проверке объявления."""
+    from krisha.api import app as app_module
+
+    assert app_module._per_process_limit(4, 8) == 5
+    assert app_module._per_process_limit(1, 1) == 5
+
+
+def test_worker_count_reads_web_concurrency(monkeypatch):
+    from krisha.api import app as app_module
+
+    monkeypatch.setenv("WEB_CONCURRENCY", "2")
+    assert app_module._worker_count() == 2
+    monkeypatch.setenv("WEB_CONCURRENCY", "мусор")
+    assert app_module._worker_count() == 1
+    monkeypatch.delenv("WEB_CONCURRENCY")
+    assert app_module._worker_count() == 1

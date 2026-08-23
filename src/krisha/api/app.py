@@ -365,7 +365,35 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-RATE_LIMIT = _env_int("RATE_LIMIT_PER_WINDOW", 15)  # запросов
+def _worker_count() -> int:
+    """Сколько процессов uvicorn делят один сокет (Dockerfile: WEB_CONCURRENCY)."""
+    try:
+        return max(1, int(os.environ.get("WEB_CONCURRENCY", "1")))
+    except ValueError:
+        return 1
+
+
+def _per_process_limit(total: int, workers: int) -> int:
+    """Доля общего лимита на IP, приходящаяся на один процесс.
+
+    Счётчик rate-limit живёт в памяти процесса, а процессов при
+    WEB_CONCURRENCY=2 два — значит настроенные «15 запросов в минуту на IP»
+    на деле означали до 30: запросы одного клиента раскладываются по обоим
+    воркерам, и каждый считает свои. Заявленное в конфиге число обязано
+    означать то, что написано, поэтому делим его между процессами.
+
+    Пол в 5 запросов — защита от обратной крайности: при большом числе
+    воркеров и малом лимите доля выродилась бы в 1–2 запроса, и живой человек
+    ловил бы 429 на второй проверке объявления. Из-за keep-alive соединение
+    клиента липнет к одному воркеру, так что в худшем случае ему достаётся
+    именно эта доля — ошибаться здесь лучше в строгую сторону, чем в
+    молчаливое удвоение.
+    """
+    return max(5, -(-total // max(1, workers)))
+
+
+RATE_LIMIT_TOTAL = _env_int("RATE_LIMIT_PER_WINDOW", 15)  # запросов на IP суммарно
+RATE_LIMIT = _per_process_limit(RATE_LIMIT_TOTAL, _worker_count())
 RATE_WINDOW_S = float(_env_int("RATE_LIMIT_WINDOW_S", 60))
 # /api/demo дёргает КАЖДАЯ загрузка главной, а мобильный интернет Казахстана —
 # сплошной CGNAT: за одним адресом сидят сотни человек. Строгий лимит на 15
@@ -374,7 +402,7 @@ RATE_WINDOW_S = float(_env_int("RATE_LIMIT_WINDOW_S", 60))
 # копейки. Строгий лимит нужен только там, где мы ходим на чужой сервер
 # (/api/predict). Счётчики у бакетов раздельные: демо не съедает бюджет
 # предикта и наоборот.
-DEMO_RATE_LIMIT = _env_int("DEMO_RATE_LIMIT_PER_WINDOW", 120)
+DEMO_RATE_LIMIT = _per_process_limit(_env_int("DEMO_RATE_LIMIT_PER_WINDOW", 120), _worker_count())
 _rate: dict[str, deque] = defaultdict(deque)
 # /api/predict — async def, но _check_rate_limit сам по себе синхронный и
 # вызывается из разных потоков threadpool'а (остальные sync-хендлеры вроде
