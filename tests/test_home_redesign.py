@@ -180,8 +180,12 @@ def test_demo_endpoint_returns_active_listing_url_and_is_rate_limited(tmp_path, 
         "url": "https://krisha.kz/a/show/987654321",
     }
 
+    # У демо свой бакет и свой потолок: его дёргает каждая загрузка главной,
+    # а за одним мобильным IP в Казахстане сидит пол-города (CGNAT). Строгий
+    # лимит предиктов здесь ломал бы кнопку живым людям.
     app_module._rate.clear()
-    for _ in range(app_module.RATE_LIMIT):
+    monkeypatch.setattr(app_module, "DEMO_RATE_LIMIT", 4)
+    for _ in range(app_module.DEMO_RATE_LIMIT):
         assert (
             client.get("/api/demo", headers={"x-forwarded-for": "203.0.113.80"}).status_code
             == 200

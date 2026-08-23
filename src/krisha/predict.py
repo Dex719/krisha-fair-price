@@ -11,6 +11,7 @@ import sqlite3
 from functools import lru_cache
 from typing import Any
 
+import httpx
 import numpy as np
 from catboost import CatBoostRegressor, Pool
 
@@ -456,7 +457,9 @@ def _predict_from_listing(
     return result
 
 
-def predict_from_url(url: str, live_vision: bool = True) -> dict[str, Any]:
+def predict_from_url(
+    url: str, live_vision: bool = True, timeout: "float | httpx.Timeout | None" = None
+) -> dict[str, Any]:
     match = KRISHA_URL_RE.search(url)
     if not match:
         raise InvalidListingUrl("Ожидается ссылка вида https://krisha.kz/a/show/<id>")
@@ -464,9 +467,14 @@ def predict_from_url(url: str, live_vision: bool = True) -> dict[str, Any]:
     # http://169.254.169.254/krisha.kz/a/show/1 — подстрока пройдёт проверку).
     # Берём только id и собираем канонический адрес сами, как в боте.
     url = KRISHA_SHOW_BASE + match.group(1)
-    # Короткий бюджет: это пользовательский запрос, а не краулер — при 403/429
-    # быстро сдаёмся (worst-case ~6 сек), не держим поток тредпула минутами
-    with PoliteClient(delay_range=(0.5, 1.0), max_retries=2, throttle_wait_s=2.0) as client:
+    # Короткий бюджет: это пользовательский запрос, а не краулер. Мало
+    # ограничить ретраи (403/429 отдаются быстро) — нужен и короткий сетевой
+    # таймаут: на ПОВИСШЕМ коннекте два ретрая по REQUEST_TIMEOUT=30 с давали
+    # больше минуты на один запрос. timeout прокидывает вызывающий
+    # (predict_gate.user_timeout: 5 с всего, 3 с на connect).
+    with PoliteClient(
+        delay_range=(0.5, 1.0), max_retries=2, throttle_wait_s=2.0, timeout=timeout
+    ) as client:
         html = client.get(url)
     if html is None:
         raise RuntimeError("Не удалось загрузить объявление")

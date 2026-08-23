@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi.testclient import TestClient
 
-from krisha import db
+from krisha import db, predict_gate
 from krisha.api import app as app_module
 from krisha.api.app import app
 from krisha.api.cache import TTLCache
@@ -306,12 +306,12 @@ def test_same_listing_is_fetched_once_for_the_crowd(monkeypatch):
     """Пост в канале: тысяча человек вставляет одну ссылку — один разбор."""
     calls: list[str] = []
 
-    def slow_predict(url, live_vision=False):
+    def slow_predict(url, live_vision=False, timeout=None):
         calls.append(url)
         time.sleep(0.05)
         return _payload()
 
-    monkeypatch.setattr(app_module, "predict_from_url", slow_predict)
+    monkeypatch.setattr(predict_gate, "predict_from_url", slow_predict)
     monkeypatch.setattr(app_module, "RATE_LIMIT", 10_000)
     client = TestClient(app)
 
@@ -335,11 +335,11 @@ def test_same_listing_is_fetched_once_for_the_crowd(monkeypatch):
 def test_different_listings_are_not_confused(monkeypatch):
     seen: list[str] = []
 
-    def fake_predict(url, live_vision=False):
+    def fake_predict(url, live_vision=False, timeout=None):
         seen.append(url)
         return _payload(int(url.rsplit("/", 1)[-1]))
 
-    monkeypatch.setattr(app_module, "predict_from_url", fake_predict)
+    monkeypatch.setattr(predict_gate, "predict_from_url", fake_predict)
     client = TestClient(app)
 
     first = client.post("/api/predict", json={"url": "https://krisha.kz/a/show/91"}).json()
@@ -350,25 +350,32 @@ def test_different_listings_are_not_confused(monkeypatch):
     assert len(seen) == 2
 
 
-def test_failed_predict_is_not_cached(monkeypatch):
+def test_failed_predict_is_retried_after_the_negative_cache_expires(monkeypatch):
+    """Ошибка запоминается на минуту (иначе битая ссылка из поста гонит
+    каждого посетителя в полный скрейп-цикл), но не навсегда."""
     attempts: list[int] = []
 
-    def flaky(url, live_vision=False):
+    def flaky(url, live_vision=False, timeout=None):
         attempts.append(1)
         if len(attempts) == 1:
             raise RuntimeError("krisha не ответила")
         return _payload()
 
-    monkeypatch.setattr(app_module, "predict_from_url", flaky)
+    monkeypatch.setattr(predict_gate, "predict_from_url", flaky)
     client = TestClient(app)
 
     assert client.post("/api/predict", json={"url": "https://krisha.kz/a/show/91"}).status_code == 502
+    # пока негативный кэш свеж — тот же 502 без похода наружу
+    assert client.post("/api/predict", json={"url": "https://krisha.kz/a/show/91"}).status_code == 502
+    assert len(attempts) == 1
+
+    predict_gate._negative.clear()
     assert client.post("/api/predict", json={"url": "https://krisha.kz/a/show/91"}).status_code == 200
     assert len(attempts) == 2
 
 
 def test_cached_predict_still_counts_in_usage_stats(monkeypatch):
-    monkeypatch.setattr(app_module, "predict_from_url", lambda url, live_vision=False: _payload())
+    monkeypatch.setattr(predict_gate, "predict_from_url", lambda url, live_vision=False, timeout=None: _payload())
     events: list[str] = []
     monkeypatch.setattr(app_module.usage, "record_event", lambda kind, *a, **k: events.append(kind))
     client = TestClient(app)
@@ -383,7 +390,7 @@ def test_cached_predict_still_counts_in_usage_stats(monkeypatch):
 # Лимиты
 # --------------------------------------------------------------------------
 def test_rate_limit_answers_with_retry_after(monkeypatch):
-    monkeypatch.setattr(app_module, "predict_from_url", lambda url, live_vision=False: _payload())
+    monkeypatch.setattr(predict_gate, "predict_from_url", lambda url, live_vision=False, timeout=None: _payload())
     app_module._rate.clear()
     client = TestClient(app)
     for i in range(app_module.RATE_LIMIT):

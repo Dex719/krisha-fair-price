@@ -10,6 +10,7 @@ import ipaddress
 import json
 import logging
 import os
+import pathlib
 import random
 import sqlite3
 import threading
@@ -24,7 +25,8 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from krisha import __version__, bot, db_release, usage
+from krisha import __version__, bot, db_release, predict_gate, usage
+from krisha.api import metrics, static_cache
 from krisha.api.cache import TTLCache
 from krisha.api.schemas import (
     DemoResponse,
@@ -40,7 +42,8 @@ from krisha.config import (
     feature_forecast,
 )
 from krisha.db import get_conn, remember_update_id
-from krisha.predict import KRISHA_URL_RE, InvalidListingUrl, predict_from_url
+from krisha.predict import InvalidListingUrl
+from krisha.predict_gate import PredictBusy
 from krisha.stats import get_stats, heatmap_points
 
 logging.basicConfig(level=logging.INFO)
@@ -177,8 +180,21 @@ app.add_middleware(_ChunkedBodyLimitMiddleware, max_bytes=MAX_BODY_BYTES)
 app.add_middleware(GZipMiddleware, minimum_size=600)
 
 
+def _route_label(request: Request) -> str:
+    """Шаблон маршрута, а не сырой путь: иначе /static/... разнесёт метрики
+    на сотню ключей, а мусорные URL от сканеров — на тысячу."""
+    route = request.scope.get("route")
+    path = getattr(route, "path", None)
+    if path:
+        return f"{request.method} {path}"
+    if request.url.path.startswith("/static/"):
+        return f"{request.method} /static/*"
+    return f"{request.method} other"
+
+
 @app.middleware("http")
 async def _security_headers(request: Request, call_next):
+    started = time.perf_counter()
     length = request.headers.get("content-length")
     if length is not None:
         try:
@@ -191,6 +207,9 @@ async def _security_headers(request: Request, call_next):
                 JSONResponse(status_code=400, content={"detail": "Некорректный Content-Length"})
             )
     response = await call_next(request)
+    # Одно измерение на запрос: словарь + кольцевой буфер (см. api/metrics).
+    # Отдельной мидлварью это стоило бы ещё одного слоя ASGI на каждый запрос.
+    metrics.observe(_route_label(request), response.status_code, (time.perf_counter() - started) * 1000)
     return _apply_security_headers(response)
 
 
@@ -348,6 +367,14 @@ def _env_int(name: str, default: int) -> int:
 
 RATE_LIMIT = _env_int("RATE_LIMIT_PER_WINDOW", 15)  # запросов
 RATE_WINDOW_S = float(_env_int("RATE_LIMIT_WINDOW_S", 60))
+# /api/demo дёргает КАЖДАЯ загрузка главной, а мобильный интернет Казахстана —
+# сплошной CGNAT: за одним адресом сидят сотни человек. Строгий лимит на 15
+# запросов сломал бы кнопку «Показать на примере» у заметной доли посетителей
+# в первую же минуту наплыва — при том, что демо после пула в памяти стоит
+# копейки. Строгий лимит нужен только там, где мы ходим на чужой сервер
+# (/api/predict). Счётчики у бакетов раздельные: демо не съедает бюджет
+# предикта и наоборот.
+DEMO_RATE_LIMIT = _env_int("DEMO_RATE_LIMIT_PER_WINDOW", 120)
 _rate: dict[str, deque] = defaultdict(deque)
 # /api/predict — async def, но _check_rate_limit сам по себе синхронный и
 # вызывается из разных потоков threadpool'а (остальные sync-хендлеры вроде
@@ -410,8 +437,9 @@ _PREDICT_LIMITER = anyio.CapacityLimiter(10)
 MAX_RATE_KEYS = 10_000  # потолок против разрастания памяти (в т.ч. от подделки XFF)
 
 
-def _check_rate_limit(request: Request) -> None:
-    ip = _client_ip(request)
+def _check_rate_limit(request: Request, *, bucket: str = "api", limit: int | None = None) -> None:
+    ip = f"{bucket}:{_client_ip(request)}"
+    limit = RATE_LIMIT if limit is None else limit
     now = time.monotonic()
     with _rate_lock:
         # Вытесняем протухшие ключи, чтобы словарь не рос бесконечно.
@@ -421,10 +449,11 @@ def _check_rate_limit(request: Request) -> None:
         q = _rate[ip]
         while q and now - q[0] > RATE_WINDOW_S:
             q.popleft()
-        if len(q) >= RATE_LIMIT:
+        if len(q) >= limit:
             # Retry-After: клиенту (и Telegram-боту, и браузеру) видно, через
             # сколько секунд окно освободится, — вместо гадания и долбёжки.
             retry_after = max(1, int(RATE_WINDOW_S - (now - q[0])) + 1)
+            metrics.bump("rate_limited")
             raise HTTPException(
                 status_code=429,
                 detail="Слишком много запросов, подожди минуту",
@@ -433,48 +462,62 @@ def _check_rate_limit(request: Request) -> None:
         q.append(now)
 
 
-# Кэш готовых разборов по id лота. Главный сценарий наплыва — пост в большом
-# канале: тысяча человек за минуту вставляет ОДНУ И ТУ ЖЕ ссылку. Без кэша это
-# тысяча походов на krisha.kz (по чужому серверу — из пушки), тысяча
-# CatBoost-инференсов и тысяча upsert'ов одной строки. С кэшем — один разбор,
-# остальные читают память. TTL короткий: цена в объявлении за десять минут не
-# меняется, а «свежесть» отчёта пользователю видна по истории цены.
-PREDICT_CACHE_TTL_S = float(os.environ.get("PREDICT_CACHE_TTL_S", "600"))
-_predict_cache = TTLCache(ttl=PREDICT_CACHE_TTL_S, maxsize=2048)
-
-
-def _predict_cache_key(url: str) -> str:
-    """Ключ = id объявления. Один лот открывают по разным ссылкам
-    (utm-хвосты, http/https, /a/show/ID?query) — это один и тот же разбор."""
-    match = KRISHA_URL_RE.search(url or "")
-    return match.group(1) if match else (url or "").strip()[:200]
+# Кэш, single-flight, негативный кэш и слоты живут в krisha.predict_gate —
+# общей калитке для веба и бота (раньше бот ходил в predict_from_url напрямую,
+# мимо всех предохранителей). Здесь остаётся только HTTP-обвязка.
+#
+# Сколько всего ждать ответа предикта, прежде чем честно сказать «занято».
+# Чуть больше, чем ожидание слота в калитке (PREDICT_SLOT_WAIT_S): при
+# перегрузе первым должен срабатывать её осмысленный PredictBusy, а этот
+# таймаут — страховка от «поток занят чем-то ещё».
+PREDICT_WAIT_S = float(os.environ.get("PREDICT_WAIT_S", "20"))
+_BUSY_RETRY_AFTER = "30"
 
 
 @app.post("/api/predict", response_model=PredictResponse)
 async def predict(req: PredictRequest, request: Request) -> PredictResponse:
-    _check_rate_limit(request)
-    cache_key = _predict_cache_key(req.url)
-    cached = _predict_cache.peek(cache_key)
-    if cached is not None and cached[0] < PREDICT_CACHE_TTL_S:
+    # Кэш проверяем ДО рейт-лимита. Главный сценарий наплыва — тысяча человек
+    # с ОДНОЙ ссылкой из поста, и сидят они за десятком CGNAT-адресов
+    # мобильных операторов. Резать их 429 на готовый ответ, который уже лежит
+    # в памяти и не стоит ничего, — терять живых пользователей ни за что.
+    # Лимит защищает поход на krisha.kz, а не отдачу байтов из словаря.
+    cached = predict_gate.peek(req.url)
+    if cached is not None:
+        metrics.bump("predict_cache_hit")
         # Событие статистики считаем и для попадания в кэш: это живой человек.
         await anyio.to_thread.run_sync(functools.partial(usage.record_event, "predict"))
-        return PredictResponse(**cached[1])
+        return PredictResponse(**cached)
+    _check_rate_limit(request)
     try:
         # live_vision=False: веб отвечает сразу и не ходит в Gemini Vision
         # (он и так за фича-флагом, issue #157) — живой запрос только у бота.
         # issue #110: явный CapacityLimiter вместо дефолтного sync-threadpool —
         # тяжёлый путь (скрейп + CatBoost + SQLite) не делит пул с health/site.
-        # get_or_call в рабочем потоке: если десять человек прислали один и
-        # тот же лот одновременно, на krisha.kz уйдёт ровно один запрос,
-        # остальные девять дождутся его результата (single-flight).
-        result = await anyio.to_thread.run_sync(
-            functools.partial(
-                _predict_cache.get_or_call,
-                cache_key,
-                functools.partial(predict_from_url, req.url, live_vision=False),
-            ),
-            limiter=_PREDICT_LIMITER,
-        )
+        # move_on_after: ограничиваем ОЖИДАНИЕ, а не работу. Если за
+        # PREDICT_WAIT_S очередь не рассосалась — быстрый 503 с Retry-After
+        # лучше, чем двести висящих спиннеров и скрейпы для тех, кто уже ушёл.
+        # abandon_on_cancel=True: уже начатый в потоке разбор доработает сам и
+        # ляжет в кэш — следующему повезёт.
+        with anyio.move_on_after(PREDICT_WAIT_S) as cancel_scope:
+            result = await anyio.to_thread.run_sync(
+                functools.partial(predict_gate.cached_predict, req.url, live_vision=False),
+                abandon_on_cancel=True,
+                limiter=_PREDICT_LIMITER,
+            )
+        if cancel_scope.cancel_called:
+            metrics.bump("predict_wait_timeout")
+            raise HTTPException(
+                status_code=503,
+                detail="Сервис перегружен, попробуй через полминуты",
+                headers={"Retry-After": _BUSY_RETRY_AFTER},
+            )
+    except PredictBusy:
+        metrics.bump("predict_busy")
+        raise HTTPException(
+            status_code=503,
+            detail="Сервис перегружен, попробуй через полминуты",
+            headers={"Retry-After": _BUSY_RETRY_AFTER},
+        ) from None
     except InvalidListingUrl as exc:
         # 422 — пользовательская валидация URL, текст безопасен и полезен
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -538,7 +581,7 @@ def _demo_pool() -> list[tuple[int, str]]:
 @app.get("/api/demo", response_model=DemoResponse)
 def demo(request: Request) -> DemoResponse:
     """URL живого активного объявления для кнопки «Показать на примере»."""
-    _check_rate_limit(request)
+    _check_rate_limit(request, bucket="demo", limit=DEMO_RATE_LIMIT)
     if not DB_PATH.exists():
         raise HTTPException(status_code=503, detail="Демо-объявление временно недоступно")
     pool = _demo_pool_cache.get_or_call(str(DB_PATH), _demo_pool)
@@ -605,6 +648,27 @@ def forecast() -> dict:
     except FileNotFoundError:
         logger.exception("forecast: база недоступна")
         raise HTTPException(status_code=503, detail="Прогноз временно недоступен") from None
+
+
+@app.get("/api/metrics", include_in_schema=False)
+def api_metrics() -> dict:
+    """Что происходило с этим воркером: счётчики, задержки, очередь предикта.
+
+    Публично и безопасно: только агрегаты, ни одного пользовательского данного.
+    Смысл — узнать правду о пике, не долбя прод нагрузкой (HF банит по IP).
+    При WEB_CONCURRENCY=2 ответ приходит от того воркера, которому достался
+    запрос: цифры «примерно», зато без внешнего мониторинга.
+    """
+    data = metrics.snapshot()
+    stats_ = _PREDICT_LIMITER.statistics()
+    data["predict"] = {
+        **predict_gate.stats(),
+        "limiter_borrowed": stats_.borrowed_tokens,
+        "limiter_total": int(stats_.total_tokens),
+        "limiter_waiting": stats_.tasks_waiting,
+    }
+    data["assets"] = {"precompressed": len(_ASSETS)}
+    return data
 
 
 # Дедуп апдейтов Telegram: медленный предикт внутри хендлера раньше приводил
@@ -688,10 +752,37 @@ def _startup_lock():
 
 
 def _startup() -> None:
+    _log_runtime_limits()
     with _startup_lock():
         _prepare_data()
     _warmup_runtime_caches()
     bot.setup_webhook()
+
+
+def _log_runtime_limits() -> None:
+    """Сколько CPU нам реально дали. Одна строка в логе, снимающая главную
+    неопределённость всех замеров: os.cpu_count() показывает ядра ХОСТА, а
+    контейнеру может быть выдана квота вдвое меньше — и тогда авто-сайзинг по
+    числу ядер врёт, а WEB_CONCURRENCY подобран вслепую."""
+    try:
+        affinity: int | None = len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):  # pragma: no cover — не Linux
+        affinity = None
+    quota = "?"
+    for path in ("/sys/fs/cgroup/cpu.max", "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"):
+        try:
+            quota = pathlib.Path(path).read_text().strip()
+            break
+        except OSError:
+            continue
+    logger.info(
+        "runtime: cpu_count=%s affinity=%s cgroup=%s workers=%s omp=%s",
+        os.cpu_count(),
+        affinity,
+        quota,
+        os.environ.get("WEB_CONCURRENCY", "?"),
+        os.environ.get("OMP_NUM_THREADS", "?"),
+    )
 
 
 def _prepare_data() -> None:
@@ -726,53 +817,142 @@ def _warmup_runtime_caches() -> None:
         load_interval_models()
         load_spatial_ref()
         load_poi_index()
+        # Статистика использования: иначе её json с диска читает первый же
+        # посетитель — под глобальным локом и ровно в момент наплыва.
+        usage.warm()
+        # Агрегаты страниц: первый посетитель после рестарта иначе платит за
+        # полный пересчёт по базе (а при наплыве он платит не один).
+        if DB_PATH.exists():
+            warmups = (
+                ("stats", _stats_cache, "stats", get_stats),
+                ("heatmap", _heatmap_cache, "heatmap", heatmap_points),
+                ("demo", _demo_pool_cache, str(DB_PATH), _demo_pool),
+            )
+            for name, cache, key, producer in warmups:
+                try:
+                    cache.get_or_call(key, producer)
+                except Exception:  # noqa: BLE001, PERF203 — прогрев не критичен
+                    logger.warning("warmup: %s не прогрелся", name, exc_info=True)
         logger.info("runtime caches warmed up")
     except Exception:  # noqa: BLE001 — warmup не должен валить запуск Space
         logger.warning("runtime warmup failed", exc_info=True)
+
+
+# ---------------------------------------------------------------- статика
+# Всё текстовое (html/css/js) читается и жмётся ОДИН раз при старте и живёт в
+# памяти процесса: см. krisha.api.static_cache — там же цифры замера, ради
+# которых это сделано (главная: 361 rps с gzip против 706 без — половина CPU
+# уходила на повторное сжатие одного и того же файла).
+HTML_CACHE_CONTROL = "no-cache"  # не «не кэшировать», а «спроси ETag»
+# Шрифты и картинки не меняются под тем же именем — их можно держать у клиента
+# год. Стили и скрипты меняются вместе с релизом, поэтому им no-cache: браузер
+# спросит ETag и почти всегда получит 304 вместо повторной загрузки.
+IMMUTABLE_SUFFIXES = (".woff2", ".woff", ".webp", ".png", ".jpg", ".svg", ".ico")
+PRECOMPRESS_SUFFIXES = (".html", ".css", ".js", ".mjs", ".json", ".webmanifest")
+_ASSETS: dict[str, static_cache.Asset] = {}
+
+
+def _asset_names() -> list[str]:
+    if not STATIC_DIR.exists():
+        return []
+    names = set()
+    for suffix in PRECOMPRESS_SUFFIXES:
+        for path in STATIC_DIR.rglob(f"*{suffix}"):
+            if path.is_file():
+                names.add(path.relative_to(STATIC_DIR).as_posix())
+    return sorted(names)
+
+
+def _build_assets() -> None:
+    """Собирается на импорте модуля (то есть в каждом воркере) — файлы в
+    образе до рестарта неизменны, перепроверять их на запросе незачем."""
+    global _ASSETS
+    _ASSETS = static_cache.build_cache(STATIC_DIR, _asset_names())
+
+
+_build_assets()
+
+
+def _asset_response(
+    request: Request,
+    name: str,
+    *,
+    status_code: int = 200,
+    cache_control: str = HTML_CACHE_CONTROL,
+) -> Response:
+    """Отдаёт файл из памяти: нужный вариант (gzip/сырой), ETag, 304, HEAD."""
+    asset = _ASSETS.get(name)
+    if asset is None:  # dev: файл появился после старта — обычная отдача с диска
+        path = STATIC_DIR / name
+        if not path.is_file():
+            raise HTTPException(status_code=404)
+        return FileResponse(
+            path, status_code=status_code, headers={"Cache-Control": cache_control}
+        )
+    status, body, headers = static_cache.negotiate(
+        asset,
+        accept_encoding=request.headers.get("accept-encoding"),
+        if_none_match=request.headers.get("if-none-match"),
+        cache_control=cache_control,
+    )
+    if status == 200 and status_code != 200:
+        status = status_code
+    if request.method == "HEAD":
+        body = b""  # заголовки (включая Content-Length) остаются настоящими
+    return Response(content=body, status_code=status, headers=headers)
 
 
 @app.exception_handler(404)
 async def not_found(request: Request, exc):
     """Браузеру — оформленная страница, любому клиенту API — обычный JSON."""
     wants_html = "text/html" in request.headers.get("accept", "")
-    page = STATIC_DIR / "404.html"
-    if wants_html and not request.url.path.startswith("/api/") and page.exists():
-        return _apply_security_headers(FileResponse(page, status_code=404))
+    if wants_html and not request.url.path.startswith("/api/"):
+        try:
+            return _apply_security_headers(_asset_response(request, "404.html", status_code=404))
+        except HTTPException:
+            pass
     detail = getattr(exc, "detail", "Не найдено")
     return _apply_security_headers(JSONResponse(status_code=404, content={"detail": detail}))
 
 
-# no-cache (не «не кэшировать», а «спроси ETag»): при повторном заходе браузер
-# получает 304 в пару килобайт вместо повторной загрузки страницы, но всегда
-# видит свежий релиз.
-_HTML_HEADERS = {"Cache-Control": "no-cache"}
+# Страницы — async def: отдавать байты из памяти нечему блокировать, а поход
+# в тредпул на каждый показ страницы под наплывом создавал очередь ровно там,
+# где её быть не должно. usage.record_event внутри держит глобальный лок на
+# пару инкрементов словаря (микросекунды), сеть из-под него давно унесена в
+# демон-поток, состояние читается на старте (usage.warm).
+# HEAD объявлен рядом с GET намеренно: аптайм-мониторы и HEALTHCHECK ходят
+# именно им, а FastAPI (в отличие от голого Starlette) сам его не добавляет —
+# без этого страница отвечала 405. Посещение по HEAD не считаем.
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+async def index(request: Request) -> Response:
+    if request.method == "GET":
+        usage.record_event("site")
+    return _asset_response(request, "index.html")
 
 
-@app.get("/", include_in_schema=False)
-def index() -> FileResponse:
-    usage.record_event("site")
-    return FileResponse(STATIC_DIR / "index.html", headers=_HTML_HEADERS)
+@app.api_route("/stats", methods=["GET", "HEAD"], include_in_schema=False)
+async def stats_page(request: Request) -> Response:
+    if request.method == "GET":
+        usage.record_event("site")
+    return _asset_response(request, "stats.html")
 
 
-@app.get("/stats", include_in_schema=False)
-def stats_page() -> FileResponse:
-    usage.record_event("site")
-    return FileResponse(STATIC_DIR / "stats.html", headers=_HTML_HEADERS)
-
-
-@app.get("/about", include_in_schema=False)
-def about_page() -> FileResponse:
-    usage.record_event("site")
-    return FileResponse(STATIC_DIR / "about.html", headers=_HTML_HEADERS)
-
-
-# Кэш статики. Шрифты и картинки не меняются под тем же именем — их можно держать
-# у клиента год. Стили и скрипты меняются вместе с релизом, поэтому им no-cache:
-# браузер спросит ETag и почти всегда получит 304 вместо повторной загрузки.
-IMMUTABLE_SUFFIXES = (".woff2", ".woff", ".webp", ".png", ".jpg", ".svg", ".ico")
+@app.api_route("/about", methods=["GET", "HEAD"], include_in_schema=False)
+async def about_page(request: Request) -> Response:
+    if request.method == "GET":
+        usage.record_event("site")
+    return _asset_response(request, "about.html")
 
 
 class _CachedStatic(StaticFiles):
+    """Текст — из предсжатой памяти, бинарь — обычной отдачей файла."""
+
+    async def get_response(self, path: str, scope):  # type: ignore[override]
+        name = path.lstrip("/")
+        if name in _ASSETS and scope.get("method") in ("GET", "HEAD"):
+            return _asset_response(Request(scope), name, cache_control="no-cache")
+        return await super().get_response(path, scope)
+
     def file_response(self, *args, **kwargs):  # type: ignore[override]
         response = super().file_response(*args, **kwargs)
         path = str(getattr(response, "path", ""))

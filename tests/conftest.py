@@ -21,10 +21,11 @@ def _clear_api_caches():
     для первого (кэш предикта, свежести базы, статистики). Чистим до и после:
     порядок тестов не должен ничего значить.
     """
+    from krisha import predict_gate
     from krisha.api import app as app_module
+    from krisha.api import metrics
 
     caches = (
-        app_module._predict_cache,
         app_module._freshness_cache,
         app_module._model_meta_cache,
         app_module._stats_cache,
@@ -34,10 +35,16 @@ def _clear_api_caches():
     )
     for cache in caches:
         cache.clear()
+    # Кэш предикта и негативный кэш переехали в общую калитку (predict_gate):
+    # её же используют веб и бот, значит и чистить надо там.
+    predict_gate.clear()
+    metrics.reset()
     # Счётчик rate-limit тоже общий: у TestClient один «IP» на все тесты, и
     # без сброса пятнадцатый запрос ЛЮБОГО теста получал 429 из-за соседей.
     app_module._rate.clear()
     yield
     for cache in caches:
         cache.clear()
+    predict_gate.clear()
+    metrics.reset()
     app_module._rate.clear()

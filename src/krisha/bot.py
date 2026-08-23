@@ -22,7 +22,8 @@ from typing import Any
 
 import httpx
 
-from krisha.predict import KRISHA_URL_RE, predict_from_url
+from krisha import predict_gate
+from krisha.predict import KRISHA_URL_RE
 from krisha.stats import DISTRICT_RU
 
 logger = logging.getLogger(__name__)
@@ -327,7 +328,15 @@ def handle_update(update: dict[str, Any]) -> None:
 
     tg_call("sendChatAction", chat_id=chat_id, action="typing")
     try:
-        result = predict_from_url(url)
+        # Через общую калитку (кэш + single-flight + слоты + короткий сетевой
+        # бюджет), а НЕ напрямую в predict_from_url. Пост в канале — это
+        # наплыв и в бота тоже: раньше он скрейпил в обход всех
+        # предохранителей веба и занимал потоки фоновых задач.
+        result = predict_gate.cached_predict(url, live_vision=True)
+    except predict_gate.PredictBusy:
+        tg_call("sendMessage", chat_id=chat_id,
+                text="Сейчас много запросов, попробуй через полминуты 🙏")
+        return
     except FileNotFoundError:
         tg_call("sendMessage", chat_id=chat_id, text="Модель ещё не загружена, попробуй позже 🙏")
         return
