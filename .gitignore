@@ -16,6 +16,8 @@ data/*.db-wal
 # файловая блокировка старта воркеров (см. _startup_lock в api/app.py)
 data/.startup.lock
 data/*.csv
+# ревизия сборки: пишется воркфлоу деплоя прямо перед пушем снапшота в Space
+data/build_revision.txt
 data/rescrape_history_*.json
 # модель и метаданные коммитим — нужны деплою на Railway
 

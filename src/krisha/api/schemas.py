@@ -110,3 +110,7 @@ class HealthResponse(BaseModel):
     # unknown (не удалось спросить Telegram). Позволяет диагностировать бота
     # снаружи, без доступа к логам хостинга.
     tg_webhook: str = "unknown"
+    # Коммит, из которого собран образ (data/build_revision.txt, кладёт
+    # deploy-hf.yml). Смоук после деплоя сверяет его с выкатываемым sha —
+    # иначе он проверяет ещё живой старый контейнер. None — локальный запуск.
+    revision: str | None = None
