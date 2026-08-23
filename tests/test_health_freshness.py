@@ -65,3 +65,37 @@ def test_health_marks_missing_real_observations_stale(tmp_path, monkeypatch):
 
     assert data["freshness"] == "stale"
     assert data["data_age_hours"] is None
+
+
+# --- Ревизия сборки (гейт смоука после деплоя) -----------------------------
+
+def test_health_reports_build_revision(tmp_path, monkeypatch):
+    """Смоук после деплоя обязан отличать новый контейнер от старого.
+
+    Старый Space отвечает 200 всю пересборку, поэтому «сервис жив» ничего не
+    доказывает: без ревизии прогон подтверждал предыдущий деплой.
+    """
+    db_path = tmp_path / "revision.db"
+    _seed_listing(db_path, last_seen=NOW - timedelta(hours=1))
+    monkeypatch.setattr(app_module, "BUILD_REVISION", "a" * 40)
+
+    data = _health_json(monkeypatch, db_path)
+
+    assert data["revision"] == "a" * 40
+
+
+def test_build_revision_reads_deploy_file(tmp_path, monkeypatch):
+    """Файл кладёт deploy-hf.yml в data/ — Dockerfile копирует только его."""
+    monkeypatch.delenv("BUILD_REVISION", raising=False)
+    monkeypatch.setattr(app_module, "DATA_DIR", tmp_path)
+    (tmp_path / "build_revision.txt").write_text("deadbeef\n", encoding="utf-8")
+
+    assert app_module._build_revision() == "deadbeef"
+
+
+def test_build_revision_is_none_without_deploy_file(tmp_path, monkeypatch):
+    """Локальный запуск: ревизии нет, и это не ошибка."""
+    monkeypatch.delenv("BUILD_REVISION", raising=False)
+    monkeypatch.setattr(app_module, "DATA_DIR", tmp_path)
+
+    assert app_module._build_revision() is None

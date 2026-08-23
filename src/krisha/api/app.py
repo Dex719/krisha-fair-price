@@ -35,6 +35,7 @@ from krisha.api.schemas import (
     PredictResponse,
 )
 from krisha.config import (
+    DATA_DIR,
     DB_PATH,
     MODEL_META_PATH,
     MODEL_PATH,
@@ -219,6 +220,28 @@ async def _security_headers(request: Request, call_next):
 # ручка сайта (issue: бэк под поток людей). TTL секунд не портит смысл ответа:
 # возраст данных показывается в часах, метрики меняются раз в переобучение.
 HEALTH_CACHE_TTL_S = float(os.environ.get("HEALTH_CACHE_TTL_S", "60"))
+
+
+def _build_revision() -> str | None:
+    """Коммит, из которого собран этот образ, или None вне деплоя.
+
+    Пишется в data/build_revision.txt воркфлоу деплоя (см. deploy-hf.yml).
+    Без него смоук после выката не мог отличить новый контейнер от ещё
+    работающего старого: старый честно отвечает 200 всё время пересборки,
+    и прогон «подтверждал» предыдущий деплой. Метаданные Space для этого не
+    годятся — при пуше снапшота у HF свой sha, с нашим он не совпадает
+    никогда. Читаем один раз при импорте: файл запечён в образ.
+    """
+    env = (os.environ.get("BUILD_REVISION") or "").strip()
+    if env:
+        return env[:64]
+    try:
+        return ((DATA_DIR / "build_revision.txt").read_text(encoding="utf-8").strip() or None)
+    except OSError:
+        return None
+
+
+BUILD_REVISION = _build_revision()
 # stale_ttl: если база в этот момент занята скрейпером — отдаём прошлый ответ,
 # а не 500 всем сразу.
 _freshness_cache = TTLCache(ttl=HEALTH_CACHE_TTL_S, stale_ttl=900, maxsize=8)
@@ -242,6 +265,7 @@ def health(response: Response) -> HealthResponse:
         data_age_hours=data_age_hours,
         freshness=freshness,
         tg_webhook=bot.webhook_status(),
+        revision=BUILD_REVISION,
     )
 
 
