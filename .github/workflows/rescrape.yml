@@ -77,6 +77,16 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      - name: Alerts
+        if: always()
+        continue-on-error: true # падение алертов не должно съесть заливку базы
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TG_CHANNEL_ID: ${{ secrets.TG_CHANNEL_ID }}
+          TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
+        run: python scripts/send_alerts.py
+
       - name: Upload DB to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -109,12 +119,3 @@ jobs:
             --db-gz /tmp/krisha.db.gz --sha256 /tmp/krisha.db.gz.sha256 \
             --asset-name krisha.db.gz --stats-json /tmp/rescrape_stats.json \
             --label "Продажа" --rotate-keep-days 14
-
-      - name: Alerts
-        if: always()
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TG_CHANNEL_ID: ${{ secrets.TG_CHANNEL_ID }}
-          TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
-        run: python scripts/send_alerts.py
