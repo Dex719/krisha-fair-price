@@ -656,7 +656,13 @@ def setup_webhook(retries: int = 3) -> bool:
             url=f"{base}{WEBHOOK_PATH}",
             secret_token=webhook_secret(token),
             allowed_updates=["message"],
-            drop_pending_updates=True,
+            # drop_pending_updates НЕ ставим. Space пересобирается каждую ночь
+            # (свежая база запекается в образ) и рестартует при каждом деплое —
+            # с этим флагом каждый рестарт выбрасывал всё, что Telegram не успел
+            # доставить: сообщения пользователей просто исчезали, и знать об
+            # этом было неоткуда. Дубли, ради которых флаг когда-то ставили,
+            # уже закрыты дедупом: in-proc deque + таблица tg_updates
+            # (db.remember_update_id), общая для обоих воркеров.
         )
         if data and data.get("ok"):
             logger.info("Telegram webhook настроен: %s%s", base, WEBHOOK_PATH)

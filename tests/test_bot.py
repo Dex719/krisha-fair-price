@@ -247,6 +247,23 @@ def test_webhook_status_self_heals(monkeypatch):
     assert calls == []
 
 
+def test_setup_webhook_keeps_pending_updates(monkeypatch):
+    """Рестарт не имеет права выбрасывать недоставленные сообщения.
+
+    Space пересобирается каждую ночь и рестартует на каждый деплой; с
+    drop_pending_updates=True всё, что Telegram не успел доставить, исчезало
+    молча. Дубли закрыты дедупом (in-proc deque + таблица tg_updates).
+    """
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://kfp.example.com")
+    calls = []
+    monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
+
+    assert bot.setup_webhook() is True
+    assert calls[0][0] == "setWebhook"
+    assert "drop_pending_updates" not in calls[0][1]
+
+
 def test_webhook_status_ok_when_url_matches(monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://kfp.example.com")
