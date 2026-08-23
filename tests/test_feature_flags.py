@@ -22,9 +22,9 @@ def _clear_forecast_cache():
     """Кэш прогноза живёт в модуле и переживает смену флага между тестами."""
     from krisha.api import app as app_module
 
-    app_module._forecast_cache.update(data=None, ts=0.0)
+    app_module._forecast_cache.clear()
     yield
-    app_module._forecast_cache.update(data=None, ts=0.0)
+    app_module._forecast_cache.clear()
 
 
 def test_flags_are_off_by_default(monkeypatch):

@@ -49,4 +49,13 @@ EXPOSE 7860
 # сам curl, чтобы проба не висела дольше своего timeout.
 HEALTHCHECK --interval=60s --timeout=35s --start-period=60s --retries=3 \
     CMD curl -fsS --max-time 30 http://localhost:7860/api/health || exit 1
-CMD ["uvicorn", "krisha.api.app:app", "--host", "0.0.0.0", "--port", "7860"]
+# Воркеров по числу ядер (HF free tier — 2 vCPU). Один процесс упирался в GIL:
+# пока он сериализует статистику или считает признаки, остальные запросы ждут.
+# Два процесса делят один сокет и удваивают пропускную способность на
+# python-тяжёлых путях; память — ~600 МБ на воркер при 16 ГБ на Space.
+# Переменной WEB_CONCURRENCY=1 всё возвращается к прежнему поведению.
+# Совместная работа воркеров разведена явно: старт под флоком (одна закачка
+# базы и одни миграции), дедуп телеграм-апдейтов в таблице tg_updates,
+# статистика использования сливается при флаше, а не перетирается.
+ENV WEB_CONCURRENCY=2
+CMD ["sh", "-c", "exec uvicorn krisha.api.app:app --host 0.0.0.0 --port 7860 --workers ${WEB_CONCURRENCY:-2}"]
