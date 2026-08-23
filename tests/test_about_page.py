@@ -89,3 +89,25 @@ def test_health_exposes_model_error_pct_without_csp_changes():
     assert "model_error_pct" in resp.json()
     assert "fonts.googleapis.com" not in CSP
     assert "fonts.gstatic.com" not in CSP
+
+
+def test_about_shows_temporal_validity_caveat():
+    """issue #158: голый процент точности читается как обещание.
+
+    Пока `temporal_validity` в мете false, страница обязана сказать вслух, что
+    число описывает попадание по текущему стоку, а не будущие объявления.
+    """
+    html = _static("about.html")
+
+    assert 'data-l="tvnote"' in html
+    assert "model_temporal_validity" in html
+    assert "а не обещание такой же точности на будущих объявлениях" in html
+
+
+def test_about_mae_is_live_not_frozen():
+    """MAE стоял в разметке руками (4,04 млн ₸) и разъехался с метой на 0.35."""
+    html = _static("about.html")
+
+    assert 'data-l="mae"' in html
+    assert "model_mae" in html
+    assert "4,04" not in html
