@@ -201,6 +201,7 @@ def health() -> HealthResponse:
         model_loaded=MODEL_PATH.exists(),
         model_error_pct=_model_error_pct(),
         model_median_error_pct=_model_metric_pct("mdape"),
+        model_r2=_model_r2(),
         data_age_hours=data_age_hours,
         freshness=freshness,
         tg_webhook=bot.webhook_status(),
@@ -248,11 +249,12 @@ def _parse_db_datetime(value: str) -> datetime | None:
     return dt.astimezone(timezone.utc)
 
 
-def _model_metric_pct(name: str) -> float | None:
-    """Метрика модели из models/model_meta.json в процентах — для публичных страниц.
+def _model_metric(name: str) -> float | None:
+    """Сырая метрика модели из models/model_meta.json.
 
     Сайт показывает точность живыми числами, а не переписанными руками: любое
-    переобучение меняет их само. `name` — ключ внутри metrics.model (mape, mdape).
+    переобучение меняет их само. `name` — ключ внутри metrics.model
+    (mape, mdape, r2).
     """
     if not MODEL_META_PATH.exists():
         return None
@@ -261,15 +263,27 @@ def _model_metric_pct(name: str) -> float | None:
         value = meta.get("metrics", {}).get("model", {}).get(name)
         if value is None:
             return None
-        return round(float(value) * 100, 1)
+        return float(value)
     except (OSError, ValueError, TypeError):
         logger.warning("health: не удалось прочитать метрику %s", name, exc_info=True)
         return None
 
 
+def _model_metric_pct(name: str) -> float | None:
+    """Доля из meta в процентах — для метрик ошибки (mape, mdape)."""
+    value = _model_metric(name)
+    return None if value is None else round(value * 100, 1)
+
+
 def _model_error_pct() -> float | None:
     """Средняя процентная ошибка модели (MAPE)."""
     return _model_metric_pct("mape")
+
+
+def _model_r2() -> float | None:
+    """R² на отложенной выборке. Не процент — показываем как 0.937."""
+    value = _model_metric("r2")
+    return None if value is None else round(value, 3)
 
 
 # Анти-спам: скользящее окно запросов на IP (живём в одном процессе — хватает)

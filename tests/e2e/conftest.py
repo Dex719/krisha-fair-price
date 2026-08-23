@@ -62,6 +62,7 @@ def health_data() -> dict:
         "model_loaded": True,
         "model_error_pct": 7.6,
         "model_median_error_pct": 5.1,
+        "model_r2": 0.937,
         "data_age_hours": 3.0,
         "freshness": "fresh",
     }

@@ -178,7 +178,7 @@ html.lite .sk{animation:none}
 <main id="main">
 <section class="nf"><div class="wrap">
 <svg class="nfnum" viewBox="0 0 760 300" aria-hidden="true"><text x="-8" y="252">4<tspan class="z">0</tspan>4</text></svg>
-<h1 class="nfh">Такой страницы нет.<br>Зато есть <em>20 729</em> живых объявлений.</h1>
+<h1 class="nfh">Такой страницы нет.<br>Зато есть <em data-l="total">21 113</em> живых объявлений.</h1>
 <p class="nfp">Ссылка устарела или в адрес закралась опечатка. Вернитесь на главную и проверьте квартиру — это занимает <b>секунду</b>.</p>
 <div class="nfrow">
 <a class="nfbtn hot" href="/">Проверить квартиру<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
@@ -192,7 +192,7 @@ html.lite .sk{animation:none}
  <div>
   <a class="flogo" href="/" aria-label="baǵam — на главную">baǵam<span>.</span></a>
   <p class="ftag">Считаем справедливую цену квартиры в Алматы по объявлению с krisha.kz — за секунду и бесплатно.</p>
-  <div class="fchips"><span class="fchip"><b data-l="total">20 729</b> активных лотов</span><span class="fchip">ошибка <b data-l="mape">7,6%</b></span><span class="fchip"><b data-l="age">обновление ежедневно</b></span></div>
+  <div class="fchips"><span class="fchip"><b data-l="total">21 113</b> активных лотов</span><span class="fchip">ошибка <b data-l="mape">7,3%</b></span><span class="fchip"><b data-l="age">обновление ежедневно</b></span></div>
  </div>
  <div>
   <div class="fh">Продукт</div>
@@ -212,7 +212,7 @@ html.lite .sk{animation:none}
  </div>
  <div>
   <div class="fh">Как это работает</div>
-  <p class="fnote">Модель <b>CatBoost</b> сравнивает объявление с активными лотами Алматы. Средняя ошибка <b data-l="mape">7,6%</b> на отложенной выборке. Оценка справочная и не является офертой.</p>
+  <p class="fnote">Модель <b>CatBoost</b> сравнивает объявление с активными лотами Алматы. Средняя ошибка <b data-l="mape">7,3%</b> на отложенной выборке. Оценка справочная и не является офертой.</p>
  </div>
 </div>
 
@@ -317,6 +317,7 @@ bagamTG(function(tg){
     if(h){
       if(h.model_error_pct)put('[data-l=mape]',pc(h.model_error_pct)+'%');
       if(h.model_median_error_pct)put('[data-l=mdape]',pc(h.model_median_error_pct)+'%');
+      if(h.model_r2)put('[data-l=r2]',h.model_r2.toFixed(3));
       if(h.data_age_hours!=null)put('[data-l=age]',age(h.data_age_hours));
       document.querySelectorAll('[data-l=status]').forEach(function(e){
         e.textContent=h.status==='ok'&&h.model_loaded?'сервис работает':'сервис недоступен';

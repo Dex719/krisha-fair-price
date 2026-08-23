@@ -14,6 +14,7 @@ CDN заглушены. Проверяется то, чего не видят st
 """
 
 import json
+import re
 from copy import deepcopy
 
 import pytest
@@ -311,7 +312,9 @@ def test_home_survives_dead_market_api(hermetic_page, hermetic_server):
 
     expect(page.locator("[data-l=age]").first).to_have_text("цифры из последнего успешного обновления")
     # Снимок сборки на месте: число лотов не обнулилось и не превратилось в «—».
-    expect(page.locator("[data-l=total]").first).to_contain_text("729")
+    # Само значение не фиксируем — оно переписывается каждым переобучением,
+    # а тест должен ловить пустоту, а не расхождение с конкретной неделей.
+    expect(page.locator("[data-l=total]").first).to_have_text(re.compile(r"^\d{1,3}(\s\d{3})+$"))
     # Кнопки демо нет (без /api/demo), но форма работает.
     expect(page.locator("[data-demo]")).to_be_hidden()
     expect(page.locator("form[data-check]:has(#lotUrl) .gobtn")).to_be_enabled()

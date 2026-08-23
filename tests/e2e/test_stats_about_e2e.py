@@ -120,6 +120,7 @@ def test_about_page_renders_and_dynamic_numbers_load(hermetic_page, mock_api, he
     expect(page.locator("[data-l=total]").first).to_have_text("18 680")
     expect(page.locator("[data-l=mape]").first).to_have_text("7,6%")
     expect(page.locator("[data-l=mdape]").first).to_have_text("5,1%")
+    expect(page.locator("[data-l=r2]").first).to_have_text("0.937")
     expect(page.locator("[data-l=age]").first).to_have_text("обновлено 3 ч назад")
     assert errors == []
 
