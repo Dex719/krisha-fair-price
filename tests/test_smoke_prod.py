@@ -44,11 +44,11 @@ class FakeClient:
 
 
 def _ok_client():
-    page = '<a class="logo">baǵam</a><form id="form"><input id="url"></form>/api/predict'
+    page = '<a class="logo">baǵam</a><form data-check><input id="lotUrl"></form>/api/predict'
     return FakeClient(
         {
             "/": FakeResponse(text=page),
-            "/stats": FakeResponse(text='<a class="logo">baǵam</a>Медиана по районам /api/stats'),
+            "/stats": FakeResponse(text='<a class="logo">baǵam</a><div data-meta="districts"></div>/api/stats'),
             "/about": FakeResponse(text='<a class="logo">baǵam</a>О проекте Как считает модель'),
             "/api/health": FakeResponse(
                 json_data={
