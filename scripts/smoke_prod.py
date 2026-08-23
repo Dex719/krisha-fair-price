@@ -17,9 +17,13 @@ import httpx
 DEFAULT_BASE_URL = "https://dex719-krisha-fair-price.hf.space"
 DEFAULT_TIMEOUT_S = 30.0
 
+# Маркеры — это то, без чего страница бесполезна: форма оценки, таблица районов,
+# вызовы к API. Держим их на структурных хуках (id, data-атрибуты), а не на
+# оформлении: редизайн #174 переименовал id="url" в id="lotUrl" и снёс заголовок
+# «Медиана по районам» — смоук об этом узнал только после выката в прод.
 PAGE_MARKERS = {
-    "/": ('class="logo"', "baǵam", 'id="form"', 'id="url"', "/api/predict"),
-    "/stats": ('class="logo"', "baǵam", "Медиана по районам", "/api/stats"),
+    "/": ('class="logo"', "baǵam", 'id="lotUrl"', "data-check", "/api/predict"),
+    "/stats": ('class="logo"', "baǵam", 'data-meta="districts"', "/api/stats"),
     "/about": ('class="logo"', "baǵam", "О проекте", "Как считает модель"),
 }
 
