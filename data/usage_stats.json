@@ -285,20 +285,11 @@
       "predict": 1,
       "site": 9
     },
-    "2026-08-25": {
-      "bot": 0,
-      "bot_users": [],
-      "hours": {
-        "21": 3
-      },
-      "predict": 1,
-      "site": 2
-    },
     "2026-08-26": {
       "bot": 0,
       "bot_users": [],
       "hours": {
-        "9": 1
+        "18": 1
       },
       "predict": 0,
       "site": 1
