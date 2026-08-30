@@ -481,14 +481,20 @@ def run_backtest(
                 "выборку, в агрегат не берём",
                 fold.index, fold_validity["worst_tvd"], fold_validity["threshold"],
             )
-            continue
+        # Невалидный фолд не входит в агрегат (issue #158), но его per-row
+        # предикты сохраняем: парное сравнение двух прогонов (--compare,
+        # join по fold+listing_id) сравнивает модели на ОДНИХ И ТЕХ ЖЕ
+        # строках — перекос состава теста сокращается в разности, поэтому
+        # для A/B-сравнения такие строки пригодны, в отличие от абсолютной
+        # «временной оценки». Флаг fold_valid остаётся в CSV.
         all_preds.append(preds)
 
     # issue #158: агрегат публикуем только если валидных фолдов достаточно.
     # Отказ с диагностикой — это КОРРЕКТНЫЙ вывод методики на текущих данных,
     # а не её провал: на сборе 02.07–13.07 валидных фолдов ноль, и число,
     # выданное «хотя бы для справки», приживётся в обсуждениях, а оговорка нет.
-    if not all_preds:
+    valid_preds = [p for p in all_preds if bool(p["fold_valid"].iloc[0])]
+    if not valid_preds:
         report = {
             "overall": None,
             "temporal_estimate": None,
@@ -508,19 +514,22 @@ def run_backtest(
             },
         }
         logger.error("issue #158: %s", report["reason"])
-        return pd.DataFrame(), report
+        # per-row предикты (с fold_valid=False) возвращаем ради --compare;
+        # агрегат по ним по-прежнему не публикуется.
+        combined_all = pd.concat(all_preds, ignore_index=True) if all_preds else pd.DataFrame()
+        return combined_all, report
 
     combined = pd.concat(all_preds, ignore_index=True)
-    report = summarize(combined)
-    if len(all_preds) < MIN_VALID_FOLDS:
+    report = summarize(pd.concat(valid_preds, ignore_index=True))
+    if len(valid_preds) < MIN_VALID_FOLDS:
         report["temporal_estimate"] = None
         report["reason"] = (
-            f"валидных фолдов {len(all_preds)} < {MIN_VALID_FOLDS} — агрегат посчитан, "
+            f"валидных фолдов {len(valid_preds)} < {MIN_VALID_FOLDS} — агрегат посчитан, "
             "но как временная оценка не годится"
         )
         logger.warning("issue #158: %s", report["reason"])
     report["per_fold"] = fold_summaries
-    report["n_folds_run"] = len(all_preds)
+    report["n_folds_run"] = len(valid_preds)
     report["n_folds_invalid"] = invalid
     report["n_folds_skipped"] = skipped
     report["config"] = {

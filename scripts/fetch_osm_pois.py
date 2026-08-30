@@ -48,8 +48,15 @@ QUERIES = {
     "bus_stop": 'node["highway"="bus_stop"]({bbox});',
     "big_road": 'way["highway"~"^(motorway|trunk|primary)$"]({bbox});',
     "industrial": 'way["landuse"="industrial"]({bbox});',
+    # Строящееся метро: тоннели продления до «Калкаман» (railway=construction)
+    # + проектная трасса «Продление до Барлык». Близость будущей станции
+    # закладывается в цену до запуска (рыночная разведка, авг 2026).
+    "metro_construction": (
+        '(way["railway"="construction"]({bbox});'
+        'way["railway"="proposed"]["name"~"Барлык"]({bbox}););'
+    ),
 }
-GEOMETRY_CATS = {"big_road", "industrial"}  # линии/полигоны → прореженные вершины
+GEOMETRY_CATS = {"big_road", "industrial", "metro_construction"}  # линии/полигоны → прореженные вершины
 STEP_KM = 0.06  # шаг прореживания геометрии
 
 
