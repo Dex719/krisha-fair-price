@@ -28,6 +28,12 @@ POI_DISTANCE_FEATURES = {
     "bus_stop": "dist_bus_stop_km",
     "big_road": "dist_big_road_km",      # анти-фактор: магистраль под окнами
     "industrial": "dist_industrial_km",  # анти-фактор: промзона рядом
+    # Строящееся метро (продление до «Калкаман», дек. 2026; трасса до «Барлык»,
+    # ~2030): гипотеза «капитализация до запуска» НЕ подтвердилась на парном
+    # walk-forward AB (авг 2026): в сегменте <1.5 км (n=2116) MAPE 7.53→7.57,
+    # Wilcoxon p=0.36 — эффект уже сидит в hex7/hex8_ppsm. POI-категория
+    # metro_construction остаётся в models/osm_pois.json (см. fetch_osm_pois.py)
+    # для factor_hints/фронта; в фичи расстояние не подаём.
 }
 GEO_FEATURES = [*POI_DISTANCE_FEATURES.values(), "walk_score"]
 

@@ -57,6 +57,32 @@ NUM_FEATURES = [
     *GEO_FEATURES,
     "hex7_ppsm", "hex8_ppsm",      # медианная ₸/м² по гексагонам H3 (krisha.spatial)
 ]
+
+# Отбасы банк (≈58% ипотечного портфеля страны) с июля 2026 кредитует панельные
+# дома возрастом до 60 лет (ранее 50). Панель старше — вне главного канала
+# финансирования вторички, что системно давит цену. [разведка №1, 2026-08]
+# В модель НЕ идёт: парный walk-forward AB на 3 сидах (авг 2026, 6730
+# спаренных строк, сегмент panel_old60 n=68) — Δ MAPE по сидам −0.145 /
+# −0.013 / +0.154, среднее по листингу Δ−0.001 (Wilcoxon p=0.85), при
+# сидовом шуме сегмента |Δ|≈0.06. Эффект неотличим от шума обучения;
+# hex7/hex8_ppsm уже несут локальную просадку панели. Вычисляется в
+# EXTRA_FEATURES — полезен как бейдж-предупреждение в predict и как
+# кандидат при накоплении ≥6–9 мес истории.
+OTBASY_PANEL_MAX_AGE = 60
+
+# Классические границы «золотого квадрата» (Толе би — Абая — Абылай хана —
+# Достык) прямоугольником по осевым линиям улиц: исторический центр с своим
+# ценообразованием (старый фонд и клубные дома в одних и тех же кварталах).
+# Вычисляется, но в модель не идёт: парный walk-forward AB (авг 2026, 6730
+# спаренных строк) показал ухудшение в самом сегменте (MAPE 17.6→18.2,
+# Wilcoxon p=0.48, n=40) — прямоугольник слишком груб, сегмент мал, а
+# hex7/hex8_ppsm уже несут локальную цену. Кандидат на возврат как полигон.
+GOLDEN_SQUARE_BOUNDS = {
+    "lat_min": 43.2399,  # пр. Абая
+    "lat_max": 43.2570,  # ул. Толе би
+    "lon_min": 76.9410,  # пр. Абылай хана
+    "lon_max": 76.9570,  # пр. Достык
+}
 # Вычисляются, но в модель не идут — абляция на честном сплите (group split по
 # зданиям + dedup перевыставлений) показала, что они ухудшают метрики:
 #   knn_ppsm/knn_n      — на train сосед = свой дом, на test его нет (leakage-mismatch)
@@ -67,7 +93,10 @@ NUM_FEATURES = [
 # на каждом предикте похода в кэш llm_flags — то есть SQL-запроса ради колонок,
 # которые тут же выбрасывались. Вернуть, если абляция на rolling-origin
 # backtest (#158) покажет измеримый вклад.
-EXTRA_FEATURES = ["district_mismatch", "knn_ppsm", "knn_n"]
+EXTRA_FEATURES = [
+    "district_mismatch", "knn_ppsm", "knn_n",
+    "in_golden_square", "otbasy_panel_excluded",
+]
 ALL_FEATURES = NUM_FEATURES + CAT_FEATURES
 TARGET = "log_price"
 MISSING_CAT = "unknown"
@@ -291,6 +320,20 @@ def build_features(
         haversine_km(lat, lon, *ALMATY_CENTER) if pd.notna(lat) and pd.notna(lon) else np.nan
         for lat, lon in zip(df["lat"], df["lon"])
     ]
+
+    # Финансово-регуляторные фичи (разведка №1). building_type здесь ещё сырой
+    # (нормализация категорий ниже), NaN → 'nan' → False; building_age NaN → False.
+    is_panel = df.get("building_type", pd.Series(index=df.index, dtype=object)).astype(str).str.contains(
+        "панел", case=False, na=False
+    )
+    df["otbasy_panel_excluded"] = (
+        is_panel & (df["building_age"] > OTBASY_PANEL_MAX_AGE)
+    ).astype(int)
+    gs = GOLDEN_SQUARE_BOUNDS
+    df["in_golden_square"] = (
+        df["lat"].between(gs["lat_min"], gs["lat_max"])
+        & df["lon"].between(gs["lon_min"], gs["lon_max"])
+    ).fillna(False).astype(int)
 
     for col in CAT_FEATURES:
         if col not in df:
