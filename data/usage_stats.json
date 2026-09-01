@@ -307,11 +307,10 @@
       "bot": 0,
       "bot_users": [],
       "hours": {
-        "1": 2,
-        "13": 1
+        "23": 1
       },
-      "predict": 1,
-      "site": 3
+      "predict": 0,
+      "site": 1
     }
   }
 }
