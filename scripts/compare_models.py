@@ -350,7 +350,8 @@ def main() -> None:
         "temporal_validity": anchor_metrics.get("temporal_validity"),
         "time_confounding": {
             k: anchor_metrics.get("time_confounding", {}).get(k)
-            for k in ("confounded", "worst_day_tvd", "threshold")
+            for k in ("confounded", "weighted_day_tvd", "worst_day_tvd",
+                      "threshold", "window_days", "evaluated_days")
         },
         "note": (
             "тест общий для всех эпох — относительное ранжирование честное; "
