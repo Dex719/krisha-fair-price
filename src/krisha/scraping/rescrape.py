@@ -544,7 +544,21 @@ def sweep(
         # когорты ниже сравнивает с ним first_seen, который проставляет сам
         # SQLite через datetime('now'). Смешивать два источника времени в
         # одном сравнении — напрашиваться на расхождение в доли секунды.
-        pass_started_at = conn.execute("SELECT datetime('now')").fetchone()[0]
+        # Миллисекунды, а не секунды (issue #171). started_at — PRIMARY KEY
+        # sweep_runs с INSERT OR REPLACE: два прохода, стартовавших в одну
+        # секунду (ручной перезапуск джобы, шардированные прогоны), схлопывались
+        # в одну строку, и история проходов молча теряла запись — ту самую, по
+        # которой считаются инварианты «очередь растёт третий проход подряд» и
+        # «упёрлись в потолок N дней подряд».
+        pass_started_at = conn.execute(
+            "SELECT strftime('%Y-%m-%d %H:%M:%f', 'now')"
+        ).fetchone()[0]
+        # Секундная форма ТОГО ЖЕ момента — для сравнений с колонками, которые
+        # пишутся через datetime('now') (listings.first_seen). Строки там без
+        # долей секунды, а сравнение текстовое: "…:30" < "…:30.123", и лоты,
+        # созданные этим же проходом в стартовую секунду, выпали бы из пометки
+        # когорты. Форматы обязаны совпадать по обе стороны сравнения.
+        pass_started_at_sec = pass_started_at[:19]
         observation_gap_days = round(gap_days, 2) if gap_days is not None else None
         recovery_pass = (
             observation_gap_days is not None and observation_gap_days > RECOVERY_GAP_DAYS
@@ -1088,7 +1102,8 @@ def sweep(
                 "UPDATE listings SET first_seen_cohort = ? "
                 "WHERE first_seen >= ? AND first_seen_cohort IS NULL "
                 "AND COALESCE(source, 'scrape') <> 'user'",
-                (cohort, pass_started_at),
+                # секундная форма: first_seen пишется через datetime('now')
+                (cohort, pass_started_at_sec),
             ).rowcount
             if cohort_marked:
                 logger.warning(
