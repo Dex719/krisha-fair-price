@@ -178,8 +178,17 @@ def cluster_bootstrap_ci(
     }
 
 
+# Меньше этого числа строк в дне TVD меряет не состав, а размер выборки: из
+# девяти районов в двадцати объявлениях половина категорий просто не выпадет,
+# и «непредставительный день» получится у любого, даже идеально равномерного,
+# сбора. Такие дни в вердикт не берём — только в диагностику.
+MIN_ROWS_PER_DAY = 30
+
+
 def time_confounding(df: pd.DataFrame, day_col: str = "first_seen",
-                     by: str = "district") -> dict:
+                     by: str = "district", *,
+                     min_rows_per_day: int = MIN_ROWS_PER_DAY,
+                     window_days: int | None = None) -> dict:
     """Спутана ли временная ось с составом данных (issue #158).
 
     Rolling-origin меряет обобщение ВО ВРЕМЕНИ только если состав данных не
@@ -189,25 +198,77 @@ def time_confounding(df: pd.DataFrame, day_col: str = "first_seen",
     Backtest на таких данных померяет перенос с дешёвого района на дорогой и
     назовёт это ошибкой прогноза во времени.
 
-    Возвращает TVD состава каждого дня против общего состава и вердикт
-    confounded. Проверка нужна КАЖДЫЙ раз, а не однократно: она же
-    автоматически перестанет срабатывать, когда сбор станет равномерным.
+    ВЕРДИКТ СЧИТАЕТСЯ ПО ВЗВЕШЕННОМУ СРЕДНЕМУ, А НЕ ПО МАКСИМУМУ. Раньше
+    `confounded` определял максимум TVD по всем дням истории, и это делало
+    метрику неспособной позеленеть в принципе: один день с тремя строками —
+    или одна давняя перекошенная когорта, которая останется в выборке
+    навсегда, — красили проверку целиком, независимо от того, как собираются
+    данные сегодня. Гейт релизов на таком числе взводить нельзя: он
+    заблокировал бы модель не за качество сбора, а за прошлое.
+
+    Взвешенное среднее (доля строк дня × его TVD) читается как «какую долю
+    данных в среднем пришлось бы переложить, чтобы состав дня совпал с общим»
+    — и растёт только тогда, когда перекошены дни, где реально лежат данные.
+    Дни меньше `min_rows_per_day` в вердикт не входят вовсе (см. константу).
+    Максимум по дням остаётся в отчёте как диагностика.
+
+    `window_days` — считать только последние N дней (для вопроса «как сбор
+    ведёт себя СЕЙЧАС», отдельно от истории). None — вся выборка.
+
+    Чего эта проверка НЕ ловит по построению: сдвиг состава ровно в тестовом
+    окне (несколько дней на краю выборки — это малая доля строк, и взвешенное
+    среднее их почти не чувствует). Именно этот случай ловит
+    `representativeness` — тест против всей выборки. Поэтому вердикт о
+    временной валидности в train.py требует ОБЕИХ проверок сразу, а не одной.
+
+    Проверка нужна КАЖДЫЙ раз, а не однократно: она же автоматически
+    перестанет срабатывать, когда сбор станет равномерным (issue #152).
     """
+    empty = {"days": {}, "day_rows": {}, "evaluated_days": 0, "skipped_small_days": 0,
+             "threshold": MAX_TEST_TVD, "min_rows_per_day": min_rows_per_day}
     if day_col not in df.columns or by not in df.columns:
-        return {"confounded": False, "reason": f"нет колонки {day_col} или {by}", "days": {}}
+        return {"confounded": False, "reason": f"нет колонки {day_col} или {by}", **empty}
     days = pd.to_datetime(df[day_col], errors="coerce").dt.floor("D")
     usable = df[days.notna()]
+    days = days[days.notna()]
     if usable.empty:
-        return {"confounded": False, "reason": "нет дат", "days": {}}
+        return {"confounded": False, "reason": "нет дат", **empty}
+    if window_days is not None:
+        cutoff = days.max() - pd.Timedelta(days=window_days)
+        keep = days > cutoff
+        usable, days = usable[keep], days[keep]
+        if usable.empty:
+            return {"confounded": False, "reason": "нет дат в окне", **empty}
 
+    # Эталон состава — те же данные, по которым считается вердикт: сравнивать
+    # окно с составом за пределами окна значило бы мерить не спутанность, а
+    # разницу между окном и историей.
     whole = usable[by]
     per_day: dict[str, float] = {}
-    for day, sub in usable.groupby(days[days.notna()]):
+    rows_per_day: dict[str, int] = {}
+    for day, sub in usable.groupby(days):
         per_day[str(day.date())] = round(total_variation_distance(sub[by], whole), 3)
-    worst = max(per_day.values(), default=0.0)
+        rows_per_day[str(day.date())] = int(len(sub))
+
+    big = {d: t for d, t in per_day.items() if rows_per_day[d] >= min_rows_per_day}
+    total_rows = sum(rows_per_day[d] for d in big)
+    weighted = (
+        sum(per_day[d] * rows_per_day[d] for d in big) / total_rows if total_rows else 0.0
+    )
+    worst_day = max(big, key=big.get, default=None)
     return {
-        "confounded": bool(worst > MAX_TEST_TVD),
-        "worst_day_tvd": round(worst, 3),
+        # Вердикт — по взвешенному среднему больших дней (см. докстринг).
+        "confounded": bool(weighted > MAX_TEST_TVD),
+        "weighted_day_tvd": round(weighted, 3),
+        # Диагностика: максимум по тем же дням и по всей истории целиком.
+        "worst_day_tvd": round(max(big.values(), default=0.0), 3),
+        "worst_day": worst_day,
+        "worst_day_tvd_all_days": round(max(per_day.values(), default=0.0), 3),
         "threshold": MAX_TEST_TVD,
+        "min_rows_per_day": min_rows_per_day,
+        "evaluated_days": len(big),
+        "skipped_small_days": len(per_day) - len(big),
+        "window_days": window_days,
         "days": per_day,
+        "day_rows": rows_per_day,
     }

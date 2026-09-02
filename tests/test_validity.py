@@ -183,3 +183,87 @@ def test_missing_date_column_is_not_fatal():
     result = time_confounding(pd.DataFrame({"district": ["a", "b"]}))
 
     assert result["confounded"] is False and "нет колонки" in result["reason"]
+
+
+# --- Вердикт спутанности: взвешенное среднее вместо максимума --------------
+
+def test_single_tiny_day_does_not_condemn_even_collection():
+    """Раньше вердикт брал МАКСИМУМ по всем дням. День с горсткой строк даёт
+    высокий TVD от одного размера выборки (девять районов в двадцати лотах не
+    выпадут), и метрика не могла позеленеть в принципе — а гейт релизов на
+    такой метрике блокировал бы модель за прошлое, а не за качество."""
+    even = pd.DataFrame({
+        "first_seen": pd.date_range("2026-08-01", periods=10).repeat(100),
+        "district": ["a", "b"] * 500,
+    })
+    tiny = pd.DataFrame({
+        "first_seen": [pd.Timestamp("2026-08-11")] * 3,
+        "district": ["a", "a", "a"],
+    })
+
+    result = time_confounding(pd.concat([even, tiny], ignore_index=True))
+
+    assert result["confounded"] is False
+    assert result["skipped_small_days"] == 1
+    assert result["worst_day_tvd_all_days"] >= 0.4  # мелкий день виден в диагностике
+
+
+def test_old_skew_stops_hiding_current_collection():
+    """Перекошенная когорта из прошлого остаётся в выборке навсегда. Вопрос
+    «валидна ли ОЦЕНКА СЕЙЧАС» решается окном, а не всей историей."""
+    july = pd.DataFrame({
+        "first_seen": pd.date_range("2026-07-01", periods=5).repeat(200),
+        "district": ["a"] * 1000,
+    })
+    august = pd.DataFrame({
+        "first_seen": pd.date_range("2026-08-10", periods=5).repeat(200),
+        "district": ["a", "b"] * 500,
+    })
+    df = pd.concat([july, august], ignore_index=True)
+
+    assert time_confounding(df)["confounded"] is True
+    assert time_confounding(df, window_days=20)["confounded"] is False
+
+
+def test_weighted_verdict_reacts_to_where_the_data_is():
+    """Взвешивание по размеру дня: перекос считается там, где лежат данные.
+
+    Половина выборки в дни «только район a», половина — «только район b»:
+    состав меняется вместе с временем на всей массе данных, и вердикт обязан
+    быть красным.
+    """
+    first = pd.DataFrame({
+        "first_seen": pd.date_range("2026-08-01", periods=3).repeat(400),
+        "district": ["a"] * 1200,
+    })
+    second = pd.DataFrame({
+        "first_seen": pd.date_range("2026-08-04", periods=3).repeat(400),
+        "district": ["b"] * 1200,
+    })
+
+    result = time_confounding(pd.concat([first, second], ignore_index=True))
+
+    assert result["confounded"] is True
+    assert result["weighted_day_tvd"] == pytest.approx(0.5, abs=0.01)
+    assert result["evaluated_days"] == 6
+
+
+def test_small_tail_of_odd_days_does_not_flip_the_verdict():
+    """Обратная сторона взвешивания, названная явно: пара нетипичных дней на
+    краю выборки вердикт не переворачивает. Сдвиг состава ИМЕННО в тестовом
+    окне ловит не эта проверка, а representativeness (тест против всей
+    выборки) — они дополняют друг друга, поэтому temporal_validity требует
+    обеих сразу."""
+    bulk = pd.DataFrame({
+        "first_seen": pd.date_range("2026-08-01", periods=5).repeat(400),
+        "district": ["a", "b"] * 1000,
+    })
+    tail = pd.DataFrame({
+        "first_seen": pd.date_range("2026-08-06", periods=2).repeat(40),
+        "district": ["a"] * 80,
+    })
+
+    result = time_confounding(pd.concat([bulk, tail], ignore_index=True))
+
+    assert result["confounded"] is False
+    assert result["worst_day_tvd"] > result["threshold"]  # сами дни видны в отчёте
