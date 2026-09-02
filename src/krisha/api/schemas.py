@@ -109,6 +109,9 @@ class HealthResponse(BaseModel):
     # что число точности описывает текущий сток, а не экстраполяцию вперёд —
     # страница обязана сказать это вслух, а не показывать голый процент.
     model_temporal_validity: bool | None = None
+    # issue #190 §2.4: 95% бутстрэп-ДИ MAPE в процентах — точка без интервала
+    # заставляет читать 7.49 против 7.29 как «стало хуже», хотя разница внутри ДИ.
+    model_error_ci_pct: list[float] | None = None
     data_age_hours: float | None = None
     freshness: Literal["ok", "stale"] = "stale"
     # Статус Telegram-webhook: ok | unset | mismatch | no_token | no_public_url |
