@@ -36,7 +36,9 @@ jobs:
       - name: Audit dependencies (pip-audit)
         run: |
           pip install -q pip-audit
-          pip-audit --skip-editable
+          # Аудитим lock, который реально ставим в образ, а не окружение раннера:
+          # предустановленный setuptools ubuntu-latest (PYSEC-2026-3447) — не наша зависимость.
+          pip-audit -r requirements.lock --no-deps
 
   e2e:
     runs-on: ubuntu-latest
