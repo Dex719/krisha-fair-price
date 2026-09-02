@@ -276,7 +276,7 @@ html.lite .sk{animation:none}
 </div></section>
 <section class="sect"><div class="wrap">
 <div class="mets4">
- <div class="met4"><span class="rl">Средняя ошибка</span><b class="acc" data-l="mape">7,3%</b><span class="s">MAPE последней опубликованной модели</span></div>
+ <div class="met4"><span class="rl">Средняя ошибка</span><b class="acc" data-l="mape">7,3%</b><span class="s">MAPE последней опубликованной модели<span data-l="mapeci"></span></span></div>
  <div class="met4"><span class="rl">Ошибка в деньгах</span><b><span data-l="mae">3,69</span> <small>млн ₸</small></b><span class="s">MAE на отложенной выборке</span></div>
  <div class="met4"><span class="rl">Качество подгонки</span><b data-l="r2">0.937</b><span class="s">R² на отложенной выборке</span></div>
  <div class="met4"><span class="rl">Доля ошибки под 10%</span><b data-l="mdape">5,6%</b><span class="s">медианная ошибка: половина оценок точнее этого</span></div>
@@ -467,6 +467,7 @@ bagamTG(function(tg){
     }
     if(h){
       if(h.model_error_pct)put('[data-l=mape]',pc(h.model_error_pct)+'%');
+      if(h.model_error_ci_pct&&h.model_error_ci_pct.length===2)put('[data-l=mapeci]',', 95% ДИ '+pc(h.model_error_ci_pct[0])+'–'+pc(h.model_error_ci_pct[1])+'%');
       if(h.model_median_error_pct)put('[data-l=mdape]',pc(h.model_median_error_pct)+'%');
       if(h.model_r2)put('[data-l=r2]',h.model_r2.toFixed(3));
       if(h.model_mae)put('[data-l=mae]',(Math.round(h.model_mae/1e5)/10).toString().replace('.',','));

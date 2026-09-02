@@ -15,6 +15,7 @@ import random
 import sqlite3
 import threading
 import time
+import uuid
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
@@ -207,11 +208,31 @@ async def _security_headers(request: Request, call_next):
             return _apply_security_headers(
                 JSONResponse(status_code=400, content={"detail": "Некорректный Content-Length"})
             )
+    # issue #190 §2.7: идентификатор запроса — клиентский X-Request-ID (если
+    # похож на идентификатор) или свой. Возвращается заголовком, чтобы жалобу
+    # «не сработало» можно было сопоставить со строкой лога, а не гадать по
+    # времени. В структуре ответов ничего не меняется.
+    request_id = _request_id(request)
+    request.state.request_id = request_id
     response = await call_next(request)
+    response.headers.setdefault("X-Request-ID", request_id)
     # Одно измерение на запрос: словарь + кольцевой буфер (см. api/metrics).
     # Отдельной мидлварью это стоило бы ещё одного слоя ASGI на каждый запрос.
     metrics.observe(_route_label(request), response.status_code, (time.perf_counter() - started) * 1000)
     return _apply_security_headers(response)
+
+
+_REQUEST_ID_MAX = 64
+
+
+def _request_id(request: Request) -> str:
+    """X-Request-ID клиента (буквы/цифры/`-_.`, ≤64) либо новый uuid4 без дефисов."""
+    raw = request.headers.get("x-request-id", "").strip()
+    if raw and len(raw) <= _REQUEST_ID_MAX and all(
+        c.isalnum() or c in "-_." for c in raw
+    ):
+        return raw
+    return uuid.uuid4().hex
 
 
 # Кэши горячего пути. /api/health зовут все четыре страницы при каждой
@@ -264,6 +285,7 @@ def health(response: Response) -> HealthResponse:
         model_r2=_model_r2(),
         model_mae=_model_mae(),
         model_temporal_validity=_model_temporal_validity(),
+        model_error_ci_pct=_model_error_ci_pct(),
         data_age_hours=data_age_hours,
         freshness=freshness,
         tg_webhook=bot.webhook_status(),
@@ -372,6 +394,18 @@ def _model_metric_pct(name: str) -> float | None:
 def _model_error_pct() -> float | None:
     """Средняя процентная ошибка модели (MAPE)."""
     return _model_metric_pct("mape")
+
+
+def _model_error_ci_pct() -> list[float] | None:
+    """95% ДИ MAPE (metrics.model_mape_ci.{lo,hi}) в процентах, [lo, hi]."""
+    ci = _model_meta().get("metrics", {}).get("model_mape_ci") or {}
+    try:
+        lo, hi = ci.get("lo"), ci.get("hi")
+        if lo is None or hi is None:
+            return None
+        return [round(float(lo) * 100, 1), round(float(hi) * 100, 1)]
+    except (AttributeError, ValueError, TypeError):
+        return None
 
 
 def _model_r2() -> float | None:
@@ -996,6 +1030,79 @@ async def not_found(request: Request, exc):
 # HEAD объявлен рядом с GET намеренно: аптайм-мониторы и HEALTHCHECK ходят
 # именно им, а FastAPI (в отличие от голого Starlette) сам его не добавляет —
 # без этого страница отвечала 405. Посещение по HEAD не считаем.
+# issue #190 §2.7 (из RFC #178 PR 1, без PostgreSQL): два пробника без
+# внешних зависимостей. /api/health остаётся публичным статусом (метрики,
+# возраст данных, webhook — с походом в Telegram); оркестратору и keepalive
+# нужны ответы, которые не зависят ни от Telegram, ни от GitHub.
+@app.api_route("/livez", methods=["GET", "HEAD"], include_in_schema=False)
+async def livez() -> Response:
+    """Процесс жив и event loop крутится. Больше ничего не проверяет."""
+    return JSONResponse({"status": "ok"}, headers={"Cache-Control": "no-store"})
+
+
+@app.api_route("/readyz", methods=["GET", "HEAD"], include_in_schema=False)
+async def readyz() -> Response:
+    """Готов отдавать вердикты: модель и база на диске, страницы в памяти.
+
+    503 — контейнер поднялся, но артефакты ещё качаются (KRISHA_DB_AUTO) или
+    их нет. Telegram/GitHub/сеть не трогаем намеренно: их недоступность не
+    делает оценку по ссылке невозможной (комментарий к #178, п.2).
+    """
+    checks = {
+        "model": MODEL_PATH.exists(),
+        "db": DB_PATH.exists(),
+        "assets": bool(_ASSETS) or not STATIC_DIR.exists(),
+    }
+    ready = all(checks.values())
+    return JSONResponse(
+        {"status": "ok" if ready else "not_ready", "checks": checks, "revision": BUILD_REVISION},
+        status_code=200 if ready else 503,
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+# issue #190 §2.6: до этого оба URL отдавали 404 — сайт не просился в индекс.
+_PUBLIC_PAGES = ("/", "/stats", "/about")
+
+
+def _site_base_url(request: Request) -> str:
+    base = bot.public_base_url()
+    if base:
+        return base
+    return str(request.base_url).rstrip("/")
+
+
+@app.api_route("/robots.txt", methods=["GET", "HEAD"], include_in_schema=False)
+async def robots_txt(request: Request) -> Response:
+    body = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Disallow: /api/\n"
+        "Disallow: /tg/\n"
+        f"Sitemap: {_site_base_url(request)}/sitemap.xml\n"
+    )
+    return Response(body, media_type="text/plain; charset=utf-8",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.api_route("/sitemap.xml", methods=["GET", "HEAD"], include_in_schema=False)
+async def sitemap_xml(request: Request) -> Response:
+    base = _site_base_url(request)
+    today = datetime.now(timezone.utc).date().isoformat()
+    urls = "".join(
+        f"<url><loc>{base}{path}</loc><lastmod>{today}</lastmod>"
+        f"<changefreq>daily</changefreq></url>"
+        for path in _PUBLIC_PAGES
+    )
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        f"{urls}</urlset>"
+    )
+    return Response(body, media_type="application/xml",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
 @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
 async def index(request: Request) -> Response:
     if request.method == "GET":

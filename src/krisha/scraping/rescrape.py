@@ -53,7 +53,7 @@ from krisha.db import (
     record_sweep_run,
     record_sweep_shard_stats,
     shard_backlog_count,
-    shard_backlog_window,
+    shard_backlog_window_fresh_first,
     shard_cursors,
     unattributed_backlog_count,
     upsert_listing,
@@ -139,6 +139,8 @@ MAX_DELIST_SHARE = 0.30
 # включая полный обход выдачи и все собранные точки цен. Свой дедлайн
 # останавливает мягко и оставляет время на upload.
 DEFAULT_TIME_BUDGET_MIN = 320
+# issue #190 §2.3: доля окна докачки шарда, отдаваемая свежим лотам (48 ч).
+DEFAULT_FRESH_SHARE = 0.5
 
 # issue #156: разрыв в наблюдении, после которого проход считается
 # восстановительным, а не обычным.
@@ -355,6 +357,7 @@ def sweep(
     max_refresh: int | None = None,
     time_budget_min: float = DEFAULT_TIME_BUDGET_MIN,
     mode: str = "auto",
+    fresh_share: float = DEFAULT_FRESH_SHARE,
 ) -> dict:
     """Один проход рескрейпа по всем шардам. Возвращает счётчики для лога/отчёта.
 
@@ -401,6 +404,13 @@ def sweep(
     проходов подряд поднимается как событие (stats["starved_shards"]) —
     оба хвоста того же класса, что и #166: сбор молча останавливается, и
     узнаём мы об этом через две недели из model_meta.
+
+    issue #190 §2.3: fresh_share окна каждого шарда отдаётся лотам, впервые
+    увиденным за последние 48 часов и лежащим выше курсора (db.
+    shard_fresh_backlog) — иначе при очереди 23–30k свежий лот ждал докачки
+    дольше, чем жил на площадке (10,5 дня), и в базу попадали «выжившие».
+    Свежие не двигают курсор: отметка идёт только по последовательному
+    обходу. Число запросов не меняется — меняется только состав окна.
     """
     init_db(db_path)
     # Контракт на цену зависит от типа сделки: продажа — ₸ за квартиру,
@@ -791,7 +801,9 @@ def sweep(
         for label, _ in ordered_shards:
             quota = quotas.get(label, 0)
             with get_conn(db_path) as conn:
-                window, wrapped = shard_backlog_window(conn, label, cursors.get(label), quota)
+                window, wrapped, fresh = shard_backlog_window_fresh_first(
+                    conn, label, cursors.get(label), quota, fresh_share=fresh_share
+                )
             plan.append({
                 "shard": label,
                 "stock": measured_stock[label],
@@ -799,6 +811,8 @@ def sweep(
                 "quota_base": quotas_base.get(label, 0),
                 "quota_extra": quota_extra.get(label, 0),
                 "window": window,
+                "fresh": fresh,
+                "fresh_fetched": 0,
                 "wrapped": wrapped,
                 "backlog_before": backlog_map[label],
                 "fetched": 0,
@@ -889,7 +903,13 @@ def sweep(
                     # Курсор двигаем только по УСПЕШНО докачанным: недобор
                     # (404, таймаут, битый парс) остаётся ниже отметки и
                     # компенсируется следующими проходами, а не чужой квотой.
-                    p["last_ok"] = lid
+                    # Свежие лоты выше отметки (#190 §2.3) курсор не двигают:
+                    # иначе один свежий id уводил бы отметку в голову и
+                    # обход начинал бы backlog заново.
+                    if lid in p["fresh"]:
+                        p["fresh_fetched"] += 1
+                    else:
+                        p["last_ok"] = lid
             if p["quota"] or p["fetched"]:
                 logger.info(
                     "Шард «%s»: план %s, факт %s (backlog %s→%s%s)",
@@ -1261,6 +1281,9 @@ def sweep(
         # относительно притока новых объявлений.
         "detail_queue_before": queue_size_before,
         "detail_queue_after": queue_size_after,
+        # issue #190 §2.3: сколько из докачанных — свежие (<48 ч) выше курсора.
+        "fresh_details_fetched": sum(p["fresh_fetched"] for p in plan),
+        "fresh_share": fresh_share,
         # issue #102: сколько активных лотов с устаревшими деталями
         # (>refresh_stale_days с последнего scraped_at) стояло в очереди на
         # этот проход, и сколько реально докачали в рамках max_refresh.

@@ -795,3 +795,67 @@ def test_shard_deeper_than_max_pages_is_not_covered(tmp_path, monkeypatch):
         ).fetchone()
     assert seen == {1001: "Алатауский 1к", 1002: "Алатауский 1к"}
     assert row[0] is None
+
+
+# ---------- свежие лоты не ждут дна backlog'а (issue #190 §2.3) ----------
+
+
+def test_fresh_first_window_prefers_new_listings_above_cursor(tmp_path):
+    """Половина окна — лоты, впервые увиденные за 48 ч и лежащие выше курсора;
+    остаток — обычное круговое окно. Свежие помечены отдельно: курсор по ним
+    не двигается."""
+    from krisha.db import shard_backlog_window_fresh_first
+
+    db = tmp_path / "test.db"
+    init_db(db)
+    shard = "Алатауский 2к"
+    old_ids = [100, 101, 102, 103]  # ниже курсора, увидены давно
+    fresh_ids = [5001, 5002, 5003]  # выше курсора, увидены сегодня
+    stale_high = [4000]  # выше курсора, но увиден давно — не «свежий»
+    with get_conn(db) as conn:
+        for lid in old_ids + stale_high:
+            conn.execute(
+                "INSERT INTO listings (id, url, is_active, first_seen) "
+                "VALUES (?, 'u', 1, datetime('now', '-10 days'))", (lid,)
+            )
+        for lid in fresh_ids:
+            conn.execute(
+                "INSERT INTO listings (id, url, is_active, first_seen) "
+                "VALUES (?, 'u', 1, datetime('now', '-3 hours'))", (lid,)
+            )
+        conn.execute(
+            "INSERT INTO shard_cursors (shard, last_id) VALUES (?, 2000)", (shard,)
+        )
+    record_listing_shards([(lid, shard) for lid in old_ids + fresh_ids + stale_high], db)
+    with get_conn(db) as conn:
+        window, wrapped, fresh = shard_backlog_window_fresh_first(
+            conn, shard, cursor_id=2000, limit=4, fresh_share=0.5
+        )
+    assert window[:2] == [5003, 5002], "первая половина окна — свежие, id DESC"
+    assert window[2:] == [103, 102], "остаток — круговое окно ниже курсора"
+    assert fresh == {5003, 5002}
+    assert not wrapped
+    assert 4000 not in window, "старый лот выше курсора — не свежий, ждёт wrap"
+
+
+def test_fresh_first_window_falls_back_when_no_fresh(tmp_path):
+    """Нет свежих — окно целиком отдано круговому обходу, размер не проседает.
+    На холодной базе (курсора нет) свежая доля не берётся вовсе."""
+    from krisha.db import shard_backlog_window_fresh_first
+
+    db = tmp_path / "test.db"
+    init_db(db)
+    shard = "Алатауский 2к"
+    ids = [100, 101, 102, 103]
+    with get_conn(db) as conn:
+        for lid in ids:
+            conn.execute(
+                "INSERT INTO listings (id, url, is_active, first_seen) "
+                "VALUES (?, 'u', 1, datetime('now'))", (lid,)
+            )
+    record_listing_shards([(lid, shard) for lid in ids], db)
+    with get_conn(db) as conn:
+        cold, _, fresh_cold = shard_backlog_window_fresh_first(conn, shard, None, 3)
+        warm, _, fresh_warm = shard_backlog_window_fresh_first(conn, shard, 1000, 3)
+    assert cold == [103, 102, 101] and fresh_cold == frozenset()
+    assert warm == [103, 102, 101] and fresh_warm == frozenset()

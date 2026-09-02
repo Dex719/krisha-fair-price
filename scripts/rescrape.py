@@ -58,6 +58,14 @@ def main() -> None:
         "(drain 800 / steady 1200)",
     )
     parser.add_argument(
+        "--fresh-share",
+        type=float,
+        default=0.5,
+        help="issue #190: доля окна докачки каждого шарда, отдаваемая лотам, "
+        "впервые увиденным за последние 48 ч (выше курсора шарда). 0 — "
+        "только круговой обход, как раньше",
+    )
+    parser.add_argument(
         "--deal",
         choices=["prodazha", "arenda"],
         default="prodazha",
@@ -102,6 +110,7 @@ def main() -> None:
         max_refresh=args.max_refresh,
         time_budget_min=args.time_budget_min,
         mode=args.mode,
+        fresh_share=args.fresh_share,
     )
 
     if args.summary_json:
