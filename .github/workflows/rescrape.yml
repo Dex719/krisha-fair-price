@@ -9,17 +9,17 @@ on:
         description: "Максимум страниц выдачи на один шард (район × комнаты)"
         default: "250"
       max_new:
-        description: "Максимум новых детальных страниц"
-        default: "1000"
+        description: "Максимум новых детальных страниц (пусто — из режима: drain 4500 / steady 1500)"
+        default: ""
       time_budget_min:
         description: "Мягкий дедлайн прохода, мин (меньше timeout-minutes — успеть залить базу)"
         default: "320"
       delay_min:
-        description: "Минимальная пауза между запросами, сек"
-        default: "2.5"
+        description: "Минимальная пауза между запросами, сек (пусто — из режима: drain 1.5 / steady 2.0)"
+        default: ""
       delay_max:
-        description: "Максимальная пауза между запросами, сек"
-        default: "5.0"
+        description: "Максимальная пауза между запросами, сек (пусто — из режима: drain 3.0 / steady 4.0)"
+        default: ""
 
 concurrency:
   group: krisha-db-writes
@@ -52,14 +52,22 @@ jobs:
 
       - name: Rescrape
         env:
-          # Паузы вынесены в inputs, чтобы фазу разгребания очереди (#152)
-          # можно было запустить быстрее без правки файла и мержа.
-          KRISHA_DELAY_MIN: "${{ github.event.inputs.delay_min || '2.5' }}"
-          KRISHA_DELAY_MAX: "${{ github.event.inputs.delay_max || '5.0' }}"
+          # issue #190 §2.3 (ревью 02.09). Режим прохода (#152) выбирается
+          # кодом по backlog'у: drain = 4500 деталей при паузах 1.5–3.0 с,
+          # steady = 1500 при 2.0–4.0. Но воркфлоу подставлял `|| '2.5'`,
+          # `|| '5.0'` и `--max-new 1000` ВСЕГДА — явные значения побеждают
+          # пресет, и drain по факту не наступал ни разу: sweep_runs пишет
+          # mode=drain при max_new_effective=1000 и паузах 2.5–5.0 каждый
+          # день, очередь 23–30k не тает. Пустой input = «используй пресет»
+          # (config._env_float и sweep() читают пустую строку как «не задано»).
+          # Потолок под бюджет времени урезает fit_detail_caps, откат пауз
+          # при бане — pass_plan.BAN_ROLLBACK_STREAK.
+          KRISHA_DELAY_MIN: "${{ github.event.inputs.delay_min }}"
+          KRISHA_DELAY_MAX: "${{ github.event.inputs.delay_max }}"
         run: |
           python scripts/rescrape.py \
             --pages "${{ github.event.inputs.pages || '250' }}" \
-            --max-new "${{ github.event.inputs.max_new || '1000' }}" \
+            ${{ github.event.inputs.max_new && format('--max-new {0}', github.event.inputs.max_new) || '' }} \
             --time-budget-min "${{ github.event.inputs.time_budget_min || '320' }}" \
             --fail-empty \
             --fail-below 8000 \

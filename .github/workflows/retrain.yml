@@ -52,12 +52,19 @@ jobs:
           TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
         run: python scripts/notify_retrain.py /tmp/old_meta.json models/model_meta.json --gate ${{ steps.gate.outcome }}
 
+      # issue #190 §2.2: README генерируется из меты тем же коммитом, что и
+      # модель — иначе блок метрик отставал на ретрейн (7.29% при мете 7.49%),
+      # а тест проверял только маркеры. Теперь tests/test_readme.py гоняет
+      # `--check`, и рассинхрон краснит CI.
+      - name: Sync README metrics
+        run: python scripts/sync_readme_metrics.py
+
       - name: Commit new model
         id: commit_model
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add models/ reports/
+          git add models/ reports/ README.md
           if git diff --cached --quiet; then
             echo "Модель не изменилась — коммитить нечего"
             echo "pushed=0" >> "$GITHUB_OUTPUT"
