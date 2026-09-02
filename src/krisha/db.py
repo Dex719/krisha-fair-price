@@ -900,9 +900,19 @@ def log_prediction(
 ) -> None:
     """Пишет строку в predictions (issue #128) — и для пользовательских, и для
     канальных (алерты) предиктов, единая точка входа `predict_from_listing`.
+
+    Дублируется в долговечный лог (krisha.prediction_log): таблица уезжает
+    вместе с базой, которую каждую ночь заново запекают в образ, поэтому в
+    SQLite от рантайма не остаётся ни строки. Дубль дешёвый (JSON в репозитории
+    раз в несколько минут) и не мешает: в Actions он сам себя выключает.
     """
     if listing_id is None:
         return
+    from krisha import prediction_log
+
+    prediction_log.record(
+        listing_id, fair_price, fair_low, fair_high, verdict, model_version
+    )
     with use_conn(conn, db_path) as conn:
         try:
             conn.execute(
