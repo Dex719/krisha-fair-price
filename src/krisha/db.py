@@ -1168,6 +1168,65 @@ def shard_backlog_window(
     return below + head, bool(head)
 
 
+FRESH_BACKLOG_HOURS = 48
+
+
+def shard_fresh_backlog(
+    conn: sqlite3.Connection,
+    shard: str,
+    cursor_id: int | None,
+    limit: int,
+    hours: int = FRESH_BACKLOG_HOURS,
+) -> list[int]:
+    """Свежие лоты шарда без деталей ВЫШЕ водяной отметки — id DESC, до `limit`.
+
+    Зачем (ревью 02.09, issue #190 §2.3). Круговой курсор идёт вниз по id и
+    заворачивается на голову только на дне backlog'а. При очереди 23–30k и
+    ~1000 деталей за проход дно не наступает неделями, а свежий лот живёт в
+    среднем 10,5 дня: детали получали 71% лотов, доживших до докачки, и лишь
+    39% снятых раньше. Модель и аналоги учились на «выживших». Часть окна
+    отдаётся лотам, впервые увиденным за последние `hours`, — до того, как
+    они уйдут с площадки. Берём только id > cursor_id: всё ниже отметки
+    последовательный обход доберёт сам, а отметку эти лоты не двигают.
+    """
+    if limit <= 0 or cursor_id is None:
+        return []
+    rows = conn.execute(
+        "SELECT l.id FROM listings l JOIN listing_shards s ON s.listing_id = l.id "
+        "WHERE l.title IS NULL AND l.is_active = 1 AND s.shard = ? "
+        "AND l.id > ? AND l.first_seen >= datetime('now', ?) "
+        "ORDER BY l.id DESC LIMIT ?",
+        (shard, cursor_id, f"-{int(hours)} hours", limit),
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+def shard_backlog_window_fresh_first(
+    conn: sqlite3.Connection,
+    shard: str,
+    cursor_id: int | None,
+    limit: int,
+    fresh_share: float = 0.5,
+    fresh_hours: int = FRESH_BACKLOG_HOURS,
+) -> tuple[list[int], bool, frozenset[int]]:
+    """Окно докачки шарда: сначала свежие выше отметки (доля `fresh_share`
+    окна), остаток — круговое окно `shard_backlog_window`. Возвращает
+    (ids, wrapped, fresh): `fresh` — лоты, которые НЕ двигают курсор.
+
+    На холодной базе (cursor_id None) окно и так начинается с головы —
+    свежая доля не нужна. Недобор свежих (их меньше доли) отдаётся круговому
+    окну, чтобы размер окна не проседал.
+    """
+    if limit <= 0:
+        return [], False, frozenset()
+    n_fresh = int(round(limit * max(0.0, min(1.0, fresh_share))))
+    fresh = shard_fresh_backlog(conn, shard, cursor_id, n_fresh, fresh_hours)
+    fresh_set = frozenset(fresh)
+    rest, wrapped = shard_backlog_window(conn, shard, cursor_id, limit - len(fresh))
+    rest = [lid for lid in rest if lid not in fresh_set]
+    return fresh + rest, wrapped, fresh_set
+
+
 def shard_backlog_count(conn: sqlite3.Connection, shard: str | None = None) -> int:
     """Сколько лотов ждут докачки деталей: по шарду или всего (shard=None).
 

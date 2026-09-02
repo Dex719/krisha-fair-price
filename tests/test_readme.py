@@ -55,6 +55,13 @@ def test_readme_metrics_block_matches_model_meta():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     assert module.BEGIN in text and module.END in text
     assert "МАРКЕР" not in text
+    # issue #190 §2.2: до этой правки тест проверял только маркеры, а блок
+    # мог месяц показывать метрики прошлого ретрейна (7.29% при мете 7.49%).
+    # Тот же `--check`, что обещан в докстринге скрипта, — теперь в тесте.
+    assert module.main(["--check"]) == 0, (
+        "README отстал от models/model_meta.json — запусти "
+        "scripts/sync_readme_metrics.py (retrain.yml делает это сам)"
+    )
 
 
 def test_readme_has_no_frozen_accuracy_badge():

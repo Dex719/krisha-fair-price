@@ -382,6 +382,21 @@ def time_based_split(
     return train_idx, test_idx
 
 
+def _first_seen_bounds(df: pd.DataFrame) -> dict | None:
+    """Фактические границы окна по first_seen: {from, to, days} или None."""
+    if "first_seen" not in df.columns or df.empty:
+        return None
+    ts = pd.to_datetime(df["first_seen"], errors="coerce", utc=True).dropna()
+    if ts.empty:
+        return None
+    lo, hi = ts.min(), ts.max()
+    return {
+        "from": lo.date().isoformat(),
+        "to": hi.date().isoformat(),
+        "days": int((hi.normalize() - lo.normalize()).days) + 1,
+    }
+
+
 def purge_leaked_train_rows(
     raw_train: pd.DataFrame, raw_test: pd.DataFrame
 ) -> tuple[pd.DataFrame, int]:
@@ -844,6 +859,11 @@ def train(
         "dedup": dedup_stats,
         "best_iterations": best_iterations,
         "split": f"time_based (test = first_seen >= last {TEST_WINDOW_DAYS}d) + purge + dedup relistings",
+        # issue #190 §2.2: фактические границы теста, а не формула. Окно
+        # «14 дней» после чистки bulk-дней и потолка TEST_MAX_FRACTION
+        # растягивается до 22–25 дней (ретрейн 30.08: 06.08–30.08) — читатель
+        # меты должен видеть реальный период, за который посчитан MAPE.
+        "test_window": _first_seen_bounds(raw_test),
         "trained_at": datetime.now(timezone.utc).isoformat(),
     }
 
