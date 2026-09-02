@@ -3,6 +3,15 @@ name: CI
 on:
   push:
     branches: [main]
+    # issue #190 §2.5: state-коммиты рантайма Space (статистика, подписки,
+    # лог предиктов) прилетают 3–4 раза в день и гоняли полный CI + e2e на
+    # каждый — кода они не меняют. Список тот же, что в deploy-hf.yml.
+    paths-ignore:
+      - "data/subscriptions.json"
+      - "data/tracked.json"
+      - "data/usage_stats.json"
+      - "data/channel_posted.json"
+      - "data/prediction_log.json"
   pull_request:
 
 jobs:
@@ -20,8 +29,11 @@ jobs:
         run: ruff check src tests scripts
       - name: Tests
         run: pytest -q
+      # issue #190 §2.5: аудит блокирует, а не «жёлтый навсегда» — с
+      # continue-on-error PYSEC-2026-3552 (cryptography 49.0.0) висел в логах
+      # неделями, и никто его не видел. Временные исключения — только через
+      # `--ignore-vuln ID` с комментарием и датой снятия рядом.
       - name: Audit dependencies (pip-audit)
-        continue-on-error: true
         run: |
           pip install -q pip-audit
           pip-audit --skip-editable
