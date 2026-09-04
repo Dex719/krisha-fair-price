@@ -339,10 +339,11 @@
       "bot": 0,
       "bot_users": [],
       "hours": {
-        "12": 1
+        "12": 3,
+        "23": 1
       },
-      "predict": 0,
-      "site": 1
+      "predict": 1,
+      "site": 3
     }
   }
 }
