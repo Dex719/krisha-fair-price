@@ -349,10 +349,10 @@
       "bot": 0,
       "bot_users": [],
       "hours": {
-        "12": 1,
+        "12": 2,
         "22": 1
       },
-      "predict": 0,
+      "predict": 1,
       "site": 2
     }
   }
