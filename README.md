@@ -175,6 +175,8 @@ tests/              # 597 тестов: парсеры (фикстуры с ре
 tests/e2e/          # 65 e2e поверх настоящего uvicorn: браузерные (pytest-playwright) + контракт API/статики, из них 3 live-smoke
 ```
 
+Техническая документация — устройство системы, данные, модель, API, бот, конфигурация, эксплуатация и runbook — в [`docs/README.md`](docs/README.md).
+
 E2e-тесты не входят в `make test` (нужен Chromium): `playwright install chromium`, затем `make test-e2e`. Живой smoke с реальной базой и одним походом на krisha.kz — `pytest -m live` (только вручную).
 
 ## 🏷 Версии и лицензия
