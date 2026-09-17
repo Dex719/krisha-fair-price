@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
 from collections.abc import Iterable
 from typing import Any
 
@@ -78,13 +79,7 @@ def _run_with_client(base_url: str, client: httpx.Client | Any) -> list[str]:
         raise SmokeError("GET /api/demo: response must include a live krisha.kz/a/show URL")
     checks.append("GET /api/demo")
 
-    predict = _post_json(
-        client,
-        base_url,
-        "/api/predict",
-        "POST /api/predict demo",
-        payload={"url": demo_url},
-    )
+    predict = _post_predict(client, base_url, demo_url)
     if not isinstance(predict, dict):
         raise SmokeError("POST /api/predict demo: response must be a JSON object")
     fair_price = predict.get("fair_price")
@@ -131,20 +126,55 @@ def _get(client: httpx.Client | Any, base_url: str, path: str, label: str) -> An
         raise SmokeError(f"{label}: request failed: {exc}") from exc
 
 
-def _post_json(
-    client: httpx.Client | Any,
-    base_url: str,
-    path: str,
-    label: str,
-    *,
-    payload: dict[str, Any],
-) -> Any:
+# Прод за оценкой ходит на krisha.kz, а та закрыта WAF SafeLine: он
+# ВЕРОЯТНОСТНО отдаёт anti-bot челлендж (HTTP 468) вместо страницы, и сервис
+# честно отвечает 503 «источник временно не отдаёт объявление». Одна попытка
+# проверяла бы не сервис, а везение: так смоук падал в 29% прогонов
+# (2026-09-03 … 2026-09-17), и на фоне мигающей проверки легко утопить
+# настоящую поломку — ровно это уже случалось (issue #154).
+#
+# Ретраим ТОЛЬКО 503. Любой другой код — 502, 500, 422 — падает сразу: это
+# поломка сервиса, и прятать её за повторами нельзя.
+PREDICT_ATTEMPTS = 3
+PREDICT_RETRY_WAIT_S = 5.0
+PREDICT_RETRY_WAIT_MAX_S = 15.0
+
+
+def _retry_after_s(response: Any, default: float) -> float:
+    """Пауза из заголовка Retry-After, с потолком (сервер не задаёт нам вечность)."""
+    raw = getattr(response, "headers", {}) or {}
     try:
-        response = client.post(_url(base_url, path), json=payload)
-    except httpx.HTTPError as exc:
-        raise SmokeError(f"{label}: request failed: {exc}") from exc
-    _expect_status(label, response)
-    return _parse_json(label, response)
+        value = float(raw.get("Retry-After", raw.get("retry-after", "")))
+    except (TypeError, ValueError, AttributeError):
+        return default
+    return min(max(value, 0.0), PREDICT_RETRY_WAIT_MAX_S)
+
+
+def _post_predict(client: httpx.Client | Any, base_url: str, demo_url: str) -> Any:
+    """POST /api/predict с ретраями на 503 (временная недоступность)."""
+    label = "POST /api/predict demo"
+    last_detail = ""
+    for attempt in range(1, PREDICT_ATTEMPTS + 1):
+        try:
+            response = client.post(_url(base_url, "/api/predict"), json={"url": demo_url})
+        except httpx.HTTPError as exc:
+            raise SmokeError(f"{label}: request failed: {exc}") from exc
+        if response.status_code == 200:
+            return _parse_json(label, response)
+        if response.status_code != 503:
+            # Не 503 — настоящая поломка сервиса. Падаем сразу, с исходной
+            # диагностикой: прятать её за повторами нельзя.
+            _expect_status(label, response)
+        last_detail = str(getattr(response, "text", "")).replace(chr(10), " ")[:180]
+        if attempt < PREDICT_ATTEMPTS:
+            time.sleep(_retry_after_s(response, PREDICT_RETRY_WAIT_S))
+
+    raise SmokeError(
+        f"{label}: {PREDICT_ATTEMPTS} попытки подряд вернули HTTP 503. {last_detail} "
+        "Если речь про источник — это krisha.kz закрылась anti-bot челленджем "
+        "(SafeLine), сам сервис при этом жив: сверься с /api/health и "
+        "counters.predict_challenge в /api/metrics"
+    )
 
 
 def _get_json(client: httpx.Client | Any, base_url: str, path: str, label: str) -> Any:

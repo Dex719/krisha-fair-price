@@ -38,6 +38,7 @@ import httpx
 
 from krisha.api.cache import TTLCache
 from krisha.predict import KRISHA_URL_RE, InvalidListingUrl, predict_from_url
+from krisha.scraping.client import ChallengeBlocked
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +158,7 @@ def cached_predict(
     Поднимает ``PredictBusy``, если слот не освободился за ``wait_s``, и
     прокидывает ошибки самого разбора (запомнив их в негативном кэше).
     ``InvalidListingUrl`` не кэшируется: это ошибка ввода, скрейпа не было.
+    ``ChallengeBlocked`` — тоже: это состояние чужого сервера, а не объявления.
     """
     key = cache_key(url, live_vision)
     fresh = _cache.peek(key)
@@ -168,9 +170,16 @@ def cached_predict(
     wait = PREDICT_SLOT_WAIT_S if wait_s is None else wait_s
     try:
         return _cache.get_or_call(key, lambda: _run(url, live_vision, wait))
-    except (PredictBusy, InvalidListingUrl):
+    except (PredictBusy, InvalidListingUrl, ChallengeBlocked):
         # Занятость — состояние сервиса, а не свойство объявления; кривой URL —
         # ошибка ввода. Ни то, ни другое в негативный кэш не кладём.
+        #
+        # Anti-bot челлендж (SafeLine) — из той же семьи: он про сиюминутное
+        # состояние ЧУЖОГО сервера, и на том же объявлении следующий запрос со
+        # свежей сессией обычно проходит. Закэшировать его было бы хуже всего
+        # именно в главном сценарии проекта — тысяча человек с ОДНОЙ ссылкой из
+        # поста: первый неудачник запер бы остальных на минуту, хотя источник
+        # уже пускает. От лавины скрейпов здесь защищают слоты, а не кэш.
         raise
     except Exception as exc:
         _negative.set(key, exc)

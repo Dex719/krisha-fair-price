@@ -114,3 +114,84 @@ def test_run_smoke_fails_on_stale_health():
 
     with pytest.raises(smoke_prod.SmokeError, match="freshness"):
         smoke_prod.run_smoke("https://prod.example", client=client)
+
+
+# --- 503 от источника: смоук ретраит, но не зеленеет молча ------------------
+# `.kiro/specs/safeline-468`: krisha закрыта WAF SafeLine и вероятностно
+# отдаёт anti-bot челлендж, прод в ответ честно говорит 503. Одна попытка
+# проверяла бы везение, а не сервис; бесконечная терпимость прятала бы поломку.
+
+
+class SequenceResponse:
+    """Очередь ответов на один и тот же запрос (по вызову за штуку)."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+
+    def pop(self):
+        return self._responses.pop(0) if len(self._responses) > 1 else self._responses[0]
+
+
+class SequencedClient(FakeClient):
+    def post(self, url, json=None):
+        path = "/" + url.split("/", 3)[-1].split("?", 1)[0]
+        self.posts.append((f"POST {path}", json))
+        entry = self.post_map[path]
+        return entry.pop() if isinstance(entry, SequenceResponse) else entry
+
+
+def _busy(detail="Источник временно не отдаёт объявление, попробуй ещё раз"):
+    return FakeResponse(status_code=503, text='{"detail": "%s"}' % detail)
+
+
+def _sequenced_client(predict_responses):
+    ok = _ok_client()
+    client = SequencedClient(ok.get_map, {"/api/predict": SequenceResponse(predict_responses)})
+    return client
+
+
+def test_predict_retries_past_transient_503(monkeypatch):
+    """AC-4.1: два челленджа подряд, третья попытка успешна — смоук зелёный."""
+    monkeypatch.setattr(smoke_prod.time, "sleep", lambda _s: None)
+    good = FakeResponse(
+        json_data={"listing_id": 123, "fair_price": 45_000_000, "verdict": "FAIR"}
+    )
+    client = _sequenced_client([_busy(), _busy(), good])
+
+    checks = smoke_prod.run_smoke("https://prod.example", client=client)
+
+    assert "POST /api/predict demo" in checks
+    assert len(client.posts) == 3
+
+
+def test_predict_fails_after_all_attempts_are_503(monkeypatch):
+    """Источник не пустил ни разу — падаем, назвав внешнюю причину."""
+    monkeypatch.setattr(smoke_prod.time, "sleep", lambda _s: None)
+    client = _sequenced_client([_busy()])
+
+    with pytest.raises(smoke_prod.SmokeError, match="SafeLine"):
+        smoke_prod.run_smoke("https://prod.example", client=client)
+    assert len(client.posts) == smoke_prod.PREDICT_ATTEMPTS
+
+
+def test_predict_does_not_retry_real_server_errors(monkeypatch):
+    """502 — поломка сервиса, а не источника: падаем сразу, без повторов."""
+    monkeypatch.setattr(smoke_prod.time, "sleep", lambda _s: None)
+    client = _sequenced_client([FakeResponse(status_code=502, text="boom")])
+
+    with pytest.raises(smoke_prod.SmokeError, match="expected HTTP 200, got 502"):
+        smoke_prod.run_smoke("https://prod.example", client=client)
+    assert len(client.posts) == 1
+
+
+def test_retry_after_header_is_honoured_and_capped():
+    assert smoke_prod._retry_after_s(FakeResponse(), 4.0) == 4.0
+
+    class WithHeader(FakeResponse):
+        headers = {"Retry-After": "7"}
+
+    class Absurd(FakeResponse):
+        headers = {"Retry-After": "9000"}
+
+    assert smoke_prod._retry_after_s(WithHeader(), 4.0) == 7.0
+    assert smoke_prod._retry_after_s(Absurd(), 4.0) == smoke_prod.PREDICT_RETRY_WAIT_MAX_S
