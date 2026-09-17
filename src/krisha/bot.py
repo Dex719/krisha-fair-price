@@ -24,6 +24,7 @@ import httpx
 
 from krisha import predict_gate
 from krisha.predict import KRISHA_URL_RE
+from krisha.scraping.client import ChallengeBlocked
 from krisha.stats import DISTRICT_RU
 
 logger = logging.getLogger(__name__)
@@ -340,6 +341,14 @@ def handle_update(update: dict[str, Any]) -> None:
     except FileNotFoundError:
         tg_call("sendMessage", chat_id=chat_id, text="Модель ещё не загружена, попробуй позже 🙏")
         return
+    except ChallengeBlocked:
+        # Не наша поломка: krisha закрылась anti-bot челленджем. Человеку важно
+        # знать, что дело не в ссылке и что повтор имеет смысл — иначе он решит,
+        # что объявление «не открывается», и уйдёт. Ветка выше RuntimeError:
+        # ChallengeBlocked — его подкласс.
+        tg_call("sendMessage", chat_id=chat_id,
+                text="krisha сейчас не отдаёт это объявление 🙈 Попробуй ещё раз через минуту")
+        return
     except (ValueError, RuntimeError) as exc:
         tg_call("sendMessage", chat_id=chat_id,
                 text=f"Не получилось оценить объявление: {exc}")
@@ -556,7 +565,10 @@ def _track_listing_meta(listing_id: int) -> tuple[int | None, str | None]:
 
     url = f"https://krisha.kz/a/show/{listing_id}"
     # Тот же короткий бюджет, что в predict_from_url: пользователь ждёт ответа
-    with PoliteClient(delay_range=(0.5, 1.0), max_retries=2, throttle_wait_s=2.0) as client:
+    with PoliteClient(
+        delay_range=(0.5, 1.0), max_retries=3, throttle_wait_s=2.0,
+        challenge_wait_s=0.5, raise_on_challenge=True,
+    ) as client:
         page = client.get(url)
     listing = parse_detail(page, url) if page else None
     if listing is None:

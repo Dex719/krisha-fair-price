@@ -23,6 +23,38 @@ class BanDetected(RuntimeError):
     """
 
 
+class ChallengeBlocked(RuntimeError):
+    """Страница закрыта anti-bot челленджем, а не отдана (SafeLine WAF).
+
+    krisha.kz отвечает HTTP 468 и страницей JS proof-of-work (`/.safeline/`,
+    cookie `sl-session`) вместо объявления. Это НЕ бан по IP (403) и не
+    троттлинг (429): челлендж выдаётся вероятностно, и следующий запрос с
+    ЧИСТОЙ сессией обычно проходит.
+
+    Отдельный класс нужен, чтобы вызывающий отличил «внешний источник
+    временно не пускает» (503 + Retry-After) от «мы не смогли разобрать
+    объявление» (502). Раньше 468 попадал в ветку «прочее»: без паузы, без
+    счётчика, и ретрай шёл тем же клиентом — то есть с тем же `sl-session`,
+    который WAF уже отклонил, и потому был бесполезен по построению.
+    """
+
+
+# 468 — нестандартный код SafeLine. Держим множеством: соседние WAF-коды
+# добавляются сюда, а не новой веткой в `get`.
+CHALLENGE_STATUSES = frozenset({468})
+# Тот же челлендж иногда приезжает с кодом 200 — тогда его отличает только
+# разметка. Маркеры лежат в первых сотнях байт <head>, поэтому смотрим голову
+# ответа, а не всю страницу на 227 КБ.
+_CHALLENGE_MARKERS = ("/.safeline/", 'id="slg-title"')
+_CHALLENGE_SNIFF_BYTES = 4096
+
+
+def looks_like_challenge(text: str) -> bool:
+    """Похоже ли тело ответа на страницу anti-bot челленджа."""
+    head = text[:_CHALLENGE_SNIFF_BYTES]
+    return any(marker in head for marker in _CHALLENGE_MARKERS)
+
+
 class PoliteClient:
     """Обёртка над httpx.Client с паузой перед каждым запросом и ретраями.
 
@@ -45,10 +77,23 @@ class PoliteClient:
         throttle_wait_s: float = 30.0,
         ban_streak_threshold: int = 3,
         timeout: float | httpx.Timeout | None = None,
+        challenge_wait_s: float = 1.0,
+        raise_on_challenge: bool = False,
     ):
         self.delay_range = delay_range
         self.max_retries = max(1, int(max_retries))
         self.throttle_wait_s = throttle_wait_s
+        # Челлендж лечится не ожиданием, а СМЕНОЙ сессии, поэтому пауза здесь
+        # короткая: длинный бэкофф (как у 429) только жёг бы бюджет прохода и
+        # терпение человека, глядящего на спиннер.
+        self.challenge_wait_s = challenge_wait_s
+        # По умолчанию False — ровно прежнее поведение: исчерпали попытки,
+        # вернули None. Краулер и sweep разбирают неуспех сами (непокрытый
+        # шард, пропущенный лот) и ловят только BanDetected; прилети им
+        # ChallengeBlocked — ночной проход лёг бы трейсбеком на ровном месте.
+        # Пользовательскому пути (веб, бот) различать причину НУЖНО: от неё
+        # зависит, 503 это или 502, — там флаг включают явно.
+        self.raise_on_challenge = raise_on_challenge
         self.ban_streak_threshold = max(1, int(ban_streak_threshold))
         self._ban_streak = 0
         # issue #152: без телеметрии «подходим ли мы к грани» ненаблюдаемо —
@@ -56,7 +101,7 @@ class PoliteClient:
         # до первого бана. Счётчики уезжают в summary-JSON прохода.
         self.counters: dict[str, int] = {
             "http_200": 0, "http_403": 0, "http_404": 0,
-            "http_429": 0, "http_other": 0, "errors": 0,
+            "http_429": 0, "http_468": 0, "http_other": 0, "errors": 0,
         }
         self._latencies: list[float] = []
         self._throttled_down = False
@@ -66,11 +111,30 @@ class PoliteClient:
         # max_retries × REQUEST_TIMEOUT ≈ минуту на ОДИН запрос — и десять
         # таких намертво занимали слоты предикта.
         self.timeout = REQUEST_TIMEOUT if timeout is None else timeout
-        self._client = httpx.Client(
+        self._client = self._new_session()
+
+    def _new_session(self) -> httpx.Client:
+        """Новый HTTP-клиент: чистый cookie jar и свежие соединения."""
+        return httpx.Client(
             headers={"User-Agent": USER_AGENT, "Accept-Language": "ru"},
             timeout=self.timeout,
             follow_redirects=True,
         )
+
+    def _reset_session(self) -> None:
+        """Выбросить текущую сессию и начать новую.
+
+        Ключ к обходу SafeLine: его `sl-session`, единожды получивший челлендж
+        и не решивший proof-of-work, ЗАЛИПАЕТ — замер на 8 объявлениях показал
+        0 успехов из 4 ретраев в той же сессии против 8 из 8 со свежей. Пока
+        отказ зависел только от темпа (429) или IP (403), переиспользование
+        клиента было правильным; отказ, привязанный к сессии, требует её снести.
+        """
+        old, self._client = self._client, self._new_session()
+        try:
+            old.close()
+        except Exception:  # noqa: BLE001 — закрытие старой сессии не должно ломать проход
+            logger.debug("не удалось закрыть старую сессию", exc_info=True)
 
     def get(self, url: str) -> str | None:
         """GET с паузой и ретраями. Возвращает HTML или None при неудаче.
@@ -79,15 +143,45 @@ class PoliteClient:
         `ban_streak_threshold`) отдали 403 на КАЖДОЙ попытке — см. класс.
         Любой другой исход (успех, 404, 429, сетевая ошибка) сбрасывает
         счётчик серии.
+
+        При anti-bot челлендже каждая следующая попытка идёт со СВЕЖЕЙ
+        сессией (см. `_reset_session`) — это единственное, что его лечит.
+        Если не прошла ни одна попытка, поведение зависит от
+        `raise_on_challenge`: по умолчанию возвращается None (как при любом
+        другом неуспехе — так краулер и разбирал это годами), а с флагом
+        поднимается `ChallengeBlocked`, чтобы пользовательский путь отличил
+        «источник не пускает» от «не смогли разобрать».
         """
         saw_403 = False
         all_403 = True
+        attempts_done = 0
+        challenge_hits = 0
         for attempt in range(1, self.max_retries + 1):
             time.sleep(random.uniform(*self.delay_range))
             started = time.monotonic()
+            attempts_done += 1
             try:
                 resp = self._client.get(url)
                 self._latencies.append((time.monotonic() - started) * 1000)
+                # Челлендж проверяем ПЕРВЫМ: SafeLine отдаёт свою страницу и
+                # под кодом 468, и иногда под 200 — во втором случае она молча
+                # уехала бы в парсер и вернулась «не удалось распарсить».
+                if resp.status_code in CHALLENGE_STATUSES or (
+                    resp.status_code == 200 and looks_like_challenge(resp.text)
+                ):
+                    self.counters["http_468"] += 1
+                    challenge_hits += 1
+                    # Челлендж — не бан по IP: серию 403 он не продолжает.
+                    all_403 = False
+                    self._ban_streak = 0
+                    logger.warning(
+                        "HTTP %s: anti-bot челлендж на %s (попытка %s) — меняем сессию",
+                        resp.status_code, url, attempt,
+                    )
+                    self._reset_session()
+                    if attempt < self.max_retries:
+                        time.sleep(self.challenge_wait_s)
+                    continue
                 if resp.status_code == 200:
                     self.counters["http_200"] += 1
                     self._ban_streak = 0
@@ -126,6 +220,15 @@ class PoliteClient:
                 all_403 = False
                 self.counters["errors"] += 1
                 logger.warning("Ошибка запроса %s (попытка %s): %s", url, attempt, exc)
+
+        # Все попытки уткнулись в челлендж — это внешний отказ, а не наша
+        # неспособность разобрать объявление. Тем, кто умеет различать
+        # (пользовательский путь: 503 против 502), говорим об этом явно.
+        if self.raise_on_challenge and challenge_hits and challenge_hits == attempts_done:
+            raise ChallengeBlocked(
+                f"{attempts_done} попыток подряд получили anti-bot челлендж "
+                f"({url}) — источник временно не отдаёт страницу"
+            )
 
         if saw_403 and all_403:
             self._ban_streak += 1

@@ -472,8 +472,24 @@ def predict_from_url(
     # таймаут: на ПОВИСШЕМ коннекте два ретрая по REQUEST_TIMEOUT=30 с давали
     # больше минуты на один запрос. timeout прокидывает вызывающий
     # (predict_gate.user_timeout: 5 с всего, 3 с на connect).
+    #
+    # max_retries=3, а не 2: каждая попытка идёт со СВЕЖЕЙ сессией, и на
+    # anti-bot челлендже SafeLine это единственное, что работает (см.
+    # `.kiro/specs/safeline-468`). С двумя попытками мерили ~40% отказов на
+    # живых объявлениях.
+    #
+    # challenge_wait_s=0.5, а не дефолтная секунда: между попытками и так
+    # стоит delay_range, суммарно 1.0–1.5 с — ровно та пауза, на которой
+    # замер дал 8/8. Больше нельзя: 3 × (1 с паузы + 5 с таймаута) + 2 × 1 с
+    # упиралось бы РОВНО в PREDICT_WAIT_S=20, и худший случай уезжал бы в
+    # «сервис перегружен» вместо честного «источник не пускает».
     with PoliteClient(
-        delay_range=(0.5, 1.0), max_retries=2, throttle_wait_s=2.0, timeout=timeout
+        delay_range=(0.5, 1.0),
+        max_retries=3,
+        throttle_wait_s=2.0,
+        challenge_wait_s=0.5,
+        raise_on_challenge=True,
+        timeout=timeout,
     ) as client:
         html = client.get(url)
     if html is None:
