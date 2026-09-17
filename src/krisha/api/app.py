@@ -46,6 +46,7 @@ from krisha.config import (
 from krisha.db import get_conn, remember_update_id
 from krisha.predict import InvalidListingUrl
 from krisha.predict_gate import PredictBusy
+from krisha.scraping.client import ChallengeBlocked
 from krisha.stats import get_stats, heatmap_points
 
 logging.basicConfig(level=logging.INFO)
@@ -579,6 +580,9 @@ def _check_rate_limit(request: Request, *, bucket: str = "api", limit: int | Non
 # таймаут — страховка от «поток занят чем-то ещё».
 PREDICT_WAIT_S = float(os.environ.get("PREDICT_WAIT_S", "20"))
 _BUSY_RETRY_AFTER = "30"
+# Челлендж лечится сменой сессии, а не ожиданием: повторять можно сразу,
+# а не через полминуты, как при перегрузе.
+_CHALLENGE_RETRY_AFTER = "5"
 
 
 @app.post("/api/predict", response_model=PredictResponse)
@@ -639,6 +643,19 @@ async def predict(req: PredictRequest, request: Request) -> PredictResponse:
         # детали (пути и т.п.) — в лог, наружу обобщённо
         logger.exception("predict: модель/файл недоступны")
         raise HTTPException(status_code=503, detail="Сервис временно недоступен") from None
+    except ChallengeBlocked:
+        # Источник закрылся anti-bot челленджем (SafeLine, HTTP 468) и не отдал
+        # страницу ни на одной попытке. Это НЕ наша внутренняя ошибка, поэтому
+        # не 502: 503 + Retry-After честно говорит «внешний источник временно
+        # не пускает, повтори», и позволяет смоуку отличить это от поломки
+        # сервиса. Ветка стоит ВЫШЕ RuntimeError — ChallengeBlocked его подкласс.
+        metrics.bump("predict_challenge")
+        logger.warning("predict: источник закрыт anti-bot челленджем", exc_info=True)
+        raise HTTPException(
+            status_code=503,
+            detail="Источник временно не отдаёт объявление, попробуй ещё раз",
+            headers={"Retry-After": _CHALLENGE_RETRY_AFTER},
+        ) from None
     except RuntimeError:
         logger.exception("predict: ошибка обработки объявления")
         raise HTTPException(status_code=502, detail="Не удалось обработать объявление") from None

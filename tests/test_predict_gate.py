@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from krisha import bot, predict_gate
 from krisha.api import app as app_module
 from krisha.api.app import app
+from krisha.scraping.client import ChallengeBlocked
 
 
 def _payload(listing_id: int = 91) -> dict:
@@ -246,3 +247,66 @@ def test_metrics_endpoint_reports_traffic(monkeypatch):
     assert data["routes"]["GET /"]["p95_ms"] >= 0
     assert data["predict"]["limiter_total"] == 10
     assert data["assets"]["precompressed"] >= 4
+
+
+# --- anti-bot челлендж источника (SafeLine, HTTP 468) ----------------------
+# Спека `.kiro/specs/safeline-468`. Челлендж — состояние ЧУЖОГО сервера, а не
+# свойство объявления: отсюда и 503 вместо 502, и отсутствие негативного кэша.
+
+
+def test_source_challenge_answers_503_not_502(monkeypatch):
+    """AC-2.1: источник не пустил — это внешняя недоступность, а не наш сбой."""
+
+    def challenged(url, live_vision=False, timeout=None):
+        raise ChallengeBlocked("3 попытки подряд получили anti-bot челлендж")
+
+    monkeypatch.setattr(predict_gate, "predict_from_url", challenged)
+    client = TestClient(app)
+
+    resp = client.post("/api/predict", json={"url": "https://krisha.kz/a/show/91"})
+
+    assert resp.status_code == 503
+    assert resp.headers.get("Retry-After")
+    assert "источник" in resp.json()["detail"].lower()
+
+
+def test_source_challenge_is_not_negatively_cached(monkeypatch):
+    """Главный сценарий проекта — тысяча человек с ОДНОЙ ссылкой из поста.
+
+    Закэшировать челлендж значило бы запереть их всех на минуту из-за того,
+    что не повезло первому, хотя источник уже пускает.
+    """
+    attempts: list[int] = []
+    outcomes = [ChallengeBlocked("челлендж"), None]
+
+    def flaky(url, live_vision=False, timeout=None):
+        attempts.append(1)
+        outcome = outcomes.pop(0) if outcomes else None
+        if outcome is not None:
+            raise outcome
+        return _payload()
+
+    monkeypatch.setattr(predict_gate, "predict_from_url", flaky)
+    client = TestClient(app)
+    url = "https://krisha.kz/a/show/91"
+
+    assert client.post("/api/predict", json={"url": url}).status_code == 503
+    # второй заход идёт наружу заново — и проходит
+    assert client.post("/api/predict", json={"url": url}).status_code == 200
+    assert len(attempts) == 2
+
+
+def test_source_challenge_is_counted_in_metrics(monkeypatch):
+    """FR-4: без счётчика поломка снова стала бы невидимой на две недели."""
+    from krisha.api import metrics
+
+    def challenged(url, live_vision=False, timeout=None):
+        raise ChallengeBlocked("челлендж")
+
+    monkeypatch.setattr(predict_gate, "predict_from_url", challenged)
+    client = TestClient(app)
+    before = metrics.snapshot()["counters"].get("predict_challenge", 0)
+
+    client.post("/api/predict", json={"url": "https://krisha.kz/a/show/91"})
+
+    assert metrics.snapshot()["counters"].get("predict_challenge", 0) == before + 1
