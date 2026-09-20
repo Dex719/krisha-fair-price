@@ -406,7 +406,16 @@
       "bot": 0,
       "bot_users": [],
       "hours": {
-        "23": 1
+        "23": 2
+      },
+      "predict": 0,
+      "site": 2
+    },
+    "2026-09-20": {
+      "bot": 0,
+      "bot_users": [],
+      "hours": {
+        "13": 1
       },
       "predict": 0,
       "site": 1
