@@ -178,9 +178,38 @@ class _ChunkedBodyLimitMiddleware:
 
 app.add_middleware(_ChunkedBodyLimitMiddleware, max_bytes=MAX_BODY_BYTES)
 
+# Бинарная статика, которая уже сжата внутри формата. Тип задаём явно: StaticFiles
+# берёт его из mimetypes, а в python:3.11-slim нет /etc/mime.types, и встроенная
+# таблица не знает webp/woff2 — прод отдавал их как application/octet-stream
+# при nosniff (.kiro/specs/static-binary-headers).
+_BINARY_MEDIA_TYPES = {
+    ".webp": "image/webp",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".woff2": "font/woff2",
+    ".woff": "font/woff",
+}
+
+
+class _GZipExceptCompressed(GZipMiddleware):
+    """GZip для всего, кроме уже сжатых форматов.
+
+    starlette 1.3.1 (прод-лок) жмёт всё подряд, кроме text/event-stream: webp,
+    woff2 и png шли через gzip-9 на каждом запросе — CPU на 2 vCPU без выигрыша
+    в размере. Решаем по пути до ответа — не зависим ни от типа, ни от версии.
+    """
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"].lower().endswith(tuple(_BINARY_MEDIA_TYPES)):
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
+
 # Сжатие ответов. До этого Space отдавал всё как есть: главная 47 КБ вместо ~10 КБ,
 # design.css 34 КБ вместо ~7 КБ. Порог в 600 байт — мелочь жать дороже, чем отдать.
-app.add_middleware(GZipMiddleware, minimum_size=600)
+app.add_middleware(_GZipExceptCompressed, minimum_size=600)
 
 
 def _route_label(request: Request) -> str:
@@ -1172,6 +1201,9 @@ class _CachedStatic(StaticFiles):
     def file_response(self, *args, **kwargs):  # type: ignore[override]
         response = super().file_response(*args, **kwargs)
         path = str(getattr(response, "path", ""))
+        media_type = _BINARY_MEDIA_TYPES.get(pathlib.Path(path).suffix.lower())
+        if media_type:
+            response.headers["Content-Type"] = media_type
         if path.endswith(IMMUTABLE_SUFFIXES):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         else:

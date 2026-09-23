@@ -109,6 +109,24 @@ def test_css_is_served_from_memory_and_images_stay_immutable():
     assert "content-encoding" not in image.headers
 
 
+def test_binary_static_has_real_type_and_is_not_gzipped():
+    """static-binary-headers: python:3.11-slim без /etc/mime.types не знает
+    webp/woff2 — прод отдавал их как application/octet-stream при nosniff, а
+    starlette 1.3.1 ещё и жала их gzip-ом. Тип и отказ от gzip не должны зависеть
+    ни от таблицы MIME платформы, ни от версии starlette."""
+    client = _client()
+    for path, media_type in (
+        ("/static/img/city-860.webp", "image/webp"),
+        ("/static/fonts/onest-cyr.woff2", "font/woff2"),
+        ("/static/avatar.png", "image/png"),
+    ):
+        response = client.get(path, headers=GZ)
+        assert response.status_code == 200, path
+        assert response.headers["content-type"] == media_type, path
+        assert "content-encoding" not in response.headers, path
+        assert response.content == (STATIC_DIR / path.removeprefix("/static/")).read_bytes()
+
+
 def test_pages_do_not_touch_the_disk_per_request(monkeypatch):
     """Смысл всей затеи: запрос страницы — это отдача байтов из памяти."""
     calls: list[str] = []
