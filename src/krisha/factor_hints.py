@@ -48,6 +48,12 @@ def market_stats() -> dict[str, Any]:
 @lru_cache(maxsize=2)
 def _market_stats_cached(db_mtime: float) -> dict[str, Any]:
     """Медианы ₸/м² по срезам базы. Пустой dict, если базы нет."""
+    # Проверяем ДО get_conn: sqlite3.connect на отсутствующий путь молча
+    # создаёт пустой файл, и дальше всё, что судит по DB_PATH.exists()
+    # («нет базы → 503» в /api/demo), видит базу без таблиц. Так в CI первый
+    # же предикт карточки ронял соседний тест (PR #194).
+    if not DB_PATH.exists():
+        return {}
     try:
         with get_conn(DB_PATH) as conn:
             def med(where: str = "", args: tuple = ()) -> tuple[float | None, int]:
