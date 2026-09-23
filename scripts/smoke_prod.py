@@ -79,7 +79,10 @@ def _run_with_client(base_url: str, client: httpx.Client | Any) -> list[str]:
         raise SmokeError("GET /api/demo: response must include a live krisha.kz/a/show URL")
     checks.append("GET /api/demo")
 
-    predict = _post_predict(client, base_url, demo_url)
+    try:
+        predict = _post_predict(client, base_url, demo_url)
+    except SmokeError as exc:
+        raise SmokeError(f"{exc}{_scrape_counters_note(client, base_url)}") from exc
     if not isinstance(predict, dict):
         raise SmokeError("POST /api/predict demo: response must be a JSON object")
     fair_price = predict.get("fair_price")
@@ -175,6 +178,24 @@ def _post_predict(client: httpx.Client | Any, base_url: str, demo_url: str) -> A
         "(SafeLine), сам сервис при этом жив: сверься с /api/health и "
         "counters.predict_challenge в /api/metrics"
     )
+
+
+def _scrape_counters_note(client: httpx.Client | Any, base_url: str) -> str:
+    """Что krisha отдаёт IP прода — счётчики исходов скрейпа из /api/metrics.
+
+    Логи контейнера HF живут до ближайшего рестарта (меньше суток), поэтому
+    причину красного предикта без этого не восстановить: 2026-09 смоук три
+    недели падал 502 «Не удалось обработать объявление», и что именно отвечала
+    krisha, так и осталось гипотезой (.kiro/specs/safeline-468, §7). Метрики —
+    того воркера, которому достался запрос, то есть примерно. Недоступны —
+    падаем с исходным текстом: диагностика не должна подменять ошибку.
+    """
+    try:
+        counters = client.get(_url(base_url, "/api/metrics")).json().get("counters") or {}
+    except Exception:  # noqa: BLE001 — см. докстринг
+        return ""
+    picked = {k: v for k, v in sorted(counters.items()) if k.startswith(("scrape_", "predict_"))}
+    return f" | /api/metrics: {picked}" if picked else ""
 
 
 def _get_json(client: httpx.Client | Any, base_url: str, path: str, label: str) -> Any:

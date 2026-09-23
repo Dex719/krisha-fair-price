@@ -157,7 +157,7 @@ def test_handle_update_no_url_hint(monkeypatch):
 def test_handle_update_predicts_and_sends_photo(monkeypatch):
     calls = []
     monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
-    monkeypatch.setattr(predict_gate, "predict_from_url", lambda url, live_vision=True, timeout=None: SAMPLE_RESULT)
+    monkeypatch.setattr(predict_gate, "predict_from_url", lambda url, live_vision=True, timeout=None, on_attempt=None: SAMPLE_RESULT)
     bot.handle_update({"message": {"chat": {"id": 42}, "text": "https://krisha.kz/a/show/123"}})
     methods = [m for m, _ in calls]
     assert "sendChatAction" in methods
@@ -165,6 +165,24 @@ def test_handle_update_predicts_and_sends_photo(monkeypatch):
     photo_call = [kw for m, kw in calls if m == "sendPhoto"][0]
     assert photo_call["photo"] == "https://example.com/p1.jpg"
     assert "48 120 000 ₸" in photo_call["caption"]
+
+
+def test_handle_update_explains_source_failure_instead_of_generic_error(monkeypatch):
+    """safeline-468 §7: любой отказ krisha — «источник не отдаёт, повтори»,
+    а не «Не получилось оценить объявление: …» с сырым текстом исключения."""
+    from krisha.scraping.client import SourceUnavailable
+
+    def unavailable(url, live_vision=True, timeout=None, on_attempt=None):
+        raise SourceUnavailable("3 попытки без страницы")
+
+    calls = []
+    monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
+    monkeypatch.setattr(predict_gate, "predict_from_url", unavailable)
+    bot.handle_update({"message": {"chat": {"id": 42}, "text": "https://krisha.kz/a/show/123"}})
+
+    texts = [kw.get("text", "") for m, kw in calls if m == "sendMessage"]
+    assert any("krisha сейчас не отдаёт" in t for t in texts)
+    assert not any("Не получилось оценить" in t for t in texts)
 
 
 def test_handle_update_ignores_non_message():

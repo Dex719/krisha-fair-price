@@ -111,6 +111,40 @@
   - Deliverables: прогон pytest + ручной прогон `Prod smoke` (workflow_dispatch) после деплоя
   - Acceptance: все пункты §5 отмечены с evidence.
 
+## Фаза 5 — Переоткрыто 2026-09-23: 502 на проде (bugfix.md §7, design.md)
+
+- [x] **TSK-012**: `SourceUnavailable`, SafeLine при любом коде, `waf_block`, исчерпание
+  - Requirement: FR-8, FR-9, AC-8.1, AC-9.1, AC-9.2
+  - Deliverables: `src/krisha/scraping/client.py`
+  - Acceptance: смешанные исходы пользовательского пути → 503-класс; краулер без изменений.
+  - Факт: «468, таймаут, 468» → `ChallengeBlocked`; 403 без маркеров → `SourceUnavailable` (краулеру — `None`); 403 SafeLine → `waf_block` + `BanDetected` краулеру.
+
+- [x] **TSK-013**: Липкие куки `StickyCookies` + хук исходов `on_attempt`
+  - Requirement: FR-7, FR-10, AC-7.1, AC-7.2
+  - Deliverables: `src/krisha/scraping/client.py`, `src/krisha/predict.py`
+  - Факт: тесты на настоящем `httpx` с `MockTransport`; живой A/B с KZ IP на 8 лотах подряд —
+    липкие куки: 8 попыток, 0 × 468, 0 отказов; свежая сессия (как было): 16 попыток, 11 × 468, 3 отказа из 8.
+
+- [x] **TSK-014**: Калитка, API, бот
+  - Requirement: FR-9, FR-10, AC-9.3, AC-10.1
+  - Deliverables: `src/krisha/predict_gate.py`, `src/krisha/api/app.py`, `src/krisha/bot.py`
+  - Факт: 503 + `predict_source_unavailable`, без негативного кэша; `scrape_*` в `/api/metrics`;
+    бот и `/track` — на липких куках и счётчиках. Заглушки `predict_from_url` в тестах
+    (21 шт.) получили параметр `on_attempt`.
+
+- [x] **TSK-015**: Смоук печатает `scrape_*` при падении
+  - Requirement: FR-11, AC-11.1
+  - Deliverables: `scripts/smoke_prod.py`
+  - Факт: при падении предикта — один `GET /api/metrics`, в тексте `scrape_*`/`predict_*`; метрики недоступны — исходный текст.
+
+- [x] **TSK-016**: Тесты фазы 5
+  - Deliverables: `tests/test_scraping_client.py`, `tests/test_predict_gate.py`, `tests/test_smoke_prod.py`, `tests/test_bot.py`
+  - Факт: +9 клиента, +3 калитки, +2 смоука, +1 бота — зелёные; затронутые наборы 147/147.
+
+- [ ] **TSK-017**: Регрессии §5 + §7 и проверка после выката
+  - Acceptance: `pytest` зелёный; после деплоя — `Prod smoke` зелёный,
+    `/api/metrics` показывает `scrape_*` с IP Hugging Face.
+
 ## Dependency graph
 
 ```
@@ -121,6 +155,8 @@ TSK-001 ──► TSK-002 ──► TSK-003 ──► TSK-004
                             │                   └──► TSK-009
                             └──► TSK-010
 TSK-004, TSK-008, TSK-010 ──► TSK-011
+TSK-012 ──► TSK-013 ──► TSK-014 ──► TSK-016 ──► TSK-017
+                  └──► TSK-015 ──────┘
 ```
 
 ## Progress
@@ -139,4 +175,10 @@ TSK-004, TSK-008, TSK-010 ──► TSK-011
 | TSK-008 тесты API | Complete (14/14) |
 | TSK-009 фронт | Complete |
 | TSK-010 смоук | Complete (8/8 зелёные) |
-| TSK-011 регрессии | Complete локально; прод-смоук — после выката |
+| TSK-011 регрессии | Локально Complete; **прод-смоук не позеленел** (4 × 502 из 14 после выката) → переоткрыто, фаза 5 |
+| TSK-012 классификация отказа | Complete |
+| TSK-013 липкие куки + хук | Complete (живой A/B: 0 × 468 против 11) |
+| TSK-014 калитка/API/бот | Complete |
+| TSK-015 смоук | Complete |
+| TSK-016 тесты фазы 5 | Complete (15 новых) |
+| TSK-017 регрессии + прод | In Progress — локально; прод после выката |

@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from krisha import bot, predict_gate
 from krisha.api import app as app_module
 from krisha.api.app import app
-from krisha.scraping.client import ChallengeBlocked
+from krisha.scraping.client import ChallengeBlocked, SourceUnavailable
 
 
 def _payload(listing_id: int = 91) -> dict:
@@ -42,7 +42,7 @@ def test_cached_answer_is_served_even_past_the_rate_limit(monkeypatch):
     """CGNAT: сотни живых людей с одного IP. Отдать им готовый ответ из памяти
     стоит ноль, поэтому лимит проверяется ПОСЛЕ попадания в кэш."""
     monkeypatch.setattr(
-        predict_gate, "predict_from_url", lambda url, live_vision=False, timeout=None: _payload()
+        predict_gate, "predict_from_url", lambda url, live_vision=False, timeout=None, on_attempt=None: _payload()
     )
     client = TestClient(app)
     url = "https://krisha.kz/a/show/91"
@@ -66,7 +66,7 @@ def test_failed_listing_is_negatively_cached(monkeypatch):
     скрейп-цикл: минуту помним, что не получилось."""
     attempts: list[int] = []
 
-    def boom(url, live_vision=False, timeout=None):
+    def boom(url, live_vision=False, timeout=None, on_attempt=None):
         attempts.append(1)
         raise RuntimeError("krisha не ответила")
 
@@ -89,7 +89,7 @@ def test_busy_service_answers_503_instead_of_hanging(monkeypatch):
     monkeypatch.setattr(predict_gate, "_slots", threading.BoundedSemaphore(1))
     monkeypatch.setattr(predict_gate, "PREDICT_SLOT_WAIT_S", 0.05)
     monkeypatch.setattr(
-        predict_gate, "predict_from_url", lambda url, live_vision=False, timeout=None: _payload()
+        predict_gate, "predict_from_url", lambda url, live_vision=False, timeout=None, on_attempt=None: _payload()
     )
     predict_gate._slots.acquire()  # занят кем-то другим
     try:
@@ -106,7 +106,7 @@ def test_user_path_uses_short_network_budget(monkeypatch):
     на один запрос и десять забитых слотов."""
     seen: list[httpx.Timeout] = []
 
-    def capture(url, live_vision=False, timeout=None):
+    def capture(url, live_vision=False, timeout=None, on_attempt=None):
         seen.append(timeout)
         return _payload()
 
@@ -122,7 +122,7 @@ def test_bot_shares_the_same_gate(monkeypatch):
     """Раньше бот ходил в predict_from_url напрямую — мимо кэша и слотов."""
     calls: list[str] = []
 
-    def fake(url, live_vision=True, timeout=None):
+    def fake(url, live_vision=True, timeout=None, on_attempt=None):
         calls.append(url)
         return _payload(123)
 
@@ -141,7 +141,7 @@ def test_bot_tells_the_user_when_the_service_is_busy(monkeypatch):
     monkeypatch.setattr(predict_gate, "_slots", threading.BoundedSemaphore(1))
     monkeypatch.setattr(predict_gate, "PREDICT_SLOT_WAIT_S", 0.05)
     monkeypatch.setattr(
-        predict_gate, "predict_from_url", lambda url, live_vision=True, timeout=None: _payload()
+        predict_gate, "predict_from_url", lambda url, live_vision=True, timeout=None, on_attempt=None: _payload()
     )
     sent: list[dict] = []
     monkeypatch.setattr(
@@ -162,7 +162,7 @@ def test_bot_and_web_results_do_not_mix(monkeypatch):
     """У бота живой Vision, у веба — нет: это разные разборы одного лота."""
     modes: list[bool] = []
 
-    def fake(url, live_vision=False, timeout=None):
+    def fake(url, live_vision=False, timeout=None, on_attempt=None):
         modes.append(live_vision)
         return _payload(5)
 
@@ -179,7 +179,7 @@ def test_single_flight_survives_the_crowd(monkeypatch):
     """Восемь параллельных запросов одного лота — один поход на krisha.kz."""
     calls: list[str] = []
 
-    def slow(url, live_vision=False, timeout=None):
+    def slow(url, live_vision=False, timeout=None, on_attempt=None):
         calls.append(url)
         time.sleep(0.05)
         return _payload()
@@ -209,7 +209,7 @@ def test_single_flight_survives_the_crowd(monkeypatch):
 def test_demo_is_not_starved_by_the_predict_limit(monkeypatch):
     """Демо дёргает каждая загрузка главной; строгий лимит предикта его не касается."""
     monkeypatch.setattr(
-        predict_gate, "predict_from_url", lambda url, live_vision=False, timeout=None: _payload()
+        predict_gate, "predict_from_url", lambda url, live_vision=False, timeout=None, on_attempt=None: _payload()
     )
     client = TestClient(app)
     for i in range(app_module.RATE_LIMIT + 3):
@@ -231,7 +231,7 @@ def test_demo_still_has_its_own_ceiling(monkeypatch):
 # ------------------------------------------------------------------ метрики
 def test_metrics_endpoint_reports_traffic(monkeypatch):
     monkeypatch.setattr(
-        predict_gate, "predict_from_url", lambda url, live_vision=False, timeout=None: _payload()
+        predict_gate, "predict_from_url", lambda url, live_vision=False, timeout=None, on_attempt=None: _payload()
     )
     client = TestClient(app)
     client.get("/")
@@ -257,7 +257,7 @@ def test_metrics_endpoint_reports_traffic(monkeypatch):
 def test_source_challenge_answers_503_not_502(monkeypatch):
     """AC-2.1: источник не пустил — это внешняя недоступность, а не наш сбой."""
 
-    def challenged(url, live_vision=False, timeout=None):
+    def challenged(url, live_vision=False, timeout=None, on_attempt=None):
         raise ChallengeBlocked("3 попытки подряд получили anti-bot челлендж")
 
     monkeypatch.setattr(predict_gate, "predict_from_url", challenged)
@@ -279,7 +279,7 @@ def test_source_challenge_is_not_negatively_cached(monkeypatch):
     attempts: list[int] = []
     outcomes = [ChallengeBlocked("челлендж"), None]
 
-    def flaky(url, live_vision=False, timeout=None):
+    def flaky(url, live_vision=False, timeout=None, on_attempt=None):
         attempts.append(1)
         outcome = outcomes.pop(0) if outcomes else None
         if outcome is not None:
@@ -300,7 +300,7 @@ def test_source_challenge_is_counted_in_metrics(monkeypatch):
     """FR-4: без счётчика поломка снова стала бы невидимой на две недели."""
     from krisha.api import metrics
 
-    def challenged(url, live_vision=False, timeout=None):
+    def challenged(url, live_vision=False, timeout=None, on_attempt=None):
         raise ChallengeBlocked("челлендж")
 
     monkeypatch.setattr(predict_gate, "predict_from_url", challenged)
@@ -310,3 +310,61 @@ def test_source_challenge_is_counted_in_metrics(monkeypatch):
     client.post("/api/predict", json={"url": "https://krisha.kz/a/show/91"})
 
     assert metrics.snapshot()["counters"].get("predict_challenge", 0) == before + 1
+
+
+# --- Переоткрыто 2026-09-23 (safeline-468 §7) --------------------------------
+# На проде 502 «Не удалось обработать объявление» остался: всё, кроме «три из
+# трёх 468», уходило во внутреннюю ошибку. Любой отказ источника — 503.
+
+
+def test_any_source_failure_answers_503_and_is_counted(monkeypatch):
+    """AC-9.3: таймауты/403/5xx источника — 503 + Retry-After, свой счётчик."""
+    from krisha.api import metrics
+
+    def unavailable(url, live_vision=False, timeout=None, on_attempt=None):
+        raise SourceUnavailable("3 попытки без страницы")
+
+    monkeypatch.setattr(predict_gate, "predict_from_url", unavailable)
+    resp = TestClient(app).post("/api/predict", json={"url": "https://krisha.kz/a/show/91"})
+
+    assert resp.status_code == 503
+    assert resp.headers.get("Retry-After")
+    assert "источник" in resp.json()["detail"].lower()
+    counters = metrics.snapshot()["counters"]
+    assert counters.get("predict_source_unavailable") == 1
+    assert "predict_challenge" not in counters, "челлендж и прочий отказ считаются раздельно"
+
+
+def test_source_failure_is_not_negatively_cached(monkeypatch):
+    attempts: list[int] = []
+
+    def flaky(url, live_vision=False, timeout=None, on_attempt=None):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise SourceUnavailable("таймаут")
+        return _payload()
+
+    monkeypatch.setattr(predict_gate, "predict_from_url", flaky)
+    client = TestClient(app)
+    url = "https://krisha.kz/a/show/91"
+
+    assert client.post("/api/predict", json={"url": url}).status_code == 503
+    assert client.post("/api/predict", json={"url": url}).status_code == 200
+
+
+def test_scrape_attempt_outcomes_reach_metrics(monkeypatch):
+    """AC-10.1: исходы попыток скрейпа видны в /api/metrics как scrape_*."""
+
+    def fake(url, live_vision=False, timeout=None, on_attempt=None):
+        for outcome in ("http_468", "http_403", "http_200"):
+            on_attempt(outcome)
+        return _payload()
+
+    monkeypatch.setattr(predict_gate, "predict_from_url", fake)
+    client = TestClient(app)
+    client.post("/api/predict", json={"url": "https://krisha.kz/a/show/91"})
+
+    counters = client.get("/api/metrics").json()["counters"]
+    assert counters["scrape_http_468"] == 1
+    assert counters["scrape_http_403"] == 1
+    assert counters["scrape_http_200"] == 1

@@ -32,6 +32,7 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.4",
     "pytest-playwright>=0.5",  # e2e: pytest -m e2e (нужен `playwright install chromium`)
+    "pyyaml>=6.0",  # tests/test_rescrape_workflow.py разбирает YAML воркфлоу
 ]
 
 [build-system]

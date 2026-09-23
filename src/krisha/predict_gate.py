@@ -36,9 +36,10 @@ from typing import Any
 
 import httpx
 
+from krisha.api import metrics
 from krisha.api.cache import TTLCache
 from krisha.predict import KRISHA_URL_RE, InvalidListingUrl, predict_from_url
-from krisha.scraping.client import ChallengeBlocked
+from krisha.scraping.client import SourceUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,16 @@ def clear() -> None:
         _busy_count = 0
 
 
+def count_scrape_attempt(name: str) -> None:
+    """Исход попытки скрейпа → counters.scrape_* в /api/metrics.
+
+    Что именно krisha отдаёт IP прода, раньше было видно только в логах
+    контейнера, а те живут до ближайшего рестарта — то есть меньше суток
+    (.kiro/specs/safeline-468, §7, FR-10).
+    """
+    metrics.bump(f"scrape_{name}")
+
+
 def _run(url: str, live_vision: bool, wait_s: float) -> dict[str, Any]:
     global _busy_count
     if not _slots.acquire(timeout=max(0.0, wait_s)):
@@ -143,7 +154,9 @@ def _run(url: str, live_vision: bool, wait_s: float) -> dict[str, Any]:
     with _busy_lock:
         _busy_count += 1
     try:
-        return predict_from_url(url, live_vision=live_vision, timeout=user_timeout())
+        return predict_from_url(
+            url, live_vision=live_vision, timeout=user_timeout(), on_attempt=count_scrape_attempt
+        )
     finally:
         with _busy_lock:
             _busy_count -= 1
@@ -158,7 +171,8 @@ def cached_predict(
     Поднимает ``PredictBusy``, если слот не освободился за ``wait_s``, и
     прокидывает ошибки самого разбора (запомнив их в негативном кэше).
     ``InvalidListingUrl`` не кэшируется: это ошибка ввода, скрейпа не было.
-    ``ChallengeBlocked`` — тоже: это состояние чужого сервера, а не объявления.
+    ``SourceUnavailable`` (и его ``ChallengeBlocked``) — тоже: это состояние
+    чужого сервера, а не объявления.
     """
     key = cache_key(url, live_vision)
     fresh = _cache.peek(key)
@@ -170,13 +184,13 @@ def cached_predict(
     wait = PREDICT_SLOT_WAIT_S if wait_s is None else wait_s
     try:
         return _cache.get_or_call(key, lambda: _run(url, live_vision, wait))
-    except (PredictBusy, InvalidListingUrl, ChallengeBlocked):
+    except (PredictBusy, InvalidListingUrl, SourceUnavailable):
         # Занятость — состояние сервиса, а не свойство объявления; кривой URL —
         # ошибка ввода. Ни то, ни другое в негативный кэш не кладём.
         #
-        # Anti-bot челлендж (SafeLine) — из той же семьи: он про сиюминутное
-        # состояние ЧУЖОГО сервера, и на том же объявлении следующий запрос со
-        # свежей сессией обычно проходит. Закэшировать его было бы хуже всего
+        # Отказ источника (челлендж SafeLine, блок, таймауты) — из той же семьи:
+        # он про сиюминутное состояние ЧУЖОГО сервера, и на том же объявлении
+        # следующий запрос обычно проходит. Закэшировать его было бы хуже всего
         # именно в главном сценарии проекта — тысяча человек с ОДНОЙ ссылкой из
         # поста: первый неудачник запер бы остальных на минуту, хотя источник
         # уже пускает. От лавины скрейпов здесь защищают слоты, а не кэш.
