@@ -24,7 +24,7 @@ import httpx
 
 from krisha import predict_gate
 from krisha.predict import KRISHA_URL_RE
-from krisha.scraping.client import ChallengeBlocked
+from krisha.scraping.client import SourceUnavailable
 from krisha.stats import DISTRICT_RU
 
 logger = logging.getLogger(__name__)
@@ -341,11 +341,11 @@ def handle_update(update: dict[str, Any]) -> None:
     except FileNotFoundError:
         tg_call("sendMessage", chat_id=chat_id, text="Модель ещё не загружена, попробуй позже 🙏")
         return
-    except ChallengeBlocked:
-        # Не наша поломка: krisha закрылась anti-bot челленджем. Человеку важно
-        # знать, что дело не в ссылке и что повтор имеет смысл — иначе он решит,
-        # что объявление «не открывается», и уйдёт. Ветка выше RuntimeError:
-        # ChallengeBlocked — его подкласс.
+    except SourceUnavailable:
+        # Не наша поломка: krisha не отдала страницу (anti-bot челлендж, блок,
+        # таймауты). Человеку важно знать, что дело не в ссылке и что повтор
+        # имеет смысл — иначе он решит, что объявление «не открывается», и
+        # уйдёт. Ветка выше RuntimeError: SourceUnavailable — его подкласс.
         tg_call("sendMessage", chat_id=chat_id,
                 text="krisha сейчас не отдаёт это объявление 🙈 Попробуй ещё раз через минуту")
         return
@@ -564,10 +564,14 @@ def _track_listing_meta(listing_id: int) -> tuple[int | None, str | None]:
         pass
 
     url = f"https://krisha.kz/a/show/{listing_id}"
-    # Тот же короткий бюджет, что в predict_from_url: пользователь ждёт ответа
+    # Тот же короткий бюджет, что в predict_from_url: пользователь ждёт ответа.
+    # И те же липкие куки процесса и счётчики попыток — это тоже пользовательский путь.
+    from krisha.predict import USER_COOKIES
+
     with PoliteClient(
         delay_range=(0.5, 1.0), max_retries=3, throttle_wait_s=2.0,
         challenge_wait_s=0.5, raise_on_challenge=True,
+        cookie_store=USER_COOKIES, on_attempt=predict_gate.count_scrape_attempt,
     ) as client:
         page = client.get(url)
     listing = parse_detail(page, url) if page else None

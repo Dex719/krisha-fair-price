@@ -8,6 +8,7 @@ import json
 import logging
 import re
 import sqlite3
+from collections.abc import Callable
 from functools import lru_cache
 from typing import Any
 
@@ -25,13 +26,18 @@ from krisha.config import (
     feature_vision,
 )
 from krisha.db import get_conn
-from krisha.features import listing_to_frame
+from krisha.features import listing_to_frame, listings_to_frame
 from krisha.geo import build_location_details
 from krisha.interval import MIN_INTERVAL_WIDTH_LOG, finalize_interval
-from krisha.scraping.client import PoliteClient
+from krisha.scraping.client import PoliteClient, StickyCookies
 from krisha.scraping.detail_parser import parse_detail
 
 logger = logging.getLogger(__name__)
+
+# Куки удачной сессии пользовательского пути (веб, бот, /track) — одни на
+# процесс: попав в ведро A, воркер в нём и остаётся, а не тянет жребий SafeLine
+# на каждый запрос (.kiro/specs/safeline-468, §7).
+USER_COOKIES = StickyCookies()
 
 class InvalidListingUrl(ValueError):
     """Ссылка не похожа на объявление krisha.kz — ошибка ПОЛЬЗОВАТЕЛЯ.
@@ -292,6 +298,43 @@ def _apply_cqr(lo_raw: float, hi_raw: float, interval_meta: dict[str, Any]) -> t
     return max(min(log_lo, 30.0), -30.0), max(min(log_hi, 30.0), -30.0)
 
 
+def _price_pool(
+    pool: Pool, actual_prices: list[Any], meta: dict[str, Any], model: CatBoostRegressor
+) -> list[dict[str, Any]]:
+    """Цена, интервал и вердикт для N строк пула — одна формула на всех.
+
+    Карточка (`_predict_from_listing`) зовёт её для одной строки, алерты
+    (`predict_listings_batch`) — для пачки. Вынесено, чтобы формула интервала и
+    вердикта не разъехалась между ними (.kiro/specs/rescrape-post-steps, FR-4).
+    Значения неокруглённые: округляет вызывающий, как показывает.
+    """
+    fair_prices = np.expm1(np.asarray(model.predict(pool), dtype=float))
+    # Доверительный интервал: MultiQuantile-модель (issue #132) + CQR-сдвиг из меты.
+    quantile_model = load_interval_models()
+    quantile_pred = quantile_model.predict(pool) if quantile_model is not None else None
+    interval_meta = meta.get("metrics", {}).get("interval", {})
+    rows = []
+    for i, actual in enumerate(actual_prices):
+        fair_price = float(fair_prices[i])
+        fair_low = fair_high = None
+        if quantile_pred is not None:
+            lo_raw, hi_raw = float(quantile_pred[i][0]), float(quantile_pred[i][1])
+            log_lo, log_hi = _apply_cqr(lo_raw, hi_raw, interval_meta)
+            fair_low, fair_high = finalize_interval(
+                fair_price, float(np.expm1(log_lo)), float(np.expm1(log_hi))
+            )
+        if actual and quantile_pred is not None:
+            verdict = _verdict_interval(actual, fair_low, fair_high)
+        elif actual:
+            verdict = _verdict(actual, fair_price)
+        else:
+            verdict = None
+        rows.append(
+            {"fair_price": fair_price, "fair_low": fair_low, "fair_high": fair_high, "verdict": verdict}
+        )
+    return rows
+
+
 def _location_details_with_pin_note(listing: dict[str, Any]) -> list[dict[str, str]]:
     """Блок «Локация» + бейдж «координаты примерные», если точка — метка ЖК."""
     from krisha.zones import approximate_pin_note
@@ -341,27 +384,10 @@ def _predict_from_listing(
         if not listing.get(col) and isinstance(val, str) and val != MISSING_CAT:
             listing = {**listing, col: val}
     pool = Pool(df[features], cat_features=meta["cat_features"])
-    fair_price = float(np.expm1(model.predict(pool)[0]))
-
-    # Доверительный интервал: MultiQuantile-модель (issue #132) + CQR-сдвиг из меты.
-    fair_low = fair_high = None
-    quantile_model = load_interval_models()
-    if quantile_model is not None:
-        interval_meta = meta.get("metrics", {}).get("interval", {})
-        quantile_pred = quantile_model.predict(pool)[0]
-        lo_raw, hi_raw = float(quantile_pred[0]), float(quantile_pred[1])
-        log_lo, log_hi = _apply_cqr(lo_raw, hi_raw, interval_meta)
-        fair_low = float(np.expm1(log_lo))
-        fair_high = float(np.expm1(log_hi))
-        fair_low, fair_high = finalize_interval(fair_price, fair_low, fair_high)
-
     actual = listing.get("price")
-    if actual and quantile_model is not None:
-        verdict = _verdict_interval(actual, fair_low, fair_high)
-    elif actual:
-        verdict = _verdict(actual, fair_price)
-    else:
-        verdict = None
+    priced = _price_pool(pool, [actual], meta, model)[0]
+    fair_price, verdict = priced["fair_price"], priced["verdict"]
+    fair_low, fair_high = priced["fair_low"], priced["fair_high"]
     result = {
         "listing_id": listing.get("id"),
         "url": listing.get("url"),
@@ -457,8 +483,47 @@ def _predict_from_listing(
     return result
 
 
+def predict_listings_batch(listings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Пакетная оценка для алертов: только цена, интервал, вердикт и diff_pct.
+
+    Карточке (`predict_from_listing`) нужны SHAP, подсказки, рынок и аналоги —
+    это ~0.5–0.75 с на лот. Алертам из всего этого нужен вердикт: на окне в
+    6 тыс. лотов поштучная карточка шла час с лишним и 2026-09-20 не дала
+    ночному проходу залить базу (.kiro/specs/rescrape-post-steps). Здесь фичи
+    собираются одним DataFrame, CatBoost вызывается по разу на пачку, а формула
+    та же `_price_pool` — значения совпадают с карточкой, включая округление.
+    Порядок результатов = порядок `listings`. В `predictions` не пишет: это
+    делает вызывающий одной транзакцией (`db.log_predictions`).
+    """
+    if not listings:
+        return []
+    model, meta = load_model()
+    from krisha.spatial import load_spatial_ref
+
+    df = listings_to_frame(listings, ppsm_maps=meta.get("ppsm_maps"), spatial_ref=load_spatial_ref())
+    pool = Pool(df[meta["features"]], cat_features=meta["cat_features"])
+    priced = _price_pool(pool, [listing.get("price") for listing in listings], meta, model)
+    model_version = meta.get("metrics", {}).get("trained_at")
+    results = []
+    for listing, row in zip(listings, priced, strict=True):
+        actual, fair_price = listing.get("price"), row["fair_price"]
+        results.append({
+            "listing_id": listing.get("id"),
+            "fair_price": round(fair_price, -4),
+            "fair_price_low": round(row["fair_low"], -4) if row["fair_low"] is not None else None,
+            "fair_price_high": round(row["fair_high"], -4) if row["fair_high"] is not None else None,
+            "verdict": row["verdict"],
+            "diff_pct": round((actual - fair_price) / fair_price * 100, 1) if actual else None,
+            "model_version": model_version,
+        })
+    return results
+
+
 def predict_from_url(
-    url: str, live_vision: bool = True, timeout: "float | httpx.Timeout | None" = None
+    url: str,
+    live_vision: bool = True,
+    timeout: "float | httpx.Timeout | None" = None,
+    on_attempt: "Callable[[str], None] | None" = None,
 ) -> dict[str, Any]:
     match = KRISHA_URL_RE.search(url)
     if not match:
@@ -483,6 +548,9 @@ def predict_from_url(
     # замер дал 8/8. Больше нельзя: 3 × (1 с паузы + 5 с таймаута) + 2 × 1 с
     # упиралось бы РОВНО в PREDICT_WAIT_S=20, и худший случай уезжал бы в
     # «сервис перегружен» вместо честного «источник не пускает».
+    #
+    # cookie_store: сессия начинается с кук последнего удачного запроса этого
+    # процесса (ведро A), on_attempt: исходы попыток уходят в /api/metrics.
     with PoliteClient(
         delay_range=(0.5, 1.0),
         max_retries=3,
@@ -490,6 +558,8 @@ def predict_from_url(
         challenge_wait_s=0.5,
         raise_on_challenge=True,
         timeout=timeout,
+        cookie_store=USER_COOKIES,
+        on_attempt=on_attempt,
     ) as client:
         html = client.get(url)
     if html is None:

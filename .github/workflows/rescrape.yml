@@ -85,17 +85,12 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Alerts
-        if: always()
-        continue-on-error: true # падение алертов не должно съесть заливку базы
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TG_CHANNEL_ID: ${{ secrets.TG_CHANNEL_ID }}
-          TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
-        run: python scripts/send_alerts.py
-
+      # Критический путь — сразу после сбора (.kiro/specs/rescrape-post-steps).
+      # Раньше заливка ждала шаг Alerts, а тот без своего потолка разросся до
+      # 80 минут: 2026-09-20 джоба умерла по timeout-minutes на алертах, и
+      # 4 ч 43 мин собранных данных так и не доехали до прода.
       - name: Upload DB to release
+        id: upload_db
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -127,3 +122,32 @@ jobs:
             --db-gz /tmp/krisha.db.gz --sha256 /tmp/krisha.db.gz.sha256 \
             --asset-name krisha.db.gz --stats-json /tmp/rescrape_stats.json \
             --label "Продажа" --rotate-keep-days 14
+
+      # always(): утренний отчёт админу нужнее всего как раз когда проход упал.
+      # Свой потолок: база уже в релизе, и вторичный шаг больше не может
+      # съесть бюджет джобы (320 + ~3 + 15 + ~2 ≈ 340 < 350 мин).
+      - name: Alerts
+        id: alerts
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 15
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TG_CHANNEL_ID: ${{ secrets.TG_CHANNEL_ID }}
+          TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
+        run: python scripts/send_alerts.py
+
+      # Алерты пишут вердикты окна в predictions (issue #128) — заливаем базу
+      # ещё раз, чтобы они не пропали. Только если проход удался (первая
+      # заливка была) и алерты дошли до конца; иначе в релизе остаётся база
+      # первой заливки — собранное не теряется в любом случае.
+      - name: Upload DB again (вердикты алертов)
+        if: steps.upload_db.outcome == 'success' && steps.alerts.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sqlite3 data/krisha.db "VACUUM;" || true
+          gzip -9 -c data/krisha.db > /tmp/krisha.db.gz
+          sha256sum /tmp/krisha.db.gz | cut -d' ' -f1 > /tmp/krisha.db.gz.sha256
+          gh release upload db-latest /tmp/krisha.db.gz /tmp/krisha.db.gz.sha256 --clobber
