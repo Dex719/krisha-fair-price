@@ -17,7 +17,7 @@
 - [x] **TSK-007**: Тесты AC-1.1…AC-5.1 — Deliverables: `tests/test_predict_edge_listings.py`, `tests/test_bot.py`, `tests/test_smoke_prod.py`, `tests/e2e/test_home_e2e.py`
   - Факт: +4 юнит, +2 бота, +2 смоука, +1 e2e (e2e — в CI: Playwright только там)
 - [x] **TSK-008**: Регрессии §5 — полный `pytest`, чистая копия без базы, CI
-  - Факт: см. PR: полный `pytest` локально и в чистой копии без базы, CI
+  - Факт: чистая копия без `data/krisha.db` (как CI): 678 passed, 1 failed — известное красное среды `test_static_precompress`; затронутые наборы 138/138; ruff чисто; e2e — в CI
 
 ## Progress
 
