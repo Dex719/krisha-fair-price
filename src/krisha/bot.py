@@ -23,7 +23,7 @@ from typing import Any
 import httpx
 
 from krisha import predict_gate
-from krisha.predict import KRISHA_URL_RE
+from krisha.predict import KRISHA_URL_RE, ListingNotFound
 from krisha.scraping.client import SourceUnavailable
 from krisha.stats import DISTRICT_RU
 
@@ -349,9 +349,22 @@ def handle_update(update: dict[str, Any]) -> None:
         tg_call("sendMessage", chat_id=chat_id,
                 text="krisha сейчас не отдаёт это объявление 🙈 Попробуй ещё раз через минуту")
         return
+    except ListingNotFound:
+        tg_call("sendMessage", chat_id=chat_id,
+                text="Такого объявления на krisha нет — похоже, его уже сняли с продажи 🤷")
+        return
     except (ValueError, RuntimeError) as exc:
         tg_call("sendMessage", chat_id=chat_id,
                 text=f"Не получилось оценить объявление: {exc}")
+        return
+    except Exception:  # noqa: BLE001 — человек не должен остаться без ответа
+        # Раньше непредвиденная ошибка (например, TypeError на объявлении без
+        # цены) улетала в _process_tg_update, там логировалась — и бот молчал
+        # (.kiro/specs/predict-edge-listings).
+        logger.exception("bot: непредвиденная ошибка оценки %s", url)
+        tg_call("sendMessage", chat_id=chat_id,
+                text="Не получилось оценить объявление — что-то пошло не так на нашей стороне. "
+                     "Попробуй ещё раз чуть позже 🙏")
         return
 
     reply = format_reply(result)
@@ -574,9 +587,12 @@ def _track_listing_meta(listing_id: int) -> tuple[int | None, str | None]:
         cookie_store=USER_COOKIES, on_attempt=predict_gate.count_scrape_attempt,
     ) as client:
         page = client.get(url)
-    listing = parse_detail(page, url) if page else None
+    if page is None:
+        # None — это 404: прочие отказы источника поднимают SourceUnavailable
+        raise ListingNotFound("Объявление не найдено — возможно, его уже сняли с продажи")
+    listing = parse_detail(page, url)
     if listing is None:
-        raise RuntimeError("Не удалось загрузить объявление")
+        raise RuntimeError("Не удалось разобрать объявление")
     try:
         upsert_listing({**listing, "source": "user"})
     except Exception:  # noqa: BLE001 — сохранение не должно ломать команду

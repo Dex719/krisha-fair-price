@@ -239,6 +239,30 @@ def test_home_server_error_shows_friendly_status(hermetic_page, mock_api, hermet
     expect(page.locator(".sheet")).not_to_have_class("sheet busy")
 
 
+def test_home_removed_listing_shows_server_detail(hermetic_page, mock_api, hermetic_server):
+    """predict-edge-listings AC-3.1: 404 — объявление сняли; это не «сервис не
+    отвечает», фронт показывает текст сервера."""
+    page = hermetic_page
+    mock_api()
+    detail = "Объявление не найдено — возможно, его уже сняли с продажи"
+    page.route(
+        "**/api/predict",
+        lambda r: r.fulfill(
+            status=404,
+            body=json.dumps({"detail": detail}),
+            content_type="application/json",
+        ),
+    )
+    page.goto(hermetic_server + "/")
+    wait_ready(page)
+
+    submit(page, "https://krisha.kz/a/show/123456789")
+
+    err = page.locator("form[data-check]:has(#lotUrl) + [data-err]")
+    expect(err).to_contain_text(detail)
+    expect(err).not_to_contain_text("Сервис сейчас не отвечает")
+
+
 def test_home_unparsable_listing_422_message(hermetic_page, mock_api, hermetic_server):
     page = hermetic_page
     mock_api()

@@ -185,6 +185,38 @@ def test_handle_update_explains_source_failure_instead_of_generic_error(monkeypa
     assert not any("Не получилось оценить" in t for t in texts)
 
 
+def test_handle_update_says_listing_was_removed(monkeypatch):
+    """predict-edge-listings AC-4.1: снятое объявление — понятный ответ."""
+    from krisha.predict import ListingNotFound
+
+    def removed(url, live_vision=True, timeout=None, on_attempt=None):
+        raise ListingNotFound("Объявление не найдено")
+
+    calls = []
+    monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
+    monkeypatch.setattr(predict_gate, "predict_from_url", removed)
+    bot.handle_update({"message": {"chat": {"id": 42}, "text": "https://krisha.kz/a/show/123"}})
+
+    texts = [kw.get("text", "") for m, kw in calls if m == "sendMessage"]
+    assert any("сняли с продажи" in t for t in texts)
+
+
+def test_handle_update_never_leaves_user_without_answer(monkeypatch):
+    """AC-4.1: непредвиденная ошибка оценки (раньше — TypeError на объявлении без
+    цены) не должна превращаться в тишину."""
+
+    def broken(url, live_vision=True, timeout=None, on_attempt=None):
+        raise TypeError("что-то непредвиденное")
+
+    calls = []
+    monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
+    monkeypatch.setattr(predict_gate, "predict_from_url", broken)
+    bot.handle_update({"message": {"chat": {"id": 42}, "text": "https://krisha.kz/a/show/124"}})
+
+    texts = [kw.get("text", "") for m, kw in calls if m == "sendMessage"]
+    assert any("Не получилось оценить объявление" in t for t in texts)
+
+
 def test_handle_update_ignores_non_message():
     # не должно падать
     bot.handle_update({"callback_query": {"id": "1"}})

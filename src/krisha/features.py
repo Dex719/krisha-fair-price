@@ -363,7 +363,11 @@ def build_features(
         df["district_mismatch"] = 0
 
     if "price" in df:
-        df["log_price"] = np.log1p(df["price"])
+        # to_numeric, как у остальных числовых колонок выше: у объявления «цена
+        # договорная» парсер отдаёт price=None, и log1p на object-колонке падал
+        # TypeError-ом — карточка отвечала 500 (.kiro/specs/predict-edge-listings).
+        # Для числовых цен (обучение) это тождество.
+        df["log_price"] = np.log1p(pd.to_numeric(df["price"], errors="coerce"))
 
     # issue #108: страховка в конце пайплайна — любой inf, просочившийся через
     # деление/производные фичи (сейчас их не должно быть после сантизации выше,
