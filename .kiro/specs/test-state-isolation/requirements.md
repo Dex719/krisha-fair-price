@@ -43,3 +43,14 @@
 `sqlite3.OperationalError: no such table: listings`. Фикс: проверка
 `DB_PATH.exists()` до `get_conn` — ровно то, что обещал докстринг («пустой dict,
 если базы нет»); регрессия — `tests/test_factor_hints.py`. Файлы: `src/krisha/factor_hints.py`.
+
+## Расширение (2026-09-23, бисекция)
+В полном прогоне в чистой копии всё равно появлялся `data/krisha.db` со схемой
+(135 168 байт). Бисекция по префиксам набора указала на `test_probes_and_seo.py`,
+точечно — `test_readyz_ok_when_model_and_db_exist`. Причина в прод-коде:
+`_prepare_data` проверял `DB_PATH.exists()` по пути приложения, а звал `init_db()`
+без аргумента — с умолчательным путём модуля `krisha.db`. На проде это один
+файл, но проверка и действие могли смотреть в разные: тест с подменённым
+`DB_PATH` так мигрировал `data/krisha.db` рабочей копии. Фикс: `init_db(DB_PATH)`;
+тест создаёт настоящую пустую базу вместо байта-заглушки. Файлы:
+`src/krisha/api/app.py`, `tests/test_probes_and_seo.py`.

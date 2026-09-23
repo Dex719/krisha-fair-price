@@ -163,7 +163,9 @@ def _ensure_published(tag: str) -> None:
 def _edit_notes(tag: str, body: str) -> None:
     import tempfile
 
-    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False) as fh:
+    # encoding явно: gh читает файл заметок как UTF-8, а по умолчанию Windows
+    # пишет в cp1252 — кириллица падала UnicodeEncodeError (.kiro/specs/windows-local-dev).
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as fh:
         fh.write(body)
         notes_path = fh.name
     run_gh(["release", "edit", tag, "--notes-file", notes_path])

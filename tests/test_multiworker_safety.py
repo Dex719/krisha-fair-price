@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import multiprocessing
 import re
+import sys
 import threading
 from datetime import datetime
 from pathlib import Path
+
+import pytest
 
 from krisha import usage
 from krisha.api import app as app_module
@@ -121,6 +124,11 @@ def _hold_lock(path: str, ready, done) -> None:  # pragma: no cover — доче
         done.wait(10)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="flock в дочернем процессе через fork — POSIX; на Windows приложение "
+           "запускают одним процессом, блокировка там no-op (.kiro/specs/windows-local-dev)",
+)
 def test_startup_waits_for_the_worker_that_prepares_data(tmp_path, monkeypatch):
     monkeypatch.setattr(app_module, "DB_PATH", tmp_path / "krisha.db")
     lock_path = tmp_path / ".startup.lock"

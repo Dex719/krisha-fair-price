@@ -3,7 +3,10 @@
 Запуск: `uvicorn krisha.api.app:app --reload`
 """
 
-import fcntl
+try:
+    import fcntl
+except ImportError:  # Windows: README обещает локальную разработку, там один процесс
+    fcntl = None
 import functools
 import hmac
 import ipaddress
@@ -904,6 +907,11 @@ def _startup_lock():
     делает работу, второй входит уже на готовое: база на месте — скачивание
     пропускается, миграции идемпотентны.
     """
+    if fcntl is None:
+        # Windows (локальная разработка): uvicorn запускают одним процессом —
+        # делить подготовку не с кем (.kiro/specs/windows-local-dev).
+        yield
+        return
     lock_path = DB_PATH.parent / ".startup.lock"
     handle = None
     try:
@@ -969,7 +977,11 @@ def _prepare_data() -> None:
         # и индексы (idx_listings_fingerprint для проверки дублей).
         from krisha.db import init_db
 
-        init_db()
+        # Тот же путь, что проверяли строкой выше: без аргумента init_db берёт
+        # свой умолчательный DB_PATH, и проверка с действием могли смотреть в
+        # разные файлы — тест с подменённым DB_PATH так создавал data/krisha.db
+        # прямо в рабочей копии (.kiro/specs/test-state-isolation).
+        init_db(DB_PATH)
 
 
 def _warmup_runtime_caches() -> None:
