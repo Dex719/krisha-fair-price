@@ -53,11 +53,15 @@ def test_batch_rows_do_not_depend_on_their_neighbours():
 
 def test_batch_matches_the_card(tmp_path, monkeypatch):
     """AC-4.1: пакет даёт те же цифры и вердикт, что пользовательская карточка."""
+    from krisha import factor_hints
     from krisha import predict as predict_mod
 
     db = tmp_path / "t.db"
     init_db(db)
     monkeypatch.setattr(predict_mod, "DB_PATH", db)
+    # Карточка строит подсказки к факторам по своей базе — туда же, чтобы тест
+    # не зависел от локальной data/krisha.db и ничего не создавал рядом с ней.
+    monkeypatch.setattr(factor_hints, "DB_PATH", db)
 
     listings = _real_listings()
     batch = predict_mod.predict_listings_batch(listings)

@@ -53,3 +53,19 @@ def test_ref_tree_cached_and_not_serialized(tmp_path):
     saved = json.loads(path.read_text(encoding="utf-8"))
     assert _TREE_KEY not in saved
     assert saved["lat"] == ref["lat"]
+
+
+def test_market_stats_without_db_does_not_create_an_empty_db(tmp_path, monkeypatch):
+    """Нет базы — пустая статистика и НИКАКОГО файла на её месте.
+
+    sqlite3.connect на отсутствующий путь создаёт пустой файл: после первого же
+    предикта карточки DB_PATH.exists() начинал врать, и в CI «нет базы → 503» в
+    /api/demo превращалось в «no such table: listings» (PR #194)."""
+    from krisha import factor_hints
+
+    missing = tmp_path / "data" / "krisha.db"
+    monkeypatch.setattr(factor_hints, "DB_PATH", missing)
+    factor_hints._market_stats_cached.cache_clear()
+
+    assert factor_hints.market_stats() == {}
+    assert not missing.exists()

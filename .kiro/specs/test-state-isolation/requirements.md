@@ -33,3 +33,13 @@
 ## Evidence (2026-09-23)
 До фикса базовый прогон `pytest` изменил `data/usage_stats.json` (`site: 1 → 2`);
 после — полный прогон (669 passed) оставил `git status` без изменений в `data/`.
+
+## Расширение (PR #194, CI 2026-09-23)
+Та же болезнь в прод-коде: `factor_hints._market_stats_cached` открывал
+`get_conn(DB_PATH)` без проверки — `sqlite3.connect` создавал пустой
+`data/krisha.db`, и всё, что судит по `DB_PATH.exists()` («нет базы → 503» в
+`/api/demo`), видело базу без таблиц. Новый тест, вызывающий карточку, в CI
+(где базы нет) уронил так `test_api_security::test_rate_limit_not_bypassed_by_spoofed_left_xff`:
+`sqlite3.OperationalError: no such table: listings`. Фикс: проверка
+`DB_PATH.exists()` до `get_conn` — ровно то, что обещал докстринг («пустой dict,
+если базы нет»); регрессия — `tests/test_factor_hints.py`. Файлы: `src/krisha/factor_hints.py`.
