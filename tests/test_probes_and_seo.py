@@ -29,8 +29,12 @@ def test_readyz_reports_missing_artifacts_as_503(tmp_path, monkeypatch):
 
 
 def test_readyz_ok_when_model_and_db_exist(tmp_path, monkeypatch):
+    from krisha.db import init_db
+
     (tmp_path / "m.cbm").write_bytes(b"x")
-    (tmp_path / "k.db").write_bytes(b"x")
+    # Настоящая база, а не байт-заглушка: старт гонит по ней миграции
+    # (init_db(DB_PATH)), и раньше они молча шли в data/krisha.db рабочей копии.
+    init_db(tmp_path / "k.db")
     monkeypatch.setattr(app_module, "MODEL_PATH", tmp_path / "m.cbm")
     monkeypatch.setattr(app_module, "DB_PATH", tmp_path / "k.db")
     with TestClient(app) as client:
