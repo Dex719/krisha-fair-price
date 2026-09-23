@@ -44,7 +44,7 @@ from krisha.config import (
     feature_forecast,
 )
 from krisha.db import get_conn, remember_update_id
-from krisha.predict import InvalidListingUrl
+from krisha.predict import InvalidListingUrl, ListingNotFound
 from krisha.predict_gate import PredictBusy
 from krisha.scraping.client import ChallengeBlocked, SourceUnavailable
 from krisha.stats import get_stats, heatmap_points
@@ -658,6 +658,11 @@ async def predict(req: PredictRequest, request: Request) -> PredictResponse:
             detail=_SOURCE_DETAIL,
             headers={"Retry-After": _CHALLENGE_RETRY_AFTER},
         ) from None
+    except ListingNotFound as exc:
+        # krisha ответила 404 — объявления нет. Не наш сбой и не отказ источника:
+        # честный 404 с текстом, который фронт и бот показывают как есть
+        # (.kiro/specs/predict-edge-listings). Ветка выше RuntimeError.
+        raise HTTPException(status_code=404, detail=str(exc)) from None
     except SourceUnavailable:
         # Страницы нет ни на одной попытке и без SafeLine: таймауты, 5xx,
         # троттлинг, 403 krisha. Тоже внешний отказ, а не наш сбой — до

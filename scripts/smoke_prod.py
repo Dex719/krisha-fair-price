@@ -33,6 +33,14 @@ class SmokeError(AssertionError):
     """Raised when the production smoke-check sees an unhealthy response."""
 
 
+class _ListingGone(SmokeError):
+    """/api/predict ответил 404: демо-лот сняли с продажи — нужен другой."""
+
+
+# Сколько раз брать другой демо-лот, если предикт ответил 404 «объявление снято».
+DEMO_REPICKS = 2
+
+
 def run_smoke(
     base_url: str = DEFAULT_BASE_URL,
     *,
@@ -71,18 +79,25 @@ def _run_with_client(base_url: str, client: httpx.Client | Any) -> list[str]:
         raise SmokeError("GET /api/health: data_age_hours must be a number when freshness is ok")
     checks.append("GET /api/health")
 
-    demo = _get_json(client, base_url, "/api/demo", "GET /api/demo")
-    if not isinstance(demo, dict):
-        raise SmokeError("GET /api/demo: response must be a JSON object")
-    demo_url = demo.get("url")
-    if not isinstance(demo_url, str) or "krisha.kz/a/show/" not in demo_url:
-        raise SmokeError("GET /api/demo: response must include a live krisha.kz/a/show URL")
+    demo_url = _demo_url(client, base_url)
     checks.append("GET /api/demo")
 
-    try:
-        predict = _post_predict(client, base_url, demo_url)
-    except SmokeError as exc:
-        raise SmokeError(f"{exc}{_scrape_counters_note(client, base_url)}") from exc
+    # Демо-лот могли снять с продажи между ночным проходом и смоуком: тогда
+    # прод честно отвечает 404, и это состояние источника, а не поломка
+    # сервиса — берём другой лот (.kiro/specs/predict-edge-listings, FR-5).
+    for repick in range(DEMO_REPICKS + 1):
+        try:
+            predict = _post_predict(client, base_url, demo_url)
+            break
+        except _ListingGone as exc:
+            if repick == DEMO_REPICKS:
+                raise SmokeError(
+                    f"{exc} — и так {DEMO_REPICKS + 1} демо-лота подряд: пул /api/demo "
+                    "состоит из снятых объявлений?"
+                ) from exc
+            demo_url = _demo_url(client, base_url)
+        except SmokeError as exc:
+            raise SmokeError(f"{exc}{_scrape_counters_note(client, base_url)}") from exc
     if not isinstance(predict, dict):
         raise SmokeError("POST /api/predict demo: response must be a JSON object")
     fair_price = predict.get("fair_price")
@@ -164,6 +179,9 @@ def _post_predict(client: httpx.Client | Any, base_url: str, demo_url: str) -> A
             raise SmokeError(f"{label}: request failed: {exc}") from exc
         if response.status_code == 200:
             return _parse_json(label, response)
+        if response.status_code == 404:
+            snippet = str(getattr(response, "text", "")).replace(chr(10), " ")[:180]
+            raise _ListingGone(f"{label}: HTTP 404 ({demo_url}). {snippet}")
         if response.status_code != 503:
             # Не 503 — настоящая поломка сервиса. Падаем сразу, с исходной
             # диагностикой: прятать её за повторами нельзя.
@@ -196,6 +214,16 @@ def _scrape_counters_note(client: httpx.Client | Any, base_url: str) -> str:
         return ""
     picked = {k: v for k, v in sorted(counters.items()) if k.startswith(("scrape_", "predict_"))}
     return f" | /api/metrics: {picked}" if picked else ""
+
+
+def _demo_url(client: httpx.Client | Any, base_url: str) -> str:
+    demo = _get_json(client, base_url, "/api/demo", "GET /api/demo")
+    if not isinstance(demo, dict):
+        raise SmokeError("GET /api/demo: response must be a JSON object")
+    demo_url = demo.get("url")
+    if not isinstance(demo_url, str) or "krisha.kz/a/show/" not in demo_url:
+        raise SmokeError("GET /api/demo: response must include a live krisha.kz/a/show URL")
+    return demo_url
 
 
 def _get_json(client: httpx.Client | Any, base_url: str, path: str, label: str) -> Any:

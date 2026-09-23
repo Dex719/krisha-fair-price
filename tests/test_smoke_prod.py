@@ -209,6 +209,29 @@ def test_unavailable_metrics_do_not_mask_the_original_error(monkeypatch):
         smoke_prod.run_smoke("https://prod.example", client=client)
 
 
+def test_removed_demo_listing_is_replaced_not_reported_as_breakage(monkeypatch):
+    """predict-edge-listings AC-5.1: демо-лот сняли — берём другой, смоук зелёный."""
+    monkeypatch.setattr(smoke_prod.time, "sleep", lambda _s: None)
+    gone = FakeResponse(status_code=404, text='{"detail": "Объявление не найдено"}')
+    good = FakeResponse(json_data={"listing_id": 7, "fair_price": 45_000_000, "verdict": "FAIR"})
+    client = _sequenced_client([gone, good])
+
+    checks = smoke_prod.run_smoke("https://prod.example", client=client)
+
+    assert "POST /api/predict demo" in checks
+    assert len(client.posts) == 2
+
+
+def test_only_removed_demo_listings_fail_with_explanation(monkeypatch):
+    monkeypatch.setattr(smoke_prod.time, "sleep", lambda _s: None)
+    gone = FakeResponse(status_code=404, text='{"detail": "Объявление не найдено"}')
+    client = _sequenced_client([gone])
+
+    with pytest.raises(smoke_prod.SmokeError, match="демо-лота подряд"):
+        smoke_prod.run_smoke("https://prod.example", client=client)
+    assert len(client.posts) == smoke_prod.DEMO_REPICKS + 1
+
+
 def test_retry_after_header_is_honoured_and_capped():
     assert smoke_prod._retry_after_s(FakeResponse(), 4.0) == 4.0
 

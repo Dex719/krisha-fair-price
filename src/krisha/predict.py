@@ -49,6 +49,16 @@ class InvalidListingUrl(ValueError):
     """
 
 
+class ListingNotFound(RuntimeError):
+    """krisha ответила 404: объявления нет — скорее всего, его сняли с продажи.
+
+    Не наш сбой и не отказ источника: /api/predict отвечает 404 с понятным
+    текстом, а не 502 «Не удалось обработать объявление» (фронт на него писал
+    «Сервис сейчас не отвечает»). Подкласс RuntimeError — всё, что ловит его
+    (например, /track в боте), продолжает работать (.kiro/specs/predict-edge-listings).
+    """
+
+
 KRISHA_URL_RE = re.compile(r"krisha\.kz/a/show/(\d+)")
 KRISHA_SHOW_BASE = "https://krisha.kz/a/show/"
 VERDICT_THRESHOLD = 0.10  # ±10% — справедливая цена
@@ -563,7 +573,9 @@ def predict_from_url(
     ) as client:
         html = client.get(url)
     if html is None:
-        raise RuntimeError("Не удалось загрузить объявление")
+        # С raise_on_challenge любой отказ источника поднимает SourceUnavailable,
+        # так что None здесь значит ровно одно — 404: объявления нет.
+        raise ListingNotFound("Объявление не найдено — возможно, его уже сняли с продажи")
     listing = parse_detail(html, url)
     if listing is None:
         raise RuntimeError("Не удалось распарсить объявление")
