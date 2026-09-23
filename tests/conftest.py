@@ -11,6 +11,9 @@ os.environ.setdefault("KRISHA_MODEL_AUTO", "0")
 # Флаш статистики в проде уходит в фоновый поток (см. usage._flush_async):
 # в тестах это гонка «записалось ли уже», поэтому здесь — синхронно.
 os.environ.setdefault("USAGE_FLUSH_SYNC", "1")
+# Прогрев сессии krisha при старте приложения ходит в сеть — в тестах выключен
+# (герметичный e2e-сервер наследует это окружение).
+os.environ.setdefault("KRISHA_SESSION_WARMUP", "0")
 
 
 @pytest.fixture(autouse=True)

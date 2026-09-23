@@ -561,7 +561,6 @@ def _track_listing_meta(listing_id: int) -> tuple[int | None, str | None]:
 
     from krisha.config import DB_PATH
     from krisha.db import get_conn, upsert_listing
-    from krisha.scraping.client import PoliteClient
     from krisha.scraping.detail_parser import parse_detail
 
     try:
@@ -577,14 +576,13 @@ def _track_listing_meta(listing_id: int) -> tuple[int | None, str | None]:
         pass
 
     url = f"https://krisha.kz/a/show/{listing_id}"
-    # Тот же короткий бюджет, что в predict_from_url: пользователь ждёт ответа.
-    # И те же липкие куки процесса и счётчики попыток — это тоже пользовательский путь.
-    from krisha.predict import USER_COOKIES
+    # Тот же клиент, что в predict_from_url: пользователь ждёт ответа — короткий
+    # бюджет и таймаут (раньше здесь стоял краулерный, 30 с), те же липкие куки и
+    # счётчики попыток (.kiro/specs/krisha-session-warmup).
+    from krisha.predict import user_client
 
-    with PoliteClient(
-        delay_range=(0.5, 1.0), max_retries=3, throttle_wait_s=2.0,
-        challenge_wait_s=0.5, raise_on_challenge=True,
-        cookie_store=USER_COOKIES, on_attempt=predict_gate.count_scrape_attempt,
+    with user_client(
+        timeout=predict_gate.user_timeout(), on_attempt=predict_gate.count_scrape_attempt
     ) as client:
         page = client.get(url)
     if page is None:

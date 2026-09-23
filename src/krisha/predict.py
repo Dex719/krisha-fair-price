@@ -529,6 +529,36 @@ def predict_listings_batch(listings: list[dict[str, Any]]) -> list[dict[str, Any
     return results
 
 
+def user_client(
+    timeout: "float | httpx.Timeout | None" = None,
+    on_attempt: "Callable[[str], None] | None" = None,
+) -> PoliteClient:
+    """PoliteClient пользовательского пути: веб, бот (/track) и прогрев сессии.
+
+    Одна точка настроек вместо копий: 3 попытки с короткими паузами (человек
+    ждёт ответа), отказ источника — исключением (503, а не 502), сессия — из
+    липкого хранилища процесса (.kiro/specs/safeline-468, §7).
+    """
+    return PoliteClient(
+        delay_range=(0.5, 1.0),
+        # 3, а не 2: каждая попытка после SafeLine идёт со СВЕЖЕЙ сессией —
+        # единственное, что его лечит. С двумя попытками мерили ~40% отказов.
+        max_retries=3,
+        throttle_wait_s=2.0,
+        # 0.5, а не дефолтная секунда: между попытками и так стоит delay_range,
+        # суммарно 1.0–1.5 с — та пауза, на которой замер дал 8/8. Больше нельзя:
+        # 3 × (1 с паузы + 5 с таймаута) + 2 × 1 с упиралось бы в PREDICT_WAIT_S=20,
+        # и худший случай уезжал бы в «сервис перегружен» вместо «источник не пускает».
+        challenge_wait_s=0.5,
+        raise_on_challenge=True,
+        timeout=timeout,
+        # Сессия начинается с кук последнего удачного запроса процесса (ведро A);
+        # исходы попыток — в /api/metrics через on_attempt.
+        cookie_store=USER_COOKIES,
+        on_attempt=on_attempt,
+    )
+
+
 def predict_from_url(
     url: str,
     live_vision: bool = True,
@@ -546,31 +576,9 @@ def predict_from_url(
     # ограничить ретраи (403/429 отдаются быстро) — нужен и короткий сетевой
     # таймаут: на ПОВИСШЕМ коннекте два ретрая по REQUEST_TIMEOUT=30 с давали
     # больше минуты на один запрос. timeout прокидывает вызывающий
-    # (predict_gate.user_timeout: 5 с всего, 3 с на connect).
-    #
-    # max_retries=3, а не 2: каждая попытка идёт со СВЕЖЕЙ сессией, и на
-    # anti-bot челлендже SafeLine это единственное, что работает (см.
-    # `.kiro/specs/safeline-468`). С двумя попытками мерили ~40% отказов на
-    # живых объявлениях.
-    #
-    # challenge_wait_s=0.5, а не дефолтная секунда: между попытками и так
-    # стоит delay_range, суммарно 1.0–1.5 с — ровно та пауза, на которой
-    # замер дал 8/8. Больше нельзя: 3 × (1 с паузы + 5 с таймаута) + 2 × 1 с
-    # упиралось бы РОВНО в PREDICT_WAIT_S=20, и худший случай уезжал бы в
-    # «сервис перегружен» вместо честного «источник не пускает».
-    #
-    # cookie_store: сессия начинается с кук последнего удачного запроса этого
-    # процесса (ведро A), on_attempt: исходы попыток уходят в /api/metrics.
-    with PoliteClient(
-        delay_range=(0.5, 1.0),
-        max_retries=3,
-        throttle_wait_s=2.0,
-        challenge_wait_s=0.5,
-        raise_on_challenge=True,
-        timeout=timeout,
-        cookie_store=USER_COOKIES,
-        on_attempt=on_attempt,
-    ) as client:
+    # (predict_gate.user_timeout: 5 с всего, 3 с на connect). Остальные
+    # настройки пользовательского клиента — в user_client.
+    with user_client(timeout=timeout, on_attempt=on_attempt) as client:
         html = client.get(url)
     if html is None:
         # С raise_on_challenge любой отказ источника поднимает SourceUnavailable,
