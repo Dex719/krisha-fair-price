@@ -46,7 +46,7 @@ from krisha.config import (
 from krisha.db import get_conn, remember_update_id
 from krisha.predict import InvalidListingUrl
 from krisha.predict_gate import PredictBusy
-from krisha.scraping.client import ChallengeBlocked
+from krisha.scraping.client import ChallengeBlocked, SourceUnavailable
 from krisha.stats import get_stats, heatmap_points
 
 logging.basicConfig(level=logging.INFO)
@@ -583,6 +583,8 @@ _BUSY_RETRY_AFTER = "30"
 # Челлендж лечится сменой сессии, а не ожиданием: повторять можно сразу,
 # а не через полминуты, как при перегрузе.
 _CHALLENGE_RETRY_AFTER = "5"
+# Один текст на любой отказ источника: фронт показывает detail любого 503 как есть.
+_SOURCE_DETAIL = "Источник временно не отдаёт объявление, попробуй ещё раз"
 
 
 @app.post("/api/predict", response_model=PredictResponse)
@@ -653,7 +655,19 @@ async def predict(req: PredictRequest, request: Request) -> PredictResponse:
         logger.warning("predict: источник закрыт anti-bot челленджем", exc_info=True)
         raise HTTPException(
             status_code=503,
-            detail="Источник временно не отдаёт объявление, попробуй ещё раз",
+            detail=_SOURCE_DETAIL,
+            headers={"Retry-After": _CHALLENGE_RETRY_AFTER},
+        ) from None
+    except SourceUnavailable:
+        # Страницы нет ни на одной попытке и без SafeLine: таймауты, 5xx,
+        # троттлинг, 403 krisha. Тоже внешний отказ, а не наш сбой — до
+        # 2026-09-23 он уезжал в 502 (.kiro/specs/safeline-468, §7). Ветка выше
+        # RuntimeError и ниже ChallengeBlocked — порядок наследования.
+        metrics.bump("predict_source_unavailable")
+        logger.warning("predict: источник не отдал объявление", exc_info=True)
+        raise HTTPException(
+            status_code=503,
+            detail=_SOURCE_DETAIL,
             headers={"Retry-After": _CHALLENGE_RETRY_AFTER},
         ) from None
     except RuntimeError:

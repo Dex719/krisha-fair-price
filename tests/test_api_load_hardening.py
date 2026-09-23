@@ -306,7 +306,7 @@ def test_same_listing_is_fetched_once_for_the_crowd(monkeypatch):
     """Пост в канале: тысяча человек вставляет одну ссылку — один разбор."""
     calls: list[str] = []
 
-    def slow_predict(url, live_vision=False, timeout=None):
+    def slow_predict(url, live_vision=False, timeout=None, on_attempt=None):
         calls.append(url)
         time.sleep(0.05)
         return _payload()
@@ -335,7 +335,7 @@ def test_same_listing_is_fetched_once_for_the_crowd(monkeypatch):
 def test_different_listings_are_not_confused(monkeypatch):
     seen: list[str] = []
 
-    def fake_predict(url, live_vision=False, timeout=None):
+    def fake_predict(url, live_vision=False, timeout=None, on_attempt=None):
         seen.append(url)
         return _payload(int(url.rsplit("/", 1)[-1]))
 
@@ -355,7 +355,7 @@ def test_failed_predict_is_retried_after_the_negative_cache_expires(monkeypatch)
     каждого посетителя в полный скрейп-цикл), но не навсегда."""
     attempts: list[int] = []
 
-    def flaky(url, live_vision=False, timeout=None):
+    def flaky(url, live_vision=False, timeout=None, on_attempt=None):
         attempts.append(1)
         if len(attempts) == 1:
             raise RuntimeError("krisha не ответила")
@@ -375,7 +375,7 @@ def test_failed_predict_is_retried_after_the_negative_cache_expires(monkeypatch)
 
 
 def test_cached_predict_still_counts_in_usage_stats(monkeypatch):
-    monkeypatch.setattr(predict_gate, "predict_from_url", lambda url, live_vision=False, timeout=None: _payload())
+    monkeypatch.setattr(predict_gate, "predict_from_url", lambda url, live_vision=False, timeout=None, on_attempt=None: _payload())
     events: list[str] = []
     monkeypatch.setattr(app_module.usage, "record_event", lambda kind, *a, **k: events.append(kind))
     client = TestClient(app)
@@ -390,7 +390,7 @@ def test_cached_predict_still_counts_in_usage_stats(monkeypatch):
 # Лимиты
 # --------------------------------------------------------------------------
 def test_rate_limit_answers_with_retry_after(monkeypatch):
-    monkeypatch.setattr(predict_gate, "predict_from_url", lambda url, live_vision=False, timeout=None: _payload())
+    monkeypatch.setattr(predict_gate, "predict_from_url", lambda url, live_vision=False, timeout=None, on_attempt=None: _payload())
     app_module._rate.clear()
     client = TestClient(app)
     for i in range(app_module.RATE_LIMIT):

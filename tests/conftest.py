@@ -14,6 +14,24 @@ os.environ.setdefault("USAGE_FLUSH_SYNC", "1")
 
 
 @pytest.fixture(autouse=True)
+def _isolate_repo_state(tmp_path, monkeypatch):
+    """Статистика использования не должна попадать в data/ репозитория.
+
+    Любой тест, открывающий страницу через TestClient, считает «визит», а с
+    USAGE_FLUSH_SYNC=1 первый же визит флашится на диск — раньше прямо в боевой
+    data/usage_stats.json рабочей копии, откуда его легко утащить коммитом
+    (.kiro/specs/test-state-isolation). Пуш состояния в GitHub в тестах заглушен
+    по той же причине; тесты самого пуша возвращают настоящую функцию явно.
+    """
+    from krisha import subscriptions, usage
+
+    monkeypatch.setattr(usage, "USAGE_PATH", tmp_path / "usage_stats.json")
+    monkeypatch.setattr(usage, "_state", None)
+    monkeypatch.setattr(usage, "_last_flush", None)
+    monkeypatch.setattr(subscriptions, "_push_to_github", lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
 def _clear_api_caches():
     """Кэши ответов API живут в модуле и переживают тест.
 

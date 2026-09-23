@@ -379,4 +379,18 @@ def listing_to_frame(
     spatial_ref: dict | None = None,
 ) -> pd.DataFrame:
     """Один распарсенный listing-dict → DataFrame с фичами для предсказания."""
-    return build_features(pd.DataFrame([listing]), ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)
+    return listings_to_frame([listing], ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)
+
+
+def listings_to_frame(
+    listings: list[dict[str, Any]],
+    ppsm_maps: dict | None = None,
+    spatial_ref: dict | None = None,
+) -> pd.DataFrame:
+    """Пачка listing-dict → DataFrame с фичами, строка на объявление, порядок сохранён.
+
+    build_features построчный и строк не выбрасывает (clean() здесь не
+    вызывается), а категориальные фичи — строки, так что пачка даёт те же
+    фичи, что поштучный listing_to_frame (.kiro/specs/rescrape-post-steps).
+    """
+    return build_features(pd.DataFrame(listings), ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)
