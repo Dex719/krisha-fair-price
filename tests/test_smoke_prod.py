@@ -184,6 +184,31 @@ def test_predict_does_not_retry_real_server_errors(monkeypatch):
     assert len(client.posts) == 1
 
 
+def test_failed_predict_reports_scrape_counters_from_metrics(monkeypatch):
+    """AC-11.1 (safeline-468 §7): логи контейнера HF живут меньше суток, так что
+    в тексте падения должно быть видно, что krisha отдавала IP прода."""
+    monkeypatch.setattr(smoke_prod.time, "sleep", lambda _s: None)
+    client = _sequenced_client([FakeResponse(status_code=502, text="boom")])
+    client.get_map["/api/metrics"] = FakeResponse(json_data={"counters": {
+        "scrape_http_403": 3, "scrape_waf_block": 3, "rate_limited": 1,
+    }})
+
+    with pytest.raises(smoke_prod.SmokeError) as err:
+        smoke_prod.run_smoke("https://prod.example", client=client)
+
+    text = str(err.value)
+    assert "got 502" in text and "'scrape_http_403': 3" in text and "scrape_waf_block" in text
+    assert "rate_limited" not in text, "в диагностику — только исходы скрейпа и предикта"
+
+
+def test_unavailable_metrics_do_not_mask_the_original_error(monkeypatch):
+    monkeypatch.setattr(smoke_prod.time, "sleep", lambda _s: None)
+    client = _sequenced_client([FakeResponse(status_code=502, text="boom")])  # /api/metrics нет
+
+    with pytest.raises(smoke_prod.SmokeError, match=r"got 502\. boom$"):
+        smoke_prod.run_smoke("https://prod.example", client=client)
+
+
 def test_retry_after_header_is_honoured_and_capped():
     assert smoke_prod._retry_after_s(FakeResponse(), 4.0) == 4.0
 

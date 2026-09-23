@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import html
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -84,23 +85,59 @@ def new_listings(db_path: Path | str = DB_PATH, hours: int = ALERT_WINDOW_HOURS)
     return [dict(r) for r in rows if r["id"] not in already]
 
 
-def find_good_deals(db_path: Path | str = DB_PATH, hours: int = ALERT_WINDOW_HOURS) -> list[dict]:
-    """Новые объявления с вердиктом GOOD_DEAL, отсортированы по выгоде."""
-    from krisha.predict import predict_from_listing
+# Лотов на один вызов пакетной оценки: фичи пачки живут в памяти целиком.
+ALERT_BATCH_SIZE = 500
 
-    deals = []
-    for listing in new_listings(db_path, hours):
+
+def find_good_deals(db_path: Path | str = DB_PATH, hours: int = ALERT_WINDOW_HOURS) -> list[dict]:
+    """Новые объявления с вердиктом GOOD_DEAL, отсортированы по выгоде.
+
+    Оценка пакетная: раньше здесь на каждый лот окна шла полная карточка
+    (SHAP, подсказки, рынок, аналоги, коммит в базу) — ~0.7 с на лот. После
+    фикса SafeLine окно выросло до 4–7 тыс. лотов, шаг — до 80 минут, и
+    2026-09-20 он не дал ночному проходу залить базу
+    (.kiro/specs/rescrape-post-steps). Вердикт и цена — те же, что в карточке.
+    """
+    from krisha.db import log_predictions
+
+    started = time.monotonic()
+    candidates = new_listings(db_path, hours)
+    deals, priced_total = [], 0
+    with get_conn(db_path) as conn:
+        for start in range(0, len(candidates), ALERT_BATCH_SIZE):
+            priced = _price_chunk(candidates[start:start + ALERT_BATCH_SIZE])
+            priced_total += len(priced)
+            # issue #128: вердикты копим для проверки на судьбе лотов — как и раньше.
+            log_predictions([result for _, result in priced], conn=conn)
+            deals.extend(
+                {**listing, "fair_price": result["fair_price"], "diff_pct": result["diff_pct"]}
+                for listing, result in priced
+                if result["verdict"] == "GOOD_DEAL"
+            )
+    deals.sort(key=lambda d: d.get("diff_pct") or 0)  # самая большая скидка первой
+    logger.info(
+        "alerts: оценено %s из %s лотов окна за %.1f с, выгодных %s",
+        priced_total, len(candidates), time.monotonic() - started, len(deals),
+    )
+    return deals
+
+
+def _price_chunk(chunk: list[dict]) -> list[tuple[dict, dict]]:
+    """Пачка лотов → [(лот, оценка)]. Кривой лот не должен ронять всю пачку."""
+    from krisha.predict import predict_listings_batch
+
+    try:
+        return list(zip(chunk, predict_listings_batch(chunk), strict=True))
+    except Exception:  # noqa: BLE001 — упала пачка: переоцениваем по одному ниже
+        logger.warning("alerts: пачка из %s лотов не оценилась — оцениваю по одному",
+                       len(chunk), exc_info=True)
+    priced = []
+    for listing in chunk:
         try:
-            result = predict_from_listing(listing, live_vision=False)
+            priced.append((listing, predict_listings_batch([listing])[0]))
         except Exception as exc:  # noqa: BLE001 — одна кривая строка не должна ронять рассылку
             logger.warning("alerts: predict для %s не удался: %s", listing.get("id"), exc)
-            continue
-        if result.get("verdict") != "GOOD_DEAL":
-            continue
-        deals.append({**listing, "fair_price": result["fair_price"],
-                      "diff_pct": result.get("diff_pct")})
-    deals.sort(key=lambda d: d.get("diff_pct") or 0)  # самая большая скидка первой
-    return deals
+    return priced
 
 
 def format_alert(deals: list[dict]) -> str:

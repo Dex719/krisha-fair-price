@@ -26,6 +26,7 @@ import argparse
 import json
 import logging
 import subprocess
+import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -33,6 +34,9 @@ logger = logging.getLogger(__name__)
 
 REPO = "Dex719/krisha-fair-price"
 TAG_PREFIX = "snapshot"
+# Паузы между попытками публикации, с: GitHub изредка отвечает 5xx
+# (2026-09-13 — HTTP 500 на создании релиза, см. .kiro/specs/rescrape-post-steps).
+PUBLISH_RETRY_WAITS = (10, 30)
 
 
 def run_gh(args: list[str], check: bool = True) -> subprocess.CompletedProcess:
@@ -120,9 +124,12 @@ def publish(
     if release_exists(tag):
         logger.info("Релиз %s уже существует — дополняю ассетами и заметками", tag)
         current = run_gh(["release", "view", tag, "--json", "body", "-q", ".body"]).stdout
-        new_body = f"{current.rstrip()}\n\n---\n\n{section}\n" if current.strip() else section
         run_gh(["release", "upload", tag, *upload_paths, "--clobber"])
-        _edit_notes(tag, new_body)
+        # Идемпотентно: повтор после полусозданного релиза (см. main) не должен
+        # дублировать секцию в заметках.
+        if section.strip() not in current:
+            new_body = f"{current.rstrip()}\n\n---\n\n{section}\n" if current.strip() else section
+            _edit_notes(tag, new_body)
     else:
         logger.info("Создаю новый снапшот-релиз %s", tag)
         run_gh(
@@ -137,6 +144,20 @@ def publish(
                 section,
             ]
         )
+    _ensure_published(tag)
+
+
+def _ensure_published(tag: str) -> None:
+    """Черновик → опубликованный релиз.
+
+    `gh release create` на сбое аплоада ассетов оставляет черновик: так
+    2026-09-13 завис snapshot-2026-09-13 (HTTP 500), а вечерний rent-проход
+    дописал в черновик свою базу — архив за день так и не стал виден.
+    """
+    is_draft = run_gh(["release", "view", tag, "--json", "isDraft", "-q", ".isDraft"]).stdout
+    if is_draft.strip() == "true":
+        logger.info("Релиз %s — черновик, публикую", tag)
+        run_gh(["release", "edit", tag, "--draft=false"])
 
 
 def _edit_notes(tag: str, body: str) -> None:
@@ -192,11 +213,22 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     tag = args.tag or f"{TAG_PREFIX}-{datetime.now(timezone.utc).date().isoformat()}"
-    try:
-        publish(args.db_gz, args.sha256, args.asset_name, args.stats_json, args.label, tag)
-    except subprocess.CalledProcessError as exc:
-        logger.error("Публикация снапшота %s провалилась: %s", tag, exc.stderr)
-        return 1
+    # Повторяем publish целиком, а не отдельный вызов gh: после полусозданного
+    # релиза повтор `release create` упал бы на «уже существует», а целиковый
+    # повтор сам уходит в ветку «дописать ассеты и опубликовать».
+    for attempt, wait in enumerate((*PUBLISH_RETRY_WAITS, None), start=1):
+        try:
+            publish(args.db_gz, args.sha256, args.asset_name, args.stats_json, args.label, tag)
+            break
+        except subprocess.CalledProcessError as exc:
+            if wait is None:
+                logger.error("Публикация снапшота %s провалилась: %s", tag, exc.stderr)
+                return 1
+            logger.warning(
+                "Публикация снапшота %s: попытка %s не удалась (%s) — повтор через %s с",
+                tag, attempt, (exc.stderr or "").strip()[:200], wait,
+            )
+            time.sleep(wait)
 
     if args.rotate_keep_days > 0:
         rotate(args.rotate_keep_days)

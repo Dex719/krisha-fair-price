@@ -913,23 +913,52 @@ def log_prediction(
     prediction_log.record(
         listing_id, fair_price, fair_low, fair_high, verdict, model_version
     )
+    row = (int(listing_id), fair_price, fair_low, fair_high, verdict, model_version)
     with use_conn(conn, db_path) as conn:
         try:
-            conn.execute(
-                "INSERT INTO predictions "
-                "(listing_id, fair_price, fair_low, fair_high, verdict, model_version) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (int(listing_id), fair_price, fair_low, fair_high, verdict, model_version),
-            )
+            conn.execute(_PREDICTION_INSERT_SQL, row)
         except sqlite3.OperationalError:
             conn.executescript(SCHEMA)
             _migrate(conn)
-            conn.execute(
-                "INSERT INTO predictions "
-                "(listing_id, fair_price, fair_low, fair_high, verdict, model_version) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (int(listing_id), fair_price, fair_low, fair_high, verdict, model_version),
-            )
+            conn.execute(_PREDICTION_INSERT_SQL, row)
+
+
+_PREDICTION_INSERT_SQL = (
+    "INSERT INTO predictions "
+    "(listing_id, fair_price, fair_low, fair_high, verdict, model_version) "
+    "VALUES (?, ?, ?, ?, ?, ?)"
+)
+
+
+def log_predictions(
+    rows: list[dict[str, Any]],
+    db_path: Path | str = DB_PATH,
+    conn: sqlite3.Connection | None = None,
+) -> int:
+    """Пачка строк в predictions одной транзакцией — для алертов (issue #128).
+
+    Те же колонки, что у `log_prediction`, но без долговечного JSON-лога:
+    пакетные предикты не пользовательские, им место в базе, а не в git-истории
+    (см. docstring krisha.prediction_log). Раньше алерты писали по строке с
+    коммитом на каждый лот (.kiro/specs/rescrape-post-steps). Ключи строки — как
+    у результата `predict.predict_listings_batch`. Возвращает число записанных.
+    """
+    params = [
+        (int(r["listing_id"]), r.get("fair_price"), r.get("fair_price_low"),
+         r.get("fair_price_high"), r.get("verdict"), r.get("model_version"))
+        for r in rows
+        if r.get("listing_id") is not None
+    ]
+    if not params:
+        return 0
+    with use_conn(conn, db_path) as conn:
+        try:
+            conn.executemany(_PREDICTION_INSERT_SQL, params)
+        except sqlite3.OperationalError:
+            conn.executescript(SCHEMA)
+            _migrate(conn)
+            conn.executemany(_PREDICTION_INSERT_SQL, params)
+    return len(params)
 
 
 def _record_price_if_changed(conn: sqlite3.Connection, listing_id: int, price: int) -> bool:
