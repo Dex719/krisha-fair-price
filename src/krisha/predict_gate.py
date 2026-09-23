@@ -38,7 +38,7 @@ import httpx
 
 from krisha.api import metrics
 from krisha.api.cache import TTLCache
-from krisha.predict import KRISHA_URL_RE, InvalidListingUrl, predict_from_url
+from krisha.predict import KRISHA_URL_RE, InvalidListingUrl, predict_from_url, user_client
 from krisha.scraping.client import SourceUnavailable
 
 logger = logging.getLogger(__name__)
@@ -145,6 +145,25 @@ def count_scrape_attempt(name: str) -> None:
     (.kiro/specs/safeline-468, §7, FR-10).
     """
     metrics.bump(f"scrape_{name}")
+
+
+def warm_session(url: str) -> bool:
+    """Прогрев липкой сессии: один проход пользовательского клиента по объявлению.
+
+    После рестарта хранилище кук пустое, и первая сессия тянет жребий SafeLine —
+    с IP Hugging Face часто проигрышный (смоук 2026-09-23: 403, 403, 200). Жребий
+    забирает фоновый запрос при старте, а не первый человек
+    (.kiro/specs/krisha-session-warmup). Никогда не бросает: True — сессия
+    дошла до страницы и её куки запомнены.
+    """
+    try:
+        with user_client(timeout=user_timeout(), on_attempt=count_scrape_attempt) as client:
+            ok = client.get(url) is not None
+    except Exception:  # noqa: BLE001 — прогрев не должен ронять старт
+        logger.warning("krisha: прогрев сессии на %s не удался", url, exc_info=True)
+        ok = False
+    metrics.bump("session_warmup_ok" if ok else "session_warmup_failed")
+    return ok
 
 
 def _run(url: str, live_vision: bool, wait_s: float) -> dict[str, Any]:

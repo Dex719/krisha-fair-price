@@ -936,7 +936,43 @@ def _startup() -> None:
     with _startup_lock():
         _prepare_data()
     _warmup_runtime_caches()
+    _start_session_warmup()
     bot.setup_webhook()
+
+
+# Сколько лотов из демо-пула пробовать, прогревая сессию krisha: первый мог
+# успеть уйти с сайта (404) — тогда второй.
+SESSION_WARMUP_TRIES = 2
+
+
+def _start_session_warmup() -> None:
+    """Фоном прогреть липкую сессию krisha — не заставлять платить первого человека.
+
+    После рестарта хранилище кук пустое, и первая сессия тянет жребий SafeLine;
+    с IP Hugging Face он часто проигрышный — смоук после выката b999257 прошёл
+    предикт только с 3-й из 3 попыток (.kiro/specs/krisha-session-warmup).
+    Поток daemon: готовность сервиса не ждёт. KRISHA_SESSION_WARMUP=0 —
+    выключить (тесты, герметичный e2e); нет базы/пула — пропуск.
+    """
+    if os.environ.get("KRISHA_SESSION_WARMUP", "1") == "0":
+        return
+    try:
+        pool = _demo_pool() if DB_PATH.exists() else []
+    except Exception:  # noqa: BLE001 — без пула просто не греем
+        logger.warning("прогрев сессии: пул демо-лотов недоступен", exc_info=True)
+        return
+    if not pool:
+        return
+    urls = [url for _, url in random.sample(pool, min(SESSION_WARMUP_TRIES, len(pool)))]
+
+    def warm() -> None:
+        for url in urls:
+            if predict_gate.warm_session(url):
+                logger.info("krisha: сессия прогрета (%s)", url)
+                return
+        logger.warning("krisha: прогреть сессию не удалось — первый запрос потянет жребий сам")
+
+    threading.Thread(target=warm, name="krisha-session-warmup", daemon=True).start()
 
 
 def _log_runtime_limits() -> None:
