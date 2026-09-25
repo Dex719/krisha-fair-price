@@ -435,11 +435,10 @@
       "bot": 0,
       "bot_users": [],
       "hours": {
-        "0": 3,
-        "13": 1
+        "16": 1
       },
-      "predict": 1,
-      "site": 4
+      "predict": 0,
+      "site": 1
     }
   }
 }
