@@ -466,7 +466,7 @@
       "hours": {
         "1": 1
       },
-      "predict": 0,
+      "predict": 1,
       "site": 1
     }
   }
