@@ -3,15 +3,8 @@ name: CI
 on:
   push:
     branches: [main]
-    # issue #190 §2.5: state-коммиты рантайма Space (статистика, подписки,
-    # лог предиктов) прилетают 3–4 раза в день и гоняли полный CI + e2e на
-    # каждый — кода они не меняют. Список тот же, что в deploy-hf.yml.
-    paths-ignore:
-      - "data/subscriptions.json"
-      - "data/tracked.json"
-      - "data/usage_stats.json"
-      - "data/channel_posted.json"
-      - "data/prediction_log.json"
+    # state-коммиты рантайма (issue #190 §2.5) больше не идут в этот репо —
+    # состояние живёт в приватном репо данных, paths-ignore для них не нужен.
   pull_request:
 
 jobs:
@@ -35,6 +28,19 @@ jobs:
           pip install -c requirements-train.lock "pytest>=8.0" "ruff>=0.4" "pytest-playwright>=0.5"
       - name: Lint
         run: ruff check src tests scripts
+      # Весов модели в git нет (issue #74) — они в релизе приватного репо
+      # данных. Тесты с маркером needs_model гоняют настоящую модель; без
+      # секрета (PR от Dependabot без него) шаг молча пропускается, а такие
+      # тесты скипаются в conftest.
+      - name: Download model for needs_model tests
+        env:
+          KRISHA_DB_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+        run: |
+          if [ -z "$KRISHA_DB_TOKEN" ]; then
+            echo "KRISHA_DB_TOKEN недоступен — тесты needs_model будут пропущены"
+            exit 0
+          fi
+          python -m krisha.db_release --models --require
       - name: Tests
         run: pytest -q
       # issue #190 §2.5: аудит блокирует, а не «жёлтый навсегда» — с
@@ -73,5 +79,15 @@ jobs:
         # (первый прогон простоял 13+ минут). Если раннер однажды обеднеет,
         # Playwright упадёт с внятным списком недостающих библиотек.
         run: playwright install chromium
+      # Как в job test: веса из приватного релиза для needs_model-тестов.
+      - name: Download model for needs_model tests
+        env:
+          KRISHA_DB_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+        run: |
+          if [ -z "$KRISHA_DB_TOKEN" ]; then
+            echo "KRISHA_DB_TOKEN недоступен — тесты needs_model будут пропущены"
+            exit 0
+          fi
+          python -m krisha.db_release --models --require
       - name: Browser e2e (герметичные — без базы и внешней сети)
         run: pytest -m e2e -q

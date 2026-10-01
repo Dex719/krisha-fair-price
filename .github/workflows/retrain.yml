@@ -10,8 +10,12 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
-  actions: write # запуск deploy-hf после коммита модели (см. шаг Deploy)
+  contents: write # коммит меты, отчётов и README
+
+# База и веса модели — в релизах приватного репозитория данных (issue #74:
+# модели больше не коммитятся в git). Доступ — KRISHA_DB_TOKEN, см. rescrape.yml.
+env:
+  KRISHA_DATA_REPO: Dex719/krisha-db
 
 jobs:
   retrain:
@@ -30,8 +34,13 @@ jobs:
           pip install -r requirements-train.lock
           pip install -e . --no-deps
 
-      - name: Download DB from release
-        run: python -m krisha.db_release --require
+      - name: Download DB and current models
+        env:
+          KRISHA_DB_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+        run: |
+          python -m krisha.db_release --require
+          # Текущая модель нужна гейту: новая сравнивается со старой на одном test
+          python -m krisha.db_release --models --require
 
       - name: Snapshot current metrics and model
         run: |
@@ -52,51 +61,67 @@ jobs:
           TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
         run: python scripts/notify_retrain.py /tmp/old_meta.json models/model_meta.json --gate ${{ steps.gate.outcome }}
 
+      # Артефакты больше не лежат в git, и CI их не видит (tests/test_model_artifacts.py
+      # там скипается). Согласованность meta ↔ модель ↔ история проверяем здесь,
+      # на свежеобученных файлах, — до того как они уйдут в прод.
+      - name: Model artifact tests
+        run: |
+          pip install -c requirements-train.lock "pytest>=8.0"
+          pytest -q tests/test_model_artifacts.py
+
+      # Релиз — единственная копия весов, поэтому публикация критична и идёт
+      # ДО коммита меты: упала публикация — README и мета в git не уезжают
+      # вперёд модели, которую реально отдаёт прод.
+      - name: Publish models release
+        env:
+          GH_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+        run: |
+          set -euo pipefail
+          FILES=$(python -c "from krisha.db_release import MODEL_ARTIFACT_PATHS as P; import os; print(' '.join(os.path.basename(str(x)) for x in P))")
+          tar -czf /tmp/models.tar.gz -C models $FILES
+          sha256sum /tmp/models.tar.gz | cut -d' ' -f1 > /tmp/models.tar.gz.sha256
+          gh release upload model-latest /tmp/models.tar.gz /tmp/models.tar.gz.sha256 --clobber --repo "$KRISHA_DATA_REPO" || \
+            gh release create model-latest /tmp/models.tar.gz /tmp/models.tar.gz.sha256 --repo "$KRISHA_DATA_REPO" \
+              --title "model-latest" --notes "Актуальные веса модели (мутабельный релиз)"
+          TAG="model-$(date -u +%F)"
+          # повторный ретрейн в тот же день перезаливает снапшот дня, а не падает
+          gh release create "$TAG" /tmp/models.tar.gz /tmp/models.tar.gz.sha256 --repo "$KRISHA_DATA_REPO" \
+            --title "$TAG" --notes "Снапшот моделей $(date -u +%F)" || \
+            gh release upload "$TAG" /tmp/models.tar.gz /tmp/models.tar.gz.sha256 --clobber --repo "$KRISHA_DATA_REPO"
+
       # issue #190 §2.2: README генерируется из меты тем же коммитом, что и
-      # модель — иначе блок метрик отставал на ретрейн (7.29% при мете 7.49%),
+      # мета — иначе блок метрик отставал на ретрейн (7.29% при мете 7.49%),
       # а тест проверял только маркеры. Теперь tests/test_readme.py гоняет
       # `--check`, и рассинхрон краснит CI.
       - name: Sync README metrics
         run: python scripts/sync_readme_metrics.py
 
-      - name: Commit new model
-        id: commit_model
+      # В git едут только мета, история метрик, снапшот статистики, отчёты и
+      # README; веса, spatial_ref и gate-сэмплы — в .gitignore (они в релизе).
+      - name: Commit model metadata
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add models/ reports/ README.md
           if git diff --cached --quiet; then
-            echo "Модель не изменилась — коммитить нечего"
-            echo "pushed=0" >> "$GITHUB_OUTPUT"
+            echo "Мета не изменилась — коммитить нечего"
             exit 0
           fi
           git commit -m "model: weekly retrain $(date -u +%F)"
           git pull --rebase origin main
           git push origin main
-          echo "pushed=1" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy to Space
-        # Пуш, сделанный GITHUB_TOKEN'ом, по правилам GitHub Actions НЕ триггерит
-        # deploy-hf (анти-рекурсия) — из-за этого прод неделями работал на старой
-        # модели, пока кто-нибудь не пушил в main руками (retrain 16.08 доехал бы
-        # на Space только со следующим ручным коммитом). workflow_dispatch —
-        # документированное исключение: дергаем деплой явно.
-        if: steps.commit_model.outputs.pushed == '1'
+      # Весов в образе Space нет: при старте он качает model-latest
+      # (krisha.db_release.ensure_models). Передеплой не нужен — рестарта
+      # достаточно, чтобы свежий контейнер подтянул новую модель.
+      - name: Restart Space (подтянуть новую модель)
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run deploy-hf.yml --ref main
-
-      - name: Publish models release
-        continue-on-error: true  # публикация вторична, пока есть коммит в main
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          FILES=$(python -c "from krisha.db_release import MODEL_ARTIFACT_PATHS as P; import os; print(' '.join(os.path.basename(str(x)) for x in P))")
-          tar -czf /tmp/models.tar.gz -C models $FILES
-          sha256sum /tmp/models.tar.gz | cut -d' ' -f1 > /tmp/models.tar.gz.sha256
-          gh release upload model-latest /tmp/models.tar.gz /tmp/models.tar.gz.sha256 --clobber || \
-            gh release create model-latest /tmp/models.tar.gz /tmp/models.tar.gz.sha256 \
-              --title "model-latest" --notes "Актуальные веса модели (мутабельный релиз)"
-          TAG="model-$(date -u +%F)"
-          gh release create "$TAG" /tmp/models.tar.gz /tmp/models.tar.gz.sha256 \
-            --title "$TAG" --notes "Снапшот моделей $(date -u +%F)"
+          if [ -z "$HF_TOKEN" ]; then
+            echo "HF_TOKEN не задан — пропускаю рестарт Space"
+            exit 0
+          fi
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $HF_TOKEN" \
+            https://huggingface.co/api/spaces/Dex719/krisha-fair-price/restart
