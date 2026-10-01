@@ -237,3 +237,18 @@ jobs:
           git commit -m "model: weekly retrain аренды $(date -u +%F)"
           git pull --rebase origin main
           git push origin main
+
+      # Модель аренды теперь в проде (оценка арендных ссылок, доходность
+      # продажи): как и у продажи, весов в образе нет — свежий контейнер
+      # подтянет новый models_rent.tar.gz при старте.
+      - name: Restart Space (подтянуть новую модель аренды)
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "HF_TOKEN не задан — пропускаю рестарт Space"
+            exit 0
+          fi
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $HF_TOKEN" \
+            https://huggingface.co/api/spaces/Dex719/krisha-fair-price/restart
