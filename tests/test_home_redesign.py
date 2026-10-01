@@ -124,7 +124,9 @@ def test_home_report_shows_everything_prod_showed():
     assert "renderWarn" in html and "scam_risk" in html and "duplicate_of" in html
     assert "Не вносите задаток до просмотра квартиры" in html
     assert "renderHist" in html and "price_history" in html
-    assert "продавец снизил цену" in html and "продавец поднял цену" in html
+    # «продавец/арендодатель снизил цену» — кто именно, зависит от сделки
+    assert "'продавец'" in html and "'арендодатель'" in html
+    assert " снизил цену на " in html and " поднял цену на " in html
     assert "renderSimilar" in html and "analogs" in html
     assert "function trackHref" in html and "?start=track_" in html
     assert "reportShareText" in html and "navigator.share" in html

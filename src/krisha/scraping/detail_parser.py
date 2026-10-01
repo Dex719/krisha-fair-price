@@ -118,6 +118,10 @@ def parse_detail(html: str, url: str = "") -> dict[str, Any] | None:
         "lon": coords.get("lon"),
         "user_type": adv.get("userType"),
         "category": adv.get("categoryAlias"),
+        # sectionAlias («prodazha» / «arenda»), если страница его отдаёт; иначе
+        # тип сделки определяется по параметрам (krisha.rent.detect_deal).
+        # В базу не пишется — нет в LISTING_COLUMNS.
+        "deal": adv.get("sectionAlias") if adv.get("sectionAlias") in ("prodazha", "arenda") else None,
         "description": desc_el.get_text(" ", strip=True) if desc_el else None,
         "photos_count": len(adv.get("photos") or []),
         "photos": photos,  # список URL фото; в БД не пишется (нет в LISTING_COLUMNS), нужен для API

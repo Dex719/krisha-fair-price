@@ -43,6 +43,10 @@ from krisha.config import (
     DB_PATH,
     MODEL_META_PATH,
     MODEL_PATH,
+    RENT_DB_PATH,
+    RENT_MODEL_META_PATH,
+    RENT_MODEL_PATH,
+    RENT_SPATIAL_REF_PATH,
     ROOT_DIR,
     feature_forecast,
 )
@@ -323,7 +327,21 @@ def health(response: Response) -> HealthResponse:
         freshness=freshness,
         tg_webhook=bot.webhook_status(),
         revision=BUILD_REVISION,
+        rent_model_loaded=RENT_MODEL_PATH.exists(),
+        rent_model_error_pct=_rent_model_error_pct(),
     )
+
+
+def _rent_model_error_pct() -> float | None:
+    """MAPE модели аренды в процентах из её меты (кэш — как у продажной)."""
+    def load() -> float | None:
+        try:
+            meta = json.loads(RENT_MODEL_META_PATH.read_text(encoding="utf-8"))
+            return round(float(meta["metrics"]["model"]["mape"]) * 100, 1)
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+
+    return _model_meta_cache.get_or_call(f"rent:{RENT_MODEL_META_PATH}", load)
 
 
 def _utcnow() -> datetime:
@@ -1012,6 +1030,9 @@ def _prepare_data() -> None:
     # релизов приватного репо данных (issue #74).
     db_release.ensure_db()
     db_release.ensure_models()
+    # Аренда: своя база (рынок, аналоги, история цен арендных лотов) и модель
+    db_release.ensure_rent_db()
+    db_release.ensure_rent_models()
     if DB_PATH.exists():
         # Скачанная база могла не проходить init_db: догоняем миграции
         # и индексы (idx_listings_fingerprint для проверки дублей).
@@ -1022,6 +1043,10 @@ def _prepare_data() -> None:
         # разные файлы — тест с подменённым DB_PATH так создавал data/krisha.db
         # прямо в рабочей копии (.kiro/specs/test-state-isolation).
         init_db(DB_PATH)
+    if RENT_DB_PATH.exists():
+        from krisha.db import init_db
+
+        init_db(RENT_DB_PATH)
 
 
 def _warmup_runtime_caches() -> None:
@@ -1040,6 +1065,10 @@ def _warmup_runtime_caches() -> None:
         load_model()
         load_interval_models()
         load_spatial_ref()
+        if RENT_MODEL_PATH.exists():
+            load_model("arenda")
+            load_interval_models("arenda")
+            load_spatial_ref(RENT_SPATIAL_REF_PATH)
         load_poi_index()
         # Статистика использования: иначе её json с диска читает первый же
         # посетитель — под глобальным локом и ровно в момент наплыва.

@@ -460,3 +460,74 @@ def test_home_mobile_menu_opens_and_closes_on_escape(hermetic_page, mock_api, he
     page.keyboard.press("Escape")
     expect(burger).to_have_attribute("aria-expanded", "false")
     expect(menu).to_have_attribute("aria-hidden", "true")
+
+
+def test_home_rent_listing_renders_monthly_report(hermetic_page, mock_api, hermetic_server, predict_rent):
+    """Аренда: цены в тыс. ₸/мес, арендные подписи и факторы, без слежения в боте."""
+    page = hermetic_page
+    mock_api(predict=predict_rent)
+    page.goto(hermetic_server + "/")
+    wait_ready(page)
+
+    submit(page)
+
+    expect(page.locator(".vbig")).to_have_text("В рынке")
+    expect(page.locator(".vsub")).to_contain_text("аренда внутри интервала")
+    expect(page.locator(".vpct")).to_have_text("+10,3%")
+    expect(page.locator("#count")).to_contain_text("320 000")
+    expect(page.locator("#count small")).to_have_text("₸/мес")
+    expect(page.locator("#rFair")).to_contain_text("290 000")
+    expect(page.locator("#rFair small")).to_have_text("₸/мес")
+    expect(page.locator("#rPpsm small")).to_have_text("₸/м² в мес")
+    expect(page.locator("#rPpsm + .rsub")).to_be_hidden()  # медиана города — продажная
+    expect(page.locator(".rmk.ask span")).to_have_text("объявление · 320 тыс")
+    expect(page.locator(".rmk.fair span")).to_have_text("справедливая · 290 тыс")
+    expect(page.locator("#rEndLo")).to_have_text("нижняя граница · 250 тыс ₸/мес")
+    factors = page.locator("#fxList .fx")
+    expect(factors).to_have_count(4)
+    expect(factors.nth(1).locator(".fxn")).to_have_text("Кондиционер")
+    expect(factors.nth(1).locator(".fxv")).to_have_text("+14 тыс")
+    expect(factors.nth(2).locator(".fxn")).to_have_text("Можно с животными")
+    expect(factors.nth(3).locator(".fxn")).to_have_text("Арендодатель")
+    expect(page.locator("#rHist")).to_contain_text("арендодатель снизил цену на 30 тыс")
+    expect(page.locator("#rSim")).to_contain_text("280 тыс")
+    foot = page.locator(".rfoot")
+    expect(foot).to_contain_text("похожие сдаются за")
+    expect(foot).to_contain_text("объявлению 12 дн.")
+    expect(foot.locator("a[href*='t.me/fairprice_kzbot']")).to_have_count(0)
+    expect(page.locator(".sheet")).not_to_contain_text("млн")
+
+
+def test_home_rent_room_share_has_no_verdict(hermetic_page, mock_api, hermetic_server, predict_rent):
+    page = hermetic_page
+    data = deepcopy(predict_rent)
+    data.update({"room_share": True, "verdict": None, "actual_price": 90_000, "diff_pct": -69.0})
+    mock_api(predict=data)
+    page.goto(hermetic_server + "/")
+    wait_ready(page)
+
+    submit(page)
+
+    expect(page.locator(".vbig")).to_have_text("Оценка модели")
+    expect(page.locator(".vsub")).to_contain_text("подселение")
+    expect(page.locator(".vpct")).to_be_hidden()
+    expect(page.locator("#rWarn")).to_be_visible()
+    expect(page.locator("#rWarn")).to_contain_text("Похоже на подселение или сдачу комнаты")
+
+
+def test_home_sale_after_rent_restores_sale_units(hermetic_page, mock_api, hermetic_server, predict_rent, predict_fair):
+    """Режим аренды не «залипает»: следующий продажный разбор — снова в млн ₸."""
+    page = hermetic_page
+    mock_api(predict=predict_rent)
+    page.goto(hermetic_server + "/")
+    wait_ready(page)
+    submit(page)
+    expect(page.locator("#rFair small")).to_have_text("₸/мес")
+
+    mock_api(predict=predict_fair)
+    submit(page, "https://krisha.kz/a/show/761891664")
+
+    expect(page.locator("#rFair")).to_contain_text("46 190 000")
+    expect(page.locator("#rFair small")).to_have_text("₸")
+    expect(page.locator("#rPpsm + .rsub")).to_be_visible()
+    expect(page.locator(".rmk.fair span")).to_contain_text("справедливая · 46,2 млн")
