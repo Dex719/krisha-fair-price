@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import subprocess
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -32,7 +33,8 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-REPO = "Dex719/krisha-fair-price"
+# Снапшоты — в приватном репозитории данных, рядом с db-latest (см. krisha.db_release).
+REPO = os.environ.get("KRISHA_DATA_REPO", "Dex719/krisha-db")
 TAG_PREFIX = "snapshot"
 # Паузы между попытками публикации, с: GitHub изредка отвечает 5xx
 # (2026-09-13 — HTTP 500 на создании релиза, см. .kiro/specs/rescrape-post-steps).

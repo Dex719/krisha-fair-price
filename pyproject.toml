@@ -67,4 +67,5 @@ addopts = "-m 'not e2e and not live'"
 markers = [
     "e2e: герметичные браузерные тесты (uvicorn + Playwright chromium, сеть замокана)",
     "live: живой smoke — реальная база и один запрос к krisha.kz; только вручную",
+    "needs_model: нужны настоящие веса models/model.cbm (CI качает их из приватного релиза; нет токена — скип)",
 ]

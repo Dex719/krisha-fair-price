@@ -16,6 +16,20 @@ os.environ.setdefault("USAGE_FLUSH_SYNC", "1")
 os.environ.setdefault("KRISHA_SESSION_WARMUP", "0")
 
 
+def pytest_runtest_setup(item):
+    """`needs_model`: весов нет в git (issue #74) — они в приватном релизе.
+
+    CI скачивает их по KRISHA_DB_TOKEN; без токена (PR от Dependabot без
+    секрета, свежий клон) такие тесты пропускаются, а не падают на
+    FileNotFoundError посреди предикта.
+    """
+    if item.get_closest_marker("needs_model"):
+        from krisha.config import MODEL_PATH
+
+        if not MODEL_PATH.exists():
+            pytest.skip("нет models/model.cbm — скачай: python -m krisha.db_release --models")
+
+
 @pytest.fixture(autouse=True)
 def _isolate_repo_state(tmp_path, monkeypatch):
     """Статистика использования не должна попадать в data/ репозитория.

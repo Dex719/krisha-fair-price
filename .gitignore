@@ -19,7 +19,13 @@ data/*.csv
 # ревизия сборки: пишется воркфлоу деплоя прямо перед пушем снапшота в Space
 data/build_revision.txt
 data/rescrape_history_*.json
-# модель и метаданные коммитим — нужны деплою на Railway
+# Веса модели и производные от данных артефакты живут в релизе model-latest
+# приватного репо данных (krisha.db_release, issue #74) — рантайм и ретрейн
+# качают их оттуда. В git остаются мета, история метрик, снапшот статистики
+# и OSM/ЖК-справочники.
+models/*.cbm
+models/spatial_ref.json
+models/model_gate_samples.json
 
 # reports/*.png — SHAP-график коммитим, он нужен README
 
