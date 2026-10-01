@@ -198,6 +198,40 @@ def test_download_models_extracts_tar_atomically(tmp_path, monkeypatch):
     assert (models_dir / "model_meta.json").read_bytes() == b'{"mape": 9.9}'
 
 
+def test_download_models_stages_inside_models_dir(tmp_path, monkeypatch):
+    """В образе Space /app (родитель models/) принадлежит root: временный
+    каталог рядом с models/ не создаётся, и прод вставал без модели."""
+    tar_bytes = _make_models_tar({"model.cbm": b"MODEL"})
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def iter_bytes(self):
+            yield tar_bytes
+
+    @contextmanager
+    def fake_stream(method, url, **kwargs):
+        yield FakeResponse()
+
+    staged = []
+    real_tmpdir = db_release.tempfile.TemporaryDirectory
+
+    def recording_tmpdir(*a, **kw):
+        staged.append(kw.get("dir"))
+        return real_tmpdir(*a, **kw)
+
+    monkeypatch.setenv("KRISHA_MODEL_URL", "https://example.com/models.tar.gz")
+    monkeypatch.setattr(db_release.httpx, "stream", fake_stream)
+    monkeypatch.setattr(db_release, "_verify_checksum", lambda *a, **kw: None)
+    monkeypatch.setattr(db_release.tempfile, "TemporaryDirectory", recording_tmpdir)
+
+    models_dir = tmp_path / "app" / "models"
+    assert db_release.download_models(models_dir) is True
+    assert staged == [models_dir]
+    assert sorted(p.name for p in models_dir.iterdir()) == ["model.cbm"]  # tmp убран
+
+
 def test_download_models_rejects_path_traversal(tmp_path, monkeypatch):
     tar_bytes = _make_models_tar({"../evil.cbm": b"x"})
 
