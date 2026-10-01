@@ -29,6 +29,9 @@ data/*.json
 models/*.cbm
 models/spatial_ref.json
 models/model_gate_samples.json
+models/rent/*.cbm
+models/rent/spatial_ref.json
+models/rent/model_gate_samples.json
 
 # reports/*.png — SHAP-график коммитим, он нужен README
 

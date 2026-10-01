@@ -29,6 +29,15 @@ RAW_PARAM_CAT_MAP = {
     "parking": "flat.parking",         # парковка
     "balcony": "flat.balcony",         # балкон/лоджия — тот же механизм, бесплатно
 }
+# На страницах аренды krisha те же параметры лежат под другими ключами
+# (продажных там нет: flat.renovation у ~1% арендных лотов). Продажные
+# страницы арендных ключей не содержат — для продажной модели фолбэк ничего
+# не меняет.
+RAW_PARAM_FALLBACKS = {
+    "renovation": "flat.rent_renovation",  # «свежий ремонт, новая мебель», ...
+    "toilet": "separated_toilet",          # «совмещен» / «разделен»
+}
+
 # flat.security — список через запятую («охрана, домофон, видеонаблюдение»):
 # раскладываем в бинарные флаги + общий счётчик опций.
 SECURITY_FLAGS = {
@@ -98,6 +107,38 @@ EXTRA_FEATURES = [
     "in_golden_square", "otbasy_panel_excluded",
 ]
 ALL_FEATURES = NUM_FEATURES + CAT_FEATURES
+
+# Признаки, которые есть только у арендных объявлений (заполнены у 60–90%
+# лотов аренды): техника, мебель, «кому сдаётся», санузлы, окна. Считаются
+# для любого объявления, но в фичи идут только у модели аренды (model_spec).
+RENT_FACILITY_FLAGS = {
+    "fac_aircon": "кондиционер",
+    "fac_dishwasher": "посудомоечная",
+    "fac_elevator": "лифт",
+    "fac_internet": "интернет",
+    "fac_tv": "телевизор",
+    "fac_storage": "кладовая",
+}
+RENT_WHO_FLAGS = {
+    "who_kids": "с детьми",
+    "who_pets": "с животными",
+    "who_family": "семейной паре",
+    "who_single": "одному человеку",
+    "who_nonsmoke": "некурящим",
+}
+RENT_CAT_PARAMS = {
+    "bathroom": "bathroom",           # ванна / душевая кабина
+    "window_side": "window_side",     # во двор / на улицу
+    "priv_dorm": "flat.priv_dorm",    # бывшее общежитие
+}
+RENT_NUM_EXTRA = [
+    "balcony_n", "loggia_n", "toilet_count", "kitchen_studio",
+    "n_facilities", "n_furniture_items",
+    *RENT_FACILITY_FLAGS, *RENT_WHO_FLAGS,
+]
+RENT_CAT_EXTRA = list(RENT_CAT_PARAMS)
+RENT_NUM_FEATURES = NUM_FEATURES + RENT_NUM_EXTRA
+RENT_CAT_FEATURES = CAT_FEATURES + RENT_CAT_EXTRA
 TARGET = "log_price"
 MISSING_CAT = "unknown"
 
@@ -169,13 +210,23 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * r * math.asin(math.sqrt(a))
 
 
-def clean(df: pd.DataFrame) -> pd.DataFrame:
-    """Убирает мусор: без цены/площади, нереальные цены и цены за м²."""
+def clean(
+    df: pd.DataFrame,
+    price_bounds: tuple[float, float] | None = None,
+    ppsm_bounds: tuple[float, float] | None = None,
+) -> pd.DataFrame:
+    """Убирает мусор: без цены/площади, нереальные цены и цены за м².
+
+    Границы по умолчанию — продажные; аренда передаёт свои (₸/мес), см.
+    krisha.model_spec.
+    """
+    price_min, price_max = price_bounds or (PRICE_MIN, PRICE_MAX)
+    ppsm_min, ppsm_max = ppsm_bounds or (PPSM_MIN, PPSM_MAX)
     df = df.dropna(subset=["price", "area"]).copy()
-    df = df[(df["price"] >= PRICE_MIN) & (df["price"] <= PRICE_MAX)]
+    df = df[(df["price"] >= price_min) & (df["price"] <= price_max)]
     df = df[(df["area"] >= AREA_MIN) & (df["area"] <= AREA_MAX)]
     ppsm = df["price"] / df["area"]
-    df = df[(ppsm >= PPSM_MIN) & (ppsm <= PPSM_MAX)]
+    df = df[(ppsm >= ppsm_min) & (ppsm <= ppsm_max)]
     return df.reset_index(drop=True)
 
 
@@ -236,8 +287,18 @@ def add_raw_param_features(df: pd.DataFrame) -> pd.DataFrame:
 
     for col, key in RAW_PARAM_CAT_MAP.items():
         if col not in df:
-            df[col] = raw.map(lambda p, k=key: p.get(k))
+            fallback = RAW_PARAM_FALLBACKS.get(col)
+            df[col] = raw.map(lambda p, k=key, f=fallback: p.get(k) or (p.get(f) if f else None))
         df[col] = df[col].map(_norm_cat)
+    # Балкон у аренды — счётчиками (balcony_count / loggia_count), а не
+    # продажной категорией flat.balcony: сводим их в категорию «b1_l0».
+    counts = raw.map(lambda p: (p.get("balcony_count"), p.get("loggia_count")))
+    combo = counts.map(
+        lambda c: f"b{_count(c[0], -1)}_l{_count(c[1], -1)}"
+        if c[0] is not None or c[1] is not None else None
+    )
+    df["balcony"] = df["balcony"].where(df["balcony"] != MISSING_CAT, combo.map(_norm_cat))
+    df = _add_rent_param_features(df, raw)
 
     if "security" not in df:
         df["security"] = raw.map(lambda p: p.get("flat.security") or "")
@@ -245,6 +306,56 @@ def add_raw_param_features(df: pd.DataFrame) -> pd.DataFrame:
     for col, keyword in SECURITY_FLAGS.items():
         df[col] = sec.str.contains(keyword, regex=False).astype(int)
     df["security_count"] = sec.map(lambda s: len([x for x in s.split(",") if x.strip()]))
+    return df
+
+
+def _count(value: Any, default: float = np.nan) -> float:
+    """«2» → 2, «нет» → 0, пусто/мусор → default."""
+    if value is None:
+        return default
+    text = str(value).strip().lower()
+    if text == "нет":
+        return 0
+    try:
+        return int(float(text))
+    except ValueError:
+        return default
+
+
+def _add_rent_param_features(df: pd.DataFrame, raw: pd.Series) -> pd.DataFrame:
+    """Признаки арендных страниц (RENT_NUM_EXTRA / RENT_CAT_EXTRA).
+
+    Пропуск — NaN у флагов (не «нет»: у продажных лотов этих полей нет
+    вовсе, и «не указано» не равно «отсутствует»), MISSING_CAT у категорий.
+    Уже заданные колонки (ручной ввод) не перетираются.
+    """
+    def has_any(key: str, word: str) -> pd.Series:
+        values = raw.map(lambda p: p.get(key))
+        return values.map(lambda v: float(word in str(v).lower()) if v else np.nan)
+
+    def n_items(key: str) -> pd.Series:
+        return raw.map(
+            lambda p: float(len([x for x in str(p[key]).split(",") if x.strip()])) if p.get(key) else np.nan
+        )
+
+    computed = {
+        "balcony_n": raw.map(lambda p: _count(p.get("balcony_count"))),
+        "loggia_n": raw.map(lambda p: _count(p.get("loggia_count"))),
+        "toilet_count": raw.map(lambda p: _count(p.get("toilet_count"))),
+        "kitchen_studio": raw.map(lambda p: 1.0 if p.get("kitchen_studio") == "да" else 0.0),
+        "n_facilities": n_items("flat.facilities"),
+        "n_furniture_items": n_items("flat.furniture"),
+        **{col: has_any("flat.facilities", word) for col, word in RENT_FACILITY_FLAGS.items()},
+        **{col: has_any("who_match", word) for col, word in RENT_WHO_FLAGS.items()},
+    }
+    for col, values in computed.items():
+        if col not in df:
+            df[col] = values
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    for col, key in RENT_CAT_PARAMS.items():
+        if col not in df:
+            df[col] = raw.map(lambda p, k=key: p.get(k))
+        df[col] = df[col].map(_norm_cat)
     return df
 
 

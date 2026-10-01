@@ -35,6 +35,19 @@ OSM_POIS_SNAPSHOT_PATH = MODELS_DIR / "osm_pois.json"
 OSM_ZONES_SNAPSHOT_PATH = MODELS_DIR / "osm_zones.json"
 SPATIAL_REF_PATH = MODELS_DIR / "spatial_ref.json"
 
+# История метрик ретрейнов (тренд MAE/MAPE, krisha.monitoring)
+METRICS_HISTORY_PATH = MODELS_DIR / "metrics_history.jsonl"
+
+# Модель аренды (₸/мес) — те же артефакты в своём каталоге, чтобы ретрейн
+# одной модели не мог перезаписать файлы другой (см. krisha.model_spec).
+RENT_MODELS_DIR = MODELS_DIR / "rent"
+RENT_MODEL_PATH = RENT_MODELS_DIR / "model.cbm"
+RENT_MODEL_QUANTILE_PATH = RENT_MODELS_DIR / "model_quantile.cbm"
+RENT_MODEL_META_PATH = RENT_MODELS_DIR / "model_meta.json"
+RENT_MODEL_GATE_SAMPLES_PATH = RENT_MODELS_DIR / "model_gate_samples.json"
+RENT_SPATIAL_REF_PATH = RENT_MODELS_DIR / "spatial_ref.json"
+RENT_METRICS_HISTORY_PATH = RENT_MODELS_DIR / "metrics_history.jsonl"
+
 # --- Парсинг ------------------------------------------------------------
 BASE_URL = "https://krisha.kz"
 SEARCH_URL = f"{BASE_URL}/prodazha/kvartiry/almaty/"
@@ -137,6 +150,9 @@ AREA_MIN = 10.0              # м²
 AREA_MAX = 500.0             # м²
 PPSM_MIN = 100_000           # ₸/м² — ниже почти наверняка мусор
 PPSM_MAX = 5_000_000         # ₸/м²
+# Аренда, ₸/м² в месяц: те же ~0.15×..7× медианы (~5 800), что 100k..5M у продажи
+RENT_PPSM_MIN = 1_000
+RENT_PPSM_MAX = 40_000
 
 # issue #104/#108: грубый bbox Алматы (город + пригороды с запасом) — координаты
 # за его пределами почти всегда чужой город (Астана, Шымкент...) в базе из-за
