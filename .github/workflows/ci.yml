@@ -35,6 +35,19 @@ jobs:
           pip install -c requirements-train.lock "pytest>=8.0" "ruff>=0.4" "pytest-playwright>=0.5"
       - name: Lint
         run: ruff check src tests scripts
+      # Весов модели в git нет (issue #74) — они в релизе приватного репо
+      # данных. Тесты с маркером needs_model гоняют настоящую модель; без
+      # секрета (PR от Dependabot без него) шаг молча пропускается, а такие
+      # тесты скипаются в conftest.
+      - name: Download model for needs_model tests
+        env:
+          KRISHA_DB_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+        run: |
+          if [ -z "$KRISHA_DB_TOKEN" ]; then
+            echo "KRISHA_DB_TOKEN недоступен — тесты needs_model будут пропущены"
+            exit 0
+          fi
+          python -m krisha.db_release --models --require
       - name: Tests
         run: pytest -q
       # issue #190 §2.5: аудит блокирует, а не «жёлтый навсегда» — с

@@ -28,6 +28,7 @@ def _listing(**overrides) -> dict:
     return {**base, "id": 1, **overrides}
 
 
+@pytest.mark.needs_model
 def test_listing_without_price_gets_an_estimate_without_verdict(tmp_path, monkeypatch):
     """AC-1.1: «цена договорная» — оценка есть, вердикта и разницы нет."""
     from krisha import factor_hints

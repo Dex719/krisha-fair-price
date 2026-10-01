@@ -26,7 +26,14 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: write # алерты коммитят состояние канала в этот репо
+
+# База живёт в релизах ПРИВАТНОГО репозитория данных: код публичный, а
+# накопленная история объявлений — нет. GITHUB_TOKEN туда не дотягивается,
+# поэтому все операции с релизами идут под KRISHA_DB_TOKEN (fine-grained,
+# Contents RW только на krisha-db).
+env:
+  KRISHA_DATA_REPO: Dex719/krisha-db
 
 jobs:
   rescrape:
@@ -48,6 +55,8 @@ jobs:
           pip install -e . --no-deps
 
       - name: Download DB from release
+        env:
+          KRISHA_DB_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
         run: python -m krisha.db_release --require
 
       - name: Rescrape
@@ -92,13 +101,13 @@ jobs:
       - name: Upload DB to release
         id: upload_db
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
         run: |
           sqlite3 data/krisha.db "VACUUM;" || true
           gzip -9 -c data/krisha.db > /tmp/krisha.db.gz
           # Контрольная сумма рядом с базой: db_release проверяет её при скачивании
           sha256sum /tmp/krisha.db.gz | cut -d' ' -f1 > /tmp/krisha.db.gz.sha256
-          gh release upload db-latest /tmp/krisha.db.gz /tmp/krisha.db.gz.sha256 --clobber
+          gh release upload db-latest /tmp/krisha.db.gz /tmp/krisha.db.gz.sha256 --clobber --repo "$KRISHA_DATA_REPO"
           echo "Размер базы в релизе: $(du -h /tmp/krisha.db.gz | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Restart Space (подтянуть свежую базу)
@@ -116,7 +125,7 @@ jobs:
       - name: Snapshot release
         continue-on-error: true  # архив вторичен — не красит ран
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
         run: |
           python scripts/publish_snapshot.py \
             --db-gz /tmp/krisha.db.gz --sha256 /tmp/krisha.db.gz.sha256 \
@@ -145,9 +154,9 @@ jobs:
       - name: Upload DB again (вердикты алертов)
         if: steps.upload_db.outcome == 'success' && steps.alerts.outcome == 'success'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
         run: |
           sqlite3 data/krisha.db "VACUUM;" || true
           gzip -9 -c data/krisha.db > /tmp/krisha.db.gz
           sha256sum /tmp/krisha.db.gz | cut -d' ' -f1 > /tmp/krisha.db.gz.sha256
-          gh release upload db-latest /tmp/krisha.db.gz /tmp/krisha.db.gz.sha256 --clobber
+          gh release upload db-latest /tmp/krisha.db.gz /tmp/krisha.db.gz.sha256 --clobber --repo "$KRISHA_DATA_REPO"

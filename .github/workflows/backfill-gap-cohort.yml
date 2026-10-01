@@ -35,7 +35,11 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
+
+# База — в релизах приватного репозитория данных (см. rescrape.yml).
+env:
+  KRISHA_DATA_REPO: Dex719/krisha-db
 
 jobs:
   backfill:
@@ -57,7 +61,7 @@ jobs:
 
       - name: Download DB from release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
         run: |
           set -euo pipefail
           if [ "${{ github.event.inputs.deal }}" = "arenda" ]; then
@@ -68,8 +72,8 @@ jobs:
           echo "ASSET=$ASSET" >> "$GITHUB_ENV"
           echo "DB=$DB" >> "$GITHUB_ENV"
           mkdir -p data
-          gh release download db-latest -p "$ASSET" -O /tmp/db.gz
-          gh release download db-latest -p "$ASSET.sha256" -O /tmp/db.sha256
+          gh release download db-latest --repo "$KRISHA_DATA_REPO" -p "$ASSET" -O /tmp/db.gz
+          gh release download db-latest --repo "$KRISHA_DATA_REPO" -p "$ASSET.sha256" -O /tmp/db.sha256
           echo "$(cat /tmp/db.sha256)  /tmp/db.gz" | sha256sum -c -
           gunzip -c /tmp/db.gz > "$DB"
 
@@ -94,7 +98,7 @@ jobs:
       - name: Upload DB to release
         if: ${{ github.event.inputs.apply == 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
         run: |
           set -euo pipefail
           sqlite3 "$DB" "VACUUM;" || true
@@ -102,5 +106,5 @@ jobs:
           sha256sum /tmp/out.gz | cut -d' ' -f1 > /tmp/out.gz.sha256
           cp /tmp/out.gz "/tmp/$ASSET"
           cp /tmp/out.gz.sha256 "/tmp/$ASSET.sha256"
-          gh release upload db-latest "/tmp/$ASSET" "/tmp/$ASSET.sha256" --clobber
+          gh release upload db-latest "/tmp/$ASSET" "/tmp/$ASSET.sha256" --clobber --repo "$KRISHA_DATA_REPO"
           echo "Залито: $ASSET, $(du -h /tmp/out.gz | cut -f1)" >> "$GITHUB_STEP_SUMMARY"

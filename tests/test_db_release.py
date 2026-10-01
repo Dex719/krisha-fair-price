@@ -1,4 +1,4 @@
-"""Тесты скачивания базы и моделей из GitHub Release."""
+"""Тесты скачивания базы и моделей из релизов (приватного) репозитория данных."""
 
 import gzip
 import io
@@ -76,12 +76,11 @@ def test_download_unpacks_gzip(tmp_path, monkeypatch):
         assert method == "GET"
         yield FakeResponse()
 
+    monkeypatch.setenv("KRISHA_DB_URL", "https://example.com/krisha.db.gz")
     monkeypatch.setattr(db_release.httpx, "stream", fake_stream)
     # checksum-файла в релизе «нет» — проверка должна молча пропуститься
     # (и юнит-тест не должен ходить в сеть за <asset>.sha256)
-    monkeypatch.setattr(
-        db_release, "_verify_checksum", lambda gz_path, url: None
-    )
+    monkeypatch.setattr(db_release, "_verify_checksum", lambda *a, **kw: None)
     db = tmp_path / "krisha.db"
     assert db_release.download(db) is True
     assert db.read_bytes() == payload
@@ -103,13 +102,17 @@ def test_verify_checksum_mismatch(tmp_path, monkeypatch):
     monkeypatch.setattr(
         db_release.httpx, "get", lambda url, **kw: FakeResp(good)
     )
-    db_release._verify_checksum(gz, "https://example/db.gz")  # не бросает
+    db_release._verify_checksum(gz, "https://example/db.gz.sha256")  # не бросает
 
     monkeypatch.setattr(
         db_release.httpx, "get", lambda url, **kw: FakeResp("0" * 64)
     )
     with pytest.raises(ValueError):
-        db_release._verify_checksum(gz, "https://example/db.gz")
+        db_release._verify_checksum(gz, "https://example/db.gz.sha256")
+
+    # нет ассета с контрольной суммой — проверка пропускается, в сеть не ходим
+    monkeypatch.setattr(db_release.httpx, "get", lambda *a, **kw: pytest.fail("сеть"))
+    db_release._verify_checksum(gz, None)
 
 
 # --- модели ---------------------------------------------------------------
@@ -185,8 +188,9 @@ def test_download_models_extracts_tar_atomically(tmp_path, monkeypatch):
         assert method == "GET"
         yield FakeResponse()
 
+    monkeypatch.setenv("KRISHA_MODEL_URL", "https://example.com/models.tar.gz")
     monkeypatch.setattr(db_release.httpx, "stream", fake_stream)
-    monkeypatch.setattr(db_release, "_verify_checksum", lambda tar_path, url: None)
+    monkeypatch.setattr(db_release, "_verify_checksum", lambda *a, **kw: None)
 
     models_dir = tmp_path / "models"
     assert db_release.download_models(models_dir) is True
@@ -208,8 +212,107 @@ def test_download_models_rejects_path_traversal(tmp_path, monkeypatch):
     def fake_stream(method, url, **kwargs):
         yield FakeResponse()
 
+    monkeypatch.setenv("KRISHA_MODEL_URL", "https://example.com/models.tar.gz")
     monkeypatch.setattr(db_release.httpx, "stream", fake_stream)
-    monkeypatch.setattr(db_release, "_verify_checksum", lambda tar_path, url: None)
+    monkeypatch.setattr(db_release, "_verify_checksum", lambda *a, **kw: None)
 
     with pytest.raises(ValueError):
         db_release.download_models(tmp_path / "models")
+
+
+# --- приватный репозиторий данных (REST API + токен) ----------------------
+
+
+class _FakeJson:
+    def __init__(self, status_code, payload=None):
+        self.status_code = status_code
+        self._payload = payload or {}
+
+    def json(self):
+        return self._payload
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+
+def _no_overrides(monkeypatch):
+    monkeypatch.delenv("KRISHA_DB_URL", raising=False)
+    monkeypatch.delenv("KRISHA_MODEL_URL", raising=False)
+
+
+def test_private_release_downloads_asset_by_api_with_token(tmp_path, monkeypatch):
+    """Ассет ищется по имени в релизе репо данных и качается по /assets/<id>
+    с токеном и Accept: octet-stream; checksum — соседним ассетом *.sha256."""
+    _no_overrides(monkeypatch)
+    monkeypatch.setenv("KRISHA_DB_TOKEN", "tok")
+    payload = b"SQLite format 3\x00" + b"y" * 50
+    gz_bytes = gzip.compress(payload)
+    api = f"https://api.github.com/repos/{db_release.DATA_REPO}"
+    release = {"assets": [
+        {"name": "krisha.db.gz", "url": f"{api}/releases/assets/1"},
+        {"name": "krisha.db.gz.sha256", "url": f"{api}/releases/assets/2"},
+        {"name": "krisha_rent.db.gz", "url": f"{api}/releases/assets/3"},
+    ]}
+    seen = {}
+
+    def fake_get(url, headers=None, **kw):
+        if url == f"{api}/releases/tags/db-latest":
+            seen["release_auth"] = headers.get("Authorization")
+            return _FakeJson(200, release)
+        raise AssertionError(f"неожиданный GET {url}")
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def iter_bytes(self):
+            yield gz_bytes
+
+    @contextmanager
+    def fake_stream(method, url, headers=None, **kwargs):
+        seen["asset"] = (url, headers.get("Authorization"), headers.get("Accept"))
+        yield FakeResponse()
+
+    checks = []
+    monkeypatch.setattr(db_release.httpx, "get", fake_get)
+    monkeypatch.setattr(db_release.httpx, "stream", fake_stream)
+    monkeypatch.setattr(
+        db_release, "_verify_checksum", lambda path, sha_url, headers=None: checks.append((sha_url, headers))
+    )
+    db = tmp_path / "krisha.db"
+    assert db_release.download(db) is True
+    assert db.read_bytes() == payload
+    assert seen["release_auth"] == "Bearer tok"
+    assert seen["asset"] == (f"{api}/releases/assets/1", "Bearer tok", "application/octet-stream")
+    assert [c[0] for c in checks] == [f"{api}/releases/assets/2"]
+    assert checks[0][1]["Authorization"] == "Bearer tok"
+
+
+def test_private_release_without_token_names_the_env(monkeypatch):
+    """Приватный релиз без токена отвечает 404 — ошибка обязана подсказать,
+    какой переменной не хватает, а не выглядеть как «релиза нет»."""
+    _no_overrides(monkeypatch)
+    monkeypatch.delenv("KRISHA_DB_TOKEN", raising=False)
+    monkeypatch.setattr(db_release.httpx, "get", lambda *a, **kw: _FakeJson(404))
+    with pytest.raises(FileNotFoundError, match="KRISHA_DB_TOKEN"):
+        db_release._asset_source("db-latest", "krisha.db.gz", "KRISHA_DB_URL")
+
+
+def test_private_release_missing_asset(monkeypatch):
+    _no_overrides(monkeypatch)
+    monkeypatch.setenv("KRISHA_DB_TOKEN", "tok")
+    monkeypatch.setattr(
+        db_release.httpx, "get", lambda *a, **kw: _FakeJson(200, {"assets": []})
+    )
+    with pytest.raises(FileNotFoundError, match="models.tar.gz"):
+        db_release._asset_source("model-latest", "models.tar.gz", "KRISHA_MODEL_URL")
+
+
+def test_ensure_db_without_token_does_not_crash(tmp_path, monkeypatch, auto_on):
+    """Space без секрета стартует (fail-soft), просто без базы."""
+    _no_overrides(monkeypatch)
+    monkeypatch.delenv("KRISHA_DB_TOKEN", raising=False)
+    monkeypatch.setattr(db_release, "DB_PATH", tmp_path / "krisha.db")
+    monkeypatch.setattr(db_release.httpx, "get", lambda *a, **kw: _FakeJson(404))
+    assert db_release.ensure_db() is False
