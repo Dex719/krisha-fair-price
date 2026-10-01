@@ -70,20 +70,13 @@ unicode-range:U+0020,U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1;}
 <style>
 /* ---------- скорость: вход героя без JS ---------- */
 @keyframes bgmup{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
-@keyframes bgmfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-16px)}}
 html.anim h1 span{animation:bgmup .85s cubic-bezier(.16,1,.3,1) both}
 html.anim h1 span:nth-child(2){animation-delay:.08s}
 html.anim h1 span:nth-child(3){animation-delay:.16s}
 html.anim h1 span:nth-child(4){animation-delay:.24s}
 html.anim .herorow{animation:bgmup .8s cubic-bezier(.16,1,.3,1) .3s both}
 html.anim .lede{animation:bgmup .8s cubic-bezier(.16,1,.3,1) .42s both}
-html.anim .shw{animation:bgmfloat 6s ease-in-out infinite}
-html.anim .sh2{animation-duration:7.4s;animation-delay:-1.2s}
-html.anim .sh3{animation-duration:5.6s;animation-delay:-2.4s}
 /* ---------- слабое устройство или экономия трафика: только суть ---------- */
-html.lite .grain{display:none}
-html.lite nav{backdrop-filter:none;background:var(--bg)}
-html.lite .shw{display:none}
 html.lite *{box-shadow:none!important}
 html.lite .cityband img{will-change:auto;height:100%}
 html.lite [style*="filter:blur"],html.lite .glow{filter:none!important}
@@ -127,7 +120,6 @@ html.lite .sk{animation:none}
 <meta name="twitter:card" content="summary_large_image">
 </head><body>
 <a class="skip" href="#main">Перейти к содержимому</a>
-<div class="grain"></div>
 <div class="progress" id="prog"></div>
 <nav><div class="wrap nrow">
 <a class="logo" href="/" aria-label="baǵam — на главную">baǵam<span>.</span></a>
@@ -175,9 +167,6 @@ html.lite .sk{animation:none}
 <span class="l2"><em>на самом деле</em></span>
 <span class="l3">стоит квартира?</span>
 </h1>
-<span class="shw sh1"><svg class="shape" width="72" height="72" viewBox="0 0 72 72"><path d="M12 14h48M12 30h48M36 30v30" stroke="#3ADC7C" stroke-width="10" stroke-linecap="round" fill="none"/></svg></span>
-<span class="shw sh2"><svg class="shape" width="66" height="46" viewBox="0 0 66 46"><path d="M6 40 L33 8 L60 40" stroke="#E9B44C" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg></span>
-<span class="shw sh3"><svg class="shape" width="34" height="34" viewBox="0 0 34 34"><rect x="2" y="2" width="13" height="13" rx="3" fill="#F1F2EB"/><rect x="19" y="2" width="13" height="13" rx="3" fill="#3ADC7C"/><rect x="2" y="19" width="13" height="13" rx="3" fill="#3ADC7C"/><rect x="19" y="19" width="13" height="13" rx="3" fill="#F1F2EB" opacity=".4"/></svg></span>
 <div class="herorow">
 <div class="lede"><div class="ledetag">как это работает</div><p>Вставьте ссылку с krisha.kz. Модель сверит лот с <b><span data-l="total">21 113</span> живыми объявлениями</b> Алматы и ответит: выгодно, в рынке или переплата.</p></div>
 <div>
@@ -395,6 +384,8 @@ else {
   ScrollTrigger.create({trigger:'.sheet',start:'top 78%',once:true,onEnter:()=>{
     if(window.__live) return;
     gsap.to(obj,{n:27500000,duration:1.6,ease:'expo.out',onUpdate:()=>{
+      /* живой разбор пришёл посреди анимации — демо-число его не перетирает */
+      if(window.__live) return;
       c.firstChild.textContent = Math.round(obj.n).toLocaleString('ru-RU') + ' ';
     }});
     gsap.from('.rmk',{opacity:0,y:10,duration:.8,stagger:.12,ease:'expo.out',clearProps:'transform'});
