@@ -155,8 +155,13 @@ def _prune(state: dict, now: datetime) -> None:
 def _flush(state: dict) -> None:
     from krisha.subscriptions import save_json_state
 
-    # encrypt=False: id уже захэшированы, агрегаты полезно видеть в репо глазами
-    save_json_state(USAGE_PATH, merge_states(load_state(), state), "data: статистика использования", encrypt=False)
+    merged = merge_states(load_state(), state)
+    # Срок хранения — после слияния: слияние с файлом возвращало дни, уже
+    # вычищенные из памяти, и KEEP_DAYS не действовал (в файле жили дни с
+    # 03.07, вместе с хэшами id ещё без соли — до #116).
+    _prune(merged, datetime.now(timezone.utc))
+    # encrypt=False: id уже захэшированы, агрегаты полезно видеть глазами
+    save_json_state(USAGE_PATH, merged, "data: статистика использования", encrypt=False)
 
 
 def merge_states(base: dict, incoming: dict) -> dict:

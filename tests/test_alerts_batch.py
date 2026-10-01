@@ -36,6 +36,7 @@ def _real_listings() -> list[dict]:
     ]
 
 
+@pytest.mark.needs_model
 def test_batch_rows_do_not_depend_on_their_neighbours():
     """Главный риск пакета: фичи пачки из N строк против N пачек по одной.
 
@@ -51,6 +52,7 @@ def test_batch_rows_do_not_depend_on_their_neighbours():
     assert together == one_by_one
 
 
+@pytest.mark.needs_model
 def test_batch_matches_the_card(tmp_path, monkeypatch):
     """AC-4.1: пакет даёт те же цифры и вердикт, что пользовательская карточка."""
     from krisha import factor_hints

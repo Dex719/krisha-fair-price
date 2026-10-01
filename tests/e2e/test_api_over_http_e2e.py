@@ -25,10 +25,16 @@ def test_health_ok_with_security_headers(api):
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "ok"
-    assert body["model_loaded"] is True
     assert "default-src 'self'" in r.headers["content-security-policy"]
     assert r.headers["x-content-type-options"] == "nosniff"
     assert r.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+
+
+@pytest.mark.needs_model
+def test_health_reports_loaded_model(api):
+    """Весов в git нет (issue #74): CI кладёт их из приватного релиза, без
+    секрета тест пропускается (tests/conftest.py)."""
+    assert api.get("/api/health").json()["model_loaded"] is True
 
 
 def test_pages_serve_html_with_csp(api):

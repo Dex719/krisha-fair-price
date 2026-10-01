@@ -3,12 +3,8 @@ name: Deploy to HF Space
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - "data/subscriptions.json"
-      - "data/tracked.json"
-      - "data/usage_stats.json"
-      - "data/channel_posted.json" # state канала — не повод пересобирать Space
-      - "data/prediction_log.json" # лог предиктов пишет сам рантайм (PR #181)
+    # Состояние бота коммитится в приватный репо данных, а не сюда, — каждый
+    # push в main теперь кодовый и пересобирает Space.
   workflow_dispatch:
 
 concurrency:
