@@ -208,7 +208,11 @@ def download_models(models_dir: Path | str = MODELS_DIR) -> bool:
     url, headers, sha_url, sha_headers = _asset_source(
         MODEL_RELEASE_TAG, MODEL_ASSET_NAME, "KRISHA_MODEL_URL"
     )
-    with tempfile.TemporaryDirectory(dir=models_dir.parent) as tmpdir:
+    # Временный каталог — ВНУТРИ models_dir, а не рядом: в образе Space
+    # родитель (/app) принадлежит root, писать туда пользователь app не может,
+    # и скачивание молча падало (fail-soft) — прод вставал без модели.
+    # Внутри models_dir os.replace остаётся атомарным (та же ФС).
+    with tempfile.TemporaryDirectory(dir=models_dir) as tmpdir:
         tar_path = Path(tmpdir) / MODEL_ASSET_NAME
         _fetch(url, headers, tar_path)
         _verify_checksum(tar_path, sha_url, sha_headers)
