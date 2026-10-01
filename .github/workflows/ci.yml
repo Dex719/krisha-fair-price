@@ -79,5 +79,15 @@ jobs:
         # (первый прогон простоял 13+ минут). Если раннер однажды обеднеет,
         # Playwright упадёт с внятным списком недостающих библиотек.
         run: playwright install chromium
+      # Как в job test: веса из приватного релиза для needs_model-тестов.
+      - name: Download model for needs_model tests
+        env:
+          KRISHA_DB_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+        run: |
+          if [ -z "$KRISHA_DB_TOKEN" ]; then
+            echo "KRISHA_DB_TOKEN недоступен — тесты needs_model будут пропущены"
+            exit 0
+          fi
+          python -m krisha.db_release --models --require
       - name: Browser e2e (герметичные — без базы и внешней сети)
         run: pytest -m e2e -q
