@@ -733,6 +733,7 @@ def train(
         knn_self_indices=self_indices_for(raw_train),
     )
     test_df = build_features(raw_test, ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)
+    feature_defaults = _typical_values(train_df, spec)
     train_pool = Pool(train_df[features], train_df[TARGET], cat_features=cat_features)
     test_pool = Pool(test_df[features], test_df[TARGET], cat_features=cat_features)
 
@@ -909,6 +910,10 @@ def train(
                 "cat_features": cat_features,
                 "metrics": metrics,
                 "ppsm_maps": ppsm_maps,
+                # типичные значения арендных признаков (медиана/мода train) —
+                # подставляются, когда аренду оценивают для продажного лота,
+                # у которого этих полей нет (krisha.rental_yield)
+                **({"feature_defaults": feature_defaults} if feature_defaults else {}),
             },
             ensure_ascii=False, indent=2,
         ), encoding="utf-8")
@@ -930,6 +935,25 @@ def train(
                 logger.warning("Не удалось сохранить снапшот статистики: %s", exc)
         logger.info("Модель сохранена: %s", spec.model_path)
     return metrics
+
+
+def _typical_values(train_df: pd.DataFrame, spec: ModelSpec) -> dict:
+    """Медианы числовых и моды категориальных арендных признаков train-части."""
+    if not spec.is_rent:
+        return {}
+    from krisha.features import MISSING_CAT, RENT_CAT_EXTRA, RENT_NUM_EXTRA
+
+    out: dict = {}
+    for col in RENT_NUM_EXTRA:
+        values = pd.to_numeric(train_df.get(col), errors="coerce").dropna()
+        if len(values):
+            out[col] = float(values.median())
+    for col in RENT_CAT_EXTRA:
+        values = train_df.get(col, pd.Series(dtype=str))
+        values = values[values != MISSING_CAT]
+        if len(values):
+            out[col] = str(values.mode().iloc[0])
+    return out
 
 
 def _save_shap_report(model: CatBoostRegressor, test_df: pd.DataFrame, spec: ModelSpec = SALE) -> None:

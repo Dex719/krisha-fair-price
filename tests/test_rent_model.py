@@ -102,6 +102,21 @@ def test_sale_listing_features_are_untouched_by_rent_fallbacks():
     assert row["bathroom"] == MISSING_CAT
 
 
+def test_rent_flags_are_the_same_in_a_batch_and_alone():
+    """Регрессия: в пачке pandas превращал None в NaN, NaN истинен — у лота без
+    техники флаг становился 0 («нет»), а в одиночку (предикт) — NaN."""
+    batch = pd.DataFrame({"raw_params": [
+        json.dumps(RENT_PARAMS, ensure_ascii=False), json.dumps({"who_match": "семейной паре"}, ensure_ascii=False),
+    ]})
+    together = add_raw_param_features(batch)
+    alone = add_raw_param_features(batch.iloc[[1]].reset_index(drop=True))
+    for col in ("fac_aircon", "fac_tv", "who_pets", "who_family"):
+        a, b = together[col].iloc[1], alone[col].iloc[0]
+        assert (np.isnan(a) and np.isnan(b)) or a == b, col
+    assert np.isnan(together["fac_aircon"].iloc[1]), "техника не указана — это «неизвестно», а не «нет»"
+    assert together["fac_aircon"].iloc[0] == 1
+
+
 def test_clean_uses_rent_bounds():
     df = pd.DataFrame({"price": [300_000, 50_000_000, 5_000], "area": [50.0, 50.0, 50.0]})
     assert clean(df, RENT.price_bounds, RENT.ppsm_bounds)["price"].tolist() == [300_000]
@@ -205,6 +220,9 @@ def test_rent_training_writes_only_rent_artifacts(tmp_path, monkeypatch):
     meta = json.loads(spec.meta_path.read_text(encoding="utf-8"))
     assert meta["deal"] == "arenda"
     assert meta["features"] == RENT.all_features
+    # типичные значения арендных признаков — для оценки аренды продажного лота
+    assert meta["feature_defaults"]["n_facilities"] == 4
+    assert meta["feature_defaults"]["bathroom"] == "душевая кабина, ванна"
     for path in (spec.model_path, spec.quantile_path, spec.spatial_ref_path, spec.metrics_history_path):
         assert path.exists(), path
     assert snapshot == [], "снапшот /api/stats — продажный, аренда его не пишет"

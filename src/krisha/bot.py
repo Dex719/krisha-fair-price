@@ -248,6 +248,18 @@ def format_reply(result: dict[str, Any]) -> str:
                 f"(по {liq['sample']} снятым)"
             )
 
+    ry = result.get("rental_yield")
+    if ry and ry.get("gross_yield_pct") is not None:
+        line = (
+            f"📈 Если сдавать: ~<b>{ry['monthly_rent'] / 1_000:.0f} тыс ₸/мес</b> · "
+            f"доходность <b>{ry['gross_yield_pct']:.1f}%</b> годовых"
+        )
+        if ry.get("district_yield_pct") is not None:
+            line += f" (в районе ~{ry['district_yield_pct']:.1f}%)"
+        if ry.get("assumes_renovation"):
+            line += ", после ремонта"
+        lines.append(line)
+
     # issue #157: формулировка осторожная. Мы знаем только, что цена не
     # объясняется характеристиками квартиры, — обвинять продавца не в чем.
     scam = result.get("scam_risk")
