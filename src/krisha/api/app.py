@@ -1002,11 +1002,15 @@ def _log_runtime_limits() -> None:
 
 
 def _prepare_data() -> None:
-    # База не хранится в git — при старте скачиваем её из GitHub Release.
+    # Состояние бота (подписки, слежка, статистика, лог предиктов) живёт в
+    # приватном репо данных, в образе его нет — забираем до первого запроса.
+    if os.environ.get("KRISHA_STATE_PULL", "1") != "0":
+        from krisha.subscriptions import pull_state
+
+        pull_state()
+    # База и веса модели не хранятся в git — при старте скачиваем их из
+    # релизов приватного репо данных (issue #74).
     db_release.ensure_db()
-    # Модели пока коммитятся в main (переходный период issue #74) — скачиваем
-    # из model-latest только если локального models/model.cbm нет вообще
-    # (например, .gitignore уже включил models/*.cbm на будущем шаге).
     db_release.ensure_models()
     if DB_PATH.exists():
         # Скачанная база могла не проходить init_db: догоняем миграции

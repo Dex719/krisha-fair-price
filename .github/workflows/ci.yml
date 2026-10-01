@@ -3,15 +3,8 @@ name: CI
 on:
   push:
     branches: [main]
-    # issue #190 §2.5: state-коммиты рантайма Space (статистика, подписки,
-    # лог предиктов) прилетают 3–4 раза в день и гоняли полный CI + e2e на
-    # каждый — кода они не меняют. Список тот же, что в deploy-hf.yml.
-    paths-ignore:
-      - "data/subscriptions.json"
-      - "data/tracked.json"
-      - "data/usage_stats.json"
-      - "data/channel_posted.json"
-      - "data/prediction_log.json"
+    # state-коммиты рантайма (issue #190 §2.5) больше не идут в этот репо —
+    # состояние живёт в приватном репо данных, paths-ignore для них не нужен.
   pull_request:
 
 jobs:

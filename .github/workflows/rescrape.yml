@@ -26,7 +26,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write # алерты коммитят состояние канала в этот репо
+  contents: read
 
 # База живёт в релизах ПРИВАТНОГО репозитория данных: код публичный, а
 # накопленная история объявлений — нет. GITHUB_TOKEN туда не дотягивается,
@@ -142,10 +142,15 @@ jobs:
         timeout-minutes: 15
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # состояние (подписчики, слежка, опубликованное в канале) — в репо данных
+          KRISHA_DB_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
           TG_CHANNEL_ID: ${{ secrets.TG_CHANNEL_ID }}
           TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
-        run: python scripts/send_alerts.py
+        # В checkout состояния нет: без --pull алерты не увидели бы подписчиков
+        # и заново запостили бы в канал уже опубликованное. Не скачалось — не шлём.
+        run: |
+          python -m krisha.subscriptions --pull
+          python scripts/send_alerts.py
 
       # Алерты пишут вердикты окна в predictions (issue #128) — заливаем базу
       # ещё раз, чтобы они не пропали. Только если проход удался (первая

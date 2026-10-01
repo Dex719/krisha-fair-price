@@ -8,6 +8,8 @@ import pytest
 # (TestClient триггерит startup-событие FastAPI).
 os.environ.setdefault("KRISHA_DB_AUTO", "0")
 os.environ.setdefault("KRISHA_MODEL_AUTO", "0")
+# ...и не тянем состояние бота из репозитория данных.
+os.environ.setdefault("KRISHA_STATE_PULL", "0")
 # Флаш статистики в проде уходит в фоновый поток (см. usage._flush_async):
 # в тестах это гонка «записалось ли уже», поэтому здесь — синхронно.
 os.environ.setdefault("USAGE_FLUSH_SYNC", "1")
