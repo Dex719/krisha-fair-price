@@ -498,6 +498,17 @@ def _predict_from_listing(
         listing.get("district"), listing.get("rooms"), result.get("diff_pct"), conn=conn
     )
 
+    # Продажа: если сдавать — какая аренда и доходность (модель аренды на
+    # этом же лоте). Fail-soft: без модели аренды блок просто не показывается.
+    result["rental_yield"] = None
+    if not rent:
+        from krisha.rental_yield import estimate as estimate_rental_yield
+
+        try:
+            result["rental_yield"] = estimate_rental_yield(listing, actual or fair_price)
+        except Exception:  # noqa: BLE001 — доходность не должна ломать оценку
+            logger.exception("rental yield failed")
+
     # issue #157: предупреждение о подозрительно низкой цене — от НИЖНЕЙ
     # ГРАНИЦЫ интервала, а не от точечной оценки. Граница откалибрована CQR
     # под фактическое покрытие, то есть «ниже неё» — проверяемое утверждение,

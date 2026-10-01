@@ -146,3 +146,100 @@ def test_bot_reply_for_room_share_warns():
     text = bot.format_reply({"deal": "arenda", "actual_price": 90_000, "fair_price": 300_000,
                              "verdict": None, "room_share": True})
     assert "подселение" in text
+
+
+# --- доходность продажного лота -------------------------------------------------------
+
+from krisha import rental_yield  # noqa: E402
+
+
+def _sale_listing(**overrides):
+    return {
+        "id": 555, "url": "https://krisha.kz/a/show/555", "price": 45_000_000, "rooms": 2, "area": 55.0,
+        "floor": 5, "total_floors": 10, "district": "Bostandykskiy_r-n", "lat": 43.23, "lon": 76.9,
+        "raw_params": json.dumps({**SALE_PARAMS, "flat.toilet": "2 с/у и более",
+                                  "flat.balcony": "балкон и лоджия"}, ensure_ascii=False),
+        **overrides,
+    }
+
+
+def test_as_rental_translates_sale_params_to_rent_vocabulary():
+    adapted, rough = rental_yield.as_rental(_sale_listing())
+    params = json.loads(adapted["raw_params"])
+    assert rough is False
+    assert adapted["price"] is None
+    assert params["flat.rent_renovation"] == "свежий ремонт, новая мебель"
+    assert params["separated_toilet"] == "разделен, совмещен" and params["toilet_count"] == "2"
+    assert (params["balcony_count"], params["loggia_count"]) == ("1", "1")
+    assert not {"flat.renovation", "flat.toilet", "flat.balcony"} & set(params), \
+        "продажные ключи модель аренды прочла бы первыми"
+
+
+def test_as_rental_rough_finish_is_estimated_after_renovation():
+    listing = _sale_listing(raw_params=json.dumps({"flat.renovation": "черновая отделка"}, ensure_ascii=False))
+    adapted, rough = rental_yield.as_rental(listing)
+    params = json.loads(adapted["raw_params"])
+    assert rough is True
+    assert params["flat.rent_renovation"] == "свежий ремонт, новая мебель"
+    assert params["live.furniture"] == "полностью"
+
+
+def test_estimate_gives_monthly_rent_and_gross_yield(rent_env, monkeypatch):
+    monkeypatch.setattr(rental_yield, "district_yield", lambda *a: (8.6, "district_rooms"))
+    y = rental_yield.estimate(_sale_listing(), 45_000_000)
+    assert 50_000 < y["monthly_rent"] < 2_000_000
+    assert y["monthly_rent_low"] <= y["monthly_rent"] <= y["monthly_rent_high"]
+    assert y["gross_yield_pct"] == round(12 * y["monthly_rent"] / 45_000_000 * 100, 1)
+    assert y["gross_yield_low_pct"] <= y["gross_yield_pct"] <= y["gross_yield_high_pct"]
+    assert y["payback_years"] == round(45_000_000 / (12 * y["monthly_rent"]), 1)
+    assert (y["district_yield_pct"], y["district_yield_scope"]) == (8.6, "district_rooms")
+    from krisha.api.schemas import RentalYield
+
+    RentalYield(**y)
+
+
+def test_estimate_without_rent_model_is_none(tmp_path, monkeypatch):
+    monkeypatch.setattr(predict_mod, "RENT_MODEL_PATH", tmp_path / "нет.cbm")
+    predict_mod.load_model.cache_clear()
+    try:
+        assert rental_yield.estimate(_sale_listing(), 45_000_000) is None
+    finally:
+        predict_mod.load_model.cache_clear()
+
+
+def test_district_yield_prefers_rooms_then_district(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    now = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+    sale_db, rent_db = tmp_path / "sale.db", tmp_path / "rent.db"
+    for db in (sale_db, rent_db):
+        init_db(db)
+    with get_conn(sale_db) as conn:
+        for i in range(40):
+            conn.execute("INSERT INTO listings (id, url, price, area, rooms, district, last_seen) "
+                         "VALUES (?, '', ?, 50, ?, 'D', ?)", (i, 40_000_000, 1 if i < 35 else 2, now))
+    with get_conn(rent_db) as conn:
+        for i in range(40):
+            conn.execute("INSERT INTO listings (id, url, price, area, rooms, district, last_seen) "
+                         "VALUES (?, '', ?, 50, ?, 'D', ?)", (i, 300_000, 1 if i < 35 else 2, now))
+    monkeypatch.setattr(rental_yield, "DB_PATH", sale_db)
+    monkeypatch.setattr(rental_yield, "RENT_DB_PATH", rent_db)
+    rental_yield._district_ppsm_table.cache_clear()
+    try:
+        # 12 × 6 000 ₸/м² / 800 000 ₸/м² = 9%
+        assert rental_yield.district_yield("D", 1) == (9.0, "district_rooms")
+        # двушек мало (5 < DISTRICT_MIN_N) — берём весь район
+        assert rental_yield.district_yield("D", 2) == (9.0, "district")
+        assert rental_yield.district_yield("Нет такого", 1) is None
+        assert rental_yield.district_yield(None, 1) is None
+    finally:
+        rental_yield._district_ppsm_table.cache_clear()
+
+
+def test_bot_reply_shows_rental_yield_for_sale():
+    text = bot.format_reply({
+        "actual_price": 45_000_000, "fair_price": 44_000_000, "verdict": "FAIR", "diff_pct": 2.3,
+        "rental_yield": {"monthly_rent": 330_000, "gross_yield_pct": 8.8, "district_yield_pct": 8.5,
+                         "assumes_renovation": False},
+    })
+    assert "Если сдавать: ~<b>330 тыс ₸/мес</b> · доходность <b>8.8%</b> годовых (в районе ~8.5%)" in text

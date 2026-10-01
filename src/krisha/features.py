@@ -330,8 +330,12 @@ def _add_rent_param_features(df: pd.DataFrame, raw: pd.Series) -> pd.DataFrame:
     Уже заданные колонки (ручной ввод) не перетираются.
     """
     def has_any(key: str, word: str) -> pd.Series:
-        values = raw.map(lambda p: p.get(key))
-        return values.map(lambda v: float(word in str(v).lower()) if v else np.nan)
+        # Флаг считается прямо по dict, а не по промежуточной Series: pandas
+        # превращает None в NaN, а NaN истинен — у пачки «поле не указано»
+        # становилось 0 («нет»), а у одиночного лота (предикт) — NaN.
+        return raw.map(
+            lambda p: float(word in p[key].lower()) if isinstance(p.get(key), str) and p[key] else np.nan
+        )
 
     def n_items(key: str) -> pd.Series:
         return raw.map(
