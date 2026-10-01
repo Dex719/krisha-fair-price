@@ -89,6 +89,27 @@ FEATURE_RU = {
     "knn_ppsm": "Цены ближайших домов",
     "knn_n": "Предложений по соседству",
     "district_mismatch": "Район не совпадает с координатами",
+    # признаки арендных объявлений
+    "n_facilities": "Техника и удобства",
+    "n_furniture_items": "Мебель в квартире",
+    "fac_aircon": "Кондиционер",
+    "fac_dishwasher": "Посудомоечная машина",
+    "fac_elevator": "Лифт",
+    "fac_internet": "Интернет",
+    "fac_tv": "Телевизор",
+    "fac_storage": "Кладовая",
+    "who_kids": "Можно с детьми",
+    "who_pets": "Можно с животными",
+    "who_family": "Семейной паре",
+    "who_single": "Одному человеку",
+    "who_nonsmoke": "Только некурящим",
+    "kitchen_studio": "Кухня-студия",
+    "toilet_count": "Число санузлов",
+    "balcony_n": "Балконы",
+    "loggia_n": "Лоджии",
+    "bathroom": "Ванная",
+    "window_side": "Окна",
+    "priv_dorm": "Бывшее общежитие",
 }
 
 VERDICT_RU = {
@@ -167,12 +188,17 @@ def tg_call(method: str, **payload: Any) -> dict | None:
         return None
 
 
-def fmt_tenge(value: float | int) -> str:
-    return f"{round(value):,}".replace(",", " ") + " ₸"
+def fmt_tenge(value: float | int, per_month: bool = False) -> str:
+    return f"{round(value):,}".replace(",", " ") + (" ₸/мес" if per_month else " ₸")
 
 
 def format_reply(result: dict[str, Any]) -> str:
-    """Текст ответа бота (HTML) по результату predict_from_url."""
+    """Текст ответа бота (HTML) по результату predict_from_url.
+
+    Аренда (deal="arenda") — те же блоки, но цены в ₸/мес, крупные суммы в
+    тысячах, а не миллионах, и «сдают» вместо «снимают с продажи».
+    """
+    rent = result.get("deal") == "arenda"
     lines: list[str] = []
     title = result.get("title")
     address = result.get("address")
@@ -185,8 +211,15 @@ def format_reply(result: dict[str, Any]) -> str:
 
     actual = result.get("actual_price")
     if actual:
-        lines.append(f"💰 Цена в объявлении: <b>{fmt_tenge(actual)}</b>")
-    lines.append(f"⚖️ Справедливая цена: <b>{fmt_tenge(result['fair_price'])}</b>")
+        what = "Аренда в объявлении" if rent else "Цена в объявлении"
+        lines.append(f"💰 {what}: <b>{fmt_tenge(actual, rent)}</b>")
+    what = "Справедливая аренда" if rent else "Справедливая цена"
+    lines.append(f"⚖️ {what}: <b>{fmt_tenge(result['fair_price'], rent)}</b>")
+    if result.get("room_share"):
+        lines.append(
+            "⚠️ Похоже на подселение или сдачу комнаты: цена — за место, "
+            "а оценка — за квартиру целиком, поэтому без вердикта."
+        )
 
     verdict = result.get("verdict")
     diff = result.get("diff_pct")
@@ -201,17 +234,31 @@ def format_reply(result: dict[str, Any]) -> str:
     if liq:
         if liq.get("band_median_days") is not None:
             band_ru = {"below": "дешевле рынка", "near": "в рынке", "above": "дороже рынка"}
+            gone = "сдают" if rent else "снимают с продажи"
             lines.append(
                 f"⏳ Похожие по цене ({band_ru.get(liq.get('band'), '')}) "
-                f"снимают с продажи за ~<b>{liq['band_median_days']} дн.</b> "
+                f"{gone} за ~<b>{liq['band_median_days']} дн.</b> "
                 f"(по {liq['band_sample']} снятым)"
             )
         else:
             scope = " по городу" if liq.get("scope") == "city" else ""
+            gone = "сдают" if rent else "снимают с продажи"
             lines.append(
-                f"⏳ Похожие{scope} снимают с продажи за ~<b>{liq['median_days']} дн.</b> "
+                f"⏳ Похожие{scope} {gone} за ~<b>{liq['median_days']} дн.</b> "
                 f"(по {liq['sample']} снятым)"
             )
+
+    ry = result.get("rental_yield")
+    if ry and ry.get("gross_yield_pct") is not None:
+        line = (
+            f"📈 Если сдавать: ~<b>{ry['monthly_rent'] / 1_000:.0f} тыс ₸/мес</b> · "
+            f"доходность <b>{ry['gross_yield_pct']:.1f}%</b> годовых"
+        )
+        if ry.get("district_yield_pct") is not None:
+            line += f" (в районе ~{ry['district_yield_pct']:.1f}%)"
+        if ry.get("assumes_renovation"):
+            line += ", после ремонта"
+        lines.append(line)
 
     # issue #157: формулировка осторожная. Мы знаем только, что цена не
     # объясняется характеристиками квартиры, — обвинять продавца не в чем.
@@ -244,7 +291,9 @@ def format_reply(result: dict[str, Any]) -> str:
             pct, tenge = f.get("impact_pct"), f.get("impact_tenge")
             if pct is not None and abs(pct) >= 0.05:
                 line += f": {pct:+.1f}%"
-                if tenge and abs(tenge) >= 100_000:
+                if rent and tenge and abs(tenge) >= 5_000:
+                    line += f" ({tenge / 1_000:+.0f} тыс ₸/мес)"
+                elif not rent and tenge and abs(tenge) >= 100_000:
                     line += f" ({tenge / 1_000_000:+.1f} млн ₸)"
             lines.append(line)
 
@@ -254,10 +303,9 @@ def format_reply(result: dict[str, Any]) -> str:
         lines.append("🏘 <b>Похожие квартиры:</b>")
         for a in analogs[:3]:
             title = html.escape(a.get("title") or f"{a.get('rooms', '?')}-комн, {a.get('area', '?')} м²")
-            lines.append(
-                f'• <a href="{html.escape(a["url"])}">{title}</a> — '
-                f"{a['price'] / 1_000_000:.1f} млн ₸"
-            )
+            price = (f"{a['price'] / 1_000:.0f} тыс ₸/мес" if rent
+                     else f"{a['price'] / 1_000_000:.1f} млн ₸")
+            lines.append(f'• <a href="{html.escape(a["url"])}">{title}</a> — {price}')
 
     return "\n".join(lines)
 

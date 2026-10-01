@@ -16,11 +16,10 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from krisha.config import MODELS_DIR
+from krisha.config import METRICS_HISTORY_PATH
 
 logger = logging.getLogger(__name__)
 
-METRICS_HISTORY_PATH = MODELS_DIR / "metrics_history.jsonl"
 ADMIN_CHAT_ENV = "TG_ADMIN_CHAT_ID"
 
 
@@ -143,7 +142,13 @@ def format_retrain_report(
     history: list[dict] | None = None,
     dataset: dict | None = None,
 ) -> str:
-    """HTML-сообщение для Telegram: метрики нового обучения и дельты."""
+    """HTML-сообщение для Telegram: метрики нового обучения и дельты.
+
+    У аренды (meta["deal"] == "arenda") цены в тыс. ₸/мес, а не в млн ₸, и
+    без сводки датасета — dataset_summary считает продажную базу.
+    """
+    rent = new_meta.get("deal") == "arenda"
+    scale, unit = (1e3, "тыс. ₸/мес") if rent else (1e6, "млн ₸")
     previous, new = old_meta["metrics"]["model"], new_meta["metrics"]["model"]
     same_test_old = new_meta["metrics"].get("old_model")
     comparison = same_test_old or previous
@@ -151,11 +156,15 @@ def format_retrain_report(
     mae_delta = (new["mae"] / comparison["mae"] - 1) * 100 if comparison["mae"] else 0.0
     mape_delta = (new["mape"] - comparison["mape"]) * 100
 
-    head = "✅ Модель обновлена" if gate_passed else "🚨 Гейт не пройден — осталась старая модель"
+    if rent:
+        head = ("✅ Модель аренды обновлена" if gate_passed
+                else "🚨 Аренда: гейт не пройден — осталась старая модель")
+    else:
+        head = "✅ Модель обновлена" if gate_passed else "🚨 Гейт не пройден — осталась старая модель"
     lines = [
         f"<b>{head}</b> (еженедельный retrain)",
         "",
-        f"MAE: <b>{new['mae'] / 1e6:.2f} млн ₸</b> ({mae_delta:+.1f}% {delta_label})",
+        f"MAE: <b>{new['mae'] / scale:.2f} {unit}</b> ({mae_delta:+.1f}% {delta_label})",
         f"MAPE: <b>{new['mape']:.1%}</b> ({mape_delta:+.2f} п.п. {delta_label})",
         f"R²: <b>{new['r2']:.3f}</b>",
         f"Обучение: {new_meta['metrics'].get('n_train', '?')} лотов, "
@@ -164,17 +173,19 @@ def format_retrain_report(
     if same_test_old:
         lines.append(
             "Прошлая мета (другой test): "
-            f"MAE {previous['mae'] / 1e6:.2f} млн ₸ · MAPE {previous['mape']:.1%}"
+            f"MAE {previous['mae'] / scale:.2f} {unit} · MAPE {previous['mape']:.1%}"
         )
     if history and len(history) >= 2:
-        trend = " → ".join(f"{h['mae'] / 1e6:.2f}" for h in history)
-        lines += ["", f"Тренд MAE (млн ₸): {trend}"]
-    if dataset:
+        trend = " → ".join(f"{h['mae'] / scale:.2f}" for h in history)
+        lines += ["", f"Тренд MAE ({unit}): {trend}"]
+    if dataset and not rent:
         lines += [""] + format_dataset_block(dataset)
     return "\n".join(lines)
 
 
-def notify_retrain(old_meta: dict, new_meta: dict, gate_passed: bool) -> bool:
+def notify_retrain(
+    old_meta: dict, new_meta: dict, gate_passed: bool, history_path: Path | None = None
+) -> bool:
     """Шлёт отчёт в Telegram. False — не отправлено (нет токена/чата)."""
     from krisha.bot import tg_call
 
@@ -188,7 +199,7 @@ def notify_retrain(old_meta: dict, new_meta: dict, gate_passed: bool) -> bool:
         logger.exception("Не удалось собрать сводку датасета")
         dataset = None
     text = format_retrain_report(
-        old_meta, new_meta, gate_passed, history=load_metrics_history(), dataset=dataset
+        old_meta, new_meta, gate_passed, history=load_metrics_history(history_path), dataset=dataset
     )
     resp = tg_call("sendMessage", chat_id=int(chat_id), text=text, parse_mode="HTML")
     # tg_call возвращает распарсенный ответ и при ok=false (например 400 из-за

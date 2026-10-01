@@ -45,6 +45,12 @@ from krisha.config import (
     MODEL_PATH,
     MODEL_QUANTILE_PATH,
     MODELS_DIR,
+    RENT_DB_PATH,
+    RENT_MODEL_META_PATH,
+    RENT_MODEL_PATH,
+    RENT_MODEL_QUANTILE_PATH,
+    RENT_MODELS_DIR,
+    RENT_SPATIAL_REF_PATH,
     SPATIAL_REF_PATH,
 )
 
@@ -55,6 +61,7 @@ TOKEN_ENV = "KRISHA_DB_TOKEN"
 GITHUB_API = "https://api.github.com"
 RELEASE_TAG = "db-latest"
 ASSET_NAME = "krisha.db.gz"
+RENT_ASSET_NAME = "krisha_rent.db.gz"
 
 MODEL_RELEASE_TAG = "model-latest"
 MODEL_ASSET_NAME = "models.tar.gz"
@@ -67,6 +74,15 @@ MODEL_ARTIFACT_PATHS = [
     MODEL_META_PATH,
     SPATIAL_REF_PATH,
     COMPLEXES_SNAPSHOT_PATH,
+]
+# Модель аренды — отдельный архив в том же релизе: ретрейны продажи и
+# аренды публикуются независимо и не затирают артефакты друг друга.
+RENT_MODEL_ASSET_NAME = "models_rent.tar.gz"
+RENT_MODEL_ARTIFACT_PATHS = [
+    RENT_MODEL_PATH,
+    RENT_MODEL_QUANTILE_PATH,
+    RENT_MODEL_META_PATH,
+    RENT_SPATIAL_REF_PATH,
 ]
 
 
@@ -157,14 +173,16 @@ def _verify_checksum(gz_path: Path, sha_url: str | None, headers: dict | None = 
     logger.info("Checksum базы сошёлся (sha256 %s…)", expected[:12])
 
 
-def download(db_path: Path | str = DB_PATH) -> bool:
+def download(
+    db_path: Path | str = DB_PATH, asset: str = ASSET_NAME, url_env: str = "KRISHA_DB_URL"
+) -> bool:
     """Скачивает, проверяет checksum и распаковывает базу атомарно (tmp → rename)."""
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    logger.info("Скачиваю базу: %s", db_url())
-    url, headers, sha_url, sha_headers = _asset_source(RELEASE_TAG, ASSET_NAME, "KRISHA_DB_URL")
+    logger.info("Скачиваю базу %s из %s@%s", asset, DATA_REPO, RELEASE_TAG)
+    url, headers, sha_url, sha_headers = _asset_source(RELEASE_TAG, asset, url_env)
     with tempfile.TemporaryDirectory(dir=db_path.parent) as tmpdir:
-        gz_path = Path(tmpdir) / ASSET_NAME
+        gz_path = Path(tmpdir) / asset
         _fetch(url, headers, gz_path)
         _verify_checksum(gz_path, sha_url, sha_headers)
         tmp_db = Path(tmpdir) / "krisha.db"
@@ -195,7 +213,25 @@ def ensure_db(force: bool = False) -> bool:
         return False
 
 
-def download_models(models_dir: Path | str = MODELS_DIR) -> bool:
+def ensure_rent_db(force: bool = False) -> bool:
+    """То же для базы аренды (ассет krisha_rent.db.gz). Fail-soft."""
+    if os.environ.get("KRISHA_DB_AUTO", "1") == "0" and not force:
+        return False
+    db_path = Path(RENT_DB_PATH)
+    if db_path.exists() and db_path.stat().st_size > 0 and not force:
+        return False
+    try:
+        return download(db_path, RENT_ASSET_NAME, "KRISHA_RENT_DB_URL")
+    except Exception:
+        logger.exception("Не удалось скачать базу аренды из релиза %s", RELEASE_TAG)
+        return False
+
+
+def download_models(
+    models_dir: Path | str = MODELS_DIR,
+    asset: str = MODEL_ASSET_NAME,
+    url_env: str = "KRISHA_MODEL_URL",
+) -> bool:
     """Скачивает, проверяет checksum и распаковывает архив моделей атомарно.
 
     Каждый файл архива распаковывается во временный каталог рядом с
@@ -204,16 +240,14 @@ def download_models(models_dir: Path | str = MODELS_DIR) -> bool:
     """
     models_dir = Path(models_dir)
     models_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("Скачиваю модели: %s", model_url())
-    url, headers, sha_url, sha_headers = _asset_source(
-        MODEL_RELEASE_TAG, MODEL_ASSET_NAME, "KRISHA_MODEL_URL"
-    )
+    logger.info("Скачиваю модели %s из %s@%s", asset, DATA_REPO, MODEL_RELEASE_TAG)
+    url, headers, sha_url, sha_headers = _asset_source(MODEL_RELEASE_TAG, asset, url_env)
     # Временный каталог — ВНУТРИ models_dir, а не рядом: в образе Space
     # родитель (/app) принадлежит root, писать туда пользователь app не может,
     # и скачивание молча падало (fail-soft) — прод вставал без модели.
     # Внутри models_dir os.replace остаётся атомарным (та же ФС).
     with tempfile.TemporaryDirectory(dir=models_dir) as tmpdir:
-        tar_path = Path(tmpdir) / MODEL_ASSET_NAME
+        tar_path = Path(tmpdir) / asset
         _fetch(url, headers, tar_path)
         _verify_checksum(tar_path, sha_url, sha_headers)
         extract_dir = Path(tmpdir) / "extracted"
@@ -221,7 +255,7 @@ def download_models(models_dir: Path | str = MODELS_DIR) -> bool:
         with tarfile.open(tar_path, "r:gz") as tar:
             for member in tar.getmembers():
                 if not member.isfile() or member.name.startswith("/") or ".." in Path(member.name).parts:
-                    raise ValueError(f"Подозрительная запись в models.tar.gz: {member.name}")
+                    raise ValueError(f"Подозрительная запись в {asset}: {member.name}")
             tar.extractall(extract_dir)  # noqa: S202 — члены уже провалидированы выше
         for name in os.listdir(extract_dir):
             os.replace(extract_dir / name, models_dir / name)
@@ -249,6 +283,20 @@ def ensure_models(force: bool = False) -> bool:
         return False
 
 
+def ensure_rent_models(force: bool = False) -> bool:
+    """То же для модели аренды (ассет models_rent.tar.gz → models/rent/). Fail-soft."""
+    if os.environ.get("KRISHA_MODEL_AUTO", "1") == "0" and not force:
+        return False
+    model_path = Path(RENT_MODEL_PATH)
+    if model_path.exists() and model_path.stat().st_size > 0 and not force:
+        return False
+    try:
+        return download_models(RENT_MODELS_DIR, RENT_MODEL_ASSET_NAME, "KRISHA_RENT_MODEL_URL")
+    except Exception:
+        logger.exception("Не удалось скачать модель аренды из релиза %s", MODEL_RELEASE_TAG)
+        return False
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Скачать базу/модели из GitHub Release")
     parser.add_argument("--force", action="store_true", help="скачать, даже если файл уже есть")
@@ -258,19 +306,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--models", action="store_true", help="скачать модели (model-latest) вместо базы"
     )
+    parser.add_argument(
+        "--rent", action="store_true", help="аренда: база krisha_rent.db / модели в models/rent/"
+    )
     args = parser.parse_args(argv)
 
     if args.models:
-        downloaded = ensure_models(force=args.force)
-        present = Path(MODEL_PATH).exists() and Path(MODEL_PATH).stat().st_size > 0
+        ensure, path = (ensure_rent_models, RENT_MODEL_PATH) if args.rent else (ensure_models, MODEL_PATH)
+        downloaded = ensure(force=args.force)
+        present = Path(path).exists() and Path(path).stat().st_size > 0
         if args.require and not present:
             print("Модели отсутствуют и скачать их не удалось", file=sys.stderr)
             return 1
         print("модели скачаны" if downloaded else ("модели уже на месте" if present else "моделей нет"))
         return 0
 
-    downloaded = ensure_db(force=args.force)
-    db_path = Path(DB_PATH)
+    ensure, db_path = (ensure_rent_db, Path(RENT_DB_PATH)) if args.rent else (ensure_db, Path(DB_PATH))
+    downloaded = ensure(force=args.force)
     present = db_path.exists() and db_path.stat().st_size > 0
     if args.require and not present:
         print("База отсутствует и скачать её не удалось", file=sys.stderr)

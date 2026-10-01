@@ -23,6 +23,11 @@ from krisha.config import (
     MODEL_META_PATH,
     MODEL_PATH,
     MODEL_QUANTILE_PATH,
+    RENT_DB_PATH,
+    RENT_MODEL_META_PATH,
+    RENT_MODEL_PATH,
+    RENT_MODEL_QUANTILE_PATH,
+    RENT_SPATIAL_REF_PATH,
     feature_vision,
 )
 from krisha.db import get_conn
@@ -66,9 +71,12 @@ VERDICT_THRESHOLD = 0.10  # ±10% — справедливая цена
 USER_TYPE_RU = {
     "owner": "Собственник",
     "agent": "Специалист",
+    "specialist": "Специалист",
     "company": "Компания",
     "builder": "Застройщик",
+    "complex": "Жилой комплекс",
 }
+RENT = "arenda"
 
 # (подпись, ключ в raw_params) — extras со страницы объявления
 EXTRA_PARAMS_RU = [
@@ -79,9 +87,21 @@ EXTRA_PARAMS_RU = [
     ("Мебель", "live.furniture"),
     ("Безопасность", "flat.security"),
 ]
+# Те же сведения на арендных страницах лежат под своими ключами
+RENT_EXTRA_PARAMS_RU = [
+    ("Ремонт", "flat.rent_renovation"),
+    ("Мебель", "live.furniture"),
+    ("Что есть в квартире", "flat.facilities"),
+    ("Мебель в квартире", "flat.furniture"),
+    ("Кому сдаётся", "who_match"),
+    ("Санузел", "separated_toilet"),
+    ("Ванная", "bathroom"),
+    ("Окна", "window_side"),
+    ("Безопасность", "flat.security"),
+]
 
 
-def build_details(listing: dict[str, Any]) -> list[dict[str, str]]:
+def build_details(listing: dict[str, Any], deal: str = "prodazha") -> list[dict[str, str]]:
     """Характеристики объявления для карточки на фронте: [{label, value}, ...]."""
     from krisha.stats import DISTRICT_RU  # здесь, чтобы не плодить циклы импортов
 
@@ -96,6 +116,8 @@ def build_details(listing: dict[str, Any]) -> list[dict[str, str]]:
     district = listing.get("district")
     category = listing.get("category")
 
+    rent = deal == RENT
+    extra = RENT_EXTRA_PARAMS_RU if rent else EXTRA_PARAMS_RU
     items: list[tuple[str, Any]] = [
         ("Комнаты", listing.get("rooms")),
         ("Площадь", f"{area:g} м²" if area else None),
@@ -106,9 +128,11 @@ def build_details(listing: dict[str, Any]) -> list[dict[str, str]]:
         ("Район", DISTRICT_RU.get(district, district) if district else None),
         ("Микрорайон", listing.get("microdistrict")),
         ("Жилой комплекс", listing.get("complex_name")),
-        *((label, raw.get(key)) for label, key in EXTRA_PARAMS_RU),
-        ("Продавец", USER_TYPE_RU.get(listing.get("user_type") or "")),
-        ("Категория", "Новостройка" if category == "novostroiki" else "Вторичка" if category else None),
+        *((label, raw.get(key)) for label, key in extra),
+        ("Арендодатель" if rent else "Продавец", USER_TYPE_RU.get(listing.get("user_type") or "")),
+        # у аренды categoryAlias всегда «kvartiry» — новостройку от вторички не отличить
+        ("Категория", None if rent else
+         "Новостройка" if category == "novostroiki" else "Вторичка" if category else None),
     ]
     return [{"label": label, "value": str(value)} for label, value in items if value not in (None, "")]
 
@@ -144,15 +168,16 @@ def build_complex_details(listing: dict[str, Any]) -> list[dict[str, str]]:
     ]
 
 
-@lru_cache(maxsize=1)
-def load_model() -> tuple[CatBoostRegressor, dict]:
-    if not MODEL_PATH.exists():
+@lru_cache(maxsize=2)  # продажа + аренда
+def load_model(deal: str = "prodazha") -> tuple[CatBoostRegressor, dict]:
+    path, meta_path = (RENT_MODEL_PATH, RENT_MODEL_META_PATH) if deal == RENT else (MODEL_PATH, MODEL_META_PATH)
+    if not path.exists():
         raise FileNotFoundError(
-            f"Модель не найдена: {MODEL_PATH}. Сначала обучи: python scripts/train.py"
+            f"Модель не найдена: {path}. Сначала обучи: python scripts/train.py --deal {deal}"
         )
     model = CatBoostRegressor()
-    model.load_model(str(MODEL_PATH))
-    meta = json.loads(MODEL_META_PATH.read_text(encoding="utf-8"))
+    model.load_model(str(path))
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
     return model, meta
 
 
@@ -173,8 +198,8 @@ class _LegacyQuantilePair:
         return np.column_stack([lo, hi])
 
 
-@lru_cache(maxsize=1)
-def load_interval_models() -> CatBoostRegressor | _LegacyQuantilePair | None:
+@lru_cache(maxsize=2)  # продажа + аренда
+def load_interval_models(deal: str = "prodazha") -> CatBoostRegressor | _LegacyQuantilePair | None:
     """MultiQuantile-модель (issue #132: одна модель q10+q90 вместо
     model_lo/model_hi) для доверительного интервала цены. `model.predict(pool)`
     возвращает `(n, 2)`: столбец 0 = q10 (lo), столбец 1 = q90 (hi).
@@ -185,7 +210,13 @@ def load_interval_models() -> CatBoostRegressor | _LegacyQuantilePair | None:
     пару model_lo/model_hi через `_LegacyQuantilePair`, чтобы прод не терял
     доверительный интервал и не падал на плоский вердикт ±10%. None — только
     если вообще нет ни новой, ни старой модели (совсем свежий деплой без
-    интервала)."""
+    интервала). У аренды легаси-пары нет — только MultiQuantile."""
+    if deal == RENT:
+        if not RENT_MODEL_QUANTILE_PATH.exists():
+            return None
+        quantile_model = CatBoostRegressor()
+        quantile_model.load_model(str(RENT_MODEL_QUANTILE_PATH))
+        return quantile_model
     if MODEL_QUANTILE_PATH.exists():
         quantile_model = CatBoostRegressor()
         quantile_model.load_model(str(MODEL_QUANTILE_PATH))
@@ -253,7 +284,13 @@ def top_factors(model: CatBoostRegressor, pool: Pool, features: list[str], n: in
     ]
 
 
-def _with_money_impact(factors: list[dict], fair_price: float) -> list[dict]:
+def _round_price(value: float, deal: str = "prodazha") -> float:
+    """Продажу округляем до 10 тыс ₸, аренду (₸/мес) — до тысячи: 10 тыс. от
+    300 тыс. — это 3%, заметная доля ошибки самой модели."""
+    return round(value, -3 if deal == RENT else -4)
+
+
+def _with_money_impact(factors: list[dict], fair_price: float, deal: str = "prodazha") -> list[dict]:
     """Переводит SHAP-вклад из log-пространства в понятные % и тенге.
 
     Модель предсказывает log1p(price), поэтому вклад s фактора — это
@@ -264,12 +301,18 @@ def _with_money_impact(factors: list[dict], fair_price: float) -> list[dict]:
     for f in factors:
         s = f["impact"]
         f["impact_pct"] = round(float(np.expm1(s)) * 100, 1)
-        f["impact_tenge"] = round(float(fair_price * (1 - np.exp(-s))), -4)
+        f["impact_tenge"] = _round_price(float(fair_price * (1 - np.exp(-s))), deal)
     return factors
 
 
-def _with_hints(listing: dict[str, Any], factors: list[dict]) -> list[dict]:
-    """Подсказки со статистикой рынка к каждому фактору (fail-soft)."""
+def _with_hints(listing: dict[str, Any], factors: list[dict], deal: str = "prodazha") -> list[dict]:
+    """Подсказки со статистикой рынка к каждому фактору (fail-soft).
+
+    Только для продажи: подсказки считаются по продажной базе и написаны для
+    покупателя («от 2.8 м потолки — премиальный признак»), аренде они врут.
+    """
+    if deal == RENT:
+        return factors
     try:
         from krisha.factor_hints import build_factor_hints
 
@@ -309,7 +352,11 @@ def _apply_cqr(lo_raw: float, hi_raw: float, interval_meta: dict[str, Any]) -> t
 
 
 def _price_pool(
-    pool: Pool, actual_prices: list[Any], meta: dict[str, Any], model: CatBoostRegressor
+    pool: Pool,
+    actual_prices: list[Any],
+    meta: dict[str, Any],
+    model: CatBoostRegressor,
+    deal: str = "prodazha",
 ) -> list[dict[str, Any]]:
     """Цена, интервал и вердикт для N строк пула — одна формула на всех.
 
@@ -320,7 +367,7 @@ def _price_pool(
     """
     fair_prices = np.expm1(np.asarray(model.predict(pool), dtype=float))
     # Доверительный интервал: MultiQuantile-модель (issue #132) + CQR-сдвиг из меты.
-    quantile_model = load_interval_models()
+    quantile_model = load_interval_models(deal)
     quantile_pred = quantile_model.predict(pool) if quantile_model is not None else None
     interval_meta = meta.get("metrics", {}).get("interval", {})
     rows = []
@@ -361,6 +408,7 @@ def predict_from_listing(
     listing: dict[str, Any],
     live_vision: bool = True,
     conn: sqlite3.Connection | None = None,
+    deal: str | None = None,
 ) -> dict[str, Any]:
     """issue #110: `conn` — необязательное уже открытое SQLite-соединение,
     переданное вызывающим кодом (`predict_from_url`/`api/app.py`). Если None,
@@ -368,23 +416,33 @@ def predict_from_listing(
     вызовов (тесты, `alerts.find_good_deals`), просто без экономии на числе
     соединений. Раньше на один запрос уходило ~8 отдельных `get_conn()`
     (llm_flags кэш, price_history, days_on_market, liquidity, vision-кэш,
-    analogs, log_prediction) — теперь один на всю функцию."""
+    analogs, log_prediction) — теперь один на всю функцию.
+
+    `deal` — продажа или аренда; None — определить по объявлению
+    (krisha.rent.detect_deal). От него зависят модель, база рынка и подписи."""
+    if deal is None:
+        from krisha.rent import detect_deal
+
+        deal = detect_deal(listing)
     if conn is None:
-        with get_conn(DB_PATH) as new_conn:
-            return _predict_from_listing(listing, live_vision, new_conn)
-    return _predict_from_listing(listing, live_vision, conn)
+        with get_conn(RENT_DB_PATH if deal == RENT else DB_PATH) as new_conn:
+            return _predict_from_listing(listing, live_vision, new_conn, deal)
+    return _predict_from_listing(listing, live_vision, conn, deal)
 
 
 def _predict_from_listing(
-    listing: dict[str, Any], live_vision: bool, conn: sqlite3.Connection
+    listing: dict[str, Any], live_vision: bool, conn: sqlite3.Connection, deal: str = "prodazha"
 ) -> dict[str, Any]:
-    model, meta = load_model()
+    rent = deal == RENT
+    model, meta = load_model(deal)
     features = meta["features"]
 
     from krisha.spatial import load_spatial_ref
 
     df = listing_to_frame(
-        listing, ppsm_maps=meta.get("ppsm_maps"), spatial_ref=load_spatial_ref()
+        listing,
+        ppsm_maps=meta.get("ppsm_maps"),
+        spatial_ref=load_spatial_ref(RENT_SPATIAL_REF_PATH) if rent else load_spatial_ref(),
     )
     # Район/микрорайон, восстановленные по OSM-зонам, показываем и в карточке
     from krisha.features import MISSING_CAT
@@ -395,24 +453,36 @@ def _predict_from_listing(
             listing = {**listing, col: val}
     pool = Pool(df[features], cat_features=meta["cat_features"])
     actual = listing.get("price")
-    priced = _price_pool(pool, [actual], meta, model)[0]
+    priced = _price_pool(pool, [actual], meta, model, deal)[0]
     fair_price, verdict = priced["fair_price"], priced["verdict"]
     fair_low, fair_high = priced["fair_low"], priced["fair_high"]
+    # Подселение / комната: цена за койку, а оценка — за квартиру целиком.
+    # Сравнивать их нельзя — вердикт снимаем, карточка предупреждает.
+    room_share = False
+    if rent:
+        from krisha.rent import is_room_share
+
+        room_share = is_room_share(listing.get("description"))
+        if room_share:
+            verdict = None
     result = {
+        "deal": deal,
+        "price_period": "month" if rent else None,
+        "room_share": room_share,
         "listing_id": listing.get("id"),
         "url": listing.get("url"),
         "title": listing.get("title"),
         "address": listing.get("address_title"),
         "actual_price": actual,
-        "fair_price": round(fair_price, -4),  # округляем до 10 тыс ₸
-        "fair_price_low": round(fair_low, -4) if fair_low is not None else None,
-        "fair_price_high": round(fair_high, -4) if fair_high is not None else None,
+        "fair_price": _round_price(fair_price, deal),
+        "fair_price_low": _round_price(fair_low, deal) if fair_low is not None else None,
+        "fair_price_high": _round_price(fair_high, deal) if fair_high is not None else None,
         "verdict": verdict,
         "diff_pct": round((actual - fair_price) / fair_price * 100, 1) if actual else None,
         "top_factors": _with_hints(
-            listing, _with_money_impact(top_factors(model, pool, features), fair_price)
+            listing, _with_money_impact(top_factors(model, pool, features), fair_price, deal), deal
         ),
-        "details": build_details(listing),
+        "details": build_details(listing, deal),
         "complex_details": build_complex_details(listing),
         "location_details": _location_details_with_pin_note(listing),
         "photos": (listing.get("photos") or [])[:12],
@@ -427,6 +497,17 @@ def _predict_from_listing(
     result["liquidity"] = liquidity_estimate(
         listing.get("district"), listing.get("rooms"), result.get("diff_pct"), conn=conn
     )
+
+    # Продажа: если сдавать — какая аренда и доходность (модель аренды на
+    # этом же лоте). Fail-soft: без модели аренды блок просто не показывается.
+    result["rental_yield"] = None
+    if not rent:
+        from krisha.rental_yield import estimate as estimate_rental_yield
+
+        try:
+            result["rental_yield"] = estimate_rental_yield(listing, actual or fair_price)
+        except Exception:  # noqa: BLE001 — доходность не должна ломать оценку
+            logger.exception("rental yield failed")
 
     # issue #157: предупреждение о подозрительно низкой цене — от НИЖНЕЙ
     # ГРАНИЦЫ интервала, а не от точечной оценки. Граница откалибрована CQR
@@ -485,7 +566,9 @@ def _predict_from_listing(
             result.get("fair_price_low"),
             result.get("fair_price_high"),
             result.get("verdict"),
-            meta.get("metrics", {}).get("trained_at"),
+            # версия с префиксом сделки: долговечный лог общий у двух моделей
+            f"{RENT}:{meta.get('metrics', {}).get('trained_at')}" if rent
+            else meta.get("metrics", {}).get("trained_at"),
             conn=conn,
         )
     except Exception:  # noqa: BLE001 — лог предикта не должен ломать оценку
@@ -583,7 +666,7 @@ def predict_from_url(
     if html is None:
         # С raise_on_challenge любой отказ источника поднимает SourceUnavailable,
         # так что None здесь значит ровно одно — 404: объявления нет.
-        raise ListingNotFound("Объявление не найдено — возможно, его уже сняли с продажи")
+        raise ListingNotFound("Объявление не найдено — возможно, его уже сняли с публикации")
     listing = parse_detail(html, url)
     if listing is None:
         raise RuntimeError("Не удалось распарсить объявление")
@@ -591,17 +674,22 @@ def predict_from_url(
     # (llm_flags/market/vision/analogs/log_prediction) и последующие
     # find_duplicate_id/upsert_listing переиспользуют его вместо каждый
     # своего get_conn().
-    from krisha.db import find_duplicate_id, listing_fingerprint, upsert_listing
+    from krisha.db import find_duplicate_id, listing_fingerprint, price_bounds_for, upsert_listing
+    from krisha.rent import detect_deal
 
-    with get_conn(DB_PATH) as conn:
-        result = predict_from_listing(listing, live_vision=live_vision, conn=conn)
+    # Аренда и продажа — разные базы: рынок, аналоги, история и дубли ищем в
+    # базе своей сделки, туда же кладём проверенную ссылку (со своими
+    # границами цены — продажные отбраковали бы любую аренду).
+    deal = detect_deal(listing)
+    with get_conn(RENT_DB_PATH if deal == RENT else DB_PATH) as conn:
+        result = predict_from_listing(listing, live_vision=live_vision, conn=conn, deal=deal)
         # Каждая проверенная ссылка пополняет базу (fail-soft: read-only FS и т.п.)
         result["duplicate_of"] = None
         try:
             result["duplicate_of"] = find_duplicate_id(
                 listing_fingerprint(listing), int(listing["id"]), conn=conn
             )
-            upsert_listing({**listing, "source": "user"}, conn=conn)
+            upsert_listing({**listing, "source": "user"}, conn=conn, price_bounds=price_bounds_for(deal))
         except Exception:  # noqa: BLE001 — сохранение не должно ломать оценку
             logger.warning("predict: не удалось сохранить объявление в базу", exc_info=True)
     return result

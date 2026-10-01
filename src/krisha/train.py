@@ -1,8 +1,11 @@
 """Обучение CatBoost на log(price) + сравнение с baseline + SHAP-отчёт.
 
-Запуск: `python scripts/train.py`. Результат:
+Запуск: `python scripts/train.py [--deal arenda]`. Конвейер один и тот же
+для продажи и аренды; данные, границы цен, фичи и пути артефактов задаёт
+спецификация модели (krisha.model_spec). Результат для продажи:
 - models/model.cbm + models/model_meta.json (метрики, список фичей)
 - reports/shap_summary.png
+У аренды — то же самое в models/rent/ и reports/shap_summary_rent.png.
 """
 
 import json
@@ -21,23 +24,17 @@ from krisha.config import (
     ALMATY_BBOX,
     DB_PATH,
     MODEL_GATE_SAMPLES_PATH,
-    MODEL_META_PATH,
-    MODEL_PATH,
-    MODEL_QUANTILE_PATH,
-    MODELS_DIR,
     RANDOM_STATE,
-    REPORTS_DIR,
     STALE_DELISTED_DAYS,
 )
 from krisha.features import (
-    ALL_FEATURES,
-    CAT_FEATURES,
     TARGET,
     build_features,
     clean,
     compute_ppsm_maps,
 )
 from krisha.interval import MIN_INTERVAL_WIDTH_LOG, finalize_interval
+from krisha.model_spec import SALE, ModelSpec
 
 logger = logging.getLogger(__name__)
 
@@ -520,6 +517,7 @@ def train_quantile_interval(
     test_df: pd.DataFrame,
     point_pred: np.ndarray,
     iterations: int = QUANTILE_ITERATIONS,
+    spec: ModelSpec = SALE,
 ) -> tuple[CatBoostRegressor, dict]:
     """MultiQuantile-модель q10+q90 (issue #132) + конформная калибровка (CQR).
 
@@ -590,8 +588,9 @@ def train_quantile_interval(
         knn_self_indices=self_indices_for(fit_raw),
     )
     cal_df = build_features(cal_raw, ppsm_maps=ppsm_maps_fit, spatial_ref=spatial_ref_fit)
-    fit_pool = Pool(fit_df[ALL_FEATURES], fit_df[TARGET], cat_features=CAT_FEATURES)
-    cal_pool = Pool(cal_df[ALL_FEATURES], cat_features=CAT_FEATURES)
+    features, cat_features = spec.all_features, list(spec.cat_features)
+    fit_pool = Pool(fit_df[features], fit_df[TARGET], cat_features=cat_features)
+    cal_pool = Pool(cal_df[features], cat_features=cat_features)
 
     # issue #132: early stopping для квантильной модели — временной
     # под-сплит внутри fit-части (самый свежий кусок fit = val), а не
@@ -611,8 +610,8 @@ def train_quantile_interval(
         knn_self_indices=self_indices_for(es_fit_raw),
     )
     es_val_df = build_features(es_val_raw, ppsm_maps=ppsm_maps_es, spatial_ref=spatial_ref_es)
-    es_fit_pool = Pool(es_fit_df[ALL_FEATURES], es_fit_df[TARGET], cat_features=CAT_FEATURES)
-    es_val_pool = Pool(es_val_df[ALL_FEATURES], es_val_df[TARGET], cat_features=CAT_FEATURES)
+    es_fit_pool = Pool(es_fit_df[features], es_fit_df[TARGET], cat_features=cat_features)
+    es_val_pool = Pool(es_val_df[features], es_val_df[TARGET], cat_features=cat_features)
 
     probe = _fit_multiquantile(es_fit_pool, iterations, eval_pool=es_val_pool)
     best_iterations = max(int(probe.tree_count_), 1)
@@ -631,7 +630,7 @@ def train_quantile_interval(
     scale = min(max(float(np.quantile(scores, level, method="higher")), 0.0), CQR_SCALE_MAX)
 
     # Оценка покрытия и ширины на holdout (expm1 монотонна → сохраняет квантили)
-    test_pool = Pool(test_df[ALL_FEATURES], cat_features=CAT_FEATURES)
+    test_pool = Pool(test_df[features], cat_features=cat_features)
     preds_test = model.predict(test_pool)
     lo_test, hi_test = preds_test[:, 0], preds_test[:, 1]
     width_test = np.maximum(hi_test - lo_test, MIN_INTERVAL_WIDTH_LOG)
@@ -668,17 +667,25 @@ def train(
     iterations: int = 2000,
     save: bool = True,
     old_model_path: str | Path | None = None,
+    spec: ModelSpec = SALE,
 ) -> dict:
     """Полный пайплайн обучения. Возвращает метрики (model vs baseline).
 
     old_model_path — путь к прошлой model.cbm: если задан, старая модель
     оценивается на том же свежем test-сплите → metrics["old_model"], и
     метрический гейт сравнивает яблоки с яблоками (см. scripts/model_gate.py).
+
+    spec — какую модель учим (krisha.model_spec: SALE или RENT).
     """
     if df is None:
-        df = load_dataset()
-    df = clean(df)
-    logger.info("После очистки: %s строк", len(df))
+        df = load_dataset(spec.db_path)
+    df = clean(df, spec.price_bounds, spec.ppsm_bounds)
+    if spec.is_rent:
+        from krisha.rent import drop_room_shares
+
+        df = drop_room_shares(df)
+    logger.info("После очистки (%s): %s строк", spec.label, len(df))
+    features, cat_features = spec.all_features, list(spec.cat_features)
     # Зоны чиним до сплита: ppsm-статистика должна считаться по верным районам
     from krisha.zones import resolve_zones
 
@@ -726,8 +733,9 @@ def train(
         knn_self_indices=self_indices_for(raw_train),
     )
     test_df = build_features(raw_test, ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)
-    train_pool = Pool(train_df[ALL_FEATURES], train_df[TARGET], cat_features=CAT_FEATURES)
-    test_pool = Pool(test_df[ALL_FEATURES], test_df[TARGET], cat_features=CAT_FEATURES)
+    feature_defaults = _typical_values(train_df, spec)
+    train_pool = Pool(train_df[features], train_df[TARGET], cat_features=cat_features)
+    test_pool = Pool(test_df[features], test_df[TARGET], cat_features=cat_features)
 
     # Early stopping — по val-сплиту из train (по «зданиям»), а не по test:
     # иначе число деревьев подгоняется под тестовую выборку и метрики чуть
@@ -751,10 +759,10 @@ def train(
     )
     val_df_es = build_features(val_raw_es, ppsm_maps=ppsm_maps_es, spatial_ref=spatial_ref_es)
     fit_pool = Pool(
-        fit_df_es[ALL_FEATURES], fit_df_es[TARGET], cat_features=CAT_FEATURES,
+        fit_df_es[features], fit_df_es[TARGET], cat_features=cat_features,
     )
     val_pool = Pool(
-        val_df_es[ALL_FEATURES], val_df_es[TARGET], cat_features=CAT_FEATURES,
+        val_df_es[features], val_df_es[TARGET], cat_features=cat_features,
     )
     probe = CatBoostRegressor(
         iterations=iterations,
@@ -784,7 +792,7 @@ def train(
     y_base = baseline_predict(train_df, test_df)
 
     quantile_model, interval_meta = train_quantile_interval(
-        raw_train, test_df, point_pred=y_model
+        raw_train, test_df, point_pred=y_model, spec=spec
     )
 
     # issue #158: метрика без описания выборки, на которой получена, почти
@@ -882,47 +890,73 @@ def train(
             metrics["old_model"] = evaluate(y_true, y_old)
             logger.info("Старая модель на новом test: %s", json.dumps(metrics["old_model"]))
             if save:
-                _save_gate_samples(y_true, y_model, y_old)
+                _save_gate_samples(y_true, y_model, y_old, path=spec.gate_samples_path)
         except Exception as exc:  # набор фичей мог измениться — гейт уходит в fail-closed
             metrics["old_model_error"] = str(exc)
             logger.warning("Не удалось оценить старую модель (%s): %s", old_model_path, exc)
     logger.info("Метрики: %s", json.dumps(metrics, indent=2))
 
     if save:
-        MODELS_DIR.mkdir(parents=True, exist_ok=True)
-        model.save_model(str(MODEL_PATH))
-        quantile_model.save_model(str(MODEL_QUANTILE_PATH))
+        spec.models_dir.mkdir(parents=True, exist_ok=True)
+        model.save_model(str(spec.model_path))
+        quantile_model.save_model(str(spec.quantile_path))
         from krisha.spatial import save_spatial_ref
 
-        save_spatial_ref(spatial_ref)
-        MODEL_META_PATH.write_text(json.dumps(
+        save_spatial_ref(spatial_ref, spec.spatial_ref_path)
+        spec.meta_path.write_text(json.dumps(
             {
-                "features": ALL_FEATURES,
-                "cat_features": CAT_FEATURES,
+                "deal": spec.deal,
+                "features": features,
+                "cat_features": cat_features,
                 "metrics": metrics,
                 "ppsm_maps": ppsm_maps,
+                # типичные значения арендных признаков (медиана/мода train) —
+                # подставляются, когда аренду оценивают для продажного лота,
+                # у которого этих полей нет (krisha.rental_yield)
+                **({"feature_defaults": feature_defaults} if feature_defaults else {}),
             },
             ensure_ascii=False, indent=2,
         ), encoding="utf-8")
-        _save_shap_report(model, test_df)
+        _save_shap_report(model, test_df, spec)
         # История метрик — тренд MAE/MAPE по переобучениям (мониторинг)
         try:
             from krisha.monitoring import append_metrics_history
 
-            append_metrics_history(metrics)
+            append_metrics_history(metrics, spec.metrics_history_path)
         except Exception as exc:
             logger.warning("Не удалось записать историю метрик: %s", exc)
         # Снапшот статистики рынка — деплой без БД отдаёт /api/stats из него
-        try:
-            from krisha.stats import snapshot_stats
-            snapshot_stats()
-        except Exception as exc:
-            logger.warning("Не удалось сохранить снапшот статистики: %s", exc)
-        logger.info("Модель сохранена: %s", MODEL_PATH)
+        # (статистика сайта — продажная, у аренды своей страницы нет).
+        if not spec.is_rent:
+            try:
+                from krisha.stats import snapshot_stats
+                snapshot_stats()
+            except Exception as exc:
+                logger.warning("Не удалось сохранить снапшот статистики: %s", exc)
+        logger.info("Модель сохранена: %s", spec.model_path)
     return metrics
 
 
-def _save_shap_report(model: CatBoostRegressor, test_df: pd.DataFrame) -> None:
+def _typical_values(train_df: pd.DataFrame, spec: ModelSpec) -> dict:
+    """Медианы числовых и моды категориальных арендных признаков train-части."""
+    if not spec.is_rent:
+        return {}
+    from krisha.features import MISSING_CAT, RENT_CAT_EXTRA, RENT_NUM_EXTRA
+
+    out: dict = {}
+    for col in RENT_NUM_EXTRA:
+        values = pd.to_numeric(train_df.get(col), errors="coerce").dropna()
+        if len(values):
+            out[col] = float(values.median())
+    for col in RENT_CAT_EXTRA:
+        values = train_df.get(col, pd.Series(dtype=str))
+        values = values[values != MISSING_CAT]
+        if len(values):
+            out[col] = str(values.mode().iloc[0])
+    return out
+
+
+def _save_shap_report(model: CatBoostRegressor, test_df: pd.DataFrame, spec: ModelSpec = SALE) -> None:
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -930,15 +964,15 @@ def _save_shap_report(model: CatBoostRegressor, test_df: pd.DataFrame) -> None:
         import shap
 
         explainer = shap.TreeExplainer(model)
-        sample = test_df[ALL_FEATURES].sample(min(500, len(test_df)), random_state=RANDOM_STATE)
+        sample = test_df[spec.all_features].sample(min(500, len(test_df)), random_state=RANDOM_STATE)
         shap_values = explainer.shap_values(
-            Pool(sample, cat_features=CAT_FEATURES)
+            Pool(sample, cat_features=list(spec.cat_features))
         )
-        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        spec.shap_path.parent.mkdir(parents=True, exist_ok=True)
         shap.summary_plot(shap_values, sample, show=False)
         plt.tight_layout()
-        plt.savefig(REPORTS_DIR / "shap_summary.png", dpi=150)
+        plt.savefig(spec.shap_path, dpi=150)
         plt.close()
-        logger.info("SHAP-отчёт: %s", REPORTS_DIR / "shap_summary.png")
+        logger.info("SHAP-отчёт: %s", spec.shap_path)
     except Exception as exc:  # SHAP не должен ронять обучение
         logger.warning("Не удалось построить SHAP-отчёт: %s", exc)

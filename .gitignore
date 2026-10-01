@@ -29,6 +29,11 @@ data/*.json
 models/*.cbm
 models/spatial_ref.json
 models/model_gate_samples.json
+models/rent/*.cbm
+models/rent/spatial_ref.json
+models/rent/model_gate_samples.json
+# SHAP аренды — побочный продукт обучения, в README не используется
+reports/shap_summary_rent.png
 
 # reports/*.png — SHAP-график коммитим, он нужен README
 

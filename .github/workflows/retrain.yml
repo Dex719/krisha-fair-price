@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "0 2 * * 0" # воскресенье 07:00 Алматы (UTC+5)
   workflow_dispatch:
+    inputs:
+      deal:
+        description: "Какую модель переобучить"
+        type: choice
+        options: [both, prodazha, arenda]
+        default: both
 
 concurrency:
   group: krisha-db-writes
@@ -19,6 +25,8 @@ env:
 
 jobs:
   retrain:
+    # по расписанию inputs пустые — учим обе модели
+    if: ${{ inputs.deal != 'arenda' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -115,6 +123,125 @@ jobs:
       # (krisha.db_release.ensure_models). Передеплой не нужен — рестарта
       # достаточно, чтобы свежий контейнер подтянул новую модель.
       - name: Restart Space (подтянуть новую модель)
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "HF_TOKEN не задан — пропускаю рестарт Space"
+            exit 0
+          fi
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $HF_TOKEN" \
+            https://huggingface.co/api/spaces/Dex719/krisha-fair-price/restart
+
+  # Модель аренды (₸/мес): тот же конвейер (krisha.train, spec RENT), свои
+  # артефакты в models/rent/ и свой архив models_rent.tar.gz в model-latest —
+  # гейт или сбой аренды не блокирует продажу, и наоборот. После продажи, а не
+  # параллельно: оба шага коммитят мету в main.
+  retrain-rent:
+    needs: retrain
+    if: ${{ always() && inputs.deal != 'prodazha' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: |
+          pip install -r requirements-train.lock
+          pip install -e . --no-deps
+
+      - name: Download rent DB and current rent model
+        id: old
+        env:
+          KRISHA_DB_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+        run: |
+          python -m krisha.db_release --rent --require
+          # Первой модели аренды в релизе ещё нет — это не ошибка
+          python -m krisha.db_release --rent --models
+          if [ -s models/rent/model.cbm ]; then
+            cp models/rent/model.cbm /tmp/old_rent_model.cbm
+            cp models/rent/model_meta.json /tmp/old_rent_meta.json
+            echo "has_old=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_old=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Train rent model
+        run: |
+          if [ "${{ steps.old.outputs.has_old }}" = "1" ]; then
+            python scripts/train.py --deal arenda --compare-old /tmp/old_rent_model.cbm
+          else
+            python scripts/train.py --deal arenda
+          fi
+
+      - name: Metric gate (аренда)
+        id: gate
+        run: |
+          if [ "${{ steps.old.outputs.has_old }}" = "1" ]; then
+            python scripts/model_gate.py /tmp/old_rent_meta.json models/rent/model_meta.json \
+              --samples models/rent/model_gate_samples.json --summary "$GITHUB_STEP_SUMMARY"
+          else
+            # Первая модель: сравнивать не с чем — только санитарная планка
+            python - <<'PY'
+          import json, sys
+          m = json.load(open("models/rent/model_meta.json", encoding="utf-8"))["metrics"]
+          mape, base = m["model"]["mape"], m["baseline"]["mape"]
+          print(f"Первая модель аренды: MAPE {mape:.1%}, baseline {base:.1%}")
+          sys.exit(0 if mape < 0.20 and mape < base else 1)
+          PY
+          fi
+
+      - name: Отчёт о переобучении аренды в Telegram
+        if: always() && steps.gate.outcome != 'skipped' && steps.old.outputs.has_old == '1'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
+        run: |
+          python scripts/notify_retrain.py /tmp/old_rent_meta.json models/rent/model_meta.json \
+            --deal arenda --gate ${{ steps.gate.outcome }}
+
+      - name: Rent model artifact tests
+        run: |
+          pip install -c requirements-train.lock "pytest>=8.0"
+          pytest -q tests/test_rent_model_artifacts.py
+
+      - name: Publish rent model release
+        env:
+          GH_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+        run: |
+          set -euo pipefail
+          FILES=$(python -c "from krisha.db_release import RENT_MODEL_ARTIFACT_PATHS as P; import os; print(' '.join(os.path.basename(str(x)) for x in P))")
+          tar -czf /tmp/models_rent.tar.gz -C models/rent $FILES
+          sha256sum /tmp/models_rent.tar.gz | cut -d' ' -f1 > /tmp/models_rent.tar.gz.sha256
+          gh release upload model-latest /tmp/models_rent.tar.gz /tmp/models_rent.tar.gz.sha256 --clobber --repo "$KRISHA_DATA_REPO"
+          TAG="model-$(date -u +%F)"
+          gh release create "$TAG" /tmp/models_rent.tar.gz /tmp/models_rent.tar.gz.sha256 --repo "$KRISHA_DATA_REPO" \
+            --title "$TAG" --notes "Снапшот моделей $(date -u +%F)" || \
+            gh release upload "$TAG" /tmp/models_rent.tar.gz /tmp/models_rent.tar.gz.sha256 --clobber --repo "$KRISHA_DATA_REPO"
+
+      - name: Commit rent model metadata
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add models/rent/  # веса и spatial_ref — в .gitignore, едут релизом
+          if git diff --cached --quiet; then
+            echo "Мета аренды не изменилась — коммитить нечего"
+            exit 0
+          fi
+          git commit -m "model: weekly retrain аренды $(date -u +%F)"
+          git pull --rebase origin main
+          git push origin main
+
+      # Модель аренды теперь в проде (оценка арендных ссылок, доходность
+      # продажи): как и у продажи, весов в образе нет — свежий контейнер
+      # подтянет новый models_rent.tar.gz при старте.
+      - name: Restart Space (подтянуть новую модель аренды)
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |

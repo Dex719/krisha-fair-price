@@ -13,6 +13,7 @@ import json
 import logging
 from pathlib import Path
 
+from krisha.model_spec import SPECS, spec_for
 from krisha.monitoring import (
     dataset_summary,
     format_retrain_report,
@@ -26,7 +27,9 @@ def main() -> None:
     parser.add_argument("old_meta")
     parser.add_argument("new_meta")
     parser.add_argument("--gate", choices=["success", "failure"], default="success")
+    parser.add_argument("--deal", choices=sorted(SPECS), default="prodazha")
     args = parser.parse_args()
+    spec = spec_for(args.deal)
 
     logging.basicConfig(level=logging.INFO)
     old = json.loads(Path(args.old_meta).read_text(encoding="utf-8"))
@@ -39,10 +42,11 @@ def main() -> None:
         dataset = None
     print(
         format_retrain_report(
-            old, new, gate_passed, history=load_metrics_history(), dataset=dataset
+            old, new, gate_passed,
+            history=load_metrics_history(spec.metrics_history_path), dataset=dataset,
         )
     )
-    sent = notify_retrain(old, new, gate_passed)
+    sent = notify_retrain(old, new, gate_passed, history_path=spec.metrics_history_path)
     print(f"\nTelegram: {'отправлено' if sent else 'пропущено (нет токена/чата)'}")
 
 

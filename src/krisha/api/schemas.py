@@ -67,7 +67,28 @@ class Renovation(BaseModel):
     comment: str | None = None
 
 
+class RentalYield(BaseModel):
+    """Если сдавать продаваемую квартиру: модель аренды на этом же лоте."""
+    monthly_rent: float                       # ожидаемая аренда, ₸/мес
+    monthly_rent_low: float | None = None     # интервал модели аренды
+    monthly_rent_high: float | None = None
+    gross_yield_pct: float | None = None      # 12 × аренда / цена, % годовых
+    gross_yield_low_pct: float | None = None
+    gross_yield_high_pct: float | None = None
+    payback_years: float | None = None        # цена / годовая аренда
+    district_yield_pct: float | None = None   # то же по медианам района
+    district_yield_scope: str | None = None   # district_rooms | district
+    assumes_renovation: bool = False          # черновая — оценка «после ремонта»
+
+
 class PredictResponse(BaseModel):
+    # Продажа (₸) или аренда (₸/мес): от сделки зависят модель, база рынка и
+    # подписи на фронте. price_period="month" — все цены ответа за месяц.
+    deal: Literal["prodazha", "arenda"] = "prodazha"
+    price_period: Literal["month"] | None = None
+    # Аренда: похоже на подселение/комнату — цена за койку, а оценка за
+    # квартиру целиком, поэтому вердикта нет (verdict=None).
+    room_share: bool = False
     listing_id: int | None
     url: str | None
     title: str | None
@@ -91,6 +112,7 @@ class PredictResponse(BaseModel):
     analogs: list[Analog] = Field(default_factory=list)              # похожие активные объявления (kNN)
     scam_risk: ScamRisk | None = None       # бейдж «подозрительно дёшево»
     renovation: Renovation | None = None    # оценка ремонта по фото — за FEATURE_VISION (#157)
+    rental_yield: RentalYield | None = None  # продажа: аренда и доходность, если сдавать
 
 
 class DemoResponse(BaseModel):
@@ -118,6 +140,9 @@ class HealthResponse(BaseModel):
     # unknown (не удалось спросить Telegram). Позволяет диагностировать бота
     # снаружи, без доступа к логам хостинга.
     tg_webhook: str = "unknown"
+    # Модель аренды (₸/мес): скачана ли и её MAPE на временном holdout, %
+    rent_model_loaded: bool = False
+    rent_model_error_pct: float | None = None
     # Коммит, из которого собран образ (data/build_revision.txt, кладёт
     # deploy-hf.yml). Смоук после деплоя сверяет его с выкатываемым sha —
     # иначе он проверяет ещё живой старый контейнер. None — локальный запуск.
