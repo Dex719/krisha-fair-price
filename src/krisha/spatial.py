@@ -100,7 +100,7 @@ def save_spatial_ref(ref: dict, path: Path | str = SPATIAL_REF_PATH) -> None:
     )
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=2)  # продажа + аренда
 def load_spatial_ref(path: Path | str | None = None) -> dict | None:
     """Референс из models/spatial_ref.json; нет файла → None (фичи в фолбэк)."""
     p = Path(path or SPATIAL_REF_PATH)

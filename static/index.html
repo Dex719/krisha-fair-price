@@ -395,6 +395,8 @@ else {
   ScrollTrigger.create({trigger:'.sheet',start:'top 78%',once:true,onEnter:()=>{
     if(window.__live) return;
     gsap.to(obj,{n:27500000,duration:1.6,ease:'expo.out',onUpdate:()=>{
+      /* разбор пришёл посреди анимации — демо-цифра не должна его перетереть */
+      if (window.__live) return;
       c.firstChild.textContent = Math.round(obj.n).toLocaleString('ru-RU') + ' ';
     }});
     gsap.from('.rmk',{opacity:0,y:10,duration:.8,stagger:.12,ease:'expo.out',clearProps:'transform'});
@@ -484,6 +486,11 @@ else {
   const RX = /krisha\.kz\/a\/show\/(\d+)/i;
   const ru = n => Math.round(n).toLocaleString('ru-RU');
   const mln = n => (n/1e6).toFixed(1).replace('.', ',') + ' млн';
+  /* Аренда — ₸ в месяц: сотни тысяч, «0,3 млн» там ничего не говорит. */
+  let RENT = false;
+  const tys = n => Math.round(n/1000).toLocaleString('ru-RU') + ' тыс';
+  const money = n => RENT ? tys(n) : mln(n);
+  const UNIT = () => RENT ? '₸/мес' : '₸';
   const pct = n => (n>0?'+':'−') + Math.abs(n).toFixed(1).replace('.', ',') + '%';
   const $ = s => document.querySelector(s);
   const sheet = $('.sheet');
@@ -492,7 +499,14 @@ else {
     GOOD_DEAL: ['Выгодно', 'цена ниже справедливой — торг не обязателен', ''],
     FAIR: ['В рынке', 'цена внутри интервала модели — это нормальный рынок', 'warn'],
     OVERPRICED: ['Переплата', 'цена выше справедливой — есть за что торговаться', 'bad'],
-    NO_PRICE: ['Оценка модели', 'в объявлении нет цены — сравнивать не с чем, показываем оценку', 'warn']
+    NO_PRICE: ['Оценка модели', 'в объявлении нет цены — сравнивать не с чем, показываем оценку', 'warn'],
+    ROOM_SHARE: ['Оценка модели', 'похоже на подселение или комнату — цена не за квартиру целиком', 'warn']
+  };
+  /* Аренда: те же вердикты, но про ежемесячный платёж. */
+  const VERD_RENT = {
+    GOOD_DEAL: ['Выгодно', 'аренда ниже справедливой для такой квартиры', ''],
+    FAIR: ['В рынке', 'аренда внутри интервала модели — это нормальный рынок', 'warn'],
+    OVERPRICED: ['Переплата', 'аренда выше справедливой — есть повод торговаться', 'bad']
   };
   /* Человеческие имена признаков модели. Единственный список: если модель отдаст
      незнакомый ключ, фактор не показываем вовсе — сырой snake_case на странице
@@ -520,7 +534,15 @@ else {
     microdistrict_ppsm:'Уровень цен микрорайона', micro_median_ppsm:'Уровень цен микрорайона',
     hex7_ppsm:'Цены в округе ~2 км', hex8_ppsm:'Цены в квартале ~500 м',
     knn_ppsm:'Цены ближайших домов', knn_n:'Предложений по соседству',
-    district_mismatch:'Район не совпадает с координатами'
+    district_mismatch:'Район не совпадает с координатами',
+    /* признаки арендных объявлений */
+    n_facilities:'Техника и удобства', n_furniture_items:'Мебель в квартире',
+    fac_aircon:'Кондиционер', fac_dishwasher:'Посудомоечная машина', fac_elevator:'Лифт',
+    fac_internet:'Интернет', fac_tv:'Телевизор', fac_storage:'Кладовая',
+    who_kids:'Можно с детьми', who_pets:'Можно с животными', who_family:'Семейной паре',
+    who_single:'Одному человеку', who_nonsmoke:'Только некурящим',
+    kitchen_studio:'Кухня-студия', toilet_count:'Число санузлов', balcony_n:'Балконы',
+    loggia_n:'Лоджии', window_side:'Окна', priv_dorm:'Бывшее общежитие'
   };
   function label(f, det){
     let base = NAMES[f] || f.replace(/_/g, ' ');
@@ -529,6 +551,7 @@ else {
     if (f === 'floor' && d('Этаж')) base += ' ' + d('Этаж');
     if (f === 'rooms' && d('Комнаты')) base += ': ' + d('Комнаты');
     if ((f === 'district' || f === 'district_ppsm') && d('Район')) base = d('Район') + ' район';
+    if (f === 'user_type' && RENT) base = 'Арендодатель';
     return base;
   }
 
@@ -545,6 +568,10 @@ else {
     const box = $('#rWarn');
     if (!box) return;
     const parts = [];
+    if (r.room_share){
+      parts.push('<div><b>Похоже на подселение или сдачу комнаты</b>' +
+        '<i>Цена в объявлении — за место или комнату, а модель оценивает квартиру целиком, поэтому вердикта нет.</i></div>');
+    }
     if (r.scam_risk){
       const reasons = (r.scam_risk.reasons || []).map(esc).join(' · ');
       parts.push('<div><b>' + (r.scam_risk.level === 'high' ? 'Цена сильно ниже рынка' : 'Цена ниже ожидаемой') +
@@ -577,13 +604,14 @@ else {
     if (hist.length < 2){ box.hidden = true; box.innerHTML = ''; return; }
     const first = hist[0], last = hist[hist.length - 1], delta = last.price - first.price;
     if (!delta){ box.hidden = true; box.innerHTML = ''; return; }
-    const summary = (delta < 0 ? 'продавец снизил цену на ' : 'продавец поднял цену на ')
-      + mln(Math.abs(delta)) + ' ₸ с ' + fmtHistDate(first.at);
+    const who = RENT ? 'арендодатель' : 'продавец';
+    const summary = who + (delta < 0 ? ' снизил цену на ' : ' поднял цену на ')
+      + money(Math.abs(delta)) + ' ₸ с ' + fmtHistDate(first.at);
     const rows = hist.slice(1).map((p, i) => {
       const d = p.price - hist[i].price;
       return '<div class="rxr"><span class="rxd">' + esc(fmtHistDate(p.at)) + '</span>' +
         '<span class="rxn">' + ru(hist[i].price) + ' → ' + ru(p.price) + ' ₸</span>' +
-        '<span class="rxv ' + (d < 0 ? 'dn' : 'up') + '">' + (d < 0 ? '−' : '+') + mln(Math.abs(d)) + '</span></div>';
+        '<span class="rxv ' + (d < 0 ? 'dn' : 'up') + '">' + (d < 0 ? '−' : '+') + money(Math.abs(d)) + '</span></div>';
     }).join('');
     box.innerHTML = '<div class="rxttl">История цены</div><div class="rxsum">' + summary + '</div>' + rows;
     box.hidden = false;
@@ -605,7 +633,7 @@ else {
       return '<a class="rxr" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' +
         '<span class="rxd">' + (a.ppsm ? ru(a.ppsm) : '—') + '</span>' +
         '<span class="rxn">' + esc(meta || ('объявление ' + a.id)) + '</span>' +
-        '<span class="rxv">' + mln(a.price) + ' ↗</span></a>';
+        '<span class="rxv">' + money(a.price) + ' ↗</span></a>';
     }).join('');
     box.innerHTML = '<div class="rxttl">Похожие активные лоты</div>' +
       '<div class="rxsum">с ними модель и сравнивала, цена за метр слева</div>' + rows;
@@ -617,12 +645,13 @@ else {
   function reportShareText(r){
     if (!r) return 'baǵam — справедливая цена квартир в Алматы\n' + location.origin + '/';
     const VW = {GOOD_DEAL:'занижено', FAIR:'справедливо', OVERPRICED:'завышено'};
+    const u = r.deal === 'arenda' ? ' ₸/мес' : ' ₸';
     return [
       r.title || 'Отчёт об оценке квартиры',
-      r.actual_price == null ? null : 'Цена в объявлении: ' + ru(r.actual_price) + ' ₸',
-      'Справедливая оценка: ' + ru(r.fair_price) + ' ₸',
+      r.actual_price == null ? null : 'Цена в объявлении: ' + ru(r.actual_price) + u,
+      (r.deal === 'arenda' ? 'Справедливая аренда: ' : 'Справедливая оценка: ') + ru(r.fair_price) + u,
       (r.fair_price_low && r.fair_price_high)
-        ? 'Диапазон модели: ' + ru(r.fair_price_low) + '–' + ru(r.fair_price_high) + ' ₸' : null,
+        ? 'Диапазон модели: ' + ru(r.fair_price_low) + '–' + ru(r.fair_price_high) + u : null,
       'Вердикт: ' + (VW[r.verdict] || 'без цены'),
       r.url ? 'Объявление: ' + r.url : null,
       'baǵam — справедливая цена квартир в Алматы',
@@ -639,26 +668,40 @@ else {
 
   function render(r){
     window.__live = true;
+    RENT = r.deal === 'arenda';
     /* Объявление без цены: сравнивать не с чем — показываем оценку модели и
        убираем всё, что без цены превратилось бы в ноль (процент, «цена в
-       объявлении», метка объявления на шкале). */
+       объявлении», метка объявления на шкале). Подселение (аренда) — та же
+       история: цена есть, но не за квартиру, процент и вердикт прячем. */
     const noPrice = r.actual_price == null;
-    const [word, sub, cls] = noPrice ? VERD.NO_PRICE : (VERD[r.verdict] || VERD.FAIR);
+    const noVerdict = noPrice || !!r.room_share;
+    const verds = RENT ? VERD_RENT : VERD;
+    const [word, sub, cls] = noPrice ? VERD.NO_PRICE : r.room_share ? VERD.ROOM_SHARE
+      : (verds[r.verdict] || verds.FAIR);
     const v = $('.verdict');
     v.className = 'verdict' + (cls ? ' ' + cls : '');
     $('.vbig').textContent = word;
     $('.vsub').textContent = sub;
     const vpct = $('.vpct');
-    vpct.hidden = noPrice;
-    vpct.textContent = noPrice ? '' : pct(r.diff_pct);
+    vpct.hidden = noVerdict;
+    vpct.textContent = noVerdict ? '' : pct(r.diff_pct);
     const cnt = $('#count');
     cnt.firstChild.textContent = noPrice ? '— ' : ru(r.actual_price) + ' ';
     const cntUnit = cnt.querySelector('small');
-    if (cntUnit) cntUnit.style.display = noPrice ? 'none' : '';
-    cnt.previousElementSibling.textContent = noPrice ? 'Цена в объявлении не указана' : 'Цена в объявлении';
+    if (cntUnit){ cntUnit.style.display = noPrice ? 'none' : ''; cntUnit.textContent = UNIT(); }
+    cnt.previousElementSibling.textContent = noPrice ? 'Цена в объявлении не указана'
+      : RENT ? 'Аренда в объявлении' : 'Цена в объявлении';
     $('#rFair').firstChild.textContent = ru(r.fair_price) + ' ';
+    const fairUnit = $('#rFair small');
+    if (fairUnit) fairUnit.textContent = UNIT();
+    $('#rFair').previousElementSibling.textContent = RENT ? 'Справедливая аренда' : 'Справедливая оценка';
     const area = parseFloat(((r.details.find(x => x.label === 'Площадь') || {}).value || '').replace(',', '.'));
-    if (area) $('#rPpsm').firstChild.textContent = ru((noPrice ? r.fair_price : r.actual_price) / area) + ' ';
+    if (area) $('#rPpsm').firstChild.textContent = ru((noVerdict ? r.fair_price : r.actual_price) / area) + ' ';
+    const ppsmUnit = $('#rPpsm small');
+    if (ppsmUnit) ppsmUnit.textContent = RENT ? '₸/м² в мес' : '₸/м²';
+    /* медиана города в подписи — продажная, к аренде она не относится */
+    const ppsmSub = $('#rPpsm').nextElementSibling;
+    if (ppsmSub) ppsmSub.hidden = RENT;
     // шкала
     const lo = r.fair_price_low, hi = r.fair_price_high;
     const min = noPrice ? Math.min(lo, r.fair_price) : Math.min(lo, r.actual_price),
@@ -678,13 +721,13 @@ else {
     ask.style.display = noPrice ? 'none' : '';
     if (!noPrice) place(ask, r.actual_price);
     place(fair, r.fair_price);
-    if (!noPrice) ask.querySelector('span').textContent = 'объявление · ' + mln(r.actual_price);
-    fair.querySelector('span').textContent = 'справедливая · ' + mln(r.fair_price);
+    if (!noPrice) ask.querySelector('span').textContent = 'объявление · ' + money(r.actual_price);
+    fair.querySelector('span').textContent = 'справедливая · ' + money(r.fair_price);
     const band = $('#rBand');
     if (band && lo && hi && r.fair_price)
       band.textContent = 'интервал модели ±' + ((hi - lo) / 2 / r.fair_price * 100).toFixed(1).replace('.', ',') + '%';
-    $('#rEndLo').textContent = 'нижняя граница · ' + mln(lo) + ' ₸';
-    $('#rEndHi').textContent = 'верхняя граница · ' + mln(hi) + ' ₸';
+    $('#rEndLo').textContent = 'нижняя граница · ' + money(lo) + ' ' + UNIT();
+    $('#rEndHi').textContent = 'верхняя граница · ' + money(hi) + ' ' + UNIT();
     // факторы
     const fx = (r.top_factors || []).filter(f => {
       if (!f.impact_tenge) return false;
@@ -698,7 +741,7 @@ else {
       const p = f.impact_tenge > 0, w = (Math.abs(f.impact_tenge) / mx).toFixed(3);
       const k = p ? 'pos' : 'neg';
       return '<div class="fx ' + k + '"><span class="fxd">' + (p ? AUP : ADN) + (p ? 'повышает' : 'снижает') + '</span>' +
-        '<span class="fxv">' + (p ? '+' : '−') + mln(Math.abs(f.impact_tenge)) + '</span>' +
+        '<span class="fxv">' + (p ? '+' : '−') + money(Math.abs(f.impact_tenge)) + '</span>' +
         '<span class="fxn">' + label(f.feature, r.details) + '</span>' +
         (f.hint ? '<span class="fxh">' + esc(f.hint) + '</span>' : '') +
         '<div class="fxb"><i style="--w:' + w + '"></i></div></div>';
@@ -709,10 +752,12 @@ else {
       r.title.replace(' квартира', '').replace(/(\d)\.(\d)/g, '$1,$2').replace(/[\s·,]+$/, '') +
       (r.address ? ' · <b>' + r.address + '</b>' : '') + '</span>');
     const days = (r.liquidity || {}).median_days;
-    if (days) chips.push('<span class="rchip">похожие уходят за <b>~' + days + ' дн.</b></span>');
-    if (r.days_on_market) chips.push('<span class="rchip">в продаже <b>' + r.days_on_market + ' дн.</b></span>');
+    if (days) chips.push('<span class="rchip">похожие ' + (RENT ? 'сдаются' : 'уходят') + ' за <b>~' + days + ' дн.</b></span>');
+    if (r.days_on_market) chips.push('<span class="rchip">' + (RENT ? 'объявлению' : 'в продаже') +
+      ' <b>' + r.days_on_market + ' дн.</b></span>');
     chips.push('<span class="rchip"><a href="' + r.url + '" target="_blank" rel="noopener">открыть объявление ↗</a></span>');
-    chips.push('<span class="rchip"><a href="' + trackHref(r) + '" target="_blank" rel="noopener">следить за ценой в боте ↗</a></span>');
+    /* слежение в боте — пока только за продажей */
+    if (!RENT) chips.push('<span class="rchip"><a href="' + trackHref(r) + '" target="_blank" rel="noopener">следить за ценой в боте ↗</a></span>');
     chips.push('<button type="button" class="rchip rshare">поделиться отчётом</button>');
     $('.rfoot').innerHTML = chips.join('');
     renderWarn(r); renderHist(r); renderSimilar(r);

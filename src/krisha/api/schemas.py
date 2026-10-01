@@ -68,6 +68,13 @@ class Renovation(BaseModel):
 
 
 class PredictResponse(BaseModel):
+    # Продажа (₸) или аренда (₸/мес): от сделки зависят модель, база рынка и
+    # подписи на фронте. price_period="month" — все цены ответа за месяц.
+    deal: Literal["prodazha", "arenda"] = "prodazha"
+    price_period: Literal["month"] | None = None
+    # Аренда: похоже на подселение/комнату — цена за койку, а оценка за
+    # квартиру целиком, поэтому вердикта нет (verdict=None).
+    room_share: bool = False
     listing_id: int | None
     url: str | None
     title: str | None
@@ -118,6 +125,9 @@ class HealthResponse(BaseModel):
     # unknown (не удалось спросить Telegram). Позволяет диагностировать бота
     # снаружи, без доступа к логам хостинга.
     tg_webhook: str = "unknown"
+    # Модель аренды (₸/мес): скачана ли и её MAPE на временном holdout, %
+    rent_model_loaded: bool = False
+    rent_model_error_pct: float | None = None
     # Коммит, из которого собран образ (data/build_revision.txt, кладёт
     # deploy-hf.yml). Смоук после деплоя сверяет его с выкатываемым sha —
     # иначе он проверяет ещё живой старый контейнер. None — локальный запуск.

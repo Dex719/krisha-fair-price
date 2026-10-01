@@ -31,6 +31,52 @@ ROOM_SHARE_RE = re.compile(
 )
 
 
+# Тип сделки по странице объявления. URL у продажи и аренды одинаковый
+# (/a/show/<id>), categoryAlias тоже («kvartiry»). Надёжнее всего — набор
+# параметров: у аренды свои ключи (who_match, flat.rent_renovation, ...), у
+# продажи свои (has_change у 99% лотов, house.year, ...). Цена — запасной
+# признак: аренда стоит тысячи–миллионы ₸ в месяц, продажа от 5 млн ₸.
+# На базах (47k аренды + 98k продажи, октябрь 2026) правило ошибается на
+# одном лоте из каждой.
+RENT_PARAM_KEYS = frozenset({
+    "who_match", "flat.rent_renovation", "flat.facilities", "flat.furniture",
+    "bathroom", "separated_toilet", "window_side", "kitchen_studio",
+    "toilet_count", "balcony_count", "loggia_count",
+})
+SALE_PARAM_KEYS = frozenset({
+    "has_change", "house.year", "flat.building", "ceiling", "flat.renovation",
+    "flat.toilet", "flat.door", "flat.flooring",
+})
+# Ниже — аренда даже при продажных ключах: старый формат арендной страницы
+# (~1% лотов) показывал flat.renovation; продажи дешевле 3 млн ₸ в Алматы нет.
+RENT_PRICE_CEILING = 3_000_000
+SALE_PRICE_FLOOR = 5_000_000
+
+
+def detect_deal(listing: dict) -> str:
+    """«arenda» или «prodazha» для распарсенного объявления (detail_parser)."""
+    import json
+
+    explicit = listing.get("deal")
+    if explicit in ("arenda", "prodazha"):
+        return explicit
+    price = listing.get("price")
+    if price is not None and price < RENT_PRICE_CEILING:
+        return "arenda"
+    raw = listing.get("raw_params") or "{}"
+    try:
+        keys = set(json.loads(raw) if isinstance(raw, str) else raw)
+    except (TypeError, ValueError):
+        keys = set()
+    if keys & RENT_PARAM_KEYS:
+        return "arenda"
+    if keys & SALE_PARAM_KEYS:
+        return "prodazha"
+    if price is not None and price < SALE_PRICE_FLOOR:
+        return "arenda"
+    return "prodazha"
+
+
 def is_room_share(description: str | None) -> bool:
     """Похоже на подселение / сдачу комнаты, а не квартиры целиком."""
     return bool(description) and bool(ROOM_SHARE_RE.search(str(description)))

@@ -33,19 +33,42 @@ def test_startup_runs_warmup_without_db_download(monkeypatch, tmp_path):
     assert calls == ["ensure_db", "warmup", "webhook"]
 
 
-def test_warmup_runtime_caches_calls_expected_loaders(monkeypatch):
-    """Warmup должен заранее загрузить модели и пространственные индексы."""
+def _record_loaders(monkeypatch, calls):
     from krisha import geo, predict, spatial
 
+    def rec(name):
+        return lambda *args: calls.append(name + (f":{args[0]}" if args else ""))
+
+    monkeypatch.setattr(predict, "load_model", rec("model"))
+    monkeypatch.setattr(predict, "load_interval_models", rec("interval"))
+    monkeypatch.setattr(spatial, "load_spatial_ref", rec("spatial"))
+    monkeypatch.setattr(geo, "load_poi_index", rec("poi"))
+
+
+def test_warmup_runtime_caches_calls_expected_loaders(monkeypatch, tmp_path):
+    """Warmup должен заранее загрузить модели и пространственные индексы."""
     calls: list[str] = []
-    monkeypatch.setattr(predict, "load_model", lambda: calls.append("model"))
-    monkeypatch.setattr(predict, "load_interval_models", lambda: calls.append("interval"))
-    monkeypatch.setattr(spatial, "load_spatial_ref", lambda: calls.append("spatial"))
-    monkeypatch.setattr(geo, "load_poi_index", lambda: calls.append("poi"))
+    _record_loaders(monkeypatch, calls)
+    monkeypatch.setattr(app_mod, "RENT_MODEL_PATH", tmp_path / "нет.cbm")
 
     app_mod._warmup_runtime_caches()
 
     assert calls == ["model", "interval", "spatial", "poi"]
+
+
+def test_warmup_also_loads_rent_model_when_present(monkeypatch, tmp_path):
+    """Модель аренды скачана — первая арендная ссылка тоже не платит за загрузку."""
+    calls: list[str] = []
+    _record_loaders(monkeypatch, calls)
+    rent_model = tmp_path / "model.cbm"
+    rent_model.write_bytes(b"x")
+    monkeypatch.setattr(app_mod, "RENT_MODEL_PATH", rent_model)
+
+    app_mod._warmup_runtime_caches()
+
+    assert calls[:3] == ["model", "interval", "spatial"]
+    assert calls[3:6] == ["model:arenda", "interval:arenda", f"spatial:{app_mod.RENT_SPATIAL_REF_PATH}"]
+    assert calls[-1] == "poi"
 
 
 def test_warmup_runtime_caches_is_fail_soft(monkeypatch):

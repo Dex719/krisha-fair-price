@@ -75,6 +75,41 @@ def predict_fair() -> dict:
 
 
 @pytest.fixture(scope="session")
+def predict_rent(predict_fair) -> dict:
+    """Арендное объявление: цены за месяц, арендные факторы и подписи."""
+    data = deepcopy(predict_fair)
+    data.update({
+        "deal": "arenda", "price_period": "month", "room_share": False,
+        "title": "2-комнатная квартира · 55 м² · 5/10 этаж",
+        "actual_price": 320_000, "fair_price": 290_000.0,
+        "fair_price_low": 250_000.0, "fair_price_high": 340_000.0,
+        "verdict": "FAIR", "diff_pct": 10.3,
+        "top_factors": [
+            {"feature": "area", "impact": 0.2, "impact_pct": 22.1, "impact_tenge": 52_000.0},
+            {"feature": "fac_aircon", "impact": 0.05, "impact_pct": 5.1, "impact_tenge": 14_000.0},
+            {"feature": "who_pets", "impact": -0.03, "impact_pct": -3.0, "impact_tenge": -9_000.0},
+            {"feature": "user_type", "impact": 0.02, "impact_pct": 2.0, "impact_tenge": 6_000.0},
+        ],
+        "details": [
+            {"label": "Комнаты", "value": "2"}, {"label": "Площадь", "value": "55 м²"},
+            {"label": "Этаж", "value": "5 из 10"}, {"label": "Арендодатель", "value": "Собственник"},
+        ],
+        "price_history": [
+            {"price": 350_000, "observed_at": "2026-09-01 10:00:00"},
+            {"price": 320_000, "observed_at": "2026-09-20 10:00:00"},
+        ],
+        "days_on_market": 12,
+        "analogs": [
+            {**a, "price": p, "ppsm": round(p / a["area"])}
+            for a, p in zip(data["analogs"], (280_000, 300_000, 310_000), strict=False)
+        ],
+        "scam_risk": None,
+        "duplicate_of": None,
+    })
+    return data
+
+
+@pytest.fixture(scope="session")
 def predict_overpriced(predict_fair) -> dict:
     """Тот же лот, но цена задрана — вердикт OVERPRICED, diff_pct > +10%."""
     data = deepcopy(predict_fair)
