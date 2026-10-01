@@ -81,6 +81,11 @@ nav .nrow{pointer-events:auto;max-width:1240px;height:60px;padding:0 10px 0 22px
 .cityband{margin-top:-36px;position:relative;z-index:1;height:clamp(300px,36vw,500px);overflow:clip}
 .cityband img{width:100%;height:130%;object-fit:cover;object-position:center 22%;display:block;will-change:transform}
 .cityfade{position:absolute;inset:0;background:linear-gradient(180deg,var(--bg) 0%,var(--bg) 9%,color-mix(in srgb,var(--bg) 40%,transparent) 24%,transparent 44%,transparent 58%,color-mix(in srgb,var(--bg) 70%,transparent) 80%,var(--bg) 96%)}
+/* светлая тема: ночная панорама не растворяется в светлом фоне (выходил серый «туман»), а стоит окном */
+html[data-theme=light] .cityband{margin:48px max(36px,calc((100% - 1208px)/2)) 0;height:clamp(240px,30vw,430px);border-radius:28px;box-shadow:0 34px 70px -42px rgba(24,44,32,.5)}
+html[data-theme=light] .cityband img{object-position:center 38%}
+html[data-theme=light] .cityfade{background:linear-gradient(180deg,rgba(8,13,10,.18),transparent 30%,transparent 70%,rgba(8,13,10,.3))}
+html[data-theme=light] .dband{margin-top:64px}
 h1{font-family:Unbounded,UnboundedFB,sans-serif;font-weight:700;font-size:clamp(42px,6.8vw,92px);line-height:1.02;letter-spacing:-.035em;text-wrap:balance}
 h1 .l2{display:block;color:var(--dim)}
 h1 .l2 em{font-style:normal;color:var(--lime)}
@@ -365,6 +370,16 @@ a.rxr{transition:color .25s}
 a.rxr:hover{color:var(--lime)}
 a.rxr:hover .rxv{color:var(--lime)}
 .rxsum{font-family:Onest;font-size:13.5px;color:var(--dim);margin-bottom:12px}
+/* доходность продажного лота, если сдавать */
+.ryhd .rxsum{margin-bottom:0}
+.rygrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:16px}
+.ryc{border:1px solid var(--line);border-radius:var(--r2);background:var(--bg);padding:16px 18px 18px;min-width:0}
+.ryl{display:block;font-size:13.5px;font-weight:500;color:var(--dim)}
+.ryv{display:block;margin-top:8px;font-family:Unbounded,UnboundedFB,sans-serif;font-weight:700;font-size:clamp(22px,2.2vw,28px);letter-spacing:-.03em;line-height:1.05;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ryv.acc{color:var(--limeink)}
+.ryv small{font-family:Onest,OnestFB,sans-serif;font-size:15px;font-weight:500;letter-spacing:0;color:var(--dim);margin-left:6px}
+.rys{display:block;margin-top:8px;font-size:13px;line-height:1.4;color:var(--dim)}
+.rynote{margin-top:12px;font-size:13px;line-height:1.5;color:var(--dim)}
 /* ссылка «показать на примере» под формой */
 .demolink{background:none;border:0;padding:0;margin-top:14px;font-family:Onest;font-size:13.5px;color:var(--dim);cursor:pointer;border-bottom:1px solid var(--line);transition:color .25s,border-color .25s}
 .demolink:hover{color:var(--lime);border-color:var(--lime)}
@@ -375,6 +390,7 @@ a.rxr:hover .rxv{color:var(--lime)}
  .rwarn>div:first-of-type{flex:1 1 calc(100% - 34px)}
  .rwarn>div+div{padding-top:10px;border-top:1px solid var(--goldbd)}
  .rextra{padding:20px}
+ .rygrid{grid-template-columns:1fr;gap:8px}
  .rxr{flex-wrap:wrap;gap:4px 12px}
  .rxr .rxn{order:1;flex:1 1 100%;white-space:normal;line-height:1.4}
  .rxr .rxd{order:2;min-width:0}
@@ -403,6 +419,8 @@ a.rxr:hover .rxv{color:var(--lime)}
  .nttl{font-size:21px}
  .narr{width:32px;height:32px}
  .dband{margin-top:-8px}
+ html[data-theme=light] .cityband{margin:28px 12px 0;border-radius:22px}
+ html[data-theme=light] .dband{margin-top:44px}
  .dbars{display:none}
  .dlabels{grid-template-columns:1fr 1fr;gap:20px 18px;margin-top:0}
  .dhbar{display:block;height:5px;border-radius:99px;background:var(--line);margin-top:9px;overflow:hidden}

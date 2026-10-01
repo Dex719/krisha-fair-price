@@ -44,3 +44,15 @@ def test_scale_labels_never_leave_the_track():
 
     assert "edgeL" in html and "edgeR" in html
     assert ".rmk.edgeL" in css and ".rmk.edgeR" in css
+
+
+def test_report_has_rental_yield_block():
+    """Продажа: «если сдавать» — аренда, валовая доходность и окупаемость из rental_yield."""
+    html = _static("index.html")
+    css = _static("design.css")
+
+    assert 'id="rYield"' in html and "function renderYield" in html
+    for field in ("monthly_rent", "gross_yield_pct", "payback_years", "district_yield_pct", "assumes_renovation"):
+        assert field in html, f"не используется поле {field}"
+    assert "Валовая доходность" in html, "честная оговорка: без налогов и простоя"
+    assert ".ryield" in css or ".rygrid" in css

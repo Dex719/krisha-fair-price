@@ -207,6 +207,7 @@ html.lite .sk{animation:none}
   <div class="rwhd"><h3 class="rwttl">Что повлияло на оценку</h3><span class="rwsub">вклад признаков в справедливую цену</span></div>
   <div class="fxlist" id="fxList"><div class="fx pos"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20V5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 11.5 6.5-6.5 6.5 6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>повышает</span><span class="fxv">+1,9 млн</span><span class="fxn">Площадь 49 м²</span><div class="fxb"><i style="--w:1.000"></i></div></div><div class="fx pos"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20V5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 11.5 6.5-6.5 6.5 6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>повышает</span><span class="fxv">+0,6 млн</span><span class="fxn">Этаж 7 из 10</span><div class="fxb"><i style="--w:0.320"></i></div></div><div class="fx neg"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v15" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 12.5 6.5 6.5 6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>снижает</span><span class="fxv">−1,4 млн</span><span class="fxn">Наурызбайский район</span><div class="fxb"><i style="--w:0.740"></i></div></div><div class="fx neg"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v15" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 12.5 6.5 6.5 6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>снижает</span><span class="fxv">−0,3 млн</span><span class="fxn">Возраст дома</span><div class="fxb"><i style="--w:0.160"></i></div></div></div>
  </div>
+ <div class="rextra ryield" id="rYield" hidden></div>
  <div class="rextra" id="rHist" hidden></div>
  <div class="rextra" id="rSim" hidden></div>
  <div class="rfoot">
@@ -629,6 +630,44 @@ else {
     box.hidden = false;
   }
 
+  /* Продажа: сколько квартира принесёт, если её сдавать (модель аренды на этом же лоте).
+     Валовая доходность — 12 × аренда / цена, без налогов, простоя и расходов. */
+  const pc1 = n => n.toFixed(1).replace('.', ',');
+  function yearsWord(y){
+    if (!Number.isInteger(y)) return 'года';
+    const d = y % 10, h = y % 100;
+    return d === 1 && h !== 11 ? 'год' : d >= 2 && d <= 4 && (h < 12 || h > 14) ? 'года' : 'лет';
+  }
+  function renderYield(r){
+    const box = $('#rYield');
+    if (!box) return;
+    const y = r.rental_yield;
+    if (RENT || !y || !y.monthly_rent){ box.hidden = true; box.innerHTML = ''; return; }
+    const cells = [];
+    const band = (y.monthly_rent_low && y.monthly_rent_high)
+      ? 'интервал ' + tys(y.monthly_rent_low).replace(' тыс', '') + '–' + tys(y.monthly_rent_high) : 'оценка модели аренды';
+    cells.push('<div class="ryc"><span class="ryl">Аренда</span><span class="ryv">~' + tys(y.monthly_rent) +
+      '<small>₸/мес</small></span><span class="rys">' + band + '</span></div>');
+    if (y.gross_yield_pct != null){
+      const dist = y.district_yield_pct;
+      const above = dist != null && y.gross_yield_pct >= dist;
+      const ctx = dist == null ? '12 × аренда / цена'
+        : (y.district_yield_scope === 'district_rooms' ? 'у таких же квартир района' : 'в среднем по району') + ' ~' + pc1(dist) + '%';
+      cells.push('<div class="ryc"><span class="ryl">Доходность</span><span class="ryv' + (above ? ' acc' : '') + '">' +
+        pc1(y.gross_yield_pct) + '%<small>годовых</small></span><span class="rys">' + ctx + '</span></div>');
+    }
+    if (y.payback_years){
+      cells.push('<div class="ryc"><span class="ryl">Окупаемость</span><span class="ryv">' + pc1(y.payback_years).replace(',0', '') +
+        '<small>' + yearsWord(y.payback_years) + '</small></span><span class="rys">цена / аренда за год</span></div>');
+    }
+    box.innerHTML = '<div class="ryhd"><div class="rxttl">Если сдавать эту квартиру</div>' +
+      '<div class="rxsum">' + (y.assumes_renovation ? 'черновая отделка — аренда посчитана как после ремонта'
+        : 'модель аренды на этом же лоте') + '</div></div>' +
+      '<div class="rygrid">' + cells.join('') + '</div>' +
+      '<p class="rynote">Валовая доходность: без налогов, простоя между жильцами и расходов на содержание.</p>';
+    box.hidden = false;
+  }
+
   /* Текст отчёта для «поделиться»: делимся содержанием, а не ссылкой на страницу —
      у получателя нет доступа к чужому объявлению по адресу нашего сайта. */
   function reportShareText(r){
@@ -642,6 +681,9 @@ else {
       (r.fair_price_low && r.fair_price_high)
         ? 'Диапазон модели: ' + ru(r.fair_price_low) + '–' + ru(r.fair_price_high) + u : null,
       'Вердикт: ' + (VW[r.verdict] || 'без цены'),
+      (r.deal !== 'arenda' && r.rental_yield && r.rental_yield.gross_yield_pct != null)
+        ? 'Если сдавать: ~' + ru(r.rental_yield.monthly_rent) + ' ₸/мес, доходность ' +
+          r.rental_yield.gross_yield_pct.toFixed(1).replace('.', ',') + '% годовых' : null,
       r.url ? 'Объявление: ' + r.url : null,
       'baǵam — справедливая цена квартир в Алматы',
       location.origin + '/'
@@ -749,7 +791,7 @@ else {
     if (!RENT) chips.push('<span class="rchip"><a href="' + trackHref(r) + '" target="_blank" rel="noopener">следить за ценой в боте ↗</a></span>');
     chips.push('<button type="button" class="rchip rshare">поделиться отчётом</button>');
     $('.rfoot').innerHTML = chips.join('');
-    renderWarn(r); renderHist(r); renderSimilar(r);
+    renderWarn(r); renderYield(r); renderHist(r); renderSimilar(r);
     const share = $('.rshare');
     if (share) share.addEventListener('click', () => {
       const text = reportShareText(r);

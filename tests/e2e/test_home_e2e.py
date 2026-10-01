@@ -531,3 +531,51 @@ def test_home_sale_after_rent_restores_sale_units(hermetic_page, mock_api, herme
     expect(page.locator("#rFair small")).to_have_text("₸")
     expect(page.locator("#rPpsm + .rsub")).to_be_visible()
     expect(page.locator(".rmk.fair span")).to_contain_text("справедливая · 46,2 млн")
+
+
+def test_home_sale_shows_rental_yield(hermetic_page, mock_api, hermetic_server, predict_fair):
+    """Продажа: блок «Если сдавать» — аренда, доходность против района, окупаемость."""
+    page = hermetic_page
+    data = deepcopy(predict_fair)
+    data["rental_yield"] = {
+        "monthly_rent": 330_000, "monthly_rent_low": 280_000, "monthly_rent_high": 390_000,
+        "gross_yield_pct": 8.4, "gross_yield_low_pct": 7.1, "gross_yield_high_pct": 10.0,
+        "payback_years": 11.9, "district_yield_pct": 7.6, "district_yield_scope": "district_rooms",
+        "assumes_renovation": False,
+    }
+    mock_api(predict=data)
+    page.goto(hermetic_server + "/")
+    wait_ready(page)
+
+    submit(page)
+
+    box = page.locator("#rYield")
+    expect(box).to_be_visible()
+    expect(box).to_contain_text("Если сдавать эту квартиру")
+    expect(box.locator(".ryc").nth(0)).to_contain_text("~330 тыс")
+    expect(box.locator(".ryc").nth(0)).to_contain_text("интервал 280–390 тыс")
+    expect(box.locator(".ryc").nth(1)).to_contain_text("8,4%")
+    expect(box.locator(".ryc").nth(1)).to_contain_text("у таких же квартир района ~7,6%")
+    expect(box.locator(".ryv.acc")).to_have_count(1)  # доходность выше районной — акцент
+    expect(box.locator(".ryc").nth(2)).to_contain_text("11,9")
+    expect(box.locator(".ryc").nth(2)).to_contain_text("года")
+
+
+def test_home_rent_and_plain_sale_hide_rental_yield(hermetic_page, mock_api, hermetic_server, predict_rent, predict_fair):
+    """Доходность — только у продажи и только когда API её посчитал."""
+    page = hermetic_page
+    data = deepcopy(predict_rent)
+    data["rental_yield"] = {"monthly_rent": 300_000, "gross_yield_pct": 9.0}  # аренде не положено
+    mock_api(predict=data)
+    page.goto(hermetic_server + "/")
+    wait_ready(page)
+    submit(page)
+    expect(page.locator("#rFair small")).to_have_text("₸/мес")
+    expect(page.locator("#rYield")).to_be_hidden()
+
+    plain = deepcopy(predict_fair)
+    plain["rental_yield"] = None
+    mock_api(predict=plain)
+    submit(page, "https://krisha.kz/a/show/761891664")
+    expect(page.locator("#rFair small")).to_have_text("₸")
+    expect(page.locator("#rYield")).to_be_hidden()
