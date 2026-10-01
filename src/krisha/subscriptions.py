@@ -2,12 +2,15 @@
 
 Хранение: data/subscriptions.json. Файл живёт в git-репозитории — это
 единственное бесплатное персистентное хранилище в нашей схеме (диск на
-хостинге стирается при каждом деплое). Поэтому при изменении подписки
-приложение коммитит файл в GitHub через Contents API (нужен env GITHUB_PAT
-с правом contents:write; без него подписки живут до ближайшего деплоя).
+хостинге стирается при каждом рестарте). Поэтому при изменении подписки
+приложение коммитит файл через GitHub Contents API в ПРИВАТНЫЙ репозиторий
+данных (STATE_REPO, рядом с базой — см. krisha.db_release), а при старте
+забирает оттуда всё состояние (pull_state). Токен — KRISHA_DB_TOKEN
+(contents:write только на репо данных); без него состояние живёт до
+ближайшего рестарта.
 
-Приватность: репозиторий публичный, а chat_id подписчиков — PII, поэтому
-содержимое файла шифруется целиком (Fernet). Ключ выводится из
+Приватность: chat_id подписчиков — PII, поэтому содержимое файла вдобавок
+шифруется целиком (Fernet). Ключ выводится из
 STATE_ENCRYPTION_KEY, а если её нет — из TELEGRAM_BOT_TOKEN (он и так есть
 и на сервере, и в GitHub Actions, где шлются алерты). Без ключа сохраняем
 как раньше открытым JSON — актуально только для локальной разработки.
@@ -28,6 +31,7 @@ import json
 import logging
 import os
 import re
+import sys
 import tempfile
 import threading
 import time
@@ -49,8 +53,20 @@ SUBSCRIPTIONS_PATH = DATA_DIR / "subscriptions.json"
 # правку первого. RLock — чтобы вложенные вызовы (save внутри mutate) не
 # заклинивали сами себя.
 STATE_LOCK = threading.RLock()
-GITHUB_REPO = os.environ.get("GITHUB_REPO", "Dex719/krisha-fair-price")
+# Состояние — в приватном репозитории данных, не в публичном репо кода: раньше
+# рантайм Space коммитил его прямо в main токеном с правом записи в код.
+STATE_REPO = os.environ.get("KRISHA_STATE_REPO", "Dex719/krisha-db")
 _GH_API = "https://api.github.com"
+# Всё, что рантайм и алерты пишут через save_json_state: при старте Space и
+# перед алертами в Actions это забирается из STATE_REPO (pull_state).
+STATE_FILES = (
+    "subscriptions.json",
+    "tracked.json",
+    "usage_stats.json",
+    "prediction_log.json",
+    "channel_posted.json",
+    "alerted_ids.json",
+)
 STATE_KEY_ENV = "STATE_ENCRYPTION_KEY"
 
 
@@ -196,8 +212,8 @@ def save_json_state(
     """Сохраняет JSON-состояние локально и коммитит в GitHub (см. докстринг модуля).
 
     Общий механизм для subscriptions.json, tracked.json и др.
-    encrypt=True шифрует содержимое целиком (файлы с chat_id — PII в публичном
-    репо); usage-статистика и опубликованные id пишутся открыто (encrypt=False).
+    encrypt=True шифрует содержимое целиком (файлы с chat_id — PII);
+    usage-статистика и опубликованные id пишутся открыто (encrypt=False).
 
     `deleted_keys` — ключи верхнего уровня, которые вызывающий УДАЛИЛ намеренно
     (отписка, /untrack). Нужны для слияния при конкурентной записи: без них
@@ -210,12 +226,20 @@ def save_json_state(
             "%s: нет ключа шифрования (STATE_ENCRYPTION_KEY/TELEGRAM_BOT_TOKEN) — "
             "сохраняю только локально открытым текстом", path.name,
         )
+    _write_local(path, payload)
+    # PII-состояние без ключа никогда не публикуем в репозиторий.
+    if not encrypt or encrypted:
+        _push_to_github(path, payload, message, data, deleted_keys, encrypt)
+
+
+def _write_local(path, text: str) -> None:
+    """Атомарная запись: tmp + replace защищает от обрезанного JSON при
+    остановке процесса во время записи."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    # tmp + replace защищает от обрезанного JSON при остановке процесса во время записи.
     fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent, text=True)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(payload)
+            fh.write(text)
             fh.flush()
             os.fsync(fh.fileno())
         os.chmod(tmp_name, 0o600)
@@ -225,9 +249,56 @@ def save_json_state(
             os.unlink(tmp_name)
         except FileNotFoundError:
             pass
-    # PII-состояние без ключа никогда не публикуем в репозиторий.
-    if not encrypt or encrypted:
-        _push_to_github(path, payload, message, data, deleted_keys, encrypt)
+
+
+def _state_token() -> str | None:
+    """KRISHA_DB_TOKEN — штатный; GITHUB_PAT/GITHUB_TOKEN — наследие схемы,
+    где состояние лежало в репо кода. Чужой токен до приватного репо не
+    дотянется, и неудачная запись дойдёт до админа алертом, а не потеряется."""
+    return (
+        os.environ.get("KRISHA_DB_TOKEN")
+        or os.environ.get("GITHUB_PAT")
+        or os.environ.get("GITHUB_TOKEN")
+    )
+
+
+def pull_state(names=STATE_FILES) -> tuple[int, int]:
+    """Забирает state-файлы из STATE_REPO в DATA_DIR: (скачано, ошибок).
+
+    Образ Space и checkout в Actions состояния не содержат — без этого шага
+    бот после рестарта не видел бы подписчиков, а алерты повторно постили бы
+    в канал уже опубликованные лоты. Файл кладётся как есть (зашифрованная
+    обёртка остаётся обёрткой). 404 — файла ещё нет, это не ошибка.
+    """
+    token = _state_token()
+    if not token:
+        logger.warning("KRISHA_DB_TOKEN не задан — состояние из %s не загружено", STATE_REPO)
+        return 0, 0
+    headers = {
+        "Authorization": f"Bearer {token}",
+        # raw — файл целиком, без base64-обёртки и её потолка в 1 МБ
+        "Accept": "application/vnd.github.raw+json",
+    }
+    pulled = failed = 0
+    with STATE_LOCK:
+        for name in names:
+            url = f"{_GH_API}/repos/{STATE_REPO}/contents/data/{name}"
+            try:
+                resp = httpx.get(url, headers=headers, timeout=15.0)
+            except httpx.HTTPError as exc:
+                logger.warning("Состояние %s не загружено: %s", name, exc)
+                failed += 1
+                continue
+            if resp.status_code == 404:
+                continue
+            if resp.status_code != 200:
+                logger.warning("Состояние %s не загружено: HTTP %s", name, resp.status_code)
+                failed += 1
+                continue
+            _write_local(DATA_DIR / name, resp.text)
+            pulled += 1
+    logger.info("Состояние из %s: загружено %d, ошибок %d", STATE_REPO, pulled, failed)
+    return pulled, failed
 
 
 PUSH_MAX_ATTEMPTS = 3
@@ -293,10 +364,9 @@ def _push_to_github(
     deleted_keys: set[str] | None = None,
     encrypt: bool = True,
 ) -> None:
-    """Коммитит файл состояния в GitHub, чтобы пережить редеплой.
+    """Коммитит файл состояния в STATE_REPO, чтобы пережить рестарт.
 
-    Токен: GITHUB_PAT (сервер) или GITHUB_TOKEN (GitHub Actions,
-    у workflow есть contents:write).
+    Токен — см. _state_token (KRISHA_DB_TOKEN и на Space, и в Actions).
 
     issue #111: у файла ДВА независимых писателя — Space (команды бота) и
     GitHub Actions (алерты, usage). Раньше здесь читался sha и сразу же
@@ -306,12 +376,12 @@ def _push_to_github(
     перед записью, а 409/422 от GitHub — это повод перечитать и повторить,
     а не потерять данные.
     """
-    token = os.environ.get("GITHUB_PAT") or os.environ.get("GITHUB_TOKEN")
+    token = _state_token()
     if not token:
-        logger.warning("GITHUB_PAT/GITHUB_TOKEN не задан — %s сохранён только локально", path.name)
+        logger.warning("KRISHA_DB_TOKEN не задан — %s сохранён только локально", path.name)
         return
     rel = f"data/{path.name}"
-    url = f"{_GH_API}/repos/{GITHUB_REPO}/contents/{rel}"
+    url = f"{_GH_API}/repos/{STATE_REPO}/contents/{rel}"
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
     for attempt in range(1, PUSH_MAX_ATTEMPTS + 1):
         try:
@@ -390,3 +460,27 @@ def _remote_text(resp) -> str:
         return base64.b64decode(resp.json().get("content") or "").decode("utf-8")
     except (ValueError, UnicodeDecodeError):
         return ""
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI для Actions: ``python -m krisha.subscriptions --pull``."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Состояние бота в репозитории данных")
+    parser.add_argument("--pull", action="store_true", help="скачать state-файлы в data/")
+    args = parser.parse_args(argv)
+    if not args.pull:
+        parser.print_help()
+        return 2
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    if not _state_token():
+        print("KRISHA_DB_TOKEN не задан", file=sys.stderr)
+        return 1
+    _, failed = pull_state()
+    # Неполное состояние хуже отсутствующего прохода: без channel_posted
+    # алерты заново запостят в канал уже опубликованное.
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
