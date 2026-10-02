@@ -1,6 +1,7 @@
 """Тесты статистики рынка."""
 
 from krisha import db, stats
+from krisha.config import RENT_PRICE_MAX, RENT_PRICE_MIN
 
 
 def _make_db(tmp_path):
@@ -88,3 +89,48 @@ def test_heatmap_points_missing_db(tmp_path):
         raise AssertionError("должен быть FileNotFoundError")
     except FileNotFoundError:
         pass
+
+
+def _make_rent_db(tmp_path):
+    """Аренда: два района, цены ₸/мес; один снятый лот не должен попасть в медианы."""
+    path = tmp_path / "rent.db"
+    db.init_db(path)
+    rows = [
+        {"id": 100 + i, "url": f"r{i}", "price": 200_000 + i * 20_000, "rooms": 1 + i % 3,
+         "area": 40.0 + i * 5, "district": "Bostandykskiy_r-n" if i % 2 else "Alatauskiy_r-n"}
+        for i in range(8)
+    ]
+    for r in rows:
+        db.upsert_listing({c: r.get(c) for c in db.LISTING_COLUMNS}, path,
+                          price_bounds=(RENT_PRICE_MIN, RENT_PRICE_MAX))
+    return path
+
+
+def test_compute_rent_stats_medians_hist_and_district_yield(tmp_path):
+    rent = _make_rent_db(tmp_path)
+    sale = _make_db(tmp_path)
+
+    s = stats.compute_rent_stats(rent, sale)
+
+    assert s["total_listings"] == 8
+    assert s["median_rent"] > 0 and s["median_ppsm"] > 0
+    assert {d["district"] for d in s["by_district"]} == {"Бостандыкский", "Алатауский"}
+    assert sum(b["count"] for b in s["rent_hist"]) == 8
+    assert s["rent_hist"][0]["label"] == "0–100 тыс" and s["rent_hist"][-1]["label"].endswith("+ тыс")
+    assert all(1 <= r["rooms"] <= 5 for r in s["by_rooms"])
+    # доходность района: 12 × медиана ₸/м² аренды / медиана ₸/м² продажи
+    for d in s["by_district"]:
+        assert d["gross_yield_pct"] is not None and 0 < d["gross_yield_pct"] < 100
+    assert s["source"] == "db"
+
+
+def test_compute_rent_stats_without_sale_db_has_no_yield(tmp_path):
+    s = stats.compute_rent_stats(_make_rent_db(tmp_path), tmp_path / "no-sale.db")
+
+    assert all(d["gross_yield_pct"] is None for d in s["by_district"])
+
+
+def test_compute_rent_stats_missing_db(tmp_path):
+    import pytest
+    with pytest.raises(FileNotFoundError):
+        stats.compute_rent_stats(tmp_path / "nope.db")

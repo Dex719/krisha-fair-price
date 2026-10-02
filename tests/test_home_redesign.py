@@ -24,7 +24,7 @@ def test_home_uses_bagam_meta_design_css_and_local_favicon():
     html = _static("index.html")
 
     assert (
-        "<title>Справедливая цена квартиры в Алматы по ссылке с Krisha │ baǵam</title>"
+        "<title>Справедливая цена покупки и аренды квартир в Алматы │ baǵam</title>"
         in html
     )
     assert '<meta name="description"' in html
@@ -203,3 +203,26 @@ def test_home_has_no_llm_flag_hydration_left():
     for leftover in ("/api/flags", "flags_pending", "text_flags",
                      "hydrateFlags", "flag-pending"):
         assert leftover not in html, f"остался хвост LLM-флагов: {leftover}"
+
+
+def test_demo_endpoint_serves_rent_listing_from_rent_base(tmp_path, monkeypatch):
+    """?deal=arenda — пример берётся из базы аренды; без неё честный 503."""
+    rent_path = tmp_path / "krisha_rent.db"
+    db.init_db(rent_path)
+    db.upsert_listing(
+        {"id": 555000111, "url": "https://krisha.kz/a/show/555000111", "title": "Аренда",
+         "price": 300_000, "area": 50.0, "rooms": 2, "district": "Auezovskiy_r-n", "source": "test"},
+        db_path=rent_path, price_bounds=(20_000, 10_000_000),
+    )
+    monkeypatch.setattr(app_module, "RENT_DB_PATH", rent_path)
+    app_module._rate.clear()
+    client = TestClient(app)
+
+    resp = client.get("/api/demo?deal=arenda", headers={"x-forwarded-for": "203.0.113.81"})
+    assert resp.status_code == 200
+    assert resp.json() == {"listing_id": 555000111, "url": "https://krisha.kz/a/show/555000111"}
+
+    monkeypatch.setattr(app_module, "RENT_DB_PATH", tmp_path / "missing.db")
+    app_module._demo_pool_cache.clear()
+    assert client.get("/api/demo?deal=arenda", headers={"x-forwarded-for": "203.0.113.82"}).status_code == 503
+    assert client.get("/api/demo?deal=bogus", headers={"x-forwarded-for": "203.0.113.83"}).status_code == 422

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -280,6 +281,7 @@ def mock_api(hermetic_page, stats_data, heatmap_data, health_data):
                  heatmap: list | None = None,
                  health: dict | None = None,
                  demo_url: str = "https://krisha.kz/a/show/761891663",
+                 demo_rent_url: str = "https://krisha.kz/a/show/1012607661",
                  forecast_status: int = 404):
         stats = stats if stats is not None else stats_data
         heatmap = heatmap if heatmap is not None else heatmap_data
@@ -293,6 +295,10 @@ def mock_api(hermetic_page, stats_data, heatmap_data, health_data):
             r, json.dumps(heatmap), "application/json"))
         page.route("**/api/demo", lambda r: _fulfill(
             r, json.dumps({"listing_id": 761891663, "url": demo_url}), "application/json"))
+        # главная заранее берёт и пример аренды; глоб «**/api/demo» запрос с query не ловит,
+        # а без базы (CI) живой сервер отвечает на него 503 — ошибка в консоли
+        page.route(re.compile(r".*/api/demo\?deal=arenda$"), lambda r: _fulfill(
+            r, json.dumps({"listing_id": 1012607661, "url": demo_rent_url}), "application/json"))
 
         def _forecast(route):
             if forecast_status == 404:
