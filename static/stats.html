@@ -522,7 +522,7 @@ bagamTG(function(tg){
     if(h==null)return '';
     if(h<1.5)return 'обновлено только что';
     if(h<24)return 'обновлено '+Math.round(h)+' ч назад';
-    var d=Math.round(h/24);return 'обновлено '+d+' '+(d===1?'день':(d<5?'дня':'дней'))+' назад';
+    var d=Math.round(h/24),m=d%100,k=d%10;return 'обновлено '+d+' '+((m>10&&m<20)?'дней':(k===1?'день':(k>1&&k<5?'дня':'дней')))+' назад';
   }
   function j(p){var a=('AbortController' in window)&&new AbortController();
     if(a)setTimeout(function(){a.abort();},12000);
