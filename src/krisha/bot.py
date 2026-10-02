@@ -124,8 +124,8 @@ HELP_TEXT = (
     "(<code>https://krisha.kz/a/show/…</code>) — покажу справедливую цену, "
     "диапазон и факторы.\n"
     "2) Нет ссылки? Вставь текст объявления — сделаю примерную оценку по описанию.\n"
-    "3) <code>/track ссылка</code> — слежка за лотом: пришлю алерт, если цена "
-    "изменится или объявление снимут.\n"
+    "3) <code>/track ссылка</code> — слежка за объявлением о продаже: пришлю алерт, "
+    "если цена изменится или объявление снимут.\n"
     "4) <code>/alerts</code> — алерты о новых выгодных объявлениях с фильтрами; "
     "<code>/alerts_on 2к до 45млн бостандыкский</code> включает комнаты, бюджет и район.\n\n"
     "Веб-версия: https://dex719-krisha-fair-price.hf.space"
@@ -192,6 +192,13 @@ def fmt_tenge(value: float | int, per_month: bool = False) -> str:
     return f"{round(value):,}".replace(",", " ") + (" ₸/мес" if per_month else " ₸")
 
 
+def fmt_band(low: float, high: float, per_month: bool = False) -> str:
+    """Интервал модели компактно: «40.5–52.4 млн ₸», для аренды «250–340 тыс ₸/мес»."""
+    if per_month:
+        return f"{low / 1_000:.0f}–{high / 1_000:.0f} тыс ₸/мес"
+    return f"{low / 1_000_000:.1f}–{high / 1_000_000:.1f} млн ₸"
+
+
 def format_reply(result: dict[str, Any]) -> str:
     """Текст ответа бота (HTML) по результату predict_from_url.
 
@@ -215,6 +222,10 @@ def format_reply(result: dict[str, Any]) -> str:
         lines.append(f"💰 {what}: <b>{fmt_tenge(actual, rent)}</b>")
     what = "Справедливая аренда" if rent else "Справедливая цена"
     lines.append(f"⚖️ {what}: <b>{fmt_tenge(result['fair_price'], rent)}</b>")
+    # Интервал модели: по нему ставится вердикт («выгодно» — цена ниже нижней границы)
+    low, high = result.get("fair_price_low"), result.get("fair_price_high")
+    if low and high:
+        lines.append(f"📏 Диапазон оценки: <b>{fmt_band(low, high, rent)}</b>")
     if result.get("room_share"):
         lines.append(
             "⚠️ Похоже на подселение или сдачу комнаты: цена — за место, "
@@ -552,7 +563,7 @@ def _handle_alerts_command(chat_id: int, text: str) -> None:
         tg_call("sendMessage", chat_id=chat_id, parse_mode="HTML",
                 text=f"✅ Подписал: <b>{describe_filters(flt)}</b>.\n"
                      "Пришлю новые выгодные лоты после ближайшего обновления базы "
-                     "(раз в день утром). Отписаться: /alerts_off")
+                     "(раз в день, обычно в первой половине дня). Отписаться: /alerts_off")
     elif cmd == "/alerts_off":
         removed = remove_subscription(chat_id)
         tg_call("sendMessage", chat_id=chat_id,
@@ -570,8 +581,19 @@ TRACK_HELP = (
     "или объявление сняли с продажи.\n"
     "<code>/track</code> — список лотов в слежке\n"
     "<code>/untrack https://krisha.kz/a/show/…</code> — перестать следить\n"
-    "<code>/untrack all</code> — очистить список"
+    "<code>/untrack all</code> — очистить список\n\n"
+    "Слежка работает для объявлений о продаже."
 )
+
+TRACK_RENT_HINT = (
+    "Слежка пока работает только для объявлений о продаже: ежедневная проверка "
+    "идёт по базе продажи. Оценить аренду можно как обычно — просто пришлите ссылку."
+)
+
+
+class TrackRentUnsupported(Exception):
+    """/track на объявление об аренде: проверка слежки смотрит только базу продажи,
+    такой лот молча висел бы в списке без единого алерта."""
 
 
 BAD_ID_HINT = "Не похоже на id объявления 🤔 Пришлите ссылку вида krisha.kz/a/show/123456789"
@@ -609,19 +631,24 @@ def _track_listing_meta(listing_id: int) -> tuple[int | None, str | None]:
 
     from krisha.config import DB_PATH
     from krisha.db import get_conn, upsert_listing
+    from krisha.rent import detect_deal
     from krisha.scraping.detail_parser import parse_detail
 
+    row = None
     try:
         with get_conn(DB_PATH) as conn:
             row = conn.execute(
-                "SELECT price, title FROM listings WHERE id = ?", (listing_id,)
+                "SELECT price, title, raw_params FROM listings WHERE id = ?", (listing_id,)
             ).fetchone()
-        if row is not None:
-            return row["price"], row["title"]
     except (sqlite3.Error, OverflowError, ValueError, FileNotFoundError):
         # sqlite3.Error покрывает и OperationalError, и остальные варианты;
         # OverflowError/ValueError — на случай id, не влезающего в INTEGER.
         pass
+    if row is not None:
+        # до этой правки /track сохранял аренду в базу продажи — такие строки там есть
+        if detect_deal({"price": row["price"], "raw_params": row["raw_params"]}) == "arenda":
+            raise TrackRentUnsupported
+        return row["price"], row["title"]
 
     url = f"https://krisha.kz/a/show/{listing_id}"
     # Тот же клиент, что в predict_from_url: пользователь ждёт ответа — короткий
@@ -639,6 +666,9 @@ def _track_listing_meta(listing_id: int) -> tuple[int | None, str | None]:
     listing = parse_detail(page, url)
     if listing is None:
         raise RuntimeError("Не удалось разобрать объявление")
+    if detect_deal(listing) == "arenda":
+        # и в базу продажи аренду не пишем: месячная цена исказила бы статистику
+        raise TrackRentUnsupported
     try:
         upsert_listing({**listing, "source": "user"})
     except Exception:  # noqa: BLE001 — сохранение не должно ломать команду
@@ -682,6 +712,9 @@ def _handle_track_command(chat_id: int, text: str) -> None:
     tg_call("sendChatAction", chat_id=chat_id, action="typing")
     try:
         price, title = _track_listing_meta(listing_id)
+    except TrackRentUnsupported:
+        tg_call("sendMessage", chat_id=chat_id, text=TRACK_RENT_HINT)
+        return
     except RuntimeError as exc:
         tg_call("sendMessage", chat_id=chat_id, text=f"Не получилось: {exc}")
         return

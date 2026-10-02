@@ -457,3 +457,65 @@ def test_track_rejects_out_of_range_listing_id(monkeypatch):
     )
     sent = [kw["text"] for m, kw in calls if m == "sendMessage"]
     assert sent and "Не похоже на id объявления" in sent[-1]
+
+
+def test_format_reply_shows_model_band():
+    """Справка обещает диапазон — ответ его показывает (продажа в млн, аренда в тыс/мес)."""
+    sale = bot.format_reply(dict(SAMPLE_RESULT, fair_price_low=40_500_000, fair_price_high=52_400_000))
+    assert "Диапазон оценки: <b>40.5–52.4 млн ₸</b>" in sale
+    rent = bot.format_reply(dict(SAMPLE_RESULT, deal="arenda", actual_price=320_000, fair_price=290_000,
+                                 fair_price_low=250_000, fair_price_high=340_000))
+    assert "Диапазон оценки: <b>250–340 тыс ₸/мес</b>" in rent
+    # нет интервала — нет и строки
+    assert "Диапазон" not in bot.format_reply(SAMPLE_RESULT)
+
+
+def test_track_rent_link_is_refused_with_hint(tmp_path, monkeypatch):
+    """Аренду /track не берёт: проверка слежки идёт только по базе продажи."""
+    from krisha import tracking
+
+    monkeypatch.setattr("krisha.subscriptions._push_to_github", lambda *a, **k: None)
+    monkeypatch.setattr(tracking, "TRACKED_PATH", tmp_path / "tracked.json")
+
+    def rent_meta(lid):
+        raise bot.TrackRentUnsupported
+
+    monkeypatch.setattr(bot, "_track_listing_meta", rent_meta)
+    calls = []
+    monkeypatch.setattr(bot, "tg_call", lambda m, **kw: calls.append((m, kw)) or {"ok": True})
+
+    bot.handle_update({"message": {"chat": {"id": 9}, "text": "/track https://krisha.kz/a/show/1012607661"}})
+
+    sent = [kw["text"] for m, kw in calls if m == "sendMessage"]
+    assert sent and sent[-1] == bot.TRACK_RENT_HINT
+    assert tracking.list_tracked(9) == {}
+
+
+def test_track_meta_does_not_store_rent_in_sale_db(tmp_path, monkeypatch):
+    """Объявление об аренде с сайта не пишется в базу продажи и даёт TrackRentUnsupported."""
+    import pytest
+
+    from krisha import config, db, predict
+    from krisha.scraping import detail_parser
+
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "sale.db")
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url):
+            return "<html></html>"
+
+    monkeypatch.setattr(predict, "user_client", lambda **kw: FakeClient())
+    monkeypatch.setattr(detail_parser, "parse_detail",
+                        lambda page, url: {"id": 1012607661, "price": 320_000, "deal": "arenda", "title": "2-комн"})
+    stored = []
+    monkeypatch.setattr(db, "upsert_listing", lambda listing, *a, **k: stored.append(listing))
+
+    with pytest.raises(bot.TrackRentUnsupported):
+        bot._track_listing_meta(1012607661)
+    assert stored == []
