@@ -488,24 +488,49 @@ html.lite *{box-shadow:none!important}
 <div class="fmarkband"><svg class="fmark" viewBox="-4 -203 921 196" preserveAspectRatio="xMidYMin meet" aria-hidden="true" focusable="false"><defs><linearGradient id="markgrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3ADC7C" stop-opacity=".16"/><stop offset="1" stop-color="#3ADC7C" stop-opacity=".025"/></linearGradient></defs><text x="0" y="0">baǵam</text></svg></div>
 <script>
 (function(){
-  var btn=document.querySelector('.ftop');if(!btn)return;
   var root=document.documentElement;
-  btn.addEventListener('click',function(){
+  /* прокрутка своими кадрами: системная «меньше анимаций» не должна превращать её в прыжок;
+     время считаем от первого кадра (если он запоздал, не проскакиваем полпути); цель пересчитывается на каждом кадре — если над ней что-то схлопнулось (содержание на телефоне), не промахнёмся */
+  function glide(target,dur,done){
     var from=window.pageYOffset||root.scrollTop;
-    if(from<2)return;
+    if(Math.abs(target()-from)<2||root.classList.contains('lite')){window.scrollTo(0,target());if(done)done();return}
     var prev=root.style.scrollBehavior;root.style.scrollBehavior='auto';
-    var dur=Math.min(2400,Math.max(1200,from*0.7)),t0=performance.now(),stopped=false;
+    var t0=0,stopped=false;
     function stop(){stopped=true}
     addEventListener('wheel',stop,{passive:true,once:true});
     addEventListener('touchstart',stop,{passive:true,once:true});
-    function done(){root.style.scrollBehavior=prev;removeEventListener('wheel',stop);removeEventListener('touchstart',stop)}
+    function end(){root.style.scrollBehavior=prev;removeEventListener('wheel',stop);removeEventListener('touchstart',stop);if(done&&!stopped)done()}
     function frame(t){
-      if(stopped){done();return}
+      if(stopped){end();return}
+      if(!t0)t0=t;
       var pr=Math.min(1,(t-t0)/dur),e=pr<0.5?4*pr*pr*pr:1-Math.pow(-2*pr+2,3)/2;
-      window.scrollTo(0,from*(1-e));
-      if(pr<1){requestAnimationFrame(frame)}else{done()}
+      window.scrollTo(0,from+(target()-from)*e);
+      if(pr<1){requestAnimationFrame(frame)}else{end()}
     }
     requestAnimationFrame(frame);
+  }
+  var btn=document.querySelector('.ftop');
+  if(btn)btn.addEventListener('click',function(){
+    var from=window.pageYOffset||root.scrollTop;
+    glide(function(){return 0},Math.min(2400,Math.max(1200,from*0.7)));
+  });
+  /* якоря на странице (содержание документов и т.п.): быстрый плавный переход вместо прыжка */
+  document.addEventListener('click',function(e){
+    if(e.defaultPrevented||e.button||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
+    var a=e.target.closest&&e.target.closest('a[href^="#"]');
+    if(!a||a.classList.contains('skip'))return;
+    var id=decodeURIComponent(a.getAttribute('href').slice(1)),el=id&&document.getElementById(id);
+    if(!el)return;
+    e.preventDefault();
+    var target=function(){
+      var off=parseFloat(getComputedStyle(el).scrollMarginTop)||0;
+      var y=el.getBoundingClientRect().top+(window.pageYOffset||root.scrollTop)-off;
+      return Math.max(0,Math.min(y,root.scrollHeight-innerHeight));
+    };
+    var d=Math.abs(target()-(window.pageYOffset||root.scrollTop));
+    glide(target,Math.min(650,Math.max(360,d*0.22)),function(){
+      if(location.hash!=='#'+id&&history.pushState)history.pushState(null,'','#'+id);
+    });
   });
 })();
 </script>

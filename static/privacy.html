@@ -117,13 +117,11 @@ code{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:.88em;font-w
 .psum{position:relative;isolation:isolate;display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);margin:0 0 88px;border:1px solid var(--line);border-radius:var(--r3);background:var(--panel);box-shadow:var(--sh1);overflow:hidden}
 .psum::before{content:"";position:absolute;z-index:-1;left:-12%;bottom:-55%;width:62%;height:130%;background:radial-gradient(closest-side,color-mix(in srgb,var(--lime) 9%,transparent),transparent);pointer-events:none}
 .psl{padding:40px 44px 44px}
-.pse{display:inline-flex;align-items:center;gap:10px;font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:12.5px;color:var(--limeink)}
-.pse::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 4px color-mix(in srgb,var(--lime) 18%,transparent)}
-.psh{margin:16px 0 28px;font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:clamp(26px,2.8vw,36px);line-height:1.12;letter-spacing:-.035em;color:var(--ink);text-wrap:balance}
+.psh{margin:0 0 28px;font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:clamp(26px,2.8vw,36px);line-height:1.12;letter-spacing:-.035em;color:var(--ink);text-wrap:balance}
 .pcheck{list-style:none;margin:0;padding:0;display:grid;gap:18px}
-.pcheck li{position:relative;max-width:60ch;padding-left:38px;font-size:16px;line-height:1.6;color:var(--ink);text-wrap:pretty}
-.pcheck li::before{content:"";position:absolute;left:0;top:1px;width:24px;height:24px;border-radius:8px;background:color-mix(in srgb,var(--lime) 14%,transparent)}
-.pcheck li::after{content:"";position:absolute;left:8px;top:8px;width:8px;height:4.5px;border-left:2px solid var(--limeink);border-bottom:2px solid var(--limeink);transform:rotate(-45deg)}
+.pcheck li{display:grid;grid-template-columns:24px minmax(0,1fr);gap:14px;align-items:start;max-width:62ch;font-size:16px;line-height:1.6;color:var(--ink);text-wrap:pretty}
+.pci{display:flex;align-items:center;justify-content:center;width:24px;height:24px;margin-top:1px;border-radius:8px;background:color-mix(in srgb,var(--lime) 14%,transparent);color:var(--limeink)}
+.pci svg{width:14px;height:14px;display:block}
 .psr{display:flex;flex-direction:column;border-left:1px solid var(--line);background:var(--panel2)}
 .pkpi{flex:1;display:flex;flex-direction:column;justify-content:center;padding:26px 36px 28px}
 .pkpi+.pkpi{border-top:1px solid var(--line)}
@@ -341,13 +339,12 @@ html.lite .sk{animation:none}
 <section class="sect"><div class="wrap">
 <div class="psum" id="summary">
  <div class="psl">
-  <span class="pse">коротко</span>
   <h2 class="psh">Главное за полминуты</h2>
   <ul class="pcheck">
-   <li>Ссылка на объявление не сохраняется и не связывается с вами: из неё берётся только публичный номер лота.</li>
-   <li>Номер вашего чата бот хранит, только пока вы подписаны на алерты или следите за лотами, и хранит его зашифрованным. Для статистики из номера считается короткий хэш.</li>
-   <li>Состояние бота лежит в приватном репозитории автора на GitHub. Код проекта открыт, данные нет.</li>
-   <li>Отписаться и удалить данные можно командой в боте или сообщением автору.</li>
+   <li><span class="pci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>Ссылка на объявление не сохраняется и не связывается с вами: из неё берётся только публичный номер лота.</li>
+   <li><span class="pci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>Номер вашего чата бот хранит, только пока вы подписаны на алерты или следите за лотами, и хранит его зашифрованным. Для статистики из номера считается короткий хэш.</li>
+   <li><span class="pci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>Состояние бота лежит в приватном репозитории автора на GitHub. Код проекта открыт, данные нет.</li>
+   <li><span class="pci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>Отписаться и удалить данные можно командой в боте или сообщением автору.</li>
   </ul>
  </div>
  <div class="psr">
@@ -632,24 +629,49 @@ html.lite .sk{animation:none}
 <div class="fmarkband"><svg class="fmark" viewBox="-4 -203 921 196" preserveAspectRatio="xMidYMin meet" aria-hidden="true" focusable="false"><defs><linearGradient id="markgrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3ADC7C" stop-opacity=".16"/><stop offset="1" stop-color="#3ADC7C" stop-opacity=".025"/></linearGradient></defs><text x="0" y="0">baǵam</text></svg></div>
 <script>
 (function(){
-  var btn=document.querySelector('.ftop');if(!btn)return;
   var root=document.documentElement;
-  btn.addEventListener('click',function(){
+  /* прокрутка своими кадрами: системная «меньше анимаций» не должна превращать её в прыжок;
+     время считаем от первого кадра (если он запоздал, не проскакиваем полпути); цель пересчитывается на каждом кадре — если над ней что-то схлопнулось (содержание на телефоне), не промахнёмся */
+  function glide(target,dur,done){
     var from=window.pageYOffset||root.scrollTop;
-    if(from<2)return;
+    if(Math.abs(target()-from)<2||root.classList.contains('lite')){window.scrollTo(0,target());if(done)done();return}
     var prev=root.style.scrollBehavior;root.style.scrollBehavior='auto';
-    var dur=Math.min(2400,Math.max(1200,from*0.7)),t0=performance.now(),stopped=false;
+    var t0=0,stopped=false;
     function stop(){stopped=true}
     addEventListener('wheel',stop,{passive:true,once:true});
     addEventListener('touchstart',stop,{passive:true,once:true});
-    function done(){root.style.scrollBehavior=prev;removeEventListener('wheel',stop);removeEventListener('touchstart',stop)}
+    function end(){root.style.scrollBehavior=prev;removeEventListener('wheel',stop);removeEventListener('touchstart',stop);if(done&&!stopped)done()}
     function frame(t){
-      if(stopped){done();return}
+      if(stopped){end();return}
+      if(!t0)t0=t;
       var pr=Math.min(1,(t-t0)/dur),e=pr<0.5?4*pr*pr*pr:1-Math.pow(-2*pr+2,3)/2;
-      window.scrollTo(0,from*(1-e));
-      if(pr<1){requestAnimationFrame(frame)}else{done()}
+      window.scrollTo(0,from+(target()-from)*e);
+      if(pr<1){requestAnimationFrame(frame)}else{end()}
     }
     requestAnimationFrame(frame);
+  }
+  var btn=document.querySelector('.ftop');
+  if(btn)btn.addEventListener('click',function(){
+    var from=window.pageYOffset||root.scrollTop;
+    glide(function(){return 0},Math.min(2400,Math.max(1200,from*0.7)));
+  });
+  /* якоря на странице (содержание документов и т.п.): быстрый плавный переход вместо прыжка */
+  document.addEventListener('click',function(e){
+    if(e.defaultPrevented||e.button||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
+    var a=e.target.closest&&e.target.closest('a[href^="#"]');
+    if(!a||a.classList.contains('skip'))return;
+    var id=decodeURIComponent(a.getAttribute('href').slice(1)),el=id&&document.getElementById(id);
+    if(!el)return;
+    e.preventDefault();
+    var target=function(){
+      var off=parseFloat(getComputedStyle(el).scrollMarginTop)||0;
+      var y=el.getBoundingClientRect().top+(window.pageYOffset||root.scrollTop)-off;
+      return Math.max(0,Math.min(y,root.scrollHeight-innerHeight));
+    };
+    var d=Math.abs(target()-(window.pageYOffset||root.scrollTop));
+    glide(target,Math.min(650,Math.max(360,d*0.22)),function(){
+      if(location.hash!=='#'+id&&history.pushState)history.pushState(null,'','#'+id);
+    });
   });
 })();
 </script>

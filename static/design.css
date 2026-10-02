@@ -73,7 +73,7 @@ nav .nrow{pointer-events:auto;max-width:1240px;height:60px;padding:0 10px 0 22px
 .tghw{display:grid;grid-template-columns:0fr;opacity:0;transition:grid-template-columns .42s cubic-bezier(.4,0,.2,1),opacity .28s ease}
 .tgbtn:hover .tghw,.tgbtn:focus-visible .tghw{grid-template-columns:1fr;opacity:1}
 .tgh{overflow:hidden;font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:12.5px;font-weight:500;color:inherit;opacity:.72;padding-right:10px}
-.tgbtn svg{width:16px;height:16px;display:block;flex:none;transition:transform .42s cubic-bezier(.4,0,.2,1)}
+.tgbtn svg{width:20px;height:20px;margin-right:-2px;display:block;flex:none;transition:transform .42s cubic-bezier(.4,0,.2,1)}
 .tgbtn:hover svg,.tgbtn:focus-visible svg{transform:translate(2px,-2px)}
 /* HERO */
 .hero{padding:164px 0 0;position:relative}
@@ -168,11 +168,10 @@ h1 .l3{display:block}
 .rmk.fair.edgeL span{transform:translateX(-12px)}
 .rmk.fair.edgeR span{transform:translateX(calc(-100% + 12px))}
 .rmk.ask{top:0;height:60px}
-.rmk.ask span{top:0;padding:7px 12px;border-radius:99px;background:var(--ink);color:var(--bg)}
-.rmk.ask span::after{content:"";position:absolute;left:50%;bottom:-4px;width:9px;height:9px;margin-left:-4.5px;border-radius:2px;background:var(--ink);transform:rotate(45deg)}
-.rmk.ask.edgeL span::after{left:16px}
-.rmk.ask.edgeR span::after{left:auto;right:11.5px;margin-left:0}
-.rmk.ask i{position:absolute;left:-1px;top:30px;bottom:0;width:2px;border-radius:2px;background:var(--ink);box-shadow:0 0 0 2px var(--panel)}
+.rmk.ask span{top:0;height:30px;padding:0 13px;display:flex;align-items:center;border-radius:99px;background:var(--ink);color:var(--bg)}
+/* ножка: от плашки сквозь полосу, ровно по точке цены; на полосе — чуть шире, как стрелка прибора */
+.rmk.ask i{position:absolute;left:-1px;top:29px;bottom:-5px;width:2px;border-radius:2px;background:var(--ink)}
+.rmk.ask i::after{content:"";position:absolute;left:-1px;right:-1px;bottom:0;height:24px;border-radius:2px;background:inherit}
 .rmk.fair{top:46px;height:14px}
 .rmk.fair i{position:absolute;left:-9px;top:-2px;width:18px;height:18px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 3px var(--panel),0 3px 10px rgba(0,0,0,.35)}
 .rmk.fair span{top:24px;padding:2px 6px;border-radius:6px;background:var(--panel);color:var(--limeink)}
