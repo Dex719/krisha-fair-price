@@ -2,7 +2,7 @@
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<script>(function(){try{var t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme');if(!t)t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();</script>
+<script>(function(){try{var t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme');if(!t)t='dark';document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();</script>
 <script>
 (function(){
   var d=document.documentElement, c=navigator.connection||{},
@@ -12,9 +12,10 @@
           ||(navigator.deviceMemory&&navigator.deviceMemory<=2)
           ||(navigator.hardwareConcurrency&&navigator.hardwareConcurrency<=4
              &&navigator.deviceMemory&&navigator.deviceMemory<=4),
-      lite=rm||weak;
+      lite=weak;
   d.classList.add(lite?'lite':'anim');
-  window.bagamLite=lite;
+  if(rm)d.classList.add('rm');
+  window.bagamLite=lite;window.bagamRM=rm;
   var q=[];
   function flushTG(){var tg=window.Telegram&&window.Telegram.WebApp;if(!tg)return;while(q.length)q.shift()(tg);}
   window.bagamTG=function(cb){q.push(cb);flushTG();};
@@ -191,9 +192,6 @@ html.lite [style*="filter:blur"],html.lite .glow{filter:none!important}
  background-size:250% 100%;animation:bgmsk 1.3s linear infinite}
 .sk *{visibility:hidden}
 html.lite .sk{animation:none}
-@media (prefers-reduced-motion:reduce){.sk,.sheet.busy .vbig,.sheet.busy .vpct,.sheet.busy .vsub,
- .sheet.busy .rv,.sheet.busy .rsub,.sheet.busy .rmk,.sheet.busy .rends,.sheet.busy .fxv,
- .sheet.busy .fxn,.sheet.busy .rchip{animation:none}}
 .sheet.busy{opacity:1!important}
 .sheet.busy .vbig,.sheet.busy .vpct,.sheet.busy .vsub,.sheet.busy .rv,.sheet.busy .rsub,
 .sheet.busy .rmk,.sheet.busy .rends,.sheet.busy .fxv,.sheet.busy .fxn,.sheet.busy .rchip{
@@ -329,10 +327,10 @@ html.lite .sk{animation:none}
 <section class="next"><div class="wrap">
 <div class="shead"><div class="shl"><h2 class="shttl">Куда дальше</h2><p class="shsub">Проверить квартиру, посмотреть цены продажи и аренды по районам или спросить бота.</p></div></div>
 <div class="ncards">
-<a class="ncard g" href="/"><span class="ntop"><span class="nidx">01</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="20.8" cy="20.8" r="13.2" stroke-width="2.4"/><path d="m30.4 30.4 10.4 10.4" stroke-width="2.8"/><path d="M15.4 15.6h10.8M20.8 15.6V27.4" stroke-width="2.4"/><path d="M16.6 20.1h8.4" stroke-width="2.2"/></svg></span></span><span class="nttl">Проверить квартиру</span><span class="nbot"><span class="nmeta">оценка по ссылке<br>одна секунда</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
-<a class="ncard v" href="/stats"><span class="ntop"><span class="nidx">02</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M6.5 40.4h35" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><g stroke="currentColor" stroke-width="4.6" stroke-linecap="round"><path d="M13 35.4V28.6"/><path d="M22 35.4V23.4"/><path d="M31 35.4V26.2"/><path d="M40 35.4V13.4"/></g></svg></span></span><span class="nttl">Рынок продажи</span><span class="nbot"><span class="nmeta">медиана 742 тыс ₸/м²<br>8 районов</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
-<a class="ncard w" href="/rent"><span class="ntop"><span class="nidx">03</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M9 21.5 24 9l15 12.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 19v19.5h22V19" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><circle cx="21" cy="28" r="3.6" stroke="currentColor" stroke-width="2.4"/><path d="M24.4 28H31v3.4" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></span><span class="nttl">Аренда</span><span class="nbot"><span class="nmeta">медиана аренды<br>и доходность районов</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
-<a class="ncard g" href="/bot"><span class="ntop"><span class="nidx">04</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><g transform="scale(2)" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 2.6 10.4 13.6"/><path d="M21.4 2.6 14.5 22.1l-4.1-8.5L2 9.5Z"/></g></svg></span></span><span class="nttl">Telegram-бот</span><span class="nbot"><span class="nmeta">оценка по ссылке,<br>слежение за ценой</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard g" href="/"><span class="ntop"><span class="nidx">01</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 10.5 12 3.8l8.5 6.7"/><path d="M5.8 9v10.7h12.4V9"/><path d="m9.2 14.6 2 2 3.8-4"/></svg></span></span><span class="nttl">Проверить квартиру</span><span class="nbot"><span class="nmeta">оценка по ссылке<br>одна секунда</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard v" href="/stats"><span class="ntop"><span class="nidx">02</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4v16h16"/><path d="m7.5 14.5 3.4-3.6 2.8 2.6 5-5.5"/><path d="M15.2 8h3.5v3.5"/></svg></span></span><span class="nttl">Рынок продажи</span><span class="nbot"><span class="nmeta">медиана 742 тыс ₸/м²<br>8 районов</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard w" href="/rent"><span class="ntop"><span class="nidx">03</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15.5" r="3.8"/><path d="m10.8 12.8 8.7-8.7"/><path d="m16.2 7.4 2.5 2.5"/><path d="m13.9 9.7 1.9 1.9"/></svg></span></span><span class="nttl">Аренда</span><span class="nbot"><span class="nmeta">медиана аренды<br>и доходность районов</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard g" href="/bot"><span class="ntop"><span class="nidx">04</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5h14a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.8V16.5H5A1.5 1.5 0 0 1 3.5 15V6A1.5 1.5 0 0 1 5 4.5Z"/><path d="M8 9.2h8M8 12.4h5"/></svg></span></span><span class="nttl">Telegram-бот</span><span class="nbot"><span class="nmeta">оценка по ссылке,<br>слежение за ценой</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
 </div>
 </div></section>
 </main>
@@ -357,7 +355,7 @@ html.lite .sk{animation:none}
   <div class="flinks">
    <a class="flink" href="#">О проекте</a>
    <a class="flink" href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48l-.01-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.35 4.68-4.58 4.93.36.31.68.92.68 1.85l-.01 2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>Исходный код</a>
-   <a class="flink" href="https://t.me/Dex719" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.7"/></svg>Автор</a>
+   <a class="flink" href="https://t.me/Hopepe1" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.7"/></svg>Автор</a>
   </div>
  </div>
  <div>
@@ -384,7 +382,6 @@ html.lite .sk{animation:none}
   btn.addEventListener('click',function(){
     var from=window.pageYOffset||root.scrollTop;
     if(from<2)return;
-    if(matchMedia('(prefers-reduced-motion: reduce)').matches){window.scrollTo(0,0);return;}
     var prev=root.style.scrollBehavior;root.style.scrollBehavior='auto';
     var dur=Math.min(2400,Math.max(1200,from*0.7)),t0=performance.now(),stopped=false;
     function stop(){stopped=true}
@@ -484,12 +481,20 @@ bagamTG(function(tg){
     }
   }
 
+  /* скелетоны: без свежего кэша живые числа и графики мерцают, пока не придут данные */
+  var cached=false;
+  function skel(on){
+    document.querySelectorAll('[data-l]').forEach(function(e){e.classList.toggle('sk',on);});
+    document.querySelectorAll('[data-skel]').forEach(function(e){e.classList.toggle('loading',on);});
+  }
   try{
     var cc=JSON.parse(localStorage.getItem('bagam-stats')||'null');
-    if(cc&&Date.now()-cc.t<86400000)apply(cc.s,cc.h);
+    if(cc&&Date.now()-cc.t<86400000){apply(cc.s,cc.h);cached=true;}
   }catch(e){}
+  if(!cached)skel(true);
   Promise.all([j('/api/stats'),j('/api/health')]).then(function(res){
     var s=res[0],h=res[1];
+    skel(false);
     if(s||h){try{localStorage.setItem('bagam-stats',JSON.stringify({t:Date.now(),s:s,h:h}));}catch(e){}}
     if(!s&&!h){
       document.querySelectorAll('[data-l=age]').forEach(function(e){e.textContent='цифры из последнего успешного обновления';});
@@ -502,7 +507,7 @@ bagamTG(function(tg){
 
 <script>
 bagamBoot(function(){
-const staticMode = matchMedia('(prefers-reduced-motion: reduce)').matches || !window.gsap;
+const staticMode = !window.gsap;
 document.querySelectorAll('.qa').forEach((qa,i)=>{
   const pane0=qa.querySelector('.a');pane0.id='qa'+i;pane0.setAttribute('role','region');pane0.setAttribute('aria-labelledby','qb'+i);
   const btn=qa.querySelector('.q'), pane=qa.querySelector('.a');
@@ -526,17 +531,17 @@ if(!staticMode){
     document.getElementById('prog').style.width=(scrollY/h*100)+'%';},{passive:true});
   gsap.from('.phero h1',{y:60,opacity:0,duration:1,ease:'expo.out',clearProps:'transform'});
   gsap.from('.phrow',{y:26,opacity:0,duration:.9,delay:.25,ease:'expo.out',clearProps:'transform'});
-  gsap.from('.met4',{y:26,opacity:0,duration:.7,stagger:.08,ease:'expo.out',clearProps:'transform',
+  gsap.from('.mets4',{y:26,opacity:0,duration:.8,ease:'expo.out',clearProps:'transform',
     scrollTrigger:{trigger:'.mets4',start:'top 88%',once:true}});
   ScrollTrigger.batch('.step',{start:'top 92%',once:true,onEnter:b=>
     gsap.from(b,{y:22,opacity:0,duration:.7,stagger:.08,ease:'expo.out',clearProps:'transform'})});
-  gsap.from('.pr',{y:24,opacity:0,duration:.7,stagger:.08,ease:'expo.out',clearProps:'transform',
+  gsap.from('.prin',{y:24,opacity:0,duration:.8,ease:'expo.out',clearProps:'transform',
     scrollTrigger:{trigger:'.prin',start:'top 86%',once:true}});
   gsap.from('.lim p',{x:-18,opacity:0,duration:.7,stagger:.1,ease:'expo.out',clearProps:'transform',
     scrollTrigger:{trigger:'.lim',start:'top 88%',once:true}});
   gsap.from('.qa',{y:18,opacity:0,duration:.6,stagger:.07,ease:'expo.out',clearProps:'transform',
     scrollTrigger:{trigger:'.faq',start:'top 88%',once:true}});
-  gsap.from('.tc',{y:22,opacity:0,duration:.6,stagger:.06,ease:'expo.out',clearProps:'transform',
+  gsap.from('.tgrid',{y:22,opacity:0,duration:.7,ease:'expo.out',clearProps:'transform',
     scrollTrigger:{trigger:'.tech',start:'top 90%',once:true}});
   gsap.from('.ncard',{y:26,opacity:0,duration:.75,stagger:.08,ease:'expo.out',clearProps:'transform',
     scrollTrigger:{trigger:'.ncards',start:'top 85%',once:true}});
@@ -552,8 +557,6 @@ if(!staticMode){
     });
   }
 }
-const ft=document.querySelector('.ftop');
-if(ft) ft.addEventListener('click',e=>{e.preventDefault();scrollTo({top:0,behavior:'smooth'})});
 
 /* форма на подстранице уводит разбор на главную */
 document.querySelectorAll('form[data-jump]').forEach(f=>{

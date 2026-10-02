@@ -2,7 +2,7 @@
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<script>(function(){try{var t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme');if(!t)t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();</script>
+<script>(function(){try{var t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme');if(!t)t='dark';document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();</script>
 <script>
 (function(){
   var d=document.documentElement, c=navigator.connection||{},
@@ -12,9 +12,10 @@
           ||(navigator.deviceMemory&&navigator.deviceMemory<=2)
           ||(navigator.hardwareConcurrency&&navigator.hardwareConcurrency<=4
              &&navigator.deviceMemory&&navigator.deviceMemory<=4),
-      lite=rm||weak;
+      lite=weak;
   d.classList.add(lite?'lite':'anim');
-  window.bagamLite=lite;
+  if(rm)d.classList.add('rm');
+  window.bagamLite=lite;window.bagamRM=rm;
   var q=[];
   function flushTG(){var tg=window.Telegram&&window.Telegram.WebApp;if(!tg)return;while(q.length)q.shift()(tg);}
   window.bagamTG=function(cb){q.push(cb);flushTG();};
@@ -115,9 +116,6 @@ html.lite [style*="filter:blur"],html.lite .glow{filter:none!important}
  background-size:250% 100%;animation:bgmsk 1.3s linear infinite}
 .sk *{visibility:hidden}
 html.lite .sk{animation:none}
-@media (prefers-reduced-motion:reduce){.sk,.sheet.busy .vbig,.sheet.busy .vpct,.sheet.busy .vsub,
- .sheet.busy .rv,.sheet.busy .rsub,.sheet.busy .rmk,.sheet.busy .rends,.sheet.busy .fxv,
- .sheet.busy .fxn,.sheet.busy .rchip{animation:none}}
 .sheet.busy{opacity:1!important}
 .sheet.busy .vbig,.sheet.busy .vpct,.sheet.busy .vsub,.sheet.busy .rv,.sheet.busy .rsub,
 .sheet.busy .rmk,.sheet.busy .rends,.sheet.busy .fxv,.sheet.busy .fxn,.sheet.busy .rchip{
@@ -213,7 +211,7 @@ html.lite .sk{animation:none}
   <div class="flinks">
    <a class="flink" href="/about">О проекте</a>
    <a class="flink" href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48l-.01-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.35 4.68-4.58 4.93.36.31.68.92.68 1.85l-.01 2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>Исходный код</a>
-   <a class="flink" href="https://t.me/Dex719" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.7"/></svg>Автор</a>
+   <a class="flink" href="https://t.me/Hopepe1" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.7"/></svg>Автор</a>
   </div>
  </div>
  <div>
@@ -240,7 +238,6 @@ html.lite .sk{animation:none}
   btn.addEventListener('click',function(){
     var from=window.pageYOffset||root.scrollTop;
     if(from<2)return;
-    if(matchMedia('(prefers-reduced-motion: reduce)').matches){window.scrollTo(0,0);return;}
     var prev=root.style.scrollBehavior;root.style.scrollBehavior='auto';
     var dur=Math.min(2400,Math.max(1200,from*0.7)),t0=performance.now(),stopped=false;
     function stop(){stopped=true}
@@ -337,12 +334,20 @@ bagamTG(function(tg){
     }
   }
 
+  /* скелетоны: без свежего кэша живые числа и графики мерцают, пока не придут данные */
+  var cached=false;
+  function skel(on){
+    document.querySelectorAll('[data-l]').forEach(function(e){e.classList.toggle('sk',on);});
+    document.querySelectorAll('[data-skel]').forEach(function(e){e.classList.toggle('loading',on);});
+  }
   try{
     var cc=JSON.parse(localStorage.getItem('bagam-stats')||'null');
-    if(cc&&Date.now()-cc.t<86400000)apply(cc.s,cc.h);
+    if(cc&&Date.now()-cc.t<86400000){apply(cc.s,cc.h);cached=true;}
   }catch(e){}
+  if(!cached)skel(true);
   Promise.all([j('/api/stats'),j('/api/health')]).then(function(res){
     var s=res[0],h=res[1];
+    skel(false);
     if(s||h){try{localStorage.setItem('bagam-stats',JSON.stringify({t:Date.now(),s:s,h:h}));}catch(e){}}
     if(!s&&!h){
       document.querySelectorAll('[data-l=age]').forEach(function(e){e.textContent='цифры из последнего успешного обновления';});

@@ -2,7 +2,7 @@
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<script>(function(){try{var t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme');if(!t)t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();</script>
+<script>(function(){try{var t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme');if(!t)t='dark';document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();</script>
 <script>
 (function(){
   var d=document.documentElement, c=navigator.connection||{},
@@ -12,9 +12,10 @@
           ||(navigator.deviceMemory&&navigator.deviceMemory<=2)
           ||(navigator.hardwareConcurrency&&navigator.hardwareConcurrency<=4
              &&navigator.deviceMemory&&navigator.deviceMemory<=4),
-      lite=rm||weak;
+      lite=weak;
   d.classList.add(lite?'lite':'anim');
-  window.bagamLite=lite;
+  if(rm)d.classList.add('rm');
+  window.bagamLite=lite;window.bagamRM=rm;
   var q=[];
   function flushTG(){var tg=window.Telegram&&window.Telegram.WebApp;if(!tg)return;while(q.length)q.shift()(tg);}
   window.bagamTG=function(cb){q.push(cb);flushTG();};
@@ -133,12 +134,15 @@ html[data-theme=light] .hcol:hover .hbar,html[data-theme=light] .hcol.on .hbar,h
 .hcnt::after{content:"";position:absolute;left:50%;bottom:-4px;width:8px;height:8px;background:inherit;border-radius:2px;transform:translateX(-50%) rotate(45deg)}
 .hcol.hi .hcnt{background:var(--vio)}
 .hcol:hover .hcnt,.hcol:focus-visible .hcnt,.hcol.on .hcnt{opacity:1;transform:translate(-50%,0) scale(1)}
-.hcol:first-child .hcnt,.hcol:nth-child(2) .hcnt{left:0;transform:translate(0,5px) scale(.94)}
-.hcol:first-child:hover .hcnt,.hcol:nth-child(2):hover .hcnt,.hcol:first-child.on .hcnt,.hcol:nth-child(2).on .hcnt,.hcol:first-child:focus-visible .hcnt,.hcol:nth-child(2):focus-visible .hcnt{transform:translate(0,0) scale(1)}
-.hcol:first-child .hcnt::after,.hcol:nth-child(2) .hcnt::after{left:16px}
-.hcol:last-child .hcnt,.hcol:nth-last-child(2) .hcnt{left:auto;right:0;transform:translate(0,5px) scale(.94)}
-.hcol:last-child:hover .hcnt,.hcol:nth-last-child(2):hover .hcnt,.hcol:last-child.on .hcnt,.hcol:nth-last-child(2).on .hcnt,.hcol:last-child:focus-visible .hcnt,.hcol:nth-last-child(2):focus-visible .hcnt{transform:translate(0,0) scale(1)}
-.hcol:last-child .hcnt::after,.hcol:nth-last-child(2) .hcnt::after{left:auto;right:16px}
+/* подсказка над столбиком всегда по центру; только на узком экране крайние прижимаются к краю, чтобы не обрезаться */
+@media(max-width:560px){
+ .hcol:first-child .hcnt{left:0;transform:translate(0,5px) scale(.94)}
+ .hcol:first-child:hover .hcnt,.hcol:first-child.on .hcnt,.hcol:first-child:focus-visible .hcnt{transform:translate(0,0) scale(1)}
+ .hcol:first-child .hcnt::after{left:14px}
+ .hcol:last-child .hcnt{left:auto;right:0;transform:translate(0,5px) scale(.94)}
+ .hcol:last-child:hover .hcnt,.hcol:last-child.on .hcnt,.hcol:last-child:focus-visible .hcnt{transform:translate(0,0) scale(1)}
+ .hcol:last-child .hcnt::after{left:auto;right:14px}
+}
 .hx{display:grid;grid-template-columns:repeat(10,1fr);gap:12px;margin-top:14px;font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:12px;color:var(--dim);text-align:center}
 .hist>.sk{grid-column:1/-1;height:100%;border-radius:var(--r2)}
 /* ---- комнаты и структура предложения ---- */
@@ -305,9 +309,6 @@ html.lite [style*="filter:blur"],html.lite .glow{filter:none!important}
  background-size:250% 100%;animation:bgmsk 1.3s linear infinite}
 .sk *{visibility:hidden}
 html.lite .sk{animation:none}
-@media (prefers-reduced-motion:reduce){.sk,.sheet.busy .vbig,.sheet.busy .vpct,.sheet.busy .vsub,
- .sheet.busy .rv,.sheet.busy .rsub,.sheet.busy .rmk,.sheet.busy .rends,.sheet.busy .fxv,
- .sheet.busy .fxn,.sheet.busy .rchip{animation:none}}
 .sheet.busy{opacity:1!important}
 .sheet.busy .vbig,.sheet.busy .vpct,.sheet.busy .vsub,.sheet.busy .rv,.sheet.busy .rsub,
 .sheet.busy .rmk,.sheet.busy .rends,.sheet.busy .fxv,.sheet.busy .fxn,.sheet.busy .rchip{
@@ -463,10 +464,10 @@ html.lite .sk{animation:none}
 <section class="next"><div class="wrap">
 <div class="shead"><div class="shl"><h2 class="shttl">Куда дальше</h2><p class="shsub">Проверить конкретную квартиру, сравнить с рынком продажи или получать оценки в Telegram.</p></div></div>
 <div class="ncards">
-<a class="ncard g" href="/"><span class="ntop"><span class="nidx">01</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="20.8" cy="20.8" r="13.2" stroke-width="2.4"/><path d="m30.4 30.4 10.4 10.4" stroke-width="2.8"/><path d="M15.4 15.6h10.8M20.8 15.6V27.4" stroke-width="2.4"/><path d="M16.6 20.1h8.4" stroke-width="2.2"/></svg></span></span><span class="nttl">Проверить квартиру</span><span class="nbot"><span class="nmeta">оценка по ссылке<br>продажа и аренда</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
-<a class="ncard v" href="/stats"><span class="ntop"><span class="nidx">02</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V5M4 19h16" stroke="currentColor" stroke-width="1.7"/><path d="M8.5 15v-4M12.5 15V8M16.5 15v-6" stroke="currentColor" stroke-width="1.7"/></svg></span></span><span class="nttl">Рынок продажи</span><span class="nbot"><span class="nmeta">цена метра по районам<br>динамика по неделям</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
-<a class="ncard w" href="/bot"><span class="ntop"><span class="nidx">03</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.7"/></svg></span></span><span class="nttl">Telegram-бот</span><span class="nbot"><span class="nmeta">@fairprice_kzbot<br>оценка прямо в чате</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
-<a class="ncard g" href="/about"><span class="ntop"><span class="nidx">04</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 3 7.5 12 12l9-4.5L12 3Z" stroke="currentColor" stroke-width="1.7"/><path d="m3 12.4 9 4.5 9-4.5" stroke="currentColor" stroke-width="1.7"/><path d="m3 17 9 4.5 9-4.5" stroke="currentColor" stroke-width="1.7"/></svg></span></span><span class="nttl">О проекте</span><span class="nbot"><span class="nmeta">как считает модель<br>ошибка аренды <span data-l="rmape">~11%</span></span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard g" href="/"><span class="ntop"><span class="nidx">01</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 10.5 12 3.8l8.5 6.7"/><path d="M5.8 9v10.7h12.4V9"/><path d="m9.2 14.6 2 2 3.8-4"/></svg></span></span><span class="nttl">Проверить квартиру</span><span class="nbot"><span class="nmeta">оценка по ссылке<br>продажа и аренда</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard v" href="/stats"><span class="ntop"><span class="nidx">02</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4v16h16"/><path d="m7.5 14.5 3.4-3.6 2.8 2.6 5-5.5"/><path d="M15.2 8h3.5v3.5"/></svg></span></span><span class="nttl">Рынок продажи</span><span class="nbot"><span class="nmeta">цена метра по районам<br>динамика по неделям</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard w" href="/bot"><span class="ntop"><span class="nidx">03</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5h14a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.8V16.5H5A1.5 1.5 0 0 1 3.5 15V6A1.5 1.5 0 0 1 5 4.5Z"/><path d="M8 9.2h8M8 12.4h5"/></svg></span></span><span class="nttl">Telegram-бот</span><span class="nbot"><span class="nmeta">@fairprice_kzbot<br>оценка прямо в чате</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard g" href="/about"><span class="ntop"><span class="nidx">04</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.2"/><path d="M12 7.6h.01"/></svg></span></span><span class="nttl">О проекте</span><span class="nbot"><span class="nmeta">как считает модель<br>ошибка аренды <span data-l="rmape">~11%</span></span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
 </div>
 </div></section>
 
@@ -492,7 +493,7 @@ html.lite .sk{animation:none}
   <div class="flinks">
    <a class="flink" href="/about">О проекте</a>
    <a class="flink" href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48l-.01-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.35 4.68-4.58 4.93.36.31.68.92.68 1.85l-.01 2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>Исходный код</a>
-   <a class="flink" href="https://t.me/Dex719" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.7"/></svg>Автор</a>
+   <a class="flink" href="https://t.me/Hopepe1" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.7"/></svg>Автор</a>
   </div>
  </div>
  <div>
@@ -519,7 +520,6 @@ html.lite .sk{animation:none}
   btn.addEventListener('click',function(){
     var from=window.pageYOffset||root.scrollTop;
     if(from<2)return;
-    if(matchMedia('(prefers-reduced-motion: reduce)').matches){window.scrollTo(0,0);return;}
     var prev=root.style.scrollBehavior;root.style.scrollBehavior='auto';
     var dur=Math.min(2400,Math.max(1200,from*0.7)),t0=performance.now(),stopped=false;
     function stop(){stopped=true}
@@ -619,12 +619,20 @@ bagamTG(function(tg){
     }
   }
 
+  /* скелетоны: без свежего кэша живые числа и графики мерцают, пока не придут данные */
+  var cached=false;
+  function skel(on){
+    document.querySelectorAll('[data-l]').forEach(function(e){e.classList.toggle('sk',on);});
+    document.querySelectorAll('[data-skel]').forEach(function(e){e.classList.toggle('loading',on);});
+  }
   try{
     var cc=JSON.parse(localStorage.getItem('bagam-stats')||'null');
-    if(cc&&Date.now()-cc.t<86400000)apply(cc.s,cc.h);
+    if(cc&&Date.now()-cc.t<86400000){apply(cc.s,cc.h);cached=true;}
   }catch(e){}
+  if(!cached)skel(true);
   Promise.all([j('/api/stats'),j('/api/health')]).then(function(res){
     var s=res[0],h=res[1];
+    skel(false);
     if(s||h){try{localStorage.setItem('bagam-stats',JSON.stringify({t:Date.now(),s:s,h:h}));}catch(e){}}
     if(!s&&!h){
       document.querySelectorAll('[data-l=age]').forEach(function(e){e.textContent='цифры из последнего успешного обновления';});
@@ -637,7 +645,7 @@ bagamTG(function(tg){
 
 <script>
 bagamBoot(function(){
-const staticMode = matchMedia('(prefers-reduced-motion: reduce)').matches || !window.gsap;
+const staticMode = !window.gsap;
 if(!staticMode){
   gsap.registerPlugin(ScrollTrigger);
   addEventListener('scroll',()=>{const h=document.body.scrollHeight-innerHeight;
@@ -663,8 +671,6 @@ if(!staticMode){
     });
   }
 }
-const ft=document.querySelector('.ftop');
-if(ft) ft.addEventListener('click',e=>{e.preventDefault();scrollTo({top:0,behavior:'smooth'})});
 
 /* форма на подстранице уводит разбор на главную */
 document.querySelectorAll('form[data-jump]').forEach(f=>{

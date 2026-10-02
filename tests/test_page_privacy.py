@@ -99,9 +99,9 @@ def test_privacy_names_the_real_data_flows():
 def test_privacy_has_edition_date_and_contacts():
     html = _page()
 
-    assert html.count("2 октября 2026") >= 2
+    assert "Редакция от" in html and "2 октября 2026" in html
     assert 'datetime="2026-10-02"' in html
-    assert 'href="https://t.me/Dex719"' in html
+    assert 'href="https://t.me/Hopepe1"' in html
     assert 'href="https://t.me/fairprice_kzbot"' in html
     assert 'href="https://github.com/Dex719/krisha-fair-price"' in html
     assert "Куда дальше" in html and 'href="/terms"' in html and 'href="/bot"' in html

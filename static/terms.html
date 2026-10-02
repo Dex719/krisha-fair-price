@@ -2,7 +2,7 @@
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<script>(function(){try{var t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme');if(!t)t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();</script>
+<script>(function(){try{var t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme');if(!t)t='dark';document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();</script>
 <script>
 (function(){
   var d=document.documentElement, c=navigator.connection||{},
@@ -12,9 +12,10 @@
           ||(navigator.deviceMemory&&navigator.deviceMemory<=2)
           ||(navigator.hardwareConcurrency&&navigator.hardwareConcurrency<=4
              &&navigator.deviceMemory&&navigator.deviceMemory<=4),
-      lite=rm||weak;
+      lite=weak;
   d.classList.add(lite?'lite':'anim');
-  window.bagamLite=lite;
+  if(rm)d.classList.add('rm');
+  window.bagamLite=lite;window.bagamRM=rm;
   var q=[];
   function flushTG(){var tg=window.Telegram&&window.Telegram.WebApp;if(!tg)return;while(q.length)q.shift()(tg);}
   window.bagamTG=function(cb){q.push(cb);flushTG();};
@@ -76,8 +77,6 @@ unicode-range:U+0020,U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1;}
 .phrow{display:flex;justify-content:space-between;align-items:flex-end;gap:24px 40px;flex-wrap:wrap;margin-top:40px}
 .plede{max-width:580px;font-size:17.5px;line-height:1.6;color:var(--dim);text-wrap:pretty}
 .plede b{color:var(--ink);font-weight:600}
-.pupd{display:inline-flex;align-items:center;gap:9px;padding:9px 14px;border:1px solid var(--line);border-radius:var(--r1);background:var(--panel);box-shadow:var(--sh1);font-size:13.5px;line-height:1.3;color:var(--dim);white-space:nowrap}
-.pupd b{font-family:'Data','JetBrains Mono',DataFB,monospace;font-weight:600;color:var(--limeink)}
 .sect{padding:88px 0 0}
 .phero+.sect{padding-top:64px}
 
@@ -144,6 +143,9 @@ unicode-range:U+0020,U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1;}
 .lr{display:grid;grid-template-columns:minmax(0,230px) minmax(0,1fr);gap:8px 36px;padding:22px 0 24px;border-bottom:1px solid var(--line)}
 .lr h3{margin:0;font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:18px;letter-spacing:-.02em;line-height:1.3}
 .ds .lr p{max-width:58ch;margin:0;font-size:15.5px;line-height:1.65}
+
+/* подзаголовки внутри длинного раздела (бот) */
+.dsub{margin:42px 0 14px;font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:19px;letter-spacing:-.02em;line-height:1.3;color:var(--ink);text-wrap:balance}
 
 /* команды бота: панель со строками «что — что делает» */
 .cmds{margin:24px 0;border:1px solid var(--line);border-radius:var(--r3);background:var(--panel);box-shadow:var(--sh1);overflow:hidden}
@@ -229,9 +231,6 @@ html.lite [style*="filter:blur"],html.lite .glow{filter:none!important}
  background-size:250% 100%;animation:bgmsk 1.3s linear infinite}
 .sk *{visibility:hidden}
 html.lite .sk{animation:none}
-@media (prefers-reduced-motion:reduce){.sk,.sheet.busy .vbig,.sheet.busy .vpct,.sheet.busy .vsub,
- .sheet.busy .rv,.sheet.busy .rsub,.sheet.busy .rmk,.sheet.busy .rends,.sheet.busy .fxv,
- .sheet.busy .fxn,.sheet.busy .rchip{animation:none}}
 .sheet.busy{opacity:1!important}
 .sheet.busy .vbig,.sheet.busy .vpct,.sheet.busy .vsub,.sheet.busy .rv,.sheet.busy .rsub,
 .sheet.busy .rmk,.sheet.busy .rends,.sheet.busy .fxv,.sheet.busy .fxn,.sheet.busy .rchip{
@@ -306,7 +305,6 @@ html.lite .sk{animation:none}
 <h1>Условия <em>использования</em></h1>
 <div class="phrow">
  <p class="plede">Правила, по которым работают сайт baǵam и Telegram-бот <b>@fairprice_kzbot</b>. Если коротко: оценка справочная, сервис бесплатный и без гарантий, исходный код опубликован.</p>
- <span class="pupd">редакция от <b><time datetime="2026-10-02">2 октября 2026</time></b></span>
 </div>
 </div></section>
 
@@ -444,17 +442,81 @@ html.lite .sk{animation:none}
 
 <section class="ds" id="bot" aria-labelledby="h-bot">
 <h2 class="dh" id="h-bot">Telegram-бот</h2>
-<p>Бот <a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">@fairprice_kzbot</a> работает внутри Telegram, поэтому на переписку с ним действуют условия и политика конфиденциальности самого Telegram. Мы на них не влияем. Mini App в Telegram открывает тот же сайт, и на него действуют те же условия. Вот что умеет бот:</p>
+<p>Бот <a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">@fairprice_kzbot</a> работает внутри Telegram, поэтому на переписку с ним действуют условия и политика конфиденциальности самого Telegram. Мы на них не влияем. Mini App в Telegram открывает тот же сайт, и на него действуют те же условия.</p>
+<p>Бот работает на том же сервере, что и сайт, и считает той же моделью. Его ответы — такие же <a href="#reference">справочные оценки</a>, и на него действуют те же ограничения: см. «<a href="#limits">Ограничения оценки</a>» и «<a href="#availability">Доступность и лимиты</a>».</p>
+
+<h3 class="dsub">Команды</h3>
 <dl class="cmds">
- <div class="cmd"><dt><span class="pl">Ссылка на объявление</span></dt><dd>Справедливая цена или аренда, интервал, вердикт и факторы.</dd></div>
- <div class="cmd"><dt><span class="pl">Текст объявления о продаже</span></dt><dd>Примерная оценка по описанию: без фото, точного адреса и истории объявления, поэтому она грубее. Параметры из текста достаёт нейросеть Gemini (Google), подробности в «<a href="/privacy">Конфиденциальности</a>».</dd></div>
- <div class="cmd"><dt><code>/track ссылка</code></dt><dd>Слежка за объявлением: после обновления базы бот пришлёт алерт, если цена изменилась или объявление сняли. Не больше 10 объявлений на чат.</dd></div>
- <div class="cmd"><dt><code>/alerts_on</code> <code>фильтры</code></dt><dd>Раз в день алерты о новых объявлениях дешевле оценки модели. Фильтры по комнатам, бюджету и району необязательны.</dd></div>
- <div class="cmd"><dt><code>/alerts_off</code></dt><dd>Отписаться от алертов.</dd></div>
+ <div class="cmd"><dt><code>/start</code> <code>/help</code></dt><dd>Короткая справка. В личном чате под ней есть кнопка «Открыть приложение»: это сайт внутри Telegram.</dd></div>
+ <div class="cmd"><dt><span class="pl">Ссылка на объявление</span></dt><dd>Оценка объявления о продаже или об аренде.</dd></div>
+ <div class="cmd"><dt><span class="pl">Текст объявления</span></dt><dd>Примерная оценка продажи по описанию, если ссылки нет.</dd></div>
+ <div class="cmd"><dt><code>/track ссылка</code></dt><dd>Следить за ценой объявления о продаже. Без ссылки бот покажет список того, за чем следит.</dd></div>
  <div class="cmd"><dt><code>/untrack ссылка</code> <code>/untrack all</code></dt><dd>Перестать следить за одним объявлением или за всеми сразу.</dd></div>
+ <div class="cmd"><dt><code>/alerts_on</code> <code>фильтры</code></dt><dd>Включить ежедневные алерты о выгодных объявлениях. Фильтры необязательные.</dd></div>
+ <div class="cmd"><dt><code>/alerts</code></dt><dd>Подсказка по алертам и ваша текущая подписка.</dd></div>
+ <div class="cmd"><dt><code>/alerts_off</code></dt><dd>Отписаться от алертов.</dd></div>
 </dl>
-<p>Алерты носят справочный характер. «Выгодно» значит «ниже оценки модели», а не «стоит покупать». Они приходят после обновления базы и могут запаздывать или не прийти.</p>
-<p><b>Как отписаться.</b> Командами выше. Можно также остановить или заблокировать бота в Telegram, и сообщения перестанут приходить. О том, какие данные обрабатываются, рассказывает страница <a href="/privacy">«Конфиденциальность»</a>.</p>
+
+<h3 class="dsub">С чего начать</h3>
+<p>Откройте бота, нажмите «Старт» и пришлите ссылку на объявление. Больше ничего настраивать не нужно.</p>
+<p>Есть и короткий путь с сайта: в разборе объявления о продаже есть кнопка «следить за ценой в боте». Она открывает бота по ссылке с номером объявления (<code>?start=track_…</code>), и слежка за ним включается сразу, без копирования ссылки.</p>
+
+<h3 class="dsub">Оценка по ссылке</h3>
+<p>Пришлите ссылку вида <code>krisha.kz/a/show/…</code> на объявление о продаже или об аренде: тип бот определяет сам. Ссылка может стоять где угодно в сообщении. В ответе:</p>
+<ul class="dul">
+ <li>название и адрес, цена в объявлении и справедливая цена (для аренды — в <span class="nw">₸/мес</span>);</li>
+ <li>вердикт «выгодно», «справедливая цена» или «переплата» и разница в процентах. Если похоже на подселение или комнату, вердикта нет: цена там за место, а оценка за всю квартиру;</li>
+ <li>срок: за сколько дней обычно уходят похожие по цене объявления, если данных хватает. Он считается по объявлениям, снятым с публикации;</li>
+ <li>для продажи — строка «Если сдавать»: ожидаемая аренда и доходность, всё из раздела «<a href="#yield">Доходность</a>»;</li>
+ <li>предупреждение «проверьте внимательнее», если цена заметно ниже ожидаемой;</li>
+ <li>три главных фактора, из которых сложилась цена, и до трёх похожих квартир со ссылками.</li>
+</ul>
+<p>К ответу прикладывается первое фото объявления. Подпись к фото в Telegram ограничена 1024 символами, поэтому в ответе с фото нижние строки могут быть обрезаны. Если фото не получилось приложить, бот присылает тот же текст без него.</p>
+<p>Если оценку получить не удалось, бот объясняет почему: объявления нет на krisha.kz или его уже сняли, krisha.kz временно не отдаёт страницу (повторите через минуту) или запросов слишком много (попробуйте через полминуты).</p>
+
+<h3 class="dsub">Оценка по тексту</h3>
+<p>Если ссылки нет, вставьте текст объявления о продаже целиком. Короче 40 символов бот текстом не считает и просит ссылку. Параметры из текста достаёт нейросеть Gemini (Google): площадь, комнаты, этаж, год, район, цену. Дальше расчёт идёт той же моделью.</p>
+<ul class="dul">
+ <li>Оценка получается грубее: бот не видит фото, точного адреса и истории объявления. В ответе он сам пишет, что она примерная, и перечисляет, что распознал.</li>
+ <li>В тексте должны быть хотя бы площадь и число комнат. Иначе бот попросит дописать.</li>
+ <li>Этот режим работает, только если у автора подключён ключ Gemini. Без ключа или если нейросеть не ответила, бот просто напомнит про ссылку, так что режим может быть недоступен.</li>
+ <li>Вставленный текст объявления, его начало до 3000 символов, уходит в Gemini. Не включайте в него телефоны и другие личные данные. Подробности в «<a href="/privacy#bot">Конфиденциальности</a>».</li>
+</ul>
+
+<h3 class="dsub">Слежка за ценой</h3>
+<p>Команда <code>/track ссылка</code> запоминает объявление и его текущую цену, и бот пишет вам, только когда что-то изменилось:</p>
+<ul class="dul">
+ <li><b>цена стала другой.</b> В сообщении будет старая цена, новая и процент изменения;</li>
+ <li><b>объявление сняли.</b> Бот напишет, сколько оно провисело, и закончит слежку за ним сам.</li>
+</ul>
+<p>Следить можно не больше чем за 10 объявлениями на чат. Лишнее убирает <code>/untrack ссылка</code>, а <code>/untrack all</code> очищает список целиком. Если бот не смог доставить сообщение, например вы его заблокировали, он повторит при следующей проверке.</p>
+<p>Если объявление исчезло после перерыва в наблюдении дольше семи дней, о снятии бот молчит и оставляет его в слежке: это могло быть не снятие, а пропуск данных. Слежка рассчитана на продажу: ежедневная проверка идёт по базе продажи, поэтому для объявлений об аренде она не работает. Саму аренду бот по ссылке оценивает как обычно.</p>
+
+<h3 class="dsub">Алерты о выгодных объявлениях</h3>
+<p>После <code>/alerts_on</code> бот раз в день присылает новые объявления о продаже с вердиктом «выгодно»: цена ниже интервала справедливой цены. «Новые» значит появившиеся в базе примерно за последние сутки. Каждое объявление приходит один раз.</p>
+<ul class="dul">
+ <li><b>Фильтры</b> необязательные и идут в любом порядке: комнаты (<code>2</code>, <code>2к</code>, <code>2-к</code>), максимальная цена в миллионах (<code>до 45млн</code>) и район (<code>бостандыкский</code>). Числа от 1 до 6 бот читает как комнаты, от 7 и больше как бюджет. Пример: <code>/alerts_on 2к до 45млн бостандыкский</code>.</li>
+ <li>В ответ бот пишет, как понял фильтры, — проверьте. Повторный <code>/alerts_on</code> заменяет прежние фильтры: подписка на чат одна.</li>
+ <li>В одном сообщении не больше 5 объявлений, самые выгодные первыми. Для каждого указаны цена, оценка модели, разница в процентах и район.</li>
+ <li><code>/alerts</code> показывает подсказку и вашу текущую подписку, <code>/alerts_off</code> отключает алерты.</li>
+</ul>
+<p>Алерты справочные. «Выгодно» значит «ниже оценки модели», а не «стоит покупать»: объявление, продавца и документы проверьте сами.</p>
+
+<h3 class="dsub">Когда приходят сообщения</h3>
+<p>Проверка идёт один раз в сутки, и алерты вместе с уведомлениями по слежке приходят после неё. Обновление базы стартует в 06:00 по Алматы и длится несколько часов, поэтому точного времени нет: обычно это утро или первая половина дня. Если обновление сорвалось, сообщения задержатся или не придут.</p>
+
+<h3 class="dsub">Чего бот не делает</h3>
+<ul class="dul">
+ <li>Не читает ваше имя, @username и номер телефона. Из сообщения бот берёт номер чата, тип чата (личный или нет) и текст.</li>
+ <li>Не записывает тексты сообщений. Единственное место, куда уходит вставленный текст объявления, — Gemini, и только в режиме «Оценка по тексту».</li>
+ <li>Не шлёт рекламу и ничего не присылает без вашего запроса: только ответы и то, на что вы подписались, то есть алерты и слежка.</li>
+ <li>Не обрабатывает фото, голосовые и файлы: он читает только текст сообщений.</li>
+ <li>Не проверяет объявление, продавца и документы на квартиру, как и сайт. Для сделки нужен оценщик, см. «<a href="#reference">Оценка — справочная</a>».</li>
+</ul>
+<p>Что именно бот хранит (номер чата, фильтры алертов, лоты в слежке) и как это удалить — на странице «<a href="/privacy#bot">Конфиденциальность</a>».</p>
+
+<h3 class="dsub">Как остановить всё</h3>
+<p>Отправьте <code>/alerts_off</code> и <code>/untrack all</code>: подписка и слежка удалятся. Одной блокировки бота мало: сообщения перестанут приходить, но подписка и слежка останутся в хранилище, пока вы не отпишетесь командами. Как удалить остальное, описано в разделе «<a href="/privacy#delete">Как удалить данные</a>».</p>
 </section>
 
 <section class="ds" id="liability" aria-labelledby="h-liability">
@@ -465,14 +527,14 @@ html.lite .sk{animation:none}
 
 <section class="ds" id="changes" aria-labelledby="h-changes">
 <h2 class="dh" id="h-changes">Изменения условий</h2>
-<p>Условия могут меняться. Актуальная редакция всегда лежит на этой странице, а её дата указана вверху и здесь: <b><time datetime="2026-10-02">2 октября 2026</time></b>. Если вы продолжаете пользоваться сервисом после публикации новой редакции, значит, вы с ней согласны. История изменений страницы видна в репозитории на GitHub.</p>
+<p>Условия могут меняться. Актуальная редакция всегда лежит на этой странице, а её дата указана здесь: <b><time datetime="2026-10-02">2 октября 2026</time></b>. Если вы продолжаете пользоваться сервисом после публикации новой редакции, значит, вы с ней согласны. История изменений страницы видна в репозитории на GitHub.</p>
 </section>
 
 <section class="ds" id="contacts" aria-labelledby="h-contacts">
 <h2 class="dh" id="h-contacts">Контакты</h2>
 <p>Вопросы об условиях, ошибки в оценке, предложения и жалобы — пишите автору.</p>
 <div class="cont">
- <a class="crow" href="https://t.me/Dex719" target="_blank" rel="noopener"><span class="cn"><b>Автор в Telegram</b><small>вопросы, ошибки в оценке, предложения</small></span><span class="cv">t.me/Dex719</span></a>
+ <a class="crow" href="https://t.me/Hopepe1" target="_blank" rel="noopener"><span class="cn"><b>Автор в Telegram</b><small>вопросы, ошибки в оценке, предложения</small></span><span class="cv">t.me/Hopepe1</span></a>
  <a class="crow" href="https://github.com/Dex719/krisha-fair-price/issues" target="_blank" rel="noopener"><span class="cn"><b>Задачи на GitHub</b><small>ошибки в работе сервиса и предложения по коду</small></span><span class="cv">GitHub Issues</span></a>
  <a class="crow" href="/privacy"><span class="cn"><b>Конфиденциальность</b><small>какие данные обрабатываются и как</small></span><span class="cv">/privacy</span></a>
 </div>
@@ -485,10 +547,10 @@ html.lite .sk{animation:none}
 <section class="next"><div class="wrap">
 <div class="shead"><div class="shl"><h2 class="shttl">Куда дальше</h2><p class="shsub">Проверить квартиру, узнать, как считает модель, или заглянуть в код.</p></div></div>
 <div class="ncards">
-<a class="ncard g" href="/"><span class="ntop"><span class="nidx">01</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="20.8" cy="20.8" r="13.2" stroke-width="2.4"/><path d="m30.4 30.4 10.4 10.4" stroke-width="2.8"/><path d="M15.4 15.6h10.8M20.8 15.6V27.4" stroke-width="2.4"/><path d="M16.6 20.1h8.4" stroke-width="2.2"/></svg></span></span><span class="nttl">Проверить квартиру</span><span class="nbot"><span class="nmeta">оценка по ссылке<br>одна секунда</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
-<a class="ncard v" href="/privacy"><span class="ntop"><span class="nidx">02</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M24 5.5 9 11v11.2c0 9.4 6.1 17.2 15 20.3 8.9-3.1 15-10.9 15-20.3V11L24 5.5Z" stroke-width="2.4"/><path d="m17.4 24.2 4.8 4.8 8.6-9.4" stroke-width="2.6"/></svg></span></span><span class="nttl">Конфиденциальность</span><span class="nbot"><span class="nmeta">какие данные<br>обрабатываются</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
-<a class="ncard g" href="/about"><span class="ntop"><span class="nidx">03</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 40.5h28" stroke-width="2.4"/><path d="M14 33V22M24 33V14M34 33V25" stroke-width="4.4"/><path d="M12 11.5h8" stroke-width="2.4"/></svg></span></span><span class="nttl">Как считает модель</span><span class="nbot"><span class="nmeta">данные, факторы,<br>точность и пределы</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
-<a class="ncard w" href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener"><span class="ntop"><span class="nidx">04</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><g transform="scale(2)" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></g></svg></span></span><span class="nttl">Исходный код</span><span class="nbot"><span class="nmeta">GitHub<br>лицензия ELv2</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard g" href="/"><span class="ntop"><span class="nidx">01</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 10.5 12 3.8l8.5 6.7"/><path d="M5.8 9v10.7h12.4V9"/><path d="m9.2 14.6 2 2 3.8-4"/></svg></span></span><span class="nttl">Проверить квартиру</span><span class="nbot"><span class="nmeta">оценка по ссылке<br>одна секунда</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard v" href="/privacy"><span class="ntop"><span class="nidx">02</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5 5 6.3v5.4c0 4.3 2.9 7.5 7 8.8 4.1-1.3 7-4.5 7-8.8V6.3Z"/><path d="m9.2 12.2 2 2 3.6-3.8"/></svg></span></span><span class="nttl">Конфиденциальность</span><span class="nbot"><span class="nmeta">какие данные<br>обрабатываются</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard g" href="/about"><span class="ntop"><span class="nidx">03</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.2"/><path d="M12 7.6h.01"/></svg></span></span><span class="nttl">Как считает модель</span><span class="nbot"><span class="nmeta">данные, факторы,<br>точность и пределы</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard w" href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener"><span class="ntop"><span class="nidx">04</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8.5 7.5-4.5 4.5 4.5 4.5"/><path d="m15.5 7.5 4.5 4.5-4.5 4.5"/><path d="m13.4 5.5-2.8 13"/></svg></span></span><span class="nttl">Исходный код</span><span class="nbot"><span class="nmeta">GitHub<br>лицензия ELv2</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
 </div>
 </div></section>
 </main>
@@ -513,7 +575,7 @@ html.lite .sk{animation:none}
   <div class="flinks">
    <a class="flink" href="/about">О проекте</a>
    <a class="flink" href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48l-.01-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.35 4.68-4.58 4.93.36.31.68.92.68 1.85l-.01 2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>Исходный код</a>
-   <a class="flink" href="https://t.me/Dex719" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.7"/></svg>Автор</a>
+   <a class="flink" href="https://t.me/Hopepe1" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.7"/></svg>Автор</a>
   </div>
  </div>
  <div>
@@ -540,7 +602,6 @@ html.lite .sk{animation:none}
   btn.addEventListener('click',function(){
     var from=window.pageYOffset||root.scrollTop;
     if(from<2)return;
-    if(matchMedia('(prefers-reduced-motion: reduce)').matches){window.scrollTo(0,0);return;}
     var prev=root.style.scrollBehavior;root.style.scrollBehavior='auto';
     var dur=Math.min(2400,Math.max(1200,from*0.7)),t0=performance.now(),stopped=false;
     function stop(){stopped=true}
@@ -641,12 +702,20 @@ bagamTG(function(tg){
     }
   }
 
+  /* скелетоны: без свежего кэша живые числа и графики мерцают, пока не придут данные */
+  var cached=false;
+  function skel(on){
+    document.querySelectorAll('[data-l]').forEach(function(e){e.classList.toggle('sk',on);});
+    document.querySelectorAll('[data-skel]').forEach(function(e){e.classList.toggle('loading',on);});
+  }
   try{
     var cc=JSON.parse(localStorage.getItem('bagam-stats')||'null');
-    if(cc&&Date.now()-cc.t<86400000)apply(cc.s,cc.h);
+    if(cc&&Date.now()-cc.t<86400000){apply(cc.s,cc.h);cached=true;}
   }catch(e){}
+  if(!cached)skel(true);
   Promise.all([j('/api/stats'),j('/api/health')]).then(function(res){
     var s=res[0],h=res[1];
+    skel(false);
     if(s||h){try{localStorage.setItem('bagam-stats',JSON.stringify({t:Date.now(),s:s,h:h}));}catch(e){}}
     if(!s&&!h){
       document.querySelectorAll('[data-l=age]').forEach(function(e){e.textContent='цифры из последнего успешного обновления';});
@@ -683,15 +752,13 @@ bagamTG(function(tg){
 </script>
 <script>
 bagamBoot(function(){
-const staticMode = matchMedia('(prefers-reduced-motion: reduce)').matches || !window.gsap;
+const staticMode = !window.gsap;
 if(!staticMode){
   gsap.registerPlugin(ScrollTrigger);
   addEventListener('scroll',()=>{const h=document.body.scrollHeight-innerHeight;
     document.getElementById('prog').style.width=(scrollY/h*100)+'%';},{passive:true});
   gsap.from('.phero h1',{y:60,opacity:0,duration:1,ease:'expo.out',clearProps:'transform'});
   gsap.from('.phrow',{y:26,opacity:0,duration:.9,delay:.25,ease:'expo.out',clearProps:'transform'});
-  gsap.from('.tk',{y:26,opacity:0,duration:.7,stagger:.08,ease:'expo.out',clearProps:'transform',
-    scrollTrigger:{trigger:'.tkey',start:'top 90%',once:true}});
   gsap.from('.ncard',{y:26,opacity:0,duration:.75,stagger:.08,ease:'expo.out',clearProps:'transform',
     scrollTrigger:{trigger:'.ncards',start:'top 85%',once:true}});
   gsap.from('.fgrid > div',{y:24,opacity:0,duration:.7,stagger:.09,ease:'expo.out',clearProps:'transform',
@@ -706,8 +773,6 @@ if(!staticMode){
     });
   }
 }
-const ft=document.querySelector('.ftop');
-if(ft) ft.addEventListener('click',e=>{e.preventDefault();scrollTo({top:0,behavior:'smooth'})});
 
 /* форма на подстранице уводит разбор на главную */
 document.querySelectorAll('form[data-jump]').forEach(f=>{
