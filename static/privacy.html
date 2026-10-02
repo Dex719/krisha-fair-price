@@ -68,7 +68,169 @@ unicode-range:U+0020,U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1;}
 </style>
 <link rel="stylesheet" href="/static/design.css">
 <style>
-/* документ: общие стили .lhead/.lmeta/.ltoc/.ldoc — в design.css */
+/* Политика конфиденциальности: страница-документ. Шапки секций, «Куда дальше» и подвал берутся из design.css.
+   Акцентный текст — через --limeink/--violink: сырой --lime/--vio в светлой теме не дотягивает до контраста.
+   Основной текст — --ink: документ читают целиком, приглушённый --dim здесь только для вторичных строк. */
+.phero{padding:164px 0 0}
+.phero h1{font-family:Unbounded,UnboundedFB,sans-serif;font-weight:700;font-size:clamp(32px,5.8vw,80px);letter-spacing:-.04em;line-height:1.04;text-wrap:balance;hyphens:manual}
+.phrow{display:flex;justify-content:space-between;align-items:flex-end;gap:24px 40px;flex-wrap:wrap;margin-top:40px}
+.plede{max-width:580px;font-size:17.5px;line-height:1.6;color:var(--dim);text-wrap:pretty}
+.plede b{color:var(--ink);font-weight:600}
+.pupd{display:inline-flex;align-items:center;gap:9px;padding:9px 14px;border:1px solid var(--line);border-radius:var(--r1);background:var(--panel);box-shadow:var(--sh1);font-size:13.5px;line-height:1.3;color:var(--dim);white-space:nowrap}
+.pupd b{font-family:'Data','JetBrains Mono',DataFB,monospace;font-weight:600;color:var(--limeink)}
+.sect{padding:104px 0 0}
+.phero+.sect{padding-top:72px}
+
+/* документ: слева липкое содержание, справа колонка текста */
+.doc{display:grid;grid-template-columns:232px minmax(0,1fr);gap:0 72px;align-items:start}
+.docb{min-width:0;max-width:880px;padding-bottom:104px}
+.tocw{position:sticky;top:104px}
+.toc{display:block}
+.toc summary{display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none;cursor:pointer;padding:16px 18px;font-size:15.5px;font-weight:600;color:var(--ink)}
+.toc summary::-webkit-details-marker{display:none}
+.toc summary::after{content:"";width:9px;height:9px;border-right:2px solid var(--dim);border-bottom:2px solid var(--dim);transform:translateY(-2px) rotate(45deg);transition:transform .25s ease;flex:none}
+.toc[open] summary::after{transform:translateY(2px) rotate(-135deg)}
+.toc ol{list-style:none;margin:0;padding:0}
+.toc a{display:grid;grid-template-columns:30px minmax(0,1fr);gap:4px;align-items:baseline;padding:8px 14px 8px 18px;border-left:2px solid transparent;font-size:14.5px;line-height:1.38;color:var(--dim);text-decoration:none;transition:color .2s,border-color .2s,background-color .2s}
+.toc a i{font-style:normal;font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:12px;color:var(--dim)}
+.toc a:hover{color:var(--ink);background:var(--hover)}
+.toc a[aria-current=true]{color:var(--ink);border-left-color:var(--lime)}
+.toc a[aria-current=true] i{color:var(--limeink)}
+.toc-on .toc{background:none;border:0;box-shadow:none;border-radius:0}
+.toc-on .toc summary{display:none}
+.toc-on .toc ol{border-left:1px solid var(--line)}
+.toc-on .toc a{margin-left:-1px;padding-left:16px}
+
+/* секции текста */
+.ds{margin-top:60px;padding-top:56px;border-top:1px solid var(--line)}
+.ds:first-child{margin-top:0;padding-top:0;border-top:0}
+.dh{display:flex;align-items:baseline;gap:16px;margin:0 0 24px;font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:clamp(26px,2.8vw,36px);line-height:1.12;letter-spacing:-.035em;color:var(--ink);text-wrap:balance}
+.dh .dn{flex:none;min-width:30px;font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:13px;font-weight:500;letter-spacing:0;color:var(--dim)}
+.dp{max-width:68ch;font-size:16.5px;line-height:1.7;color:var(--ink);text-wrap:pretty}
+.dp+.dp{margin-top:14px}
+.dnote{max-width:68ch;margin-top:18px;font-size:14.5px;line-height:1.65;color:var(--dim);text-wrap:pretty}
+.dp b,.dnote b,.drow p b{font-weight:600}
+.dp a,.dnote a,.drow a,.contact a:not(.gobtn){color:var(--limeink);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--limeink) 45%,transparent);text-underline-offset:3px;transition:text-decoration-color .2s}
+.dp a:hover,.dnote a:hover,.drow a:hover,.contact a:not(.gobtn):hover{text-decoration-color:var(--limeink)}
+code{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:.88em;font-weight:500;padding:2px 7px;border-radius:6px;background:var(--soft);color:var(--ink);white-space:nowrap}
+
+/* коротко: три цифры в одной панели, дальше список с линиями */
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-bottom:30px;background:var(--line);border:1px solid var(--line);border-radius:var(--r3);overflow:hidden;box-shadow:var(--sh1)}
+.kpi{background:var(--panel);padding:26px 26px 28px}
+.kpi b{display:block;font-family:Unbounded,UnboundedFB,sans-serif;font-weight:700;font-size:clamp(34px,4vw,52px);letter-spacing:-.04em;line-height:1;color:var(--limeink);font-variant-numeric:tabular-nums;white-space:nowrap}
+.kpi b small{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:15px;font-weight:500;letter-spacing:0;color:var(--dim);margin-left:6px}
+.kpi span{display:block;margin-top:14px;font-size:14.5px;line-height:1.5;color:var(--dim)}
+.kpi span strong{color:var(--ink);font-weight:600}
+.dlist{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.dlist li{position:relative;padding:17px calc(100% - 68ch) 17px 28px;border-bottom:1px solid var(--line);font-size:16.5px;line-height:1.6;color:var(--ink);text-wrap:pretty}
+.dlist li::before{content:"";position:absolute;left:3px;top:27px;width:8px;height:8px;border-radius:50%;background:var(--limeink)}
+.dlist li b{font-weight:600}
+.dlist li span{display:block;margin-top:3px;font-size:15px;line-height:1.55;color:var(--dim)}
+.dlist.no li::before{top:31px;width:11px;height:2px;border-radius:2px;background:var(--dim)}
+
+/* строки «название — пояснение»: спецификация, а не карточки */
+.drows{border-top:1px solid var(--line)}
+.drow{display:grid;grid-template-columns:minmax(0,196px) minmax(0,1fr);gap:8px 36px;padding:24px 0 26px;border-bottom:1px solid var(--line)}
+.drow h3{font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:17px;line-height:1.3;letter-spacing:-.015em;color:var(--ink)}
+.drow p{max-width:62ch;font-size:16px;line-height:1.66;color:var(--ink);text-wrap:pretty}
+.drow p+p{margin-top:10px}
+.drow p.sub{font-size:14.5px;line-height:1.6;color:var(--dim)}
+
+/* таблица: какие данные, зачем, где, сколько */
+.tw{background:var(--panel);border:1px solid var(--line);border-radius:var(--r3);box-shadow:var(--sh1);overflow:hidden}
+.dt{width:100%;table-layout:fixed;border-collapse:collapse;font-size:15px;line-height:1.55;text-align:left}
+.dt th,.dt td{vertical-align:top;padding:18px 22px;border-bottom:1px solid var(--line);text-align:left}
+.dt thead th{padding-top:15px;padding-bottom:14px;background:var(--panel2);font-size:13.5px;font-weight:500;color:var(--dim)}
+.dt tbody tr:last-child>*{border-bottom:0}
+.dt thead th:nth-child(1){width:23%}
+.dt thead th:nth-child(2){width:23%}
+.dt thead th:nth-child(3){width:29%}
+.dt thead th:nth-child(4){width:25%}
+.dt tbody th{font-weight:600;color:var(--ink)}
+.dt tbody th span{display:block;margin-top:4px;font-size:13.5px;font-weight:400;line-height:1.45;color:var(--dim)}
+.dt td{color:var(--ink)}
+.dt td.t{font-size:14.5px}
+
+/* схема: путь данных */
+.flow{display:grid;grid-template-columns:minmax(0,1fr) 30px minmax(0,1fr) 30px minmax(0,1fr);align-items:stretch;margin:0 0 6px}
+.fn{padding:20px 20px 22px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r2);box-shadow:var(--sh1)}
+.fn.priv{border-color:color-mix(in srgb,var(--limeink) 45%,var(--line))}
+.fn b{display:block;font-size:16px;font-weight:600;letter-spacing:-.01em;line-height:1.3}
+.fn span{display:block;margin-top:8px;font-size:13.5px;line-height:1.5;color:var(--dim)}
+.fa{display:flex;align-items:center;justify-content:center;color:var(--dim)}
+.fa svg{width:20px;height:20px;display:block}
+
+/* команды и ссылки на код */
+.cmds{border-top:1px solid var(--line)}
+.cmd{display:grid;grid-template-columns:minmax(0,228px) minmax(0,1fr);gap:8px 28px;align-items:baseline;padding:18px 0;border-bottom:1px solid var(--line)}
+.cmd .k{justify-self:start;max-width:100%;padding:6px 11px;border:1px solid var(--line);border-radius:var(--r1);background:var(--panel);font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:13.5px;font-weight:500;color:var(--ink);overflow-wrap:anywhere;text-decoration:none;transition:border-color .2s,color .2s}
+.cmd a.k:hover{border-color:var(--limeink);color:var(--limeink)}
+/* последняя линия секции не дублирует верхнюю линию следующей */
+.ds>.drows:last-child>.drow:last-child,.ds>.cmds:last-child>.cmd:last-child,.ds>.dlist:last-child>li:last-child{border-bottom:0;padding-bottom:0}
+/* ритм между блоками внутри секции */
+.dp+.drows,.dp+.cmds,.dp+.tw,.dp+.dlist{margin-top:26px}
+.dp.sp{margin-top:34px}
+.cmds+.drows{margin-top:38px}
+.flow+.dnote{margin:12px 0 32px}
+.cmd p{font-size:15.5px;line-height:1.6;color:var(--ink)}
+.contact{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:20px 32px;margin-top:40px;padding:30px 32px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r3);box-shadow:var(--sh1)}
+.contact h3{font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:21px;letter-spacing:-.025em;line-height:1.2}
+.contact p{margin-top:8px;max-width:48ch;font-size:15.5px;line-height:1.6;color:var(--dim)}
+.contact .gobtn{display:inline-flex;align-items:center;gap:10px;text-decoration:none}
+.edition{margin-top:28px;font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:13px;color:var(--dim)}
+.edition b{color:var(--ink);font-weight:600}
+
+@media(max-width:980px){
+ .doc{grid-template-columns:minmax(0,1fr)}
+ .tocw{position:static;margin-bottom:44px}
+ .toc{background:var(--panel);border:1px solid var(--line);border-radius:var(--r2);box-shadow:var(--sh1)}
+ .toc ol{padding:0 0 10px}
+ .docb{padding-bottom:80px}
+}
+@media(max-width:820px){
+ .phero{padding-top:124px}
+ .phrow{margin-top:28px}
+ .sect{padding-top:72px}
+ .phero+.sect{padding-top:44px}
+ .ds{margin-top:48px;padding-top:44px}
+ .dh{gap:12px;margin-bottom:20px}
+ .dh .dn{min-width:26px}
+}
+@media(max-width:760px){
+ .drow{grid-template-columns:minmax(0,1fr);gap:8px;padding:20px 0 22px}
+ .flow{grid-template-columns:minmax(0,1fr)}
+ .fa{height:30px}
+ .fa svg{transform:rotate(90deg)}
+ .dt thead{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+ .dt,.dt tbody,.dt tr,.dt th,.dt td{display:block;width:auto}
+ .dt tr{padding:20px 20px 22px;border-bottom:1px solid var(--line)}
+ .dt tbody tr:last-child{border-bottom:0}
+ .dt th,.dt td{padding:0;border:0}
+ .dt thead th:nth-child(n){width:auto}
+ .dt tbody th{font-size:16px}
+ .dt td{margin-top:12px}
+ .dt td::before{content:attr(data-l);display:block;margin-bottom:2px;font-size:13px;color:var(--dim)}
+ .contact{padding:26px 22px}
+}
+@media(max-width:640px){
+ .kpis{grid-template-columns:minmax(0,1fr)}
+ .kpi{padding:22px 22px 24px}
+ .kpi span{margin-top:10px}
+ .cmd{grid-template-columns:minmax(0,1fr);gap:10px;padding:16px 0 18px}
+ .dp,.dlist li{font-size:16px}
+ .contact .gobtn{width:100%;justify-content:center}
+}
+
+/* печать: тёмная тема не должна давать белый текст на белом листе */
+@media print{
+ :root,html[data-theme=dark],html[data-theme=light]{--bg:#fff;--ink:#000;--dim:#333;--panel:#fff;--panel2:#fff;--line:#bbb;--limeink:#000;--soft:#eee;--hover:#fff;--lime:#000;--sh1:none}
+ nav,.mmenu,.progress,.skip,.tocw,.next,footer,.offbar,.contact .gobtn{display:none!important}
+ .doc{display:block}
+ .phero{padding-top:0}
+ .phero h1{font-size:34px}
+ .ds{break-inside:avoid-page}
+}
+
 /* ---------- скорость: вход героя без JS ---------- */
 @keyframes bgmup{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 html.anim h1 span{animation:bgmup .85s cubic-bezier(.16,1,.3,1) both}
@@ -161,66 +323,269 @@ html.lite .sk{animation:none}
 })();
 </script>
 <main id="main">
-<header class="lhead"><div class="wrap">
-<p class="lcrumb"><a href="/">baǵam</a><span aria-hidden="true">/</span><span>Документы</span></p>
-<h1 class="lh1">Политика конфиденциальности</h1>
-<p class="lsub">Порядок обработки данных пользователей сайта и Telegram-бота baǵam.</p>
-<dl class="lmeta">
-<div><dt>Редакция</dt><dd>от <time datetime="2026-10-02">2 октября 2026 г.</time></dd></div>
-<div><dt>Оператор</dt><dd>автор проекта baǵam, Telegram <a href="https://t.me/Dex719" target="_blank" rel="noopener">@Dex719</a></dd></div>
-<div><dt>Распространяется на</dt><dd>сайт dex719-krisha-fair-price.hf.space и Telegram-бот <a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">@fairprice_kzbot</a></dd></div>
-</dl>
-<div class="ltabs"><a href="#" aria-current="page">Политика конфиденциальности</a><a href="/terms">Условия использования</a><button class="lprint" type="button" data-print><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg>Распечатать</button></div>
-</div></header>
-<div class="wrap lbody">
-<aside class="ltoc" aria-label="Содержание"><p class="ltoct">Содержание</p><ol><li><a href="#general">Общие положения</a></li><li><a href="#terms-defs">Термины и определения</a></li><li><a href="#data">Состав обрабатываемых данных</a></li><li><a href="#purposes">Цели обработки</a></li><li><a href="#grounds">Основания обработки</a></li><li><a href="#storage">Хранение данных и сроки</a></li><li><a href="#third-parties">Передача данных третьим лицам</a></li><li><a href="#cookies">Файлы cookie и локальное хранилище</a></li><li><a href="#security">Меры защиты данных</a></li><li><a href="#rights">Права Пользователя</a></li><li><a href="#changes">Изменение Политики</a></li><li><a href="#contacts">Контакты</a></li></ol></aside>
-<article class="ldoc">
-<section class="ls" id="general" aria-labelledby="h-general"><h2 id="h-general">Общие положения</h2>
-<ol class="cl"><li>Настоящая Политика конфиденциальности (далее — Политика) определяет, какие данные обрабатываются при использовании сайта https://dex719-krisha-fair-price.hf.space (далее — Сайт) и Telegram-бота <a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">@fairprice_kzbot</a> (далее — Бот), вместе именуемых сервис baǵam (далее — Сервис), в каких целях, где и в течение какого срока они хранятся и как Пользователь может ими управлять.</li><li>Оператором является автор проекта baǵam — физическое лицо, которое разрабатывает и поддерживает Сервис. Обращения принимаются в Telegram: <a href="https://t.me/Dex719" target="_blank" rel="noopener">@Dex719</a>. Сервис является некоммерческим, предоставляется бесплатно, не содержит рекламы и не требует регистрации.</li><li>Политика подготовлена с учётом Закона Республики Казахстан от 21 мая 2013 года №&nbsp;94-V «О&nbsp;персональных данных и их защите».</li><li>Используя Сервис, Пользователь подтверждает, что ознакомился с Политикой. Если Пользователь не согласен с Политикой, ему следует прекратить использование Сервиса.</li><li>Исходный код Сервиса опубликован в открытом доступе (<a href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener">github.com/Dex719/krisha-fair-price</a>) на условиях лицензии Elastic License 2.0. Соответствие Политики фактической работе Сервиса может проверить любое лицо.</li></ol>
-</section>
-<section class="ls" id="terms-defs" aria-labelledby="h-terms-defs"><h2 id="h-terms-defs">Термины и определения</h2>
-<ol class="cl"><li><b>Пользователь</b> — лицо, использующее Сайт или Бота.</li><li><b>Персональные данные</b> — сведения, относящиеся к определённому или определяемому на их основании Пользователю.</li><li><b>Обработка</b> — действия с данными: сбор, запись, хранение, использование, передача и удаление.</li><li><b>Объявление</b> — публичное объявление о продаже или аренде недвижимости, размещённое на krisha.kz.</li><li><b>Идентификатор чата</b> — номер чата Telegram, через который Бот отвечает Пользователю; в личном чате совпадает с номером пользователя Telegram.</li><li><b>Хостинг</b> — платформа Hugging Face Spaces, на которой работают Сайт и Бот.</li><li><b>Репозиторий данных</b> — приватный репозиторий Оператора на GitHub, в котором хранится состояние Бота.</li></ol>
-</section>
-<section class="ls" id="data" aria-labelledby="h-data"><h2 id="h-data">Состав обрабатываемых данных</h2>
-<ol class="cl"><li>При использовании Сайта обрабатываются:<ol class="sub"><li>ссылка на Объявление, направляемая Пользователем для оценки. Ссылка передаётся в теле запроса; Сервис извлекает из неё только номер Объявления и самостоятельно загружает публичную страницу Объявления с krisha.kz. Сама ссылка не сохраняется;</li><li>IP-адрес — для ограничения частоты запросов: не больше 15 оценок в минуту с одного адреса. Счётчик хранится в оперативной памяти и не записывается на диск;</li><li>сведения технического журнала сервера: путь запроса, код ответа, адрес входящего соединения, сообщения об ошибках, а при ошибке оценки — номер Объявления;</li><li>обезличенные счётчики посещений страниц и выполненных оценок, не содержащие IP-адресов и идентификаторов посетителей;</li><li>настройки в локальном хранилище браузера (localStorage) — в объёме, указанном в разделе 8;</li><li>содержимое буфера обмена — только после нажатия Пользователем кнопки «Вставить» и только для подстановки в поле ввода; до нажатия кнопки «Проверить» оно никуда не передаётся.</li></ol></li><li>При использовании Бота обрабатываются:<ol class="sub"><li>идентификатор чата, тип чата и текст входящего сообщения — для формирования ответа. Имя, @username, номер телефона и фотографию профиля Бот не запрашивает и не сохраняет. Тексты сообщений не сохраняются;</li><li>при подписке на уведомления (команда <code>/alerts_on</code>) — идентификатор чата, параметры фильтра (число комнат, максимальный бюджет, район) и дата подписки;</li><li>при отслеживании Объявлений (команда <code>/track</code>) — идентификатор чата и по каждому Объявлению: номер, заголовок, дата добавления и последняя известная цена; не более 10 лотов на один чат;</li><li>хэш идентификатора чата — строка из 10 символов, вычисленная с секретной солью, для подсчёта числа уникальных пользователей. Без соли восстановить по хэшу идентификатор чата нельзя;</li><li>номера последних 5000 обновлений Telegram — для защиты от повторной обработки одного и того же сообщения. Номера обновлений не содержат текста сообщений и идентификаторов чатов.</li></ol></li><li>Сервис не обрабатывает: файлы cookie; данные сторонних систем аналитики, рекламы и социальных сетей; учётные записи, адреса электронной почты, пароли и платёжные данные; геолокацию, данные камеры, микрофона и контактов устройства; данные профиля, которые Telegram может передать мини-приложению.</li><li>Сведения из публичных Объявлений (цена, характеристики, адрес, описание) обрабатываются как данные о рынке недвижимости и не связываются с Пользователями Сервиса.</li></ol>
-</section>
-<section class="ls" id="purposes" aria-labelledby="h-purposes"><h2 id="h-purposes">Цели обработки</h2>
-<ol class="cl"><li>Данные обрабатываются исключительно в следующих целях:<ol class="sub"><li>расчёт справедливой цены продажи или аренды по Объявлению, указанному Пользователем;</li><li>работа функций Бота: ответы на сообщения, отслеживание цены Объявлений и рассылка уведомлений о новых Объявлениях по заданному фильтру;</li><li>защита Сервиса от перегрузки и злоупотреблений;</li><li>получение обезличенной статистики нагрузки: Оператор еженедельно получает сводку, составленную из счётчиков;</li><li>диагностика и устранение ошибок.</li></ol></li><li>Данные не используются для рекламы и профилирования и не продаются.</li></ol>
-</section>
-<section class="ls" id="grounds" aria-labelledby="h-grounds"><h2 id="h-grounds">Основания обработки</h2>
-<ol class="cl"><li>Обработка выполняется по инициативе Пользователя: направляя ссылку на Объявление, сообщение или команду Боту, Пользователь соглашается на обработку данных, необходимых для выполнения запроса.</li><li>Согласие на хранение данных подписки и отслеживания даётся командами <code>/alerts_on</code> и <code>/track</code> и отзывается командами <code>/alerts_off</code> и <code>/untrack</code> в порядке, указанном в разделе 10.</li></ol>
-</section>
-<section class="ls" id="storage" aria-labelledby="h-storage"><h2 id="h-storage">Хранение данных и сроки</h2>
-<ol class="cl"><li>Сайт и Бот работают в контейнере на Хостинге. Локальный диск контейнера не является постоянным: при перезапуске и ежедневной пересборке записанные на нём данные удаляются.</li><li>Состояние Бота — подписки, отслеживаемые Объявления и счётчики — хранится в Репозитории данных. Предыдущие версии файлов сохраняются в истории репозитория.</li><li>Данные хранятся в следующих местах и в течение следующих сроков:<div class="ltw"><table class="ltable"><thead><tr><th scope="col">Данные</th><th scope="col">Место хранения</th><th scope="col">Срок хранения</th></tr></thead><tbody><tr><td>Результат оценки по номеру Объявления</td><td>оперативная память сервера</td><td>около 10 минут</td></tr><tr><td>Карточка Объявления и запись об оценке (время, цены, вердикт)</td><td>база данных в контейнере</td><td>до перезапуска или пересборки контейнера</td></tr><tr><td>IP-адрес</td><td>оперативная память, технический журнал</td><td>до перезапуска контейнера</td></tr><tr><td>Счётчики посещений, оценок и сообщений; хэши идентификаторов чатов</td><td>Репозиторий данных</td><td>60 дней</td></tr><tr><td>Подписка на уведомления</td><td>Репозиторий данных (в зашифрованном виде), копия в контейнере</td><td>до команды <code>/alerts_off</code></td></tr><tr><td>Отслеживаемые Объявления</td><td>Репозиторий данных (в зашифрованном виде), копия в контейнере</td><td>до команды <code>/untrack</code> или снятия Объявления с публикации</td></tr><tr><td>Журнал оценок</td><td>Репозиторий данных</td><td>последние 20 000 записей</td></tr><tr><td>Настройки оформления и копия показателей рынка</td><td>localStorage браузера Пользователя</td><td>до очистки данных сайта Пользователем</td></tr></tbody></table></div></li><li>Журнал оценок по умолчанию выключен. При его включении Оператором журнал содержит время, номер Объявления, цены и вердикт и не содержит сведений о Пользователе.</li></ol>
-</section>
-<section class="ls" id="third-parties" aria-labelledby="h-third-parties"><h2 id="h-third-parties">Передача данных третьим лицам</h2>
-<ol class="cl"><li>Оператор не продаёт данные Пользователей и не передаёт их рекламным и аналитическим сервисам. Для работы Сервиса используются следующие сторонние сервисы, каждый из которых обрабатывает данные по собственным правилам:<ol class="sub"><li>Telegram — доставка сообщений Боту и от Бота; при открытии Сайта внутри Telegram подгружается скрипт telegram-web-app.js с telegram.org (<a href="https://telegram.org/privacy" target="_blank" rel="noopener">политика Telegram</a>);</li><li>Hugging Face — хостинг Сайта и Бота; входящие запросы, включая адреса страниц и IP-адреса, проходят через инфраструктуру Хостинга (<a href="https://huggingface.co/privacy" target="_blank" rel="noopener">политика Hugging Face</a>);</li><li>GitHub — Репозиторий данных и автоматические задачи GitHub Actions: ежедневное обновление данных и рассылка уведомлений (<a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement" target="_blank" rel="noopener">политика GitHub</a>);</li><li>Google (Gemini) — только для Бота и только при подключённом ключе: начало текста Объявления, присланного без ссылки (текст не короче 40 символов, передаётся не более 3000 символов), а при включённой функции анализа фотографий — публичные фотографии Объявлений (<a href="https://policies.google.com/privacy" target="_blank" rel="noopener">политика Google</a>);</li><li>krisha.kz — источник публичных данных Объявлений. Страницы Объявлений загружает сервер Сервиса, поэтому IP-адрес Пользователя krisha.kz не передаётся.</li></ol></li><li>Пользователю не следует включать в текст Объявления, направляемый Боту, номера телефонов и иные персональные данные.</li></ol>
-</section>
-<section class="ls" id="cookies" aria-labelledby="h-cookies"><h2 id="h-cookies">Файлы cookie и локальное хранилище</h2>
-<ol class="cl"><li>Сайт не создаёт и не читает файлы cookie.</li><li>Сайт хранит в localStorage браузера: <code>bagam-theme</code> и <code>kfp-theme</code> — выбранную тему оформления (второй ключ — прежнее название, сохраняется для совместимости); <code>bagam-stats</code> — копию публичных показателей рынка для быстрой загрузки страниц. Эти данные не передаются на сервер и удаляются при очистке данных сайта в настройках браузера.</li></ol>
-</section>
-<section class="ls" id="security" aria-labelledby="h-security"><h2 id="h-security">Меры защиты данных</h2>
-<ol class="cl"><li>Оператор применяет следующие меры:<ol class="sub"><li>передача данных по протоколу HTTPS;</li><li>шифрование файлов, содержащих идентификаторы чатов, до отправки в Репозиторий данных (алгоритм Fernet, библиотека cryptography). Ключ хранится в секретах сервера и в репозитории отсутствует; при отсутствии ключа такие файлы в Репозиторий данных не отправляются;</li><li>ограничение доступа к Хостингу и Репозиторию данных: доступ имеет только Оператор, сервер использует токен с правами только на Репозиторий данных;</li><li>политика безопасности контента (Content-Security-Policy) и другие защитные заголовки ответов;</li><li>минимизация данных: тексты сообщений и ссылки на Объявления не сохраняются.</li></ol></li><li>Не шифруются файлы, не содержащие идентификаторов чатов: счётчики (содержат только хэши), журнал оценок и перечень уже разосланных Объявлений.</li><li>Шифрование защищает данные от посторонних лиц, но не от Оператора: ключ доступен Оператору и автоматическим задачам, выполняющим рассылку. Журнал рассылки в GitHub Actions содержит число подписчиков и отправленных сообщений, а при недоставке уведомления об отслеживаемом Объявлении — номер этого чата. Журналы запусков публичного репозитория проекта доступны пользователям GitHub.</li></ol>
-</section>
-<section class="ls" id="rights" aria-labelledby="h-rights"><h2 id="h-rights">Права Пользователя</h2>
-<ol class="cl"><li>Пользователь вправе получить сведения о хранящихся о нём данных, потребовать их изменения или удаления и отозвать согласие на обработку.</li><li>Данные подписки и отслеживания Пользователь удаляет самостоятельно командами Бота:<div class="ltw"><table class="ltable"><thead><tr><th scope="col">Команда</th><th scope="col">Действие</th></tr></thead><tbody><tr><td><code>/alerts_off</code></td><td>отменить подписку на уведомления и удалить её параметры</td></tr><tr><td><code>/untrack ссылка</code></td><td>прекратить отслеживание одного Объявления</td></tr><tr><td><code>/untrack all</code></td><td>прекратить отслеживание всех Объявлений</td></tr><tr><td><code>/alerts</code>, <code>/track</code></td><td>просмотреть текущую подписку и список отслеживаемых Объявлений</td></tr></tbody></table></div></li><li>Блокировка Бота не удаляет данные подписки и отслеживания. Перед блокировкой рекомендуется отправить команды <code>/alerts_off</code> и <code>/untrack all</code>.</li><li>Счётчики и хэши удаляются автоматически по истечении 60 дней. Данные localStorage Пользователь удаляет в настройках браузера.</li><li>По иным вопросам, в том числе для удаления данных из истории Репозитория данных, Пользователь обращается к Оператору в Telegram (<a href="https://t.me/Dex719" target="_blank" rel="noopener">@Dex719</a>) с того же аккаунта, с которого использовался Бот.</li></ol>
-</section>
-<section class="ls" id="changes" aria-labelledby="h-changes"><h2 id="h-changes">Изменение Политики</h2>
-<ol class="cl"><li>Оператор вправе изменять Политику. Новая редакция вступает в силу с момента публикации на этой странице; дата действующей редакции указана в начале документа.</li><li>Предыдущие редакции доступны в истории файла в репозитории проекта (<a href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener">github.com/Dex719/krisha-fair-price</a>).</li></ol>
-</section>
-<section class="ls" id="contacts" aria-labelledby="h-contacts"><h2 id="h-contacts">Контакты</h2>
-<ol class="cl"><li>Вопросы и обращения, связанные с обработкой данных, направляются Оператору в Telegram: <a href="https://t.me/Dex719" target="_blank" rel="noopener">@Dex719</a>. Telegram-бот Сервиса: <a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">@fairprice_kzbot</a>. Описание функций Бота — на странице <a href="/bot">«Telegram-бот»</a>.</li></ol>
-</section>
-<p class="lend">Редакция от <time datetime="2026-10-02">2 октября 2026 г.</time> Предыдущие редакции — в истории файла в репозитории проекта. Связанные документы: <a href="/terms">Условия использования</a>, <a href="/bot">описание Telegram-бота</a>, <a href="/about">о проекте</a>.</p>
-</article>
+<section class="phero"><div class="wrap">
+<h1>Политика<br>конфиден&shy;циальности</h1>
+<div class="phrow">
+ <p class="plede">Какие данные обрабатывают сайт и Telegram-бот baǵam, зачем, где они лежат и как их удалить. Каждое утверждение сверено с исходным кодом проекта: файлы перечислены в конце страницы.</p>
+ <span class="pupd">редакция <b><time datetime="2026-10-02">2 октября 2026</time></b></span>
 </div>
+</div></section>
+
+<section class="sect"><div class="wrap">
+<div class="doc">
+
+<div class="tocw"><div role="navigation" aria-label="Содержание"><details class="toc" id="toc">
+<summary>Содержание</summary>
+<ol>
+ <li><a href="#summary"><i aria-hidden="true">01</i>Коротко</a></li>
+ <li><a href="#operator"><i aria-hidden="true">02</i>Кто оператор</a></li>
+ <li><a href="#site"><i aria-hidden="true">03</i>Что обрабатывает сайт</a></li>
+ <li><a href="#bot"><i aria-hidden="true">04</i>Что обрабатывает бот</a></li>
+ <li><a href="#none"><i aria-hidden="true">05</i>Чего мы не собираем</a></li>
+ <li><a href="#data"><i aria-hidden="true">06</i>Данные, цели и сроки</a></li>
+ <li><a href="#storage"><i aria-hidden="true">07</i>Где хранятся и кто имеет доступ</a></li>
+ <li><a href="#third"><i aria-hidden="true">08</i>Третьи лица</a></li>
+ <li><a href="#delete"><i aria-hidden="true">09</i>Как удалить данные</a></li>
+ <li><a href="#changes"><i aria-hidden="true">10</i>Изменения и контакты</a></li>
+</ol>
+</details></div></div>
+
+<div class="docb">
+
+<section class="ds" id="summary">
+<h2 class="dh"><span class="dn" aria-hidden="true">01</span>Коротко</h2>
+<div class="kpis">
+ <div class="kpi"><b>0</b><span><strong>cookie.</strong> Код сайта не создаёт и не читает cookie.</span></div>
+ <div class="kpi"><b>0</b><span><strong>сторонних трекеров.</strong> Ни аналитики, ни рекламы, ни пикселей.</span></div>
+ <div class="kpi"><b>60<small>дней</small></b><span><strong>срок счётчиков.</strong> Столько хранятся счётчики визитов и короткие хэши пользователей бота.</span></div>
+</div>
+<ul class="dlist">
+ <li>Ссылка на объявление не сохраняется и не связывается с вами: из неё берётся только публичный номер лота.</li>
+ <li>Номер вашего чата бот хранит, только пока вы подписаны на алерты или следите за лотами, и хранит его зашифрованным. Для статистики из номера считается короткий хэш.</li>
+ <li>Состояние бота лежит в приватном репозитории автора на GitHub. Код проекта открыт, данные нет.</li>
+ <li>Отписаться и удалить данные можно командой в боте или сообщением автору.</li>
+</ul>
+</section>
+
+<section class="ds" id="operator">
+<h2 class="dh"><span class="dn" aria-hidden="true">02</span>Кто оператор</h2>
+<p class="dp">baǵam — некоммерческий проект. Его ведёт автор: <a href="https://t.me/Dex719" target="_blank" rel="noopener">@Dex719</a> в Telegram. Сайт и бот бесплатны, рекламы на них нет.</p>
+<p class="dp">Политика относится к сайту <code>dex719-krisha-fair-price.hf.space</code> и боту <a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">@fairprice_kzbot</a>. Исходный код опубликован <a href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener">на GitHub</a> (лицензия Elastic License 2.0), поэтому всё описанное ниже можно проверить самому.</p>
+</section>
+
+<section class="ds" id="site">
+<h2 class="dh"><span class="dn" aria-hidden="true">03</span>Что обрабатывает сайт</h2>
+<p class="dp">Сайт работает без аккаунтов и регистрации. Вот что происходит, когда вы им пользуетесь.</p>
+<div class="drows">
+ <div class="drow"><h3>Ссылка на объявление</h3><div>
+  <p>Браузер отправляет ссылку на наш сервер. Сервер берёт из неё только номер объявления, сам загружает публичную страницу с krisha.kz и считает оценку. Ваш адрес и ваш браузер krisha.kz не видит.</p>
+  <p>Сама ссылка не сохраняется. Готовая оценка около 10 минут лежит в памяти сервера под номером объявления, без привязки к вам. В базе сервиса остаются публичная карточка лота (цена, площадь, адрес, описание продавца: всё, что и так видно на krisha.kz) и запись об оценке: время, цены и вердикт. Ничего о вас в них нет.</p>
+ </div></div>
+ <div class="drow"><h3>IP-адрес</h3><div>
+  <p>Чтобы одна машина не заваливала сервис, сервер считает запросы с каждого адреса за последнюю минуту: по умолчанию не больше 15 оценок в минуту. Счётчик живёт в памяти процесса, на диск и в репозиторий не пишется и пропадает при перезапуске.</p>
+ </div></div>
+ <div class="drow"><h3>Технический журнал</h3><div>
+  <p>Как у любого веб-сервера, у приложения есть журнал: путь запроса, код ответа, адрес, с которого пришло соединение (на Hugging Face запросы идут через прокси хостинга), и ошибки. Ссылку на объявление вы отправляете в теле запроса, поэтому в адресе страницы её нет. Журнал живёт до перезапуска контейнера. Если оценка завершилась ошибкой, в журнал может попасть номер объявления.</p>
+ </div></div>
+ <div class="drow"><h3>Счётчики</h3><div>
+  <p>Сервер считает, сколько раз открыли страницы и сколько оценок посчитано, по дням и по часам. В счётчике нет ни IP, ни идентификатора посетителя. Раз в неделю автору приходит сводка из этих чисел.</p>
+ </div></div>
+ <div class="drow"><h3>Память браузера</h3><div>
+  <p>Сайт записывает в <code>localStorage</code> три ключа: <code>bagam-theme</code> и <code>kfp-theme</code> с выбранной темой (второй — прежнее имя, значение дублируется) и <code>bagam-stats</code> с копией публичных цифр рынка, чтобы страница открывалась без пауз и без сети.</p>
+  <p class="sub">Личного в них ничего нет, на сервер они не отправляются. Стереть их можно в настройках браузера.</p>
+ </div></div>
+ <div class="drow"><h3>Кнопка «Вставить»</h3><div>
+  <p>Читает буфер обмена только после вашего нажатия и только чтобы подставить текст в поле. Пока вы не нажали «Проверить», ничего никуда не уходит.</p>
+ </div></div>
+ <div class="drow"><h3>Mini App в Telegram</h3><div>
+  <p>Если сайт открыт внутри Telegram, страница подгружает скрипт <code>telegram-web-app.js</code> с telegram.org: так сайт подстраивает цвет шапки и кнопку «Назад». Данные профиля, которые Telegram может передать мини-приложению, мы не отправляем на сервер и не сохраняем.</p>
+ </div></div>
+</div>
+</section>
+
+<section class="ds" id="bot">
+<h2 class="dh"><span class="dn" aria-hidden="true">04</span>Что обрабатывает бот</h2>
+<p class="dp">Бот работает через Telegram: сообщение приходит на наш сервер (webhook), ответ уходит через Bot API. Подробности команд — <a href="/bot">на странице бота</a>.</p>
+<div class="drows">
+ <div class="drow"><h3>Что бот читает</h3><div>
+  <p>Из каждого сообщения код использует три поля: номер чата, тип чата (личный или нет) и текст. Имя, @username, номер телефона и фото профиля бот не читает и не сохраняет. Тексты сообщений приложение не записывает.</p>
+ </div></div>
+ <div class="drow"><h3>Оценка по ссылке</h3><div>
+  <p>Работает как на сайте: из сообщения берётся номер объявления, страницу загружает сервер. К ответу бот прикладывает первое фото объявления: Telegram сам скачивает его по публичной ссылке с krisha.kz.</p>
+ </div></div>
+ <div class="drow"><h3>Текст без ссылки</h3><div>
+  <p>Сообщение без ссылки, не короче 40 символов, бот принимает за текст объявления. Его начало, до 3000 символов, уходит в Gemini, нейросеть Google, чтобы вытащить площадь, этаж и район. Это работает, только если у оператора подключён ключ Gemini. Сам текст мы не сохраняем.</p>
+  <p class="sub">Не отправляйте боту в таких сообщениях телефоны и другие личные данные.</p>
+ </div></div>
+ <div class="drow"><h3>Подписка на алерты</h3><div>
+  <p>Команда <code>/alerts_on</code> сохраняет номер чата, фильтры (число комнат, максимальный бюджет, район) и дату подписки. По ним раз в день после обновления базы бот присылает новые выгодные объявления.</p>
+ </div></div>
+ <div class="drow"><h3>Слежка за лотами</h3><div>
+  <p>Команда <code>/track</code> сохраняет номер чата и для каждого лота номер, заголовок, дату подключения и цену: после каждого обновления базы цена перезаписывается новой. Не больше 10 лотов на чат. Лот пропадает из слежки после <code>/untrack</code> или когда объявление снято с продажи.</p>
+ </div></div>
+ <div class="drow"><h3>Статистика бота</h3><div>
+  <p>Каждое сообщение боту увеличивает дневной счётчик. Чтобы считать уникальных пользователей, сохраняется короткий хэш номера чата: 10 символов, посчитанных с секретной солью. Без этой соли по хэшу нельзя восстановить номер чата, а в репозитории её нет.</p>
+ </div></div>
+ <div class="drow"><h3>Защита от дублей</h3><div>
+  <p>Telegram иногда присылает одно обновление дважды. Чтобы не отвечать два раза, сервис помнит номера последних 5000 обновлений: только номера, без текста и без чата. Они лежат в базе контейнера.</p>
+ </div></div>
+</div>
+</section>
+
+<section class="ds" id="none">
+<h2 class="dh"><span class="dn" aria-hidden="true">05</span>Чего мы не собираем</h2>
+<p class="dp">Список проверяет тест в репозитории: если на страницах появятся cookie или внешний скрипт, он упадёт.</p>
+<ul class="dlist no">
+ <li><b>Cookie.</b> Сайт их не создаёт и не читает.</li>
+ <li><b>Стороннюю аналитику и рекламу.</b> Нет счётчиков, пикселей, рекламных сетей и виджетов соцсетей. Единственный внешний скрипт — <code>telegram-web-app.js</code>, и только внутри Telegram.</li>
+ <li><b>Внешние шрифты и CDN.</b> Шрифты, стили, скрипты и картинки отдаёт сам сайт.</li>
+ <li><b>Аккаунты и пароли.</b> Регистрации нет. E-mail, телефон и платёжные данные никто не спрашивает.</li>
+ <li><b>Геолокацию, камеру, микрофон и контакты.</b> Сайт этих разрешений не запрашивает.</li>
+ <li><b>Имя и @username в Telegram.</b> Бот их не читает.</li>
+ <li><b>Ваши сообщения боту.</b> Приложение не сохраняет их текст. Единственное место, куда он уходит, — Gemini, когда вы присылаете текст объявления без ссылки (раздел 04).</li>
+</ul>
+</section>
+
+<section class="ds" id="data">
+<h2 class="dh"><span class="dn" aria-hidden="true">06</span>Данные, цели и сроки</h2>
+<p class="dp">Всё, что живёт дольше одного запроса, собрано в таблицу. Остальное лежит в памяти сервера и исчезает при перезапуске.</p>
+<div class="tw"><table class="dt">
+<thead><tr><th scope="col">Данные</th><th scope="col">Зачем</th><th scope="col">Где хранятся</th><th scope="col">Сколько</th></tr></thead>
+<tbody>
+<tr><th scope="row">Номер объявления, его публичная карточка и результат оценки</th><td data-l="Зачем">Оценка по ссылке</td><td data-l="Где хранятся">Память сервера (кэш) и база сервиса в контейнере</td><td class="t" data-l="Сколько">Кэш около 10 минут; база до пересборки контейнера, обычно раз в сутки</td></tr>
+<tr><th scope="row">IP-адрес</th><td data-l="Зачем">Ограничение частоты запросов</td><td data-l="Где хранятся">Память процесса и технический журнал сервера</td><td class="t" data-l="Сколько">До перезапуска контейнера</td></tr>
+<tr><th scope="row">Счётчики визитов, оценок и сообщений боту</th><td data-l="Зачем">Понимать нагрузку, недельная сводка автору</td><td data-l="Где хранятся">Приватный репозиторий: открытый JSON, без IP и без номеров чатов</td><td class="t" data-l="Сколько">60 дней</td></tr>
+<tr><th scope="row">Хэш номера чата</th><td data-l="Зачем">Число уникальных пользователей бота</td><td data-l="Где хранятся">Там же</td><td class="t" data-l="Сколько">60 дней</td></tr>
+<tr><th scope="row">Номер чата и фильтры алертов</th><td data-l="Зачем">Рассылка выгодных объявлений</td><td data-l="Где хранятся">Зашифрованный файл в приватном репозитории, копия в контейнере</td><td class="t" data-l="Сколько">Пока вы не отправите <code>/alerts_off</code></td></tr>
+<tr><th scope="row">Номер чата и лоты в слежке</th><td data-l="Зачем">Уведомления об изменении цены и о снятии</td><td data-l="Где хранятся">Там же</td><td class="t" data-l="Сколько">До <code>/untrack</code> или до снятия объявления с продажи</td></tr>
+<tr><th scope="row">Тема и копия цифр рынка</th><td data-l="Зачем">Оформление и быстрая загрузка</td><td data-l="Где хранятся"><code>localStorage</code> вашего браузера</td><td class="t" data-l="Сколько">Пока вы не очистите данные сайта</td></tr>
+<tr><th scope="row">Журнал оценок<span>необязательный, по умолчанию выключен</span></th><td data-l="Зачем">Проверять качество модели на судьбе лотов</td><td data-l="Где хранятся">Приватный репозиторий: открытый JSON с временем, номером лота, ценами и вердиктом, без данных о человеке</td><td class="t" data-l="Сколько">Последние 20&nbsp;000 записей</td></tr>
+</tbody></table></div>
+</section>
+
+<section class="ds" id="storage">
+<h2 class="dh"><span class="dn" aria-hidden="true">07</span>Где хранятся и кто имеет доступ</h2>
+<div class="flow" role="group" aria-label="Путь данных">
+ <div class="fn"><b>Вы</b><span>Браузер или Telegram: ссылка на объявление, команды бота</span></div>
+ <div class="fa" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+ <div class="fn"><b>Space на Hugging Face</b><span>Оценка, лимит запросов, кэш. Диск стирается при перезапуске</span></div>
+ <div class="fa" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+ <div class="fn priv"><b>Приватный репозиторий GitHub</b><span>Подписки и слежка зашифрованы, счётчики лежат открыто, но без номеров чатов</span></div>
+</div>
+<p class="dnote">Страницу объявления с krisha.kz загружает сервер, а не ваш браузер.</p>
+<div class="drows">
+ <div class="drow"><h3>Сервер</h3><div>
+  <p>Сайт и бот работают в Docker-контейнере на Hugging Face Spaces. Диск контейнера не постоянный: при перезапуске и ежедневной пересборке всё, что приложение записало локально, пропадает. Состояние бота после старта заново забирается из приватного репозитория.</p>
+ </div></div>
+ <div class="drow"><h3>Приватный репозиторий</h3><div>
+  <p>Подписки, слежка и счётчики лежат в приватном репозитории автора на GitHub. Код проекта открыт, этот репозиторий нет. В описаниях коммитов нет ни номеров чатов, ни номеров лотов.</p>
+  <p class="sub">Предыдущие версии файлов остаются в истории репозитория. У файлов с номерами чатов они тоже зашифрованы.</p>
+ </div></div>
+ <div class="drow"><h3>Шифрование</h3><div>
+  <p>Файлы с номерами чатов, то есть подписки и слежка, шифруются целиком до отправки в репозиторий (Fernet, библиотека <code>cryptography</code>). Ключ берётся из секрета на сервере (отдельного или, если его нет, токена бота), в репозитории его нет. Если ключа нет совсем, такой файл в репозиторий не отправляется вообще.</p>
+  <p>Не шифруются файлы без номеров чатов: счётчики (в них только хэши), журнал оценок и список уже разосланных лотов (публичные номера объявлений).</p>
+  <p class="sub">Шифрование закрывает файл от посторонних, но не от оператора: ключ есть у автора и у сервисов, которые рассылают вам сообщения.</p>
+ </div></div>
+ <div class="drow"><h3>Кто имеет доступ</h3><div>
+  <p>Автор проекта: он владеет хостингом и репозиториями. Сервер на Hugging Face читает и записывает состояние по токену, выданному только на репозиторий данных. Рассылку алертов делает GitHub Actions проекта: в момент запуска он скачивает состояние и расшифровывает его, чтобы отправить сообщения.</p>
+  <p>Журнал рассылки в GitHub Actions пишет, сколько подписчиков и сообщений было. Если сообщение по слежке не доставилось (например, вы заблокировали бота), в журнал попадает номер этого чата. Журналы запусков публичного репозитория кода открыты для любого пользователя GitHub.</p>
+  <p>Мы не продаём данные и не отдаём их рекламным и аналитическим сервисам: таких интеграций в коде нет.</p>
+ </div></div>
+</div>
+</section>
+
+<section class="ds" id="third">
+<h2 class="dh"><span class="dn" aria-hidden="true">08</span>Третьи лица</h2>
+<p class="dp">У каждого из этих сервисов свои правила и свои журналы. Мы ими не управляем.</p>
+<div class="drows">
+ <div class="drow"><h3>Telegram</h3><div>
+  <p>Бот живёт внутри Telegram: ваши сообщения проходят через его серверы и подчиняются его политике. Внутри Mini App сайт подгружает скрипт с telegram.org.</p>
+  <p class="sub"><a href="https://telegram.org/privacy" target="_blank" rel="noopener">Политика конфиденциальности Telegram</a></p>
+ </div></div>
+ <div class="drow"><h3>Hugging Face</h3><div>
+  <p>Хостинг сайта и бота. Как у любого хостинга с прокси, запросы к сайту (адреса страниц, IP) проходят через инфраструктуру Hugging Face.</p>
+  <p class="sub"><a href="https://huggingface.co/privacy" target="_blank" rel="noopener">Политика конфиденциальности Hugging Face</a></p>
+ </div></div>
+ <div class="drow"><h3>GitHub</h3><div>
+  <p>Приватный репозиторий с состоянием бота, релизы с базой объявлений и весами модели, GitHub Actions: ежедневный сбор данных и рассылка алертов. Исходный код открыт.</p>
+  <p class="sub"><a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement" target="_blank" rel="noopener">Политика конфиденциальности GitHub</a></p>
+ </div></div>
+ <div class="drow"><h3>Google (Gemini)</h3><div>
+  <p>Только бот и только если подключён ключ: текст объявления, вставленный без ссылки (до 3000 символов), и публичные фото объявлений для оценки ремонта.</p>
+  <p class="sub"><a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Политика конфиденциальности Google</a></p>
+ </div></div>
+ <div class="drow"><h3>krisha.kz</h3><div>
+  <p>Источник публичных данных об объявлениях. Страницы объявлений запрашивает наш сервер, а не ваш браузер, поэтому krisha.kz не получает ваш адрес. Ссылки на объявления в результатах открываются на krisha.kz, там действуют его правила.</p>
+ </div></div>
+</div>
+</section>
+
+<section class="ds" id="delete">
+<h2 class="dh"><span class="dn" aria-hidden="true">09</span>Как удалить данные</h2>
+<p class="dp">Почти всё удаляется одной командой в боте.</p>
+<div class="cmds">
+ <div class="cmd"><span class="k">/alerts_off</span><p>Отписаться от алертов: запись о подписке удаляется.</p></div>
+ <div class="cmd"><span class="k">/untrack ссылка</span><p>Убрать один лот из слежки.</p></div>
+ <div class="cmd"><span class="k">/untrack all</span><p>Очистить слежку целиком.</p></div>
+ <div class="cmd"><span class="k">/track</span><p>Показать лоты, за которыми бот следит. Команда <code>/alerts</code> показывает текущую подписку.</p></div>
+</div>
+<div class="drows">
+ <div class="drow"><h3>Блокировка бота</h3><div>
+  <p>Блокировка не удаляет данные: подписка и слежка остаются в файле, пока вы не отпишетесь. Поэтому сначала отправьте <code>/alerts_off</code> и <code>/untrack all</code>.</p>
+ </div></div>
+ <div class="drow"><h3>Браузер</h3><div>
+  <p>Тему и копию цифр удалит очистка данных сайта в настройках браузера.</p>
+ </div></div>
+ <div class="drow"><h3>Счётчики</h3><div>
+  <p>Счётчики и хэши удаляются сами через 60 дней.</p>
+ </div></div>
+ <div class="drow"><h3>Остальное</h3><div>
+  <p>Чтобы показать, что о вас хранится, или удалить то, чего нет в командах, в том числе старые версии файлов в истории репозитория, напишите автору в Telegram с того же аккаунта. В личных чатах номер чата совпадает с номером пользователя, по нему запись и находится.</p>
+ </div></div>
+</div>
+</section>
+
+<section class="ds" id="changes">
+<h2 class="dh"><span class="dn" aria-hidden="true">10</span>Изменения и контакты</h2>
+<p class="dp">Если политика изменится, например появится новая интеграция или аналитика, страница обновится, а дата редакции сменится. Прошлые редакции остаются в <a href="https://github.com/Dex719/krisha-fair-price/commits/main/static/privacy.html" target="_blank" rel="noopener">истории файла</a> в репозитории проекта.</p>
+<p class="dp sp"><b>Сверить с кодом.</b> Файлы, на которых стоят утверждения выше:</p>
+<div class="cmds">
+ <div class="cmd"><a class="k" href="https://github.com/Dex719/krisha-fair-price/blob/main/src/krisha/subscriptions.py" target="_blank" rel="noopener">subscriptions.py</a><p>Состояние бота, шифрование, запись в приватный репозиторий.</p></div>
+ <div class="cmd"><a class="k" href="https://github.com/Dex719/krisha-fair-price/blob/main/src/krisha/usage.py" target="_blank" rel="noopener">usage.py</a><p>Счётчики, хэш номера чата, срок в 60 дней.</p></div>
+ <div class="cmd"><a class="k" href="https://github.com/Dex719/krisha-fair-price/blob/main/src/krisha/bot.py" target="_blank" rel="noopener">bot.py</a><p>Какие поля сообщения читает бот и какие команды понимает.</p></div>
+ <div class="cmd"><a class="k" href="https://github.com/Dex719/krisha-fair-price/blob/main/src/krisha/text_parse.py" target="_blank" rel="noopener">text_parse.py</a><p>Текст без ссылки: не короче 40 символов, в Gemini уходит не больше 3000.</p></div>
+ <div class="cmd"><a class="k" href="https://github.com/Dex719/krisha-fair-price/blob/main/src/krisha/tracking.py" target="_blank" rel="noopener">tracking.py</a><p>Что хранится при слежке и потолок в 10 лотов на чат.</p></div>
+ <div class="cmd"><a class="k" href="https://github.com/Dex719/krisha-fair-price/blob/main/scripts/send_alerts.py" target="_blank" rel="noopener">send_alerts.py</a><p>Рассылка из GitHub Actions и то, что она пишет в журнал.</p></div>
+ <div class="cmd"><a class="k" href="https://github.com/Dex719/krisha-fair-price/blob/main/src/krisha/api/app.py" target="_blank" rel="noopener">api/app.py</a><p>Лимит запросов по IP, заголовки безопасности, отдача страниц.</p></div>
+ <div class="cmd"><a class="k" href="https://github.com/Dex719/krisha-fair-price/blob/main/src/krisha/prediction_log.py" target="_blank" rel="noopener">prediction_log.py</a><p>Необязательный журнал оценок и его потолок в 20&nbsp;000 записей.</p></div>
+ <div class="cmd"><a class="k" href="https://github.com/Dex719/krisha-fair-price/blob/main/tests/test_state_encryption.py" target="_blank" rel="noopener">test_state_encryption.py</a><p>Тест: файл с номерами чатов не читается без ключа.</p></div>
+</div>
+<div class="contact">
+ <div><h3>Вопрос или просьба удалить данные</h3><p>Пишите автору в Telegram.</p></div>
+ <a class="gobtn" href="https://t.me/Dex719" target="_blank" rel="noopener">Написать @Dex719 <i>→</i></a>
+</div>
+<p class="edition">Редакция от <b>2 октября 2026</b></p>
+</section>
+
+</div>
+</div>
+</div></section>
+
+<section class="next"><div class="wrap">
+<div class="shead"><div class="shl"><h2 class="shttl">Куда дальше</h2><p class="shsub">Правила пользования, как устроен бот и код, по которому можно всё проверить.</p></div></div>
+<div class="ncards">
+<a class="ncard v" href="/terms"><span class="ntop"><span class="nidx">01</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5.5h16.5L37 14v28.5H12Z" stroke-width="2.4"/><path d="M28 5.5V14h9" stroke-width="2.4"/><path d="M18 24h13M18 30h13M18 36h7" stroke-width="2.4"/></svg></span></span><span class="nttl">Условия использования</span><span class="nbot"><span class="nmeta">что сервис обещает<br>и чего не обещает</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard g" href="/bot"><span class="ntop"><span class="nidx">02</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><g transform="scale(2)" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 2.6 10.4 13.6"/><path d="M21.4 2.6 14.5 22.1l-4.1-8.5L2 9.5Z"/></g></svg></span></span><span class="nttl">Telegram-бот</span><span class="nbot"><span class="nmeta">оценка, слежка, алерты<br>команды и примеры</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard w" href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener"><span class="ntop"><span class="nidx">03</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><g transform="scale(2)" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></g></svg></span></span><span class="nttl">Исходный код</span><span class="nbot"><span class="nmeta">открытый репозиторий<br>на GitHub</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+</div>
+</div></section>
 </main>
 <footer><div class="wrap">
 <div class="fgrid">
  <div>
   <a class="flogo" href="/" aria-label="baǵam — на главную">baǵam<span>.</span></a>
   <p class="ftag">Считаем справедливую цену квартиры в Алматы по объявлению с krisha.kz — за секунду и бесплатно.</p>
-  <div class="fchips"><span class="fchip"><b data-l="total">21 113</b> активных лотов</span><span class="fchip">ошибка <b data-l="mape">7,3%</b></span><span class="fchip"><b data-l="age">обновление ежедневно</b></span></div>
+  <div class="fchips"><span class="fchip"><b data-l="total">21 113</b> активных лотов</span><span class="fchip">ошибка <b data-l="mape">7,6%</b></span><span class="fchip"><b data-l="age">обновление ежедневно</b></span></div>
  </div>
  <div>
   <div class="fh">Продукт</div>
@@ -242,7 +607,7 @@ html.lite .sk{animation:none}
  <div>
   <div class="fh">Документы</div>
   <div class="flinks">
-   <a class="flink" href="#">Конфиденциальность</a>
+   <a class="flink" href="/privacy" aria-current="page">Конфиденциальность</a>
    <a class="flink" href="/terms">Условия использования</a>
   </div>
   <p class="fnote">Оценка справочная и не является офертой. Средняя ошибка модели продажи <b data-l="mape">7,6%</b>, аренды — <b data-l="rmape">~11%</b>.</p>
@@ -380,24 +745,80 @@ bagamTG(function(tg){
 </script>
 
 <script>
-/* документ: печать и подсветка текущего раздела в оглавлении */
+/* ---------- содержание: на широком экране открыто всегда, на узком сворачивается; подсветка текущего раздела ---------- */
 (function(){
-  var pb=document.querySelector('[data-print]');
-  if(pb) pb.addEventListener('click',function(){window.print();});
-  var ft=document.querySelector('.ftop');
-  if(ft) ft.addEventListener('click',function(e){e.preventDefault();scrollTo({top:0,behavior:'smooth'});});
-  var links=[].slice.call(document.querySelectorAll('.ltoc a'));
-  if(!links.length||!('IntersectionObserver' in window)) return;
-  var byId={};links.forEach(function(a){byId[a.getAttribute('href').slice(1)]=a;});
-  var io=new IntersectionObserver(function(es){
-    es.forEach(function(e){
-      if(!e.isIntersecting) return;
-      links.forEach(function(a){a.classList.remove('on');a.removeAttribute('aria-current');});
-      var a=byId[e.target.id]; if(a){a.classList.add('on');a.setAttribute('aria-current','true');}
-    });
-  },{rootMargin:'-20% 0px -70% 0px'});
-  document.querySelectorAll('.ls').forEach(function(s){io.observe(s);});
+  var toc=document.getElementById('toc');
+  if(!toc)return;
+  var mq=matchMedia('(min-width:981px)'),root=document.documentElement;
+  function sync(){root.classList.toggle('toc-on',mq.matches);toc.open=mq.matches;}
+  sync();
+  if(mq.addEventListener)mq.addEventListener('change',sync);else if(mq.addListener)mq.addListener(sync);
+  /* переход по якорю на узком экране закрывает список, чтобы не мешал тексту */
+  toc.addEventListener('click',function(e){
+    if(!mq.matches&&e.target.closest&&e.target.closest('a'))setTimeout(function(){toc.open=false;},0);
+  });
+  var links=[].slice.call(toc.querySelectorAll('a[href^="#"]')),
+      secs=links.map(function(a){return document.getElementById(a.getAttribute('href').slice(1));}),
+      busy=false;
+  function spy(){
+    busy=false;
+    var line=Math.min(innerHeight*.28,280),cur=null;
+    secs.forEach(function(s,i){if(s&&s.getBoundingClientRect().top<=line)cur=links[i];});
+    links.forEach(function(a){if(a===cur)a.setAttribute('aria-current','true');else a.removeAttribute('aria-current');});
+  }
+  addEventListener('scroll',function(){if(!busy){busy=true;requestAnimationFrame(spy);}},{passive:true});
+  addEventListener('resize',spy);
+  spy();
 })();
+</script>
+<script>
+bagamBoot(function(){
+const staticMode = matchMedia('(prefers-reduced-motion: reduce)').matches || !window.gsap;
+if(!staticMode){
+  gsap.registerPlugin(ScrollTrigger);
+  const prog=document.getElementById('prog');
+  addEventListener('scroll',()=>{const h=document.body.scrollHeight-innerHeight;
+    if(prog&&h>0)prog.style.width=(scrollY/h*100)+'%';},{passive:true});
+  const from=(sel,vars,trigger,start)=>{
+    if(!document.querySelector(sel))return;
+    if(trigger)vars.scrollTrigger={trigger:trigger,start:start||'top 88%',once:true};
+    gsap.from(sel,vars);
+  };
+  from('.phero h1',{y:60,opacity:0,duration:1,ease:'expo.out',clearProps:'transform'});
+  from('.phrow',{y:26,opacity:0,duration:.9,delay:.25,ease:'expo.out',clearProps:'transform'});
+  from('.kpi',{y:26,opacity:0,duration:.7,stagger:.08,ease:'expo.out',clearProps:'transform'},'.kpis');
+  from('.fn',{y:22,opacity:0,duration:.7,stagger:.1,ease:'expo.out',clearProps:'transform'},'.flow');
+  from('.ncard',{y:26,opacity:0,duration:.75,stagger:.08,ease:'expo.out',clearProps:'transform'},'.ncards','top 85%');
+  from('.fgrid > div',{y:24,opacity:0,duration:.7,stagger:.09,ease:'expo.out',clearProps:'transform'},'footer');
+  if(matchMedia('(pointer:fine)').matches){
+    document.querySelectorAll('.gobtn').forEach(btn=>{
+      const clamp=v=>Math.max(-7,Math.min(7,v));
+      btn.addEventListener('mouseenter',()=>gsap.to(btn,{scale:1.04,duration:.35,ease:'power2.out'}));
+      btn.addEventListener('mousemove',e=>{const r=btn.getBoundingClientRect();
+        gsap.to(btn,{x:clamp((e.clientX-r.left-r.width/2)*.14),y:clamp((e.clientY-r.top-r.height/2)*.16),duration:.45,ease:'power3.out',overwrite:'auto'});});
+      btn.addEventListener('mouseleave',()=>gsap.to(btn,{x:0,y:0,scale:1,duration:.5,ease:'power3.out',overwrite:'auto'}));
+    });
+  }
+}
+const ft=document.querySelector('.ftop');
+if(ft) ft.addEventListener('click',e=>{e.preventDefault();scrollTo({top:0,behavior:'smooth'})});
+
+/* форма на подстранице уводит разбор на главную */
+document.querySelectorAll('form[data-jump]').forEach(f=>{
+  const inp=f.querySelector('input'), err=f.parentElement.querySelector('[data-err]'), paste=f.querySelector('[data-paste]');
+  if(paste){
+    if(!navigator.clipboard||!navigator.clipboard.readText) paste.remove();
+    else paste.addEventListener('click',async()=>{try{const t=(await navigator.clipboard.readText()||'').trim();
+      if(t){inp.value=t;err.classList.remove('on');inp.removeAttribute('aria-invalid');} inp.focus();}catch(e){inp.focus();}});
+  }
+  inp.addEventListener('input',()=>{err.classList.remove('on');inp.removeAttribute('aria-invalid');});
+  f.addEventListener('submit',e=>{e.preventDefault();
+    const m=inp.value.trim().match(/krisha\.kz\/a\/show\/(\d+)/i);
+    if(!m){inp.setAttribute('aria-invalid','true');err.textContent='Нужна ссылка на объявление вида krisha.kz/a/show/1012607661';err.classList.add('on');inp.focus();return;}
+    location.href='/#check=' + m[1];
+  });
+});
+});
 </script>
 <script>
 /* ---------- устойчивость к медленной сети ---------- */

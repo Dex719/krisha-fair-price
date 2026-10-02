@@ -52,12 +52,12 @@ def test_terms_has_single_h1_and_toc_matches_sections():
     html = _terms()
 
     assert len(re.findall(r"<h1[\s>]", html)) == 1
-    toc = re.findall(r'<aside class="ltoc".*?</ol>', html, flags=re.S)
+    toc = re.findall(r'<div class="tocnav".*?</ol>', html, flags=re.S)
     assert toc, "нет оглавления"
     anchors = re.findall(r'href="#([a-z-]+)"', toc[0])
     assert len(anchors) >= 10
     for anchor in anchors:
-        assert f'<section class="ls" id="{anchor}"' in html, f"в оглавлении есть #{anchor}, а раздела нет"
+        assert f'<section class="ds" id="{anchor}"' in html, f"в оглавлении есть #{anchor}, а раздела нет"
         assert f'id="h-{anchor}"' in html
     # оглавление не должно быть элементом <nav>: у него в design.css фиксированная шапка
     assert "<nav" not in toc[0]
@@ -97,14 +97,14 @@ def test_terms_states_reference_nature_of_estimate():
     html = _terms()
 
     for phrase in (
-        "публичной офертой",
-        "отчётом об оценке",
+        "Публичной офертой",
+        "лицензированного оценщика",
         "Доходность валовая",
-        "налоги, простои",
+        "Налоги, простои",
     ):
         assert phrase in html, f"нет формулировки: {phrase}"
     # «если сдавать» описана как прогноз, а не обещание дохода
-    assert "а не обещанием дохода" in html
+    assert "не обещание дохода" in html
 
 
 def test_terms_rate_limit_statement_matches_code():
@@ -135,7 +135,7 @@ def test_terms_links_between_documents_and_footer():
 
     assert 'href="/privacy"' in html
     assert 'href="/about"' in html
-    assert '<a href="#" aria-current="page">Условия использования</a>' in html  # текущий документ в переключателе
+    assert 'href="/terms" aria-current="page"' in html  # подвал: текущий документ
 
 
 def test_terms_has_no_external_cdn_or_fonts():

@@ -68,7 +68,148 @@ unicode-range:U+0020,U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1;}
 </style>
 <link rel="stylesheet" href="/static/design.css">
 <style>
-/* документ: общие стили .lhead/.lmeta/.ltoc/.ldoc — в design.css */
+/* Условия использования: страница-документ. Шапка секции «Куда дальше» (.shead), карточки (.ncards) и подвал берутся из design.css.
+   Тексты акцентного цвета — через --limeink/--violink: сырой --lime/--vio в светлой теме не дотягивает до контраста. */
+.phero{padding:164px 0 0}
+.phero h1{font-family:Unbounded,UnboundedFB,sans-serif;font-weight:700;font-size:clamp(32px,8.4vw,96px);letter-spacing:-.04em;line-height:1.02;text-wrap:balance}
+.phero h1 em{font-style:normal;color:var(--limeink)}
+.phrow{display:flex;justify-content:space-between;align-items:flex-end;gap:24px 40px;flex-wrap:wrap;margin-top:40px}
+.plede{max-width:580px;font-size:17.5px;line-height:1.6;color:var(--dim);text-wrap:pretty}
+.plede b{color:var(--ink);font-weight:600}
+.pupd{display:inline-flex;align-items:center;gap:9px;padding:9px 14px;border:1px solid var(--line);border-radius:var(--r1);background:var(--panel);box-shadow:var(--sh1);font-size:13.5px;line-height:1.3;color:var(--dim);white-space:nowrap}
+.pupd b{font-family:'Data','JetBrains Mono',DataFB,monospace;font-weight:600;color:var(--limeink)}
+.sect{padding:88px 0 0}
+.phero+.sect{padding-top:64px}
+
+/* общий цвет длинного текста: между --ink и фоном, держит контраст в обеих темах */
+.tkey,.dbody{--tx:color-mix(in srgb,var(--ink) 80%,var(--bg))}
+
+/* «В двух словах»: одна панель, ячейки разделены линией в 1px */
+.tkey{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr) minmax(0,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r3);overflow:hidden;box-shadow:var(--sh1)}
+.tk{background:var(--panel);padding:30px 30px 32px;min-width:0}
+.tk h2{font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:22px;letter-spacing:-.025em;line-height:1.2;margin:0 0 16px}
+.tk .rl{display:block;font-size:13.5px;line-height:1.4;color:var(--dim)}
+.tk .kpi{display:block;margin-top:14px;font-family:Unbounded,UnboundedFB,sans-serif;font-weight:700;font-size:clamp(32px,3.8vw,52px);letter-spacing:-.035em;line-height:1.05;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tk .kpi.acc{color:var(--limeink)}
+.tk .s{display:block;margin-top:10px;font-size:13.5px;line-height:1.5;color:var(--dim)}
+
+/* документ: слева оглавление, справа текст */
+.doc{display:grid;grid-template-columns:248px minmax(0,1fr);gap:72px;align-items:start}
+.toc{position:sticky;top:104px;max-height:calc(100vh - 128px);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.toc summary{display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none;font-size:13.5px;font-weight:600;color:var(--dim);padding:0 0 14px;cursor:default}
+.toc summary::-webkit-details-marker{display:none}
+.toc summary i{display:none;width:9px;height:9px;border-right:2px solid var(--dim);border-bottom:2px solid var(--dim);transform:rotate(45deg) translate(-2px,-2px);transition:transform .3s ease}
+.toc ol{list-style:none;counter-reset:t;border-left:1px solid var(--line)}
+.toc a{display:flex;gap:12px;align-items:baseline;margin-left:-1px;padding:7px 0 7px 16px;border-left:2px solid transparent;font-size:14.5px;line-height:1.35;font-weight:500;color:var(--dim);text-decoration:none;transition:color .2s,border-color .2s}
+.toc a::before{counter-increment:t;content:counter(t,decimal-leading-zero);flex:none;width:19px;font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:12px;font-weight:500;color:var(--dim)}
+.toc a:hover{color:var(--ink)}
+.toc a[aria-current=true]{color:var(--ink);border-left-color:var(--limeink)}
+.toc a:focus-visible{outline-offset:-2px}
+
+.dbody{counter-reset:s;max-width:880px;min-width:0}
+.ds{padding-top:52px;margin-top:52px;border-top:1px solid var(--line)}
+.ds:first-child{padding-top:0;margin-top:0;border-top:0}
+.dh{font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:clamp(25px,2.7vw,34px);letter-spacing:-.032em;line-height:1.12;text-wrap:balance;margin:0 0 22px}
+.dh::before{counter-increment:s;content:counter(s,decimal-leading-zero);display:block;margin-bottom:12px;font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:13px;font-weight:500;letter-spacing:0;color:var(--dim)}
+.ds p{max-width:68ch;margin:0 0 16px;font-size:16.5px;line-height:1.72;color:var(--tx);text-wrap:pretty}
+.ds p:last-child{margin-bottom:0}
+.ds b{font-weight:600;color:var(--ink)}
+.ds a{color:var(--limeink);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;transition:color .2s}
+.ds a:hover{color:var(--ink)}
+.ds code,.tk code{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:.88em;font-weight:500;color:var(--limeink);background:var(--soft);border-radius:6px;padding:2px 6px;white-space:nowrap}
+
+/* списки с короткой чёрточкой вместо маркера */
+.dul{list-style:none;margin:0 0 16px;max-width:68ch}
+.dul li{position:relative;padding-left:24px;margin:0 0 11px;font-size:16.5px;line-height:1.68;color:var(--tx);text-wrap:pretty}
+.dul li:last-child{margin-bottom:0}
+.dul li::before{content:"";position:absolute;left:2px;top:.8em;width:9px;height:2px;border-radius:2px;background:var(--limeink)}
+.tk .dul{margin:0}
+.tk .dul li{font-size:15.5px;line-height:1.6;color:var(--tx)}
+
+/* «это / это не»: две ячейки одной панели */
+.isnt{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r3);overflow:hidden;box-shadow:var(--sh1);margin:26px 0}
+.isnt>div{background:var(--panel);padding:26px 26px 28px}
+.isnt h3{display:flex;align-items:center;gap:10px;margin:0 0 18px;font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:19px;letter-spacing:-.02em;line-height:1.25}
+.isnt h3::before{content:"";flex:none;width:9px;height:9px;border-radius:50%;background:var(--limeink)}
+.isnt .no h3::before,.isnt .no .dul li::before{background:var(--violink)}
+.isnt .dul li{font-size:15.5px;line-height:1.6}
+
+/* заметка: единственный тонированный блок текста */
+.note{margin:26px 0;padding:20px 24px;background:var(--goldbg);border:1px solid var(--goldbd);border-radius:var(--r2)}
+.note .k{display:block;margin-bottom:6px;font-size:13.5px;font-weight:600;color:var(--violink)}
+.ds .note p{max-width:none;margin:0;font-size:15.5px;line-height:1.65}
+
+/* ограничения: строки через линию, заголовок слева, пояснение справа */
+.lrows{margin:24px 0 0;border-top:1px solid var(--line)}
+.lr{display:grid;grid-template-columns:minmax(0,230px) minmax(0,1fr);gap:8px 36px;padding:22px 0 24px;border-bottom:1px solid var(--line)}
+.lr h3{margin:0;font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:18px;letter-spacing:-.02em;line-height:1.3}
+.ds .lr p{max-width:58ch;margin:0;font-size:15.5px;line-height:1.65}
+
+/* команды бота: панель со строками «что — что делает» */
+.cmds{margin:24px 0;border:1px solid var(--line);border-radius:var(--r3);background:var(--panel);box-shadow:var(--sh1);overflow:hidden}
+.cmd{display:grid;grid-template-columns:minmax(0,270px) minmax(0,1fr);gap:6px 28px;align-items:baseline;padding:17px 24px;border-top:1px solid var(--line)}
+.cmd:first-child{border-top:0}
+.cmd dt{min-width:0}
+.cmd dt code{white-space:normal;overflow-wrap:anywhere}
+.cmd dt .pl{font-size:15px;font-weight:600;color:var(--ink)}
+.cmd dd{font-size:15px;line-height:1.6;color:var(--tx)}
+
+/* контакты */
+.cont{margin:24px 0 0;border:1px solid var(--line);border-radius:var(--r3);background:var(--panel);box-shadow:var(--sh1);overflow:hidden}
+.ds a.crow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 24px;align-items:center;padding:19px 24px;border-top:1px solid var(--line);color:var(--ink);text-decoration:none;transition:background-color .25s}
+.ds a.crow:first-child{border-top:0}
+.ds a.crow:hover{background:var(--hover);color:var(--ink)}
+.crow .cn{display:block;min-width:0}
+.crow .cn b{display:block;font-size:17px;letter-spacing:-.015em}
+.crow .cn small{display:block;margin-top:3px;font-size:14.5px;line-height:1.5;color:var(--dim)}
+.crow .cv{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:13.5px;font-weight:600;color:var(--limeink);white-space:nowrap}
+
+.next{padding-top:104px}
+
+@media(max-width:1080px){
+ .doc{grid-template-columns:216px minmax(0,1fr);gap:48px}
+}
+@media(max-width:980px){
+ .doc{grid-template-columns:minmax(0,1fr);gap:36px}
+ .toc{position:static;max-height:none;overflow:visible;border:1px solid var(--line);border-radius:var(--r2);background:var(--panel);box-shadow:var(--sh1);padding:6px 20px}
+ .toc summary{padding:14px 0;cursor:pointer}
+ .toc summary i{display:block}
+ .toc[open] summary i{transform:rotate(225deg) translate(-2px,-2px)}
+ .toc[open] summary{border-bottom:1px solid var(--line);margin-bottom:8px}
+ .toc ol{border-left:0;columns:2;column-gap:28px;padding-bottom:10px}
+ .toc li{break-inside:avoid}
+ .toc a{margin-left:0;padding:7px 0;border-left:0}
+ .toc a[aria-current=true]{color:var(--limeink)}
+}
+@media(max-width:820px){
+ .phero{padding-top:124px}
+ .phrow{margin-top:28px}
+ .sect{padding-top:68px}
+ .phero+.sect{padding-top:48px}
+ .tkey{grid-template-columns:1fr 1fr}
+ .tk{padding:26px 22px 28px}
+ .tk-lead{grid-column:1/-1}
+ .ds{padding-top:40px;margin-top:40px}
+ .next{padding-top:72px}
+}
+@media(max-width:700px){
+ .isnt{grid-template-columns:1fr}
+ .isnt>div{padding:24px 22px 26px}
+ .lr{grid-template-columns:minmax(0,1fr);gap:6px;padding:20px 0 22px}
+ .cmd{grid-template-columns:minmax(0,1fr);gap:4px;padding:16px 20px}
+ .toc ol{columns:1}
+}
+@media(max-width:560px){
+ .tk .mr{display:none}
+ .ds p,.dul li{font-size:16px}
+ .ds a.crow{grid-template-columns:minmax(0,1fr);gap:8px;padding:18px 20px}
+ .note{padding:18px 20px}
+}
+@media(max-width:420px){
+ .tk .kpi{font-size:30px}
+ .tk{padding:22px 18px 24px}
+}
+
 /* ---------- скорость: вход героя без JS ---------- */
 @keyframes bgmup{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 html.anim h1 span{animation:bgmup .85s cubic-bezier(.16,1,.3,1) both}
@@ -161,69 +302,202 @@ html.lite .sk{animation:none}
 })();
 </script>
 <main id="main">
-<header class="lhead"><div class="wrap">
-<p class="lcrumb"><a href="/">baǵam</a><span aria-hidden="true">/</span><span>Документы</span></p>
-<h1 class="lh1">Условия использования</h1>
-<p class="lsub">Правила использования сайта и Telegram-бота baǵam.</p>
-<dl class="lmeta">
-<div><dt>Редакция</dt><dd>от <time datetime="2026-10-02">2 октября 2026 г.</time></dd></div>
-<div><dt>Оператор</dt><dd>автор проекта baǵam, Telegram <a href="https://t.me/Dex719" target="_blank" rel="noopener">@Dex719</a></dd></div>
-<div><dt>Распространяется на</dt><dd>сайт dex719-krisha-fair-price.hf.space и Telegram-бот <a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">@fairprice_kzbot</a></dd></div>
-</dl>
-<div class="ltabs"><a href="/privacy">Политика конфиденциальности</a><a href="#" aria-current="page">Условия использования</a><button class="lprint" type="button" data-print><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg>Распечатать</button></div>
-</div></header>
-<div class="wrap lbody">
-<aside class="ltoc" aria-label="Содержание"><p class="ltoct">Содержание</p><ol><li><a href="#general">Общие положения</a></li><li><a href="#terms-defs">Термины и определения</a></li><li><a href="#service">Описание Сервиса</a></li><li><a href="#nature">Справочный характер информации</a></li><li><a href="#source">Источник данных</a></li><li><a href="#limits">Ограничения Сервиса</a></li><li><a href="#rules">Правила использования</a></li><li><a href="#bot">Telegram-бот</a></li><li><a href="#availability">Доступность Сервиса</a></li><li><a href="#ip">Интеллектуальная собственность</a></li><li><a href="#liability">Ограничение ответственности</a></li><li><a href="#changes">Изменение Условий</a></li><li><a href="#contacts">Контакты</a></li></ol></aside>
-<article class="ldoc">
-<section class="ls" id="general" aria-labelledby="h-general"><h2 id="h-general">Общие положения</h2>
-<ol class="cl"><li>Настоящие Условия использования (далее — Условия) определяют порядок использования сайта https://dex719-krisha-fair-price.hf.space (далее — Сайт) и Telegram-бота <a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">@fairprice_kzbot</a> (далее — Бот), вместе именуемых сервис baǵam (далее — Сервис).</li><li>Сервис предоставляет автор проекта baǵam (далее — Оператор). Обращения принимаются в Telegram: <a href="https://t.me/Dex719" target="_blank" rel="noopener">@Dex719</a>. Сервис является некоммерческим, предоставляется бесплатно и не требует регистрации.</li><li>Начиная использовать Сервис, Пользователь подтверждает, что ознакомился с Условиями и принимает их. Если Пользователь не согласен с Условиями, он должен прекратить использование Сервиса.</li><li>Порядок обработки данных Пользователей установлен <a href="/privacy">Политикой конфиденциальности</a>, которая является неотъемлемой частью Условий.</li></ol>
-</section>
-<section class="ls" id="terms-defs" aria-labelledby="h-terms-defs"><h2 id="h-terms-defs">Термины и определения</h2>
-<ol class="cl"><li><b>Объявление</b> — публичное объявление о продаже или аренде квартиры, размещённое на krisha.kz.</li><li><b>Оценка</b> — расчётная справедливая цена продажи (₸) или аренды (₸ в месяц) квартиры, полученная статистической моделью по данным Объявления и рынка.</li><li><b>Диапазон</b> — интервал, в котором по расчёту модели находится справедливая цена.</li><li><b>Вердикт</b> — результат сравнения цены Объявления с Оценкой: «выгодно», «в рынке» или «переплата».</li><li><b>Доходность</b> — валовая годовая доходность сдачи квартиры в аренду: двенадцать расчётных месячных арендных платежей, делённые на цену покупки.</li></ol>
-</section>
-<section class="ls" id="service" aria-labelledby="h-service"><h2 id="h-service">Описание Сервиса</h2>
-<ol class="cl"><li>Сервис позволяет:<ol class="sub"><li>получить Оценку, Диапазон и Вердикт по ссылке на Объявление о продаже или аренде квартиры в Алматы;</li><li>увидеть факторы, повлиявшие на Оценку, историю цены Объявления и похожие Объявления;</li><li>для Объявлений о продаже — узнать расчётную арендную плату, Доходность и срок окупаемости;</li><li>просматривать статистику рынка продажи (<a href="/stats">«Рынок»</a>) и аренды (<a href="/rent">«Аренда»</a>);</li><li>через Бота — получать Оценку по ссылке или тексту Объявления, отслеживать цену Объявлений и получать уведомления о новых выгодных Объявлениях по заданному фильтру.</li></ol></li><li>Данные Объявлений обновляются ежедневно, модели переобучаются еженедельно. Методика расчёта описана на странице <a href="/about">«О проекте»</a>.</li></ol>
-</section>
-<section class="ls" id="nature" aria-labelledby="h-nature"><h2 id="h-nature">Справочный характер информации</h2>
-<ol class="cl"><li>Оценка, Диапазон, Вердикт и Доходность носят справочный характер и являются результатом автоматического статистического расчёта.</li><li>Информация Сервиса не является:<ol class="sub"><li>публичной офертой;</li><li>отчётом об оценке, составленным оценщиком в соответствии с законодательством об оценочной деятельности;</li><li>инвестиционной, юридической, налоговой или иной профессиональной рекомендацией;</li><li>гарантией цены сделки или дохода.</li></ol></li><li>Средняя ошибка модели на отложенной выборке составляет <b data-l="mape">7,6%</b> для продажи и <b data-l="rmape">11,0%</b> для аренды. Ошибка по отдельному Объявлению может быть больше средней. Актуальные значения показателей отображаются на страницах Сайта.</li><li>Доходность валовая: налоги, простои между арендаторами, расходы на ремонт и содержание квартиры не учитываются. Доходность является прогнозом, а не обещанием дохода.</li><li>Решения о покупке, продаже и аренде, а также об условиях сделки Пользователь принимает самостоятельно и на свой риск. Перед сделкой рекомендуется осмотреть квартиру и проверить правоустанавливающие документы.</li></ol>
-</section>
-<section class="ls" id="source" aria-labelledby="h-source"><h2 id="h-source">Источник данных</h2>
-<ol class="cl"><li>Сервис использует публичные данные Объявлений, размещённых на krisha.kz. Сервис является независимым проектом и не связан с владельцем krisha.kz.</li><li>Данные Объявлений могут быть неполными, неточными или устаревшими. Оператор не отвечает за их достоверность.</li><li>Модель не учитывает сведения, отсутствующие в Объявлении: фактическое состояние квартиры, если оно не описано, юридический статус объекта, обременения и условия конкретной сделки.</li></ol>
-</section>
-<section class="ls" id="limits" aria-labelledby="h-limits"><h2 id="h-limits">Ограничения Сервиса</h2>
-<ol class="cl"><li>Точность Оценки снижается для новостроек и объектов с малым числом сопоставимых Объявлений, а также для нестандартных объектов.</li><li>Для Объявлений о сдаче комнаты или о подселении Вердикт не выносится: цена в таком Объявлении относится к месту или комнате, а Оценка рассчитывается для квартиры целиком.</li><li>Для Объявлений без указанной цены отображается только Оценка.</li></ol>
-</section>
-<section class="ls" id="rules" aria-labelledby="h-rules"><h2 id="h-rules">Правила использования</h2>
-<ol class="cl"><li>Пользователь обязуется не:<ol class="sub"><li>направлять автоматизированные запросы в объёме, создающем нагрузку на Сервис, и не обходить ограничения частоты запросов;</li><li>предпринимать попытки нарушить работу Сервиса или получить несанкционированный доступ к нему;</li><li>выдавать результаты Сервиса за официальную оценку имущества;</li><li>использовать Сервис в противоправных целях.</li></ol></li><li>Для защиты от перегрузки Сервис ограничивает частоту запросов на оценку: до 15 запросов в минуту с одного IP-адреса. При превышении ограничения Сервис отвечает кодом 429 и временно не выполняет запросы.</li><li>Оператор вправе ограничить доступ к Сервису при нарушении Условий.</li></ol>
-</section>
-<section class="ls" id="bot" aria-labelledby="h-bot"><h2 id="h-bot">Telegram-бот</h2>
-<ol class="cl"><li>Использование Бота также регулируется правилами Telegram.</li><li>Пользователь управляет подпиской на уведомления командами <code>/alerts_on</code> и <code>/alerts_off</code>, а отслеживанием Объявлений — командами <code>/track</code>, <code>/untrack</code> и <code>/untrack all</code>. Одновременно отслеживается не более 10 Объявлений на один чат.</li><li>Объявление исключается из отслеживания после снятия с публикации на krisha.kz.</li></ol>
-</section>
-<section class="ls" id="availability" aria-labelledby="h-availability"><h2 id="h-availability">Доступность Сервиса</h2>
-<ol class="cl"><li>Сервис предоставляется по принципу «как есть». Оператор не гарантирует бесперебойную и безошибочную работу Сервиса, его постоянную доступность и соответствие ожиданиям Пользователя.</li><li>Сервис может быть временно недоступен из-за обновлений, технических работ, ограничений хостинга или недоступности внешних источников данных.</li><li>Оператор вправе изменять функциональность Сервиса и прекращать его работу без предварительного уведомления.</li></ol>
-</section>
-<section class="ls" id="ip" aria-labelledby="h-ip"><h2 id="h-ip">Интеллектуальная собственность</h2>
-<ol class="cl"><li>Исходный код Сервиса опубликован на GitHub (<a href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener">github.com/Dex719/krisha-fair-price</a>) и распространяется на условиях лицензии Elastic License 2.0. Использование кода допускается в пределах этой лицензии.</li><li>Права на содержание Объявлений принадлежат их правообладателям.</li></ol>
-</section>
-<section class="ls" id="liability" aria-labelledby="h-liability"><h2 id="h-liability">Ограничение ответственности</h2>
-<ol class="cl"><li>В пределах, допустимых применимым законодательством, Оператор не несёт ответственности за убытки, упущенную выгоду и иные последствия решений, принятых Пользователем на основании информации Сервиса, а также за временную недоступность Сервиса и неточность данных внешних источников.</li></ol>
-</section>
-<section class="ls" id="changes" aria-labelledby="h-changes"><h2 id="h-changes">Изменение Условий</h2>
-<ol class="cl"><li>Оператор вправе изменять Условия. Новая редакция вступает в силу с момента публикации на этой странице; дата действующей редакции указана в начале документа.</li><li>Продолжение использования Сервиса после публикации новой редакции означает согласие Пользователя с ней.</li><li>Предыдущие редакции доступны в истории файла в репозитории проекта (<a href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener">github.com/Dex719/krisha-fair-price</a>).</li></ol>
-</section>
-<section class="ls" id="contacts" aria-labelledby="h-contacts"><h2 id="h-contacts">Контакты</h2>
-<ol class="cl"><li>Вопросы и обращения направляются Оператору в Telegram: <a href="https://t.me/Dex719" target="_blank" rel="noopener">@Dex719</a>. Telegram-бот Сервиса: <a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">@fairprice_kzbot</a>.</li></ol>
-</section>
-<p class="lend">Редакция от <time datetime="2026-10-02">2 октября 2026 г.</time> Предыдущие редакции — в истории файла в репозитории проекта. Связанные документы: <a href="/privacy">Политика конфиденциальности</a>, <a href="/about">о проекте и методике</a>.</p>
-</article>
+<section class="phero"><div class="wrap">
+<h1>Условия <em>использования</em></h1>
+<div class="phrow">
+ <p class="plede">Правила, по которым работают сайт baǵam и Telegram-бот <b>@fairprice_kzbot</b>. Если коротко: оценка справочная, сервис бесплатный и без гарантий, исходный код опубликован.</p>
+ <span class="pupd">редакция от <b><time datetime="2026-10-02">2 октября 2026</time></b></span>
 </div>
+</div></section>
+
+<section class="sect"><div class="wrap">
+<div class="tkey">
+ <div class="tk tk-lead">
+  <h2>В двух словах</h2>
+  <ul class="dul">
+   <li><b>Оценка — ориентир</b> для торга и быстрой проверки объявления. Это не оферта, не отчёт оценщика и не совет купить, продать или сдать квартиру.</li>
+   <li><b>Данные — открытые объявления krisha.kz.</b> Они бывают неточными и устаревшими, а саму квартиру изнутри модель не видит.</li>
+   <li><b>Сервис бесплатный и работает «как есть»:</b> он может быть недоступен, а число запросов ограничено.</li>
+  </ul>
+ </div>
+ <div class="tk"><span class="rl">Средняя ошибка модели продажи</span><b class="kpi acc" data-l="mape">7,6%</b><span class="s">MAPE на объявлениях, которых модель не видела при обучении.<span class="mr"> На отдельной квартире ошибка может быть заметно больше.</span></span></div>
+ <div class="tk"><span class="rl">Средняя ошибка модели аренды</span><b class="kpi" data-l="rmape">11%</b><span class="s">MAPE на объявлениях, которых модель не видела при обучении.<span class="mr"> Аренда считается грубее: в объявлениях нет года и типа дома.</span></span></div>
+</div>
+</div></section>
+
+<section class="sect"><div class="wrap">
+<div class="doc">
+
+<details class="toc" open>
+<summary>Содержание<i aria-hidden="true"></i></summary>
+<div class="tocnav" role="navigation" aria-label="Содержание условий"><ol>
+ <li><a href="#service">Что это за сервис</a></li>
+ <li><a href="#reference">Оценка — справочная</a></li>
+ <li><a href="#yield">Доходность «если сдавать»</a></li>
+ <li><a href="#data">Источник данных</a></li>
+ <li><a href="#limits">Ограничения оценки</a></li>
+ <li><a href="#availability">Доступность и лимиты</a></li>
+ <li><a href="#fair-use">Добросовестное использование</a></li>
+ <li><a href="#license">Исходный код и лицензия</a></li>
+ <li><a href="#bot">Telegram-бот</a></li>
+ <li><a href="#liability">Ответственность</a></li>
+ <li><a href="#changes">Изменения условий</a></li>
+ <li><a href="#contacts">Контакты</a></li>
+</ol></div>
+</details>
+
+<div class="dbody">
+
+<section class="ds" id="service" aria-labelledby="h-service">
+<h2 class="dh" id="h-service">Что это за сервис</h2>
+<p><b>baǵam</b> — бесплатный сайт и Telegram-бот <a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">@fairprice_kzbot</a>. Они сравнивают цену квартиры в Алматы из объявления на krisha.kz с оценкой модели. Достаточно прислать ссылку на объявление о продаже или об аренде: тип сделки сервис определяет сам.</p>
+<p>В ответ вы получаете справедливую цену (для аренды — справедливую аренду в <span class="nw">₸/мес</span>), интервал, вердикт, например «выгодно» или «переплата», и главные факторы, из которых сложилась цифра. Отдельные страницы показывают рынок продажи и аренды по районам. Бот ещё следит за ценой выбранных объявлений и присылает алерты о новых выгодных.</p>
+<p>baǵam — независимый проект его автора. Он не принадлежит krisha.kz, не связан с ней и не выступает от её имени: krisha.kz здесь только источник открытых объявлений.</p>
+<p>Пользуясь сайтом или ботом, вы принимаете эти условия. Если вы с ними не согласны, просто не пользуйтесь сервисом.</p>
+</section>
+
+<section class="ds" id="reference" aria-labelledby="h-reference">
+<h2 class="dh" id="h-reference">Оценка — справочная</h2>
+<p>Всё, что показывает baǵam, — статистический расчёт. Модель смотрит на характеристики квартиры из объявления и сравнивает их с тысячами похожих объявлений. Вердикт «выгодно» или «переплата» значит лишь то, что цена в объявлении ниже или выше оценки модели.</p>
+<div class="isnt">
+ <div class="yes">
+  <h3>Что это такое</h3>
+  <ul class="dul">
+   <li>Статистическая оценка по похожим объявлениям.</li>
+   <li>Ориентир для торга и быстрая проверка объявления.</li>
+   <li>Интервал и факторы, чтобы было видно, откуда взялась цифра.</li>
+  </ul>
+ </div>
+ <div class="no">
+  <h3>Чем это не является</h3>
+  <ul class="dul">
+   <li>Публичной офертой: никто не обязан купить, продать или сдать квартиру по этой цене.</li>
+   <li>Отчётом об оценке, подписанным оценщиком.</li>
+   <li>Инвестиционной, финансовой, юридической или ипотечной рекомендацией.</li>
+   <li>Гарантией, что квартира стоит именно столько.</li>
+  </ul>
+ </div>
+</div>
+<p>По последней опубликованной модели средняя ошибка оценки продажи — <b data-l="mape">7,6%</b>, а оценки аренды — примерно <b data-l="rmape">11%</b> (MAPE на отложенной выборке). Это среднее по всем объявлениям. На отдельной квартире ошибка может быть заметно больше, особенно у редких и нестандартных, поэтому цифра всегда идёт с интервалом.</p>
+<div class="note"><span class="k">Важно</span><p>Для сделки, ипотеки и суда нужна оценка лицензированного оценщика. Оценка baǵam её не заменяет.</p></div>
+</section>
+
+<section class="ds" id="yield" aria-labelledby="h-yield">
+<h2 class="dh" id="h-yield">Доходность «если сдавать»</h2>
+<p>Для объявлений о продаже сервис может показать, что будет, если квартиру сдавать: ожидаемую аренду в месяц, доходность в процентах годовых и срок окупаемости. Аренду считает отдельная модель по характеристикам этой же квартиры, поэтому у неё своя ошибка — примерно <b data-l="rmape">11%</b>.</p>
+<ul class="dul">
+ <li><b>Доходность валовая:</b> годовая аренда, делённая на цену квартиры. Налоги, простои между жильцами, коммунальные платежи, ремонт и комиссии в неё не входят, чистая доходность будет ниже.</li>
+ <li><b>Окупаемость</b> — цена, делённая на годовую аренду, и тоже без этих расходов.</li>
+ <li><b>Черновая отделка</b> оценивается так, будто ремонт уже сделан. Стоимость ремонта в расчёт не входит, сервис это помечает.</li>
+ <li>Признаки, которых нет в объявлении о продаже, например техника и «кому сдаётся», подставляются типичными для рынка аренды значениями.</li>
+ <li>Для сравнения рядом может быть доходность района по медианам свежих объявлений.</li>
+</ul>
+<p>Это прогноз модели, а не обещание дохода и не бизнес-план.</p>
+</section>
+
+<section class="ds" id="data" aria-labelledby="h-data">
+<h2 class="dh" id="h-data">Источник данных</h2>
+<p>baǵam работает с открытыми объявлениями krisha.kz — теми, что видны любому посетителю сайта. База обновляется ежедневно. Насколько она свежая, видно в подвале сайта и на странице «Рынок»: <b data-l="age">обновление ежедневно</b>.</p>
+<p>Объявления пишут люди, поэтому данные могут быть неточными, неполными или устаревшими. Площадь, этаж или год дома указаны с ошибкой, ремонт не описан, цена изменилась или объявление уже снято после последнего обновления. Модель получает только то, что есть в объявлении, и эти ошибки попадают в оценку.</p>
+<p>Цена в объявлении — желание продавца, а не цена сделки. За сколько квартира уйдёт на самом деле, сервис не знает. Он также не проверяет объявление, продавца и документы на квартиру.</p>
+</section>
+
+<section class="ds" id="limits" aria-labelledby="h-limits">
+<h2 class="dh" id="h-limits">Ограничения оценки</h2>
+<p>Где оценка перестаёт работать и на что не стоит опираться:</p>
+<div class="lrows">
+ <div class="lr"><h3>Квартира внутри не видна</h3><p>Ремонт, планировка, вид из окна, шум и соседи попадают в оценку только в той мере, в какой они описаны в объявлении. Две похожие по паспорту квартиры могут стоить по-разному.</p></div>
+ <div class="lr"><h3>Новостройки и редкие объекты</h3><p>Новостроек в базе заметно меньше, чем вторичного жилья. Для них, как и для нестандартных квартир, у модели меньше похожих объявлений, поэтому интервал шире, а уверенность ниже.</p></div>
+ <div class="lr"><h3>Подселение и комнаты в аренде</h3><p>В таких объявлениях цена указана за место, а оценка считается за квартиру целиком. Поэтому сервис показывает предупреждение и не выносит вердикт.</p></div>
+ <div class="lr"><h3>Аренда считается грубее</h3><p>В арендных объявлениях нет года постройки и типа дома, поэтому оценка аренды в среднем менее точна, чем оценка продажи.</p></div>
+ <div class="lr"><h3>Срок «за сколько уходят»</h3><p>Считается по объявлениям, снятым с публикации. А снятие объявления не всегда означает, что квартиру продали или сдали.</p></div>
+ <div class="lr"><h3>Предупреждение о цене — повод проверить</h3><p>Если цена сильно ниже оценки, сервис пишет «проверьте внимательнее». Это сигнал, что цену не объясняют характеристики квартиры. Это не обвинение продавца и не вывод о мошенничестве.</p></div>
+ <div class="lr"><h3>Документы и торг</h3><p>Обременения, доли, история собственников и мотивация продавца остаются вашей проверкой перед сделкой.</p></div>
+</div>
+</section>
+
+<section class="ds" id="availability" aria-labelledby="h-availability">
+<h2 class="dh" id="h-availability">Доступность и лимиты</h2>
+<p>Сервис бесплатный и работает без гарантий доступности. Он размещён на бесплатном хостинге Hugging Face Spaces, поэтому после простоя первый запрос может занять до 30 секунд. При большой нагрузке сервис отвечает «попробуйте позже» вместо долгого ожидания. Если krisha.kz временно не отдаёт объявление, оценку получить не получится: повторите через минуту.</p>
+<p>Число проверок объявлений ограничено: по умолчанию до 15 запросов в минуту с одного IP-адреса. Если лимит превышен, сервис отвечает ошибкой 429 и подсказывает, через сколько секунд повторить. Ответы, которые уже лежат в кэше сервиса, лимит не расходуют. Значения лимитов могут меняться.</p>
+<p>Сервис, модель, данные и сами эти условия могут меняться, приостанавливаться или прекращаться без предупреждения. Бот и база могут отставать от krisha.kz.</p>
+</section>
+
+<section class="ds" id="fair-use" aria-labelledby="h-fair-use">
+<h2 class="dh" id="h-fair-use">Добросовестное использование</h2>
+<p>Лимит запросов нужен, чтобы сервиса хватало на всех. Пожалуйста:</p>
+<ul class="dul">
+ <li>не отправляйте через сайт, API или бота массовые автоматические запросы и не обходите лимит с помощью множества IP-адресов или аккаунтов;</li>
+ <li>не используйте сервис для выгрузки базы: он рассчитан на проверку отдельных объявлений;</li>
+ <li>не выдавайте оценку baǵam за официальный документ или заключение оценщика, а делясь ею, говорите, что это расчёт модели;</li>
+ <li>не мешайте работе сервиса и не используйте бота для рассылки спама.</li>
+</ul>
+<p>Мы можем ограничить доступ адресу или чату Telegram, которые создают чрезмерную нагрузку или нарушают эти правила. Если вам нужны оценки в больших объёмах, напишите автору.</p>
+</section>
+
+<section class="ds" id="license" aria-labelledby="h-license">
+<h2 class="dh" id="h-license">Исходный код и лицензия</h2>
+<p>Исходный код сервиса опубликован: <a href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener">github.com/Dex719/krisha-fair-price</a>. Он распространяется по лицензии <b>Elastic License 2.0</b> (ELv2). Это лицензия с доступным исходным кодом, а не «открытая» в строгом смысле: у неё есть ограничения.</p>
+<p>Коротко: код можно использовать, копировать, изменять и распространять. Нельзя предоставлять его третьим лицам как хостируемый или управляемый сервис с доступом к существенной части возможностей, обходить лицензионные ключи и убирать уведомления о лицензии. Это краткий пересказ, обязателен полный текст лицензии: файл <a href="https://github.com/Dex719/krisha-fair-price/blob/main/LICENSE" target="_blank" rel="noopener">LICENSE</a> в репозитории.</p>
+<p>Лицензия относится к исходному коду. Накопленная база объявлений и веса обученной модели в открытый репозиторий не входят.</p>
+</section>
+
+<section class="ds" id="bot" aria-labelledby="h-bot">
+<h2 class="dh" id="h-bot">Telegram-бот</h2>
+<p>Бот <a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">@fairprice_kzbot</a> работает внутри Telegram, поэтому на переписку с ним действуют условия и политика конфиденциальности самого Telegram. Мы на них не влияем. Mini App в Telegram открывает тот же сайт, и на него действуют те же условия. Вот что умеет бот:</p>
+<dl class="cmds">
+ <div class="cmd"><dt><span class="pl">Ссылка на объявление</span></dt><dd>Справедливая цена или аренда, интервал, вердикт и факторы.</dd></div>
+ <div class="cmd"><dt><span class="pl">Текст объявления о продаже</span></dt><dd>Примерная оценка по описанию: без фото, точного адреса и истории объявления, поэтому она грубее. Параметры из текста достаёт нейросеть Gemini (Google), подробности в «<a href="/privacy">Конфиденциальности</a>».</dd></div>
+ <div class="cmd"><dt><code>/track ссылка</code></dt><dd>Слежка за объявлением: после обновления базы бот пришлёт алерт, если цена изменилась или объявление сняли. Не больше 10 объявлений на чат.</dd></div>
+ <div class="cmd"><dt><code>/alerts_on</code> <code>фильтры</code></dt><dd>Раз в день алерты о новых объявлениях дешевле оценки модели. Фильтры по комнатам, бюджету и району необязательны.</dd></div>
+ <div class="cmd"><dt><code>/alerts_off</code></dt><dd>Отписаться от алертов.</dd></div>
+ <div class="cmd"><dt><code>/untrack ссылка</code> <code>/untrack all</code></dt><dd>Перестать следить за одним объявлением или за всеми сразу.</dd></div>
+</dl>
+<p>Алерты носят справочный характер. «Выгодно» значит «ниже оценки модели», а не «стоит покупать». Они приходят после обновления базы и могут запаздывать или не прийти.</p>
+<p><b>Как отписаться.</b> Командами выше. Можно также остановить или заблокировать бота в Telegram, и сообщения перестанут приходить. О том, какие данные обрабатываются, рассказывает страница <a href="/privacy">«Конфиденциальность»</a>.</p>
+</section>
+
+<section class="ds" id="liability" aria-labelledby="h-liability">
+<h2 class="dh" id="h-liability">Ответственность</h2>
+<p>Сервис предоставляется «как есть». Автор не гарантирует, что оценка точна, данные полны и актуальны, а сайт и бот работают без перебоев.</p>
+<p>Решения о покупке, продаже, аренде, залоге или ипотеке вы принимаете сами и на свой риск. Автор не отвечает за убытки, возникшие из-за использования оценки или недоступности сервиса, насколько это допускает применимое законодательство. Перед сделкой проверяйте объявление, документы и собственника самостоятельно, а при необходимости обращайтесь к оценщику и юристу.</p>
+</section>
+
+<section class="ds" id="changes" aria-labelledby="h-changes">
+<h2 class="dh" id="h-changes">Изменения условий</h2>
+<p>Условия могут меняться. Актуальная редакция всегда лежит на этой странице, а её дата указана вверху и здесь: <b><time datetime="2026-10-02">2 октября 2026</time></b>. Если вы продолжаете пользоваться сервисом после публикации новой редакции, значит, вы с ней согласны. История изменений страницы видна в репозитории на GitHub.</p>
+</section>
+
+<section class="ds" id="contacts" aria-labelledby="h-contacts">
+<h2 class="dh" id="h-contacts">Контакты</h2>
+<p>Вопросы об условиях, ошибки в оценке, предложения и жалобы — пишите автору.</p>
+<div class="cont">
+ <a class="crow" href="https://t.me/Dex719" target="_blank" rel="noopener"><span class="cn"><b>Автор в Telegram</b><small>вопросы, ошибки в оценке, предложения</small></span><span class="cv">t.me/Dex719</span></a>
+ <a class="crow" href="https://github.com/Dex719/krisha-fair-price/issues" target="_blank" rel="noopener"><span class="cn"><b>Задачи на GitHub</b><small>ошибки в работе сервиса и предложения по коду</small></span><span class="cv">GitHub Issues</span></a>
+ <a class="crow" href="/privacy"><span class="cn"><b>Конфиденциальность</b><small>какие данные обрабатываются и как</small></span><span class="cv">/privacy</span></a>
+</div>
+</section>
+
+</div>
+</div>
+</div></section>
+
+<section class="next"><div class="wrap">
+<div class="shead"><div class="shl"><h2 class="shttl">Куда дальше</h2><p class="shsub">Проверить квартиру, узнать, как считает модель, или заглянуть в код.</p></div></div>
+<div class="ncards">
+<a class="ncard g" href="/"><span class="ntop"><span class="nidx">01</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="20.8" cy="20.8" r="13.2" stroke-width="2.4"/><path d="m30.4 30.4 10.4 10.4" stroke-width="2.8"/><path d="M15.4 15.6h10.8M20.8 15.6V27.4" stroke-width="2.4"/><path d="M16.6 20.1h8.4" stroke-width="2.2"/></svg></span></span><span class="nttl">Проверить квартиру</span><span class="nbot"><span class="nmeta">оценка по ссылке<br>одна секунда</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard v" href="/privacy"><span class="ntop"><span class="nidx">02</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M24 5.5 9 11v11.2c0 9.4 6.1 17.2 15 20.3 8.9-3.1 15-10.9 15-20.3V11L24 5.5Z" stroke-width="2.4"/><path d="m17.4 24.2 4.8 4.8 8.6-9.4" stroke-width="2.6"/></svg></span></span><span class="nttl">Конфиденциальность</span><span class="nbot"><span class="nmeta">какие данные<br>обрабатываются</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard g" href="/about"><span class="ntop"><span class="nidx">03</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 40.5h28" stroke-width="2.4"/><path d="M14 33V22M24 33V14M34 33V25" stroke-width="4.4"/><path d="M12 11.5h8" stroke-width="2.4"/></svg></span></span><span class="nttl">Как считает модель</span><span class="nbot"><span class="nmeta">данные, факторы,<br>точность и пределы</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard w" href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener"><span class="ntop"><span class="nidx">04</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><g transform="scale(2)" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></g></svg></span></span><span class="nttl">Исходный код</span><span class="nbot"><span class="nmeta">GitHub<br>лицензия ELv2</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+</div>
+</div></section>
 </main>
 <footer><div class="wrap">
 <div class="fgrid">
  <div>
   <a class="flogo" href="/" aria-label="baǵam — на главную">baǵam<span>.</span></a>
   <p class="ftag">Считаем справедливую цену квартиры в Алматы по объявлению с krisha.kz — за секунду и бесплатно.</p>
-  <div class="fchips"><span class="fchip"><b data-l="total">21 113</b> активных лотов</span><span class="fchip">ошибка <b data-l="mape">7,3%</b></span><span class="fchip"><b data-l="age">обновление ежедневно</b></span></div>
+  <div class="fchips"><span class="fchip"><b data-l="total">21 113</b> активных лотов</span><span class="fchip">ошибка <b data-l="mape">7,6%</b></span><span class="fchip"><b data-l="age">обновление ежедневно</b></span></div>
  </div>
  <div>
   <div class="fh">Продукт</div>
@@ -246,7 +520,7 @@ html.lite .sk{animation:none}
   <div class="fh">Документы</div>
   <div class="flinks">
    <a class="flink" href="/privacy">Конфиденциальность</a>
-   <a class="flink" href="#">Условия использования</a>
+   <a class="flink" href="/terms" aria-current="page">Условия использования</a>
   </div>
   <p class="fnote">Оценка справочная и не является офертой. Средняя ошибка модели продажи <b data-l="mape">7,6%</b>, аренды — <b data-l="rmape">~11%</b>.</p>
  </div>
@@ -335,7 +609,8 @@ bagamTG(function(tg){
     if(h==null)return '';
     if(h<1.5)return 'обновлено только что';
     if(h<24)return 'обновлено '+Math.round(h)+' ч назад';
-    var d=Math.round(h/24);return 'обновлено '+d+' '+(d===1?'день':(d<5?'дня':'дней'))+' назад';
+    var d=Math.round(h/24),m10=d%10,m100=d%100;
+    return 'обновлено '+d+' '+(m10===1&&m100!==11?'день':(m10>=2&&m10<=4&&(m100<12||m100>14)?'дня':'дней'))+' назад';
   }
   function j(p){var a=('AbortController' in window)&&new AbortController();
     if(a)setTimeout(function(){a.abort();},12000);
@@ -383,24 +658,73 @@ bagamTG(function(tg){
 </script>
 
 <script>
-/* документ: печать и подсветка текущего раздела в оглавлении */
+/* ---------- оглавление: подсветка текущего раздела, на телефоне сворачивается ---------- */
 (function(){
-  var pb=document.querySelector('[data-print]');
-  if(pb) pb.addEventListener('click',function(){window.print();});
-  var ft=document.querySelector('.ftop');
-  if(ft) ft.addEventListener('click',function(e){e.preventDefault();scrollTo({top:0,behavior:'smooth'});});
-  var links=[].slice.call(document.querySelectorAll('.ltoc a'));
-  if(!links.length||!('IntersectionObserver' in window)) return;
-  var byId={};links.forEach(function(a){byId[a.getAttribute('href').slice(1)]=a;});
+  var toc=document.querySelector('.toc');
+  if(!toc)return;
+  var links=[].slice.call(toc.querySelectorAll('a[href^="#"]'));
+  var mq=window.matchMedia('(max-width:980px)');
+  function fit(){ if(mq.matches)toc.removeAttribute('open'); else toc.setAttribute('open',''); }
+  fit();
+  if(mq.addEventListener)mq.addEventListener('change',fit); else if(mq.addListener)mq.addListener(fit);
+  /* на десктопе оглавление не сворачивается: summary там только подпись */
+  toc.querySelector('summary').addEventListener('click',function(e){ if(!mq.matches)e.preventDefault(); });
+  links.forEach(function(a){ a.addEventListener('click',function(){ if(mq.matches)toc.removeAttribute('open'); }); });
+  var secs=links.map(function(a){return document.getElementById(a.getAttribute('href').slice(1));}).filter(Boolean);
+  function mark(id){ links.forEach(function(a){ if(a.getAttribute('href')==='#'+id)a.setAttribute('aria-current','true'); else a.removeAttribute('aria-current'); }); }
+  if(!('IntersectionObserver' in window)||!secs.length)return;
+  var vis={};
   var io=new IntersectionObserver(function(es){
-    es.forEach(function(e){
-      if(!e.isIntersecting) return;
-      links.forEach(function(a){a.classList.remove('on');a.removeAttribute('aria-current');});
-      var a=byId[e.target.id]; if(a){a.classList.add('on');a.setAttribute('aria-current','true');}
-    });
-  },{rootMargin:'-20% 0px -70% 0px'});
-  document.querySelectorAll('.ls').forEach(function(s){io.observe(s);});
+    es.forEach(function(e){ vis[e.target.id]=e.isIntersecting; });
+    for(var i=0;i<secs.length;i++){ if(vis[secs[i].id]){ mark(secs[i].id); return; } }
+  },{rootMargin:'-96px 0px -55% 0px'});
+  secs.forEach(function(s){io.observe(s);});
 })();
+</script>
+<script>
+bagamBoot(function(){
+const staticMode = matchMedia('(prefers-reduced-motion: reduce)').matches || !window.gsap;
+if(!staticMode){
+  gsap.registerPlugin(ScrollTrigger);
+  addEventListener('scroll',()=>{const h=document.body.scrollHeight-innerHeight;
+    document.getElementById('prog').style.width=(scrollY/h*100)+'%';},{passive:true});
+  gsap.from('.phero h1',{y:60,opacity:0,duration:1,ease:'expo.out',clearProps:'transform'});
+  gsap.from('.phrow',{y:26,opacity:0,duration:.9,delay:.25,ease:'expo.out',clearProps:'transform'});
+  gsap.from('.tk',{y:26,opacity:0,duration:.7,stagger:.08,ease:'expo.out',clearProps:'transform',
+    scrollTrigger:{trigger:'.tkey',start:'top 90%',once:true}});
+  gsap.from('.ncard',{y:26,opacity:0,duration:.75,stagger:.08,ease:'expo.out',clearProps:'transform',
+    scrollTrigger:{trigger:'.ncards',start:'top 85%',once:true}});
+  gsap.from('.fgrid > div',{y:24,opacity:0,duration:.7,stagger:.09,ease:'expo.out',clearProps:'transform',
+    scrollTrigger:{trigger:'footer',start:'top 88%',once:true}});
+  if(matchMedia('(pointer:fine)').matches){
+    document.querySelectorAll('.gobtn').forEach(btn=>{
+      const clamp=v=>Math.max(-7,Math.min(7,v));
+      btn.addEventListener('mouseenter',()=>gsap.to(btn,{scale:1.04,duration:.35,ease:'power2.out'}));
+      btn.addEventListener('mousemove',e=>{const r=btn.getBoundingClientRect();
+        gsap.to(btn,{x:clamp((e.clientX-r.left-r.width/2)*.14),y:clamp((e.clientY-r.top-r.height/2)*.16),duration:.45,ease:'power3.out',overwrite:'auto'});});
+      btn.addEventListener('mouseleave',()=>gsap.to(btn,{x:0,y:0,scale:1,duration:.5,ease:'power3.out',overwrite:'auto'}));
+    });
+  }
+}
+const ft=document.querySelector('.ftop');
+if(ft) ft.addEventListener('click',e=>{e.preventDefault();scrollTo({top:0,behavior:'smooth'})});
+
+/* форма на подстранице уводит разбор на главную */
+document.querySelectorAll('form[data-jump]').forEach(f=>{
+  const inp=f.querySelector('input'), err=f.parentElement.querySelector('[data-err]'), paste=f.querySelector('[data-paste]');
+  if(paste){
+    if(!navigator.clipboard||!navigator.clipboard.readText) paste.remove();
+    else paste.addEventListener('click',async()=>{try{const t=(await navigator.clipboard.readText()||'').trim();
+      if(t){inp.value=t;err.classList.remove('on');inp.removeAttribute('aria-invalid');} inp.focus();}catch(e){inp.focus();}});
+  }
+  inp.addEventListener('input',()=>{err.classList.remove('on');inp.removeAttribute('aria-invalid');});
+  f.addEventListener('submit',e=>{e.preventDefault();
+    const m=inp.value.trim().match(/krisha\.kz\/a\/show\/(\d+)/i);
+    if(!m){inp.setAttribute('aria-invalid','true');err.textContent='Нужна ссылка на объявление вида krisha.kz/a/show/1012607661';err.classList.add('on');inp.focus();return;}
+    location.href='/#check=' + m[1];
+  });
+});
+});
 </script>
 <script>
 /* ---------- устойчивость к медленной сети ---------- */
