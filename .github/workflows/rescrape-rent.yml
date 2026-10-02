@@ -108,3 +108,18 @@ jobs:
             --db-gz /tmp/krisha_rent.db.gz --sha256 /tmp/krisha_rent.db.gz.sha256 \
             --asset-name krisha_rent.db.gz --stats-json /tmp/rescrape_rent_stats.json \
             --label "Аренда" --rotate-keep-days 0
+
+      # Слежка за арендой (/track): база аренды только что обновлена и уже в
+      # релизе, теперь сравниваем с ней лоты аренды из tracked.json. Только при
+      # удачном проходе (по умолчанию success()) — на огрызке базы не шлём.
+      # Ночью (обход кончается за полночь) сообщения уходят без звука.
+      - name: Track alerts (аренда)
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          # состояние слежки — в репо данных, как у алертов продажи (rescrape.yml)
+          KRISHA_DB_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+        run: |
+          python -m krisha.subscriptions --pull
+          python scripts/send_alerts.py --deal arenda

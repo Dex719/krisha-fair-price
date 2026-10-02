@@ -331,7 +331,7 @@ html.lite *{box-shadow:none!important}
  <div class="crow"><span class="cmd plain">Ссылка на объявление</span><p class="ctx">Просто пришлите ссылку с krisha.kz. Бот откроет объявление, сам поймёт, продажа это или аренда, и ответит <b>ценой, вердиктом, факторами</b> и похожими лотами.</p><span class="cex">krisha.kz/a/show/1012607661</span></div>
  <div class="crow"><span class="cmd plain">Текст объявления</span><p class="ctx">Нет ссылки — вставьте текст объявления о продаже (от <b>40 символов</b>). Бот найдёт в нём площадь, комнаты, этаж, район, цену и даст примерную оценку. Нужны хотя бы площадь и число комнат.</p><span class="cex">Продам 2-комн. 49 м², 5/9 этаж, Алатауский район, 27,5 млн</span></div>
  <h3 class="cgrp">Команды слежки</h3>
- <div class="crow"><span class="cmd">/track ссылка</span><p class="ctx">Взять объявление в слежку. После каждого обновления базы бот напишет, если <b>цена изменилась</b> или объявление <b>сняли с продажи</b>. До 10 лотов на один чат, только объявления о продаже.</p><span class="cex">/track krisha.kz/a/show/1012607661</span></div>
+ <div class="crow"><span class="cmd">/track ссылка</span><p class="ctx">Взять объявление в слежку. После каждого обновления базы бот напишет, если <b>цена изменилась</b> или объявление <b>сняли</b>. До 10 лотов на один чат, и продажа, и аренда.</p><span class="cex">/track krisha.kz/a/show/1012607661</span></div>
  <div class="crow"><span class="cmd">/track</span><p class="ctx">Без ссылки: подсказка по командам слежки и список лотов, за которыми бот следит.</p><span class="cex">/track</span></div>
  <div class="crow"><span class="cmd">/untrack ссылка</span><p class="ctx">Перестать следить за одним лотом.</p><span class="cex">/untrack krisha.kz/a/show/1012607661</span></div>
  <div class="crow"><span class="cmd">/untrack all</span><p class="ctx">Очистить весь список слежки.</p><span class="cex">/untrack all</span></div>
@@ -342,7 +342,7 @@ html.lite *{box-shadow:none!important}
  <h3 class="cgrp">Справка</h3>
  <div class="crow"><span class="cmd">/start <small>и /help</small></span><p class="ctx">Короткая справка. В личном чате под ней есть кнопка «Открыть приложение» — сайт baǵam внутри Telegram.</p><span class="cex">/start</span></div>
 </div>
-<p class="mnote">Ссылки вида <code>t.me/fairprice_kzbot?start=track_&lt;id&gt;</code> открывают бота сразу на слежке за лотом — так работает кнопка «следить за ценой в боте» в разборе объявления о продаже. Ссылка <code>?start=market_bostandykskiy</code> (район латиницей) включает алерты по этому району.</p>
+<p class="mnote">Ссылки вида <code>t.me/fairprice_kzbot?start=track_&lt;id&gt;</code> открывают бота сразу на слежке за лотом — так работает кнопка «следить за ценой в боте» в разборе объявления. Ссылка <code>?start=market_bostandykskiy</code> (район латиницей) включает алерты по этому району.</p>
 </div></section>
 
 <section class="sect"><div class="wrap">

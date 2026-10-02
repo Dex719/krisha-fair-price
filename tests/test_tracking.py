@@ -3,7 +3,7 @@
 import sqlite3
 
 from krisha import tracking
-from krisha.db import init_db, upsert_listing
+from krisha.db import init_db, price_bounds_for, upsert_listing
 
 BASE = {
     "url": "https://krisha.kz/a/show/111",
@@ -169,7 +169,7 @@ def test_bot_track_commands(tmp_path, monkeypatch):
     _no_github_push(monkeypatch)
     path = tmp_path / "tracked.json"
     monkeypatch.setattr(tracking, "TRACKED_PATH", path)
-    monkeypatch.setattr(bot, "_track_listing_meta", lambda lid: (50_000_000, "Квартира"))
+    monkeypatch.setattr(bot, "_track_listing_meta", lambda lid: (50_000_000, "Квартира", "prodazha"))
 
     calls = []
     monkeypatch.setattr(
@@ -223,3 +223,72 @@ def test_tracked_lot_with_unknown_price_heals_and_then_alerts(tmp_path, monkeypa
     chat_id, text = messages[0]
     assert chat_id == 5
     assert "📉" in text and "36.0 млн" in text
+
+
+def _make_rent_db(tmp_path, lid=222, price=300_000, is_active=1):
+    db = tmp_path / "krisha_rent.db"
+    init_db(db)
+    upsert_listing({**BASE, "id": lid, "url": f"https://krisha.kz/a/show/{lid}",
+                    "title": "2-комнатная квартира, 55 м²", "price": price}, db_path=db,
+                   price_bounds=price_bounds_for("arenda"))
+    if not is_active:
+        with sqlite3.connect(db) as conn:
+            conn.execute("UPDATE listings SET is_active = 0, delisted_at = datetime('now') WHERE id = ?", (lid,))
+    return db
+
+
+def test_rent_lot_is_checked_against_rent_db_with_rent_wording(tmp_path, monkeypatch):
+    """Аренда: проверка по базе аренды, цена в тыс ₸/мес."""
+    _no_github_push(monkeypatch)
+    path = tmp_path / "tracked.json"
+    rent_db = _make_rent_db(tmp_path, price=280_000)
+    tracking.add_tracked(42, 222, 300_000, "Квартира в аренду", path=path, deal="arenda")
+    assert tracking.list_tracked(42, path=path)["222"]["deal"] == "arenda"
+
+    updates = tracking.check_tracked_updates(db_path=rent_db, path=path, deal="arenda")
+    assert len(updates) == 1
+    text = updates[0][1]
+    assert "📉" in text and "Аренда: 300 тыс ₸/мес → <b>280 тыс ₸/мес</b>" in text
+    assert tracking.check_tracked_updates(db_path=rent_db, path=path, deal="arenda") == []
+
+
+def test_rent_delist_wording(tmp_path, monkeypatch):
+    _no_github_push(monkeypatch)
+    path = tmp_path / "tracked.json"
+    rent_db = _make_rent_db(tmp_path, is_active=0)
+    tracking.add_tracked(42, 222, 300_000, "Квартира в аренду", path=path, deal="arenda")
+    updates = tracking.check_tracked_updates(db_path=rent_db, path=path, deal="arenda")
+    assert len(updates) == 1 and "Объявление об аренде снято" in updates[0][1]
+    assert tracking.list_tracked(42, path=path) == {}
+
+
+def test_sale_and_rent_passes_do_not_touch_each_other(tmp_path, monkeypatch):
+    """Утренний проход (продажа) не трогает аренду и наоборот: у каждой своя база."""
+    _no_github_push(monkeypatch)
+    path = tmp_path / "tracked.json"
+    sale_db = _make_db(tmp_path, price=47_500_000)
+    rent_db = _make_rent_db(tmp_path, price=280_000)
+    tracking.add_tracked(42, 111, 50_000_000, "Квартира", path=path)
+    tracking.add_tracked(42, 222, 300_000, "Аренда", path=path, deal="arenda")
+
+    sale = tracking.check_tracked_updates(db_path=sale_db, path=path)
+    assert len(sale) == 1 and "47.5 млн ₸" in sale[0][1] and "тыс ₸/мес" not in sale[0][1]
+    assert tracking.list_tracked(42, path=path)["222"]["price"] == 300_000  # аренду не тронули
+
+    rent = tracking.check_tracked_updates(db_path=rent_db, path=path, deal="arenda")
+    assert len(rent) == 1 and "280 тыс ₸/мес" in rent[0][1] and "млн" not in rent[0][1]
+
+
+def test_legacy_rent_lot_without_deal_is_healed_by_rent_pass(tmp_path, monkeypatch):
+    """До слежки за арендой /track сохранял аренду без поля deal — она висела без алертов.
+    Вечерний проход находит такой лот в базе аренды, помечает арендой и проверяет."""
+    _no_github_push(monkeypatch)
+    path = tmp_path / "tracked.json"
+    rent_db = _make_rent_db(tmp_path, price=280_000)
+    tracking.add_tracked(42, 222, 300_000, "Аренда", path=path)          # старая запись: без deal
+    tracking.add_tracked(42, 111, 50_000_000, "Продажа", path=path)      # её в базе аренды нет
+
+    updates = tracking.check_tracked_updates(db_path=rent_db, path=path, deal="arenda")
+    assert len(updates) == 1 and "280 тыс ₸/мес" in updates[0][1]
+    lots = tracking.list_tracked(42, path=path)
+    assert lots["222"]["deal"] == "arenda" and "deal" not in lots["111"]

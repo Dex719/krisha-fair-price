@@ -1,8 +1,10 @@
 """Рассылка алертов после рескрейпа: выгодные лоты + слежка (/track).
 
 Использование:
-    python scripts/send_alerts.py            # найти и разослать
-    python scripts/send_alerts.py --dry-run  # только показать, без отправки
+    python scripts/send_alerts.py                # найти и разослать
+    python scripts/send_alerts.py --dry-run      # только показать, без отправки
+    python scripts/send_alerts.py --deal arenda  # только слежка за арендой
+                                                 # (после вечернего обхода аренды)
 
 Нужен env TELEGRAM_BOT_TOKEN (в GitHub Actions — секрет); для сохранения
 состояния слежки — GITHUB_PAT или GITHUB_TOKEN с contents:write.
@@ -40,28 +42,42 @@ def _send_deal_alerts(dry_run: bool, deals: list) -> None:
     print(f"Отправлено сообщений: {sent}")
 
 
-def _send_track_alerts(dry_run: bool) -> None:
-    from krisha.bot import tg_call
+def _quiet_hours(now=None) -> bool:
+    """22:00–08:00 по Алматы: алерты приходят без звука (обход аренды кончается за полночь)."""
+    from datetime import datetime
 
+    from krisha.usage import ALMATY_TZ
+
+    hour = (now or datetime.now(ALMATY_TZ)).astimezone(ALMATY_TZ).hour
+    return hour >= 22 or hour < 8
+
+
+def _send_track_alerts(dry_run: bool, deal: str = "prodazha") -> None:
+    from krisha.bot import tg_call
+    from krisha.config import DB_PATH, RENT_DB_PATH
+
+    db_path = RENT_DB_PATH if deal == "arenda" else DB_PATH
     # persist=False: сначала доставляем, потом фиксируем. Раньше состояние
     # сохранялось ДО отправки, и упавший sendMessage (Telegram 5xx, бот
     # заблокирован пользователем) означал потерю алерта навсегда — на
     # следующем проходе сохранённая цена уже равна новой, события нет.
-    updates = check_tracked_updates(persist=False)
-    print(f"Обновлений по слежке (/track): {len(updates)}")
+    updates = check_tracked_updates(db_path=db_path, persist=False, deal=deal)
+    print(f"Обновлений по слежке (/track, {deal}): {len(updates)}")
+    silent = _quiet_hours()
     delivered: set[int] = set()
     for chat_id, message in updates:
         if dry_run:
             print(f"--- chat {chat_id}:\n{message}")
             continue
         resp = tg_call("sendMessage", chat_id=chat_id, text=message,
-                       parse_mode="HTML", disable_web_page_preview=True)
+                       parse_mode="HTML", disable_web_page_preview=True,
+                       disable_notification=silent)
         if resp and resp.get("ok"):
             delivered.add(int(chat_id))
         else:
             print(f"Не доставлено в chat {chat_id} — состояние не фиксируем, повторим позже")
     if delivered:
-        check_tracked_updates(persist=True, only_chats=delivered)
+        check_tracked_updates(db_path=db_path, persist=True, only_chats=delivered, deal=deal)
 
 
 def _post_channel_digest(dry_run: bool, deals: list) -> None:
@@ -114,7 +130,13 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--deal", choices=("prodazha", "arenda"), default="prodazha",
+                        help="arenda — только слежка за арендой, по базе аренды")
     args = parser.parse_args()
+
+    if args.deal == "arenda":
+        _send_track_alerts(args.dry_run, deal="arenda")
+        return 0
 
     deals = find_good_deals()
     _send_deal_alerts(args.dry_run, deals)
