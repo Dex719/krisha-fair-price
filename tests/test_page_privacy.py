@@ -70,9 +70,11 @@ def test_privacy_uses_shared_design_and_document_structure():
     toc = [a for a in anchors if a not in {"main"}]
     assert len(toc) >= 9
     assert set(toc) <= ids, f"в содержании есть якоря без секций: {set(toc) - ids}"
-    sections = re.findall(r'<section class="ds" id="([^"]+)">', html)
+    sections = re.findall(r'<section class="ls" id="([^"]+)"', html)
     assert sections == toc, "порядок секций и содержания должен совпадать"
-    assert html.count('<h2 class="dh"') == len(sections)
+    assert html.count('<h2 id="h-') == len(sections)
+    # официальный документ: реквизиты и нумерованные пункты, а не промо-плитки
+    assert '<dl class="lmeta">' in html and 'class="cl"' in html
     assert "m3.css" not in html and "FairPrice" not in html and "Manrope" not in html
 
 
@@ -104,7 +106,7 @@ def test_privacy_has_edition_date_and_contacts():
     assert 'href="https://t.me/Dex719"' in html
     assert 'href="https://t.me/fairprice_kzbot"' in html
     assert 'href="https://github.com/Dex719/krisha-fair-price"' in html
-    assert "Куда дальше" in html and 'href="/terms"' in html and 'href="/bot"' in html
+    assert 'href="/terms"' in html and 'href="/bot"' in html
 
 
 def test_privacy_has_no_external_cdns_or_trackers():
