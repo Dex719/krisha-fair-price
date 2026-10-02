@@ -840,8 +840,8 @@ else {
     if (r.days_on_market) chips.push('<span class="rchip">' + (RENT ? 'объявлению' : 'в продаже') +
       ' <b>' + r.days_on_market + ' дн.</b></span>');
     chips.push('<span class="rchip"><a href="' + r.url + '" target="_blank" rel="noopener">открыть объявление ↗</a></span>');
-    /* слежение в боте — пока только за продажей */
-    if (!RENT) chips.push('<span class="rchip"><a href="' + trackHref(r) + '" target="_blank" rel="noopener">следить за ценой в боте ↗</a></span>');
+    /* слежение в боте: продажу бот сверяет после утреннего обхода, аренду — после вечернего */
+    chips.push('<span class="rchip"><a href="' + trackHref(r) + '" target="_blank" rel="noopener">следить за ценой в боте ↗</a></span>');
     chips.push('<button type="button" class="rchip rshare">поделиться отчётом</button>');
     $('.rfoot').innerHTML = chips.join('');
     renderWarn(r); renderYield(r); renderHist(r); renderSimilar(r);

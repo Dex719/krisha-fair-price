@@ -233,7 +233,7 @@ def test_track_chat_is_what_tracking_writes(monkeypatch):
     # ответ бота на /track
     sent: list[tuple[str, dict]] = []
     monkeypatch.setattr(bot, "tg_call", lambda method, **kw: sent.append((method, kw)) or {"ok": True})
-    monkeypatch.setattr(bot, "_track_listing_meta", lambda listing_id: (27_500_000, title))
+    monkeypatch.setattr(bot, "_track_listing_meta", lambda listing_id: (27_500_000, title, "prodazha"))
     monkeypatch.setattr(tracking, "add_tracked", lambda *a, **k: (True, None))
     bot._handle_track_command(1, "/track https://krisha.kz/a/show/1012607661")
     texts = [kw["text"] for method, kw in sent if method == "sendMessage"]

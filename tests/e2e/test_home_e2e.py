@@ -494,7 +494,8 @@ def test_home_rent_listing_renders_monthly_report(hermetic_page, mock_api, herme
     foot = page.locator(".rfoot")
     expect(foot).to_contain_text("похожие сдаются за")
     expect(foot).to_contain_text("объявлению 12 дн.")
-    expect(foot.locator("a[href*='t.me/fairprice_kzbot']")).to_have_count(0)
+    # слежка за арендой работает (сверка после вечернего обхода аренды) — кнопка есть
+    expect(foot.locator("a[href*='t.me/fairprice_kzbot?start=track_']")).to_have_count(1)
     expect(page.locator(".sheet")).not_to_contain_text("млн")
 
 

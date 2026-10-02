@@ -124,8 +124,8 @@ HELP_TEXT = (
     "(<code>https://krisha.kz/a/show/…</code>) — покажу справедливую цену, "
     "диапазон и факторы.\n"
     "2) Нет ссылки? Вставь текст объявления — сделаю примерную оценку по описанию.\n"
-    "3) <code>/track ссылка</code> — слежка за объявлением о продаже: пришлю алерт, "
-    "если цена изменится или объявление снимут.\n"
+    "3) <code>/track ссылка</code> — слежка за объявлением о продаже или аренде: "
+    "пришлю алерт, если цена изменится или объявление снимут.\n"
     "4) <code>/alerts</code> — алерты о новых выгодных объявлениях с фильтрами; "
     "<code>/alerts_on 2к до 45млн бостандыкский</code> включает комнаты, бюджет и район.\n\n"
     "Веб-версия: https://dex719-krisha-fair-price.hf.space"
@@ -582,18 +582,8 @@ TRACK_HELP = (
     "<code>/track</code> — список лотов в слежке\n"
     "<code>/untrack https://krisha.kz/a/show/…</code> — перестать следить\n"
     "<code>/untrack all</code> — очистить список\n\n"
-    "Слежка работает для объявлений о продаже."
+    "Продажу проверяю после утреннего обновления базы, аренду — после вечернего."
 )
-
-TRACK_RENT_HINT = (
-    "Слежка пока работает только для объявлений о продаже: ежедневная проверка "
-    "идёт по базе продажи. Оценить аренду можно как обычно — просто пришлите ссылку."
-)
-
-
-class TrackRentUnsupported(Exception):
-    """/track на объявление об аренде: проверка слежки смотрит только базу продажи,
-    такой лот молча висел бы в списке без единого алерта."""
 
 
 BAD_ID_HINT = "Не похоже на id объявления 🤔 Пришлите ссылку вида krisha.kz/a/show/123456789"
@@ -620,35 +610,44 @@ def _tracked_list_text(chat_id: int) -> str:
     for lid, state in lots.items():
         title = html.escape(state.get("title") or f"Объявление {lid}")
         price = state.get("price")
-        price_txt = f" — {price / 1_000_000:.1f} млн ₸" if price else ""
+        if not price:
+            price_txt = ""
+        elif state.get("deal") == "arenda":
+            price_txt = f" — {price / 1_000:.0f} тыс ₸/мес"
+        else:
+            price_txt = f" — {price / 1_000_000:.1f} млн ₸"
         lines.append(f'• <a href="https://krisha.kz/a/show/{lid}">{title}</a>{price_txt}')
     return "\n".join(lines)
 
 
-def _track_listing_meta(listing_id: int) -> tuple[int | None, str | None]:
-    """Цена и заголовок лота: из базы, а если лота там нет — с сайта."""
+def _track_listing_meta(listing_id: int) -> tuple[int | None, str | None, str]:
+    """Цена, заголовок и тип сделки лота: из базы продажи или аренды, а если
+    лота нет ни там, ни там — с сайта (и тогда кладём его в базу своего типа)."""
     import sqlite3
 
-    from krisha.config import DB_PATH
-    from krisha.db import get_conn, upsert_listing
+    from krisha.config import DB_PATH, RENT_DB_PATH
+    from krisha.db import get_conn, price_bounds_for, upsert_listing
     from krisha.rent import detect_deal
     from krisha.scraping.detail_parser import parse_detail
 
-    row = None
-    try:
-        with get_conn(DB_PATH) as conn:
-            row = conn.execute(
-                "SELECT price, title, raw_params FROM listings WHERE id = ?", (listing_id,)
-            ).fetchone()
-    except (sqlite3.Error, OverflowError, ValueError, FileNotFoundError):
-        # sqlite3.Error покрывает и OperationalError, и остальные варианты;
-        # OverflowError/ValueError — на случай id, не влезающего в INTEGER.
-        pass
+    def _row(db_path):
+        try:
+            with get_conn(db_path) as conn:
+                return conn.execute(
+                    "SELECT price, title, raw_params FROM listings WHERE id = ?", (listing_id,)
+                ).fetchone()
+        except (sqlite3.Error, OverflowError, ValueError, FileNotFoundError):
+            # sqlite3.Error покрывает и OperationalError, и остальные варианты;
+            # OverflowError/ValueError — на случай id, не влезающего в INTEGER.
+            return None
+
+    row = _row(DB_PATH)
+    # до слежки за арендой /track писал аренду в базу продажи — такие строки там есть
+    if row is not None and detect_deal({"price": row["price"], "raw_params": row["raw_params"]}) != "arenda":
+        return row["price"], row["title"], "prodazha"
+    row = _row(RENT_DB_PATH)
     if row is not None:
-        # до этой правки /track сохранял аренду в базу продажи — такие строки там есть
-        if detect_deal({"price": row["price"], "raw_params": row["raw_params"]}) == "arenda":
-            raise TrackRentUnsupported
-        return row["price"], row["title"]
+        return row["price"], row["title"], "arenda"
 
     url = f"https://krisha.kz/a/show/{listing_id}"
     # Тот же клиент, что в predict_from_url: пользователь ждёт ответа — короткий
@@ -666,14 +665,15 @@ def _track_listing_meta(listing_id: int) -> tuple[int | None, str | None]:
     listing = parse_detail(page, url)
     if listing is None:
         raise RuntimeError("Не удалось разобрать объявление")
-    if detect_deal(listing) == "arenda":
-        # и в базу продажи аренду не пишем: месячная цена исказила бы статистику
-        raise TrackRentUnsupported
+    deal = detect_deal(listing)
     try:
-        upsert_listing({**listing, "source": "user"})
+        # каждая сделка — в свою базу: месячная цена аренды исказила бы статистику продажи
+        upsert_listing({**listing, "source": "user"},
+                       db_path=RENT_DB_PATH if deal == "arenda" else DB_PATH,
+                       price_bounds=price_bounds_for(deal))
     except Exception:  # noqa: BLE001 — сохранение не должно ломать команду
         logger.warning("track: не удалось сохранить объявление в базу", exc_info=True)
-    return listing.get("price"), listing.get("title")
+    return listing.get("price"), listing.get("title"), deal
 
 
 def _handle_track_command(chat_id: int, text: str) -> None:
@@ -711,15 +711,12 @@ def _handle_track_command(chat_id: int, text: str) -> None:
         return
     tg_call("sendChatAction", chat_id=chat_id, action="typing")
     try:
-        price, title = _track_listing_meta(listing_id)
-    except TrackRentUnsupported:
-        tg_call("sendMessage", chat_id=chat_id, text=TRACK_RENT_HINT)
-        return
+        price, title, deal = _track_listing_meta(listing_id)
     except RuntimeError as exc:
         tg_call("sendMessage", chat_id=chat_id, text=f"Не получилось: {exc}")
         return
 
-    ok, reason = add_tracked(chat_id, listing_id, price, title)
+    ok, reason = add_tracked(chat_id, listing_id, price, title, deal=deal)
     if not ok and reason == "limit":
         tg_call("sendMessage", chat_id=chat_id,
                 text=f"Лимит: не больше {MAX_TRACKED_PER_CHAT} лотов в слежке. "
@@ -730,10 +727,14 @@ def _handle_track_command(chat_id: int, text: str) -> None:
         return
 
     name = html.escape(title or f"Объявление {listing_id}")
-    price_txt = f" Текущая цена: <b>{fmt_tenge(price)}</b>." if price else ""
+    rent = deal == "arenda"
+    what = "Текущая аренда" if rent else "Текущая цена"
+    price_txt = f" {what}: <b>{fmt_tenge(price, rent)}</b>." if price else ""
+    when = ("Проверяю раз в день, после вечернего обновления базы аренды; "
+            "пришлю алерт, если аренда изменится или объявление снимут. ") if rent else (
+            "Пришлю алерт при изменении цены или снятии с продажи. ")
     tg_call("sendMessage", chat_id=chat_id, parse_mode="HTML",
-            text=f"👀 Слежу за «{name}».{price_txt}\n"
-                 "Пришлю алерт при изменении цены или снятии с продажи. "
+            text=f"👀 Слежу за «{name}».{price_txt}\n{when}"
                  "Список: /track, отписка: /untrack")
 
 

@@ -5,11 +5,16 @@
 с последним, о котором уведомляли, и шлём алерт при изменении цены или
 снятии с продажи.
 
+Продажа и аренда проверяются раздельно: у каждой своя база и свой обход
+(утренний rescrape.yml и вечерний rescrape-rent.yml), поэтому
+check_tracked_updates смотрит только лоты своего типа (deal).
+
 Хранение: data/tracked.json (тот же механизм, что subscriptions.json —
 локальный файл + коммит в GitHub через Contents API, см. subscriptions.py).
 
 Формат: {"<chat_id>": {"<listing_id>": {"price": int|null, "title": str|null,
-"since": iso}}}
+"since": iso, "deal"?: "arenda"}}} — без "deal" лот считается продажей
+(так хранились все лоты до слежки за арендой).
 """
 
 from __future__ import annotations
@@ -26,6 +31,12 @@ logger = logging.getLogger(__name__)
 
 TRACKED_PATH = DATA_DIR / "tracked.json"
 MAX_TRACKED_PER_CHAT = 10
+SALE, RENT = "prodazha", "arenda"
+
+
+def lot_deal(state: dict[str, Any]) -> str:
+    """Тип сделки лота в слежке; старые записи без поля — продажа."""
+    return RENT if state.get("deal") == RENT else SALE
 
 # issue #156: порог доверия к снятию — общий с market.py, см. config.
 # Здесь цена ложного срабатывания особенно несимметрична: отправленное
@@ -59,6 +70,7 @@ def add_tracked(
     price: int | None,
     title: str | None,
     path: Path | None = None,
+    deal: str = SALE,
 ) -> tuple[bool, str | None]:
     """Добавляет лот в слежку. Возвращает (успех, причина отказа)."""
     from krisha.subscriptions import STATE_LOCK
@@ -77,6 +89,7 @@ def add_tracked(
             "price": price,
             "title": title,
             "since": datetime.now(timezone.utc).isoformat(),
+            **({"deal": RENT} if deal == RENT else {}),
         }
         # Без chat_id/listing_id в message: история коммитов публична
         _save(tracked, "track: обновление слежки", path)
@@ -118,8 +131,13 @@ def check_tracked_updates(
     path: Path | None = None,
     persist: bool = True,
     only_chats: set[int] | None = None,
+    deal: str = SALE,
 ) -> list[tuple[int, str]]:
     """Сравнивает лоты в слежке с базой после рескрейпа.
+
+    `deal` — какие лоты проверять: продажу по базе продажи (db_path=DB_PATH)
+    или аренду по базе аренды (db_path=RENT_DB_PATH). Лоты другого типа не
+    трогаем: их база в этом проходе не обновлялась.
 
     Возвращает [(chat_id, html-сообщение), ...] и обновляет сохранённые цены
     (persist=False — не сохранять, для dry-run), чтобы не слать одно и то же
@@ -143,6 +161,11 @@ def check_tracked_updates(
                 continue
             events: list[str] = []
             for lid, state in list(lots.items()):
+                if deal == SALE and lot_deal(state) == RENT:
+                    continue
+                legacy = deal == RENT and lot_deal(state) == SALE
+                if legacy and state.get("deal") is not None:
+                    continue
                 row = conn.execute(
                     "SELECT price, is_active, first_seen, last_seen, delisted_at, "
                     "title, url FROM listings WHERE id = ?",
@@ -150,7 +173,13 @@ def check_tracked_updates(
                 ).fetchone()
                 if row is None:
                     continue
-                event = _lot_event(lid, state, row)
+                if legacy:
+                    # До слежки за арендой /track брал аренду как продажу: такие лоты
+                    # висели без алертов. id на krisha общий, так что раз лот нашёлся
+                    # в базе аренды — это аренда; помечаем и дальше проверяем как её.
+                    state["deal"] = RENT
+                    changed = True
+                event = _lot_event(lid, state, row, rent=deal == RENT)
                 if not row["is_active"]:
                     if event is not None:
                         events.append(event)
@@ -180,7 +209,7 @@ def check_tracked_updates(
     return messages
 
 
-def _lot_event(lid: str, state: dict[str, Any], row) -> str | None:
+def _lot_event(lid: str, state: dict[str, Any], row, rent: bool = False) -> str | None:
     """Одно событие по лоту: изменение цены или снятие. Нет событий → None."""
     import html as _html
 
@@ -204,21 +233,27 @@ def _lot_event(lid: str, state: dict[str, Any], row) -> str | None:
             return None
         days = _days_between(row["first_seen"], row["last_seen"])
         days_txt = f" (провисело ~{days} дн.)" if days is not None else ""
-        return f"🏁 {link}\nСнято с продажи{days_txt} — слежку завершил."
+        gone = "Объявление об аренде снято" if rent else "Снято с продажи"
+        return f"🏁 {link}\n{gone}{days_txt} — слежку завершил."
 
     old, new = state.get("price"), row["price"]
     if new is None or old is None or int(new) == int(old):
         return None
     diff_pct = (new - old) / old * 100 if old else 0
     arrow = "📉" if new < old else "📈"
+    fmt, what = (_fmt_rent, "Аренда") if rent else (_fmt_mln, "Цена")
     return (
-        f"{arrow} {link}\nЦена: {_fmt_mln(old)} → <b>{_fmt_mln(new)}</b> "
+        f"{arrow} {link}\n{what}: {fmt(old)} → <b>{fmt(new)}</b> "
         f"({diff_pct:+.1f}%)"
     )
 
 
 def _fmt_mln(value: int | float) -> str:
     return f"{value / 1_000_000:.1f} млн ₸"
+
+
+def _fmt_rent(value: int | float) -> str:
+    return f"{value / 1_000:.0f} тыс ₸/мес"
 
 
 def _days_between(start: str | None, end: str | None) -> int | None:

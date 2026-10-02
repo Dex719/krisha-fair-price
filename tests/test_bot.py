@@ -104,7 +104,7 @@ def test_start_track_payload_enables_tracking_without_full_help(tmp_path, monkey
 
     monkeypatch.setattr("krisha.subscriptions._push_to_github", lambda *a, **k: None)
     monkeypatch.setattr(tracking, "TRACKED_PATH", tmp_path / "tracked.json")
-    monkeypatch.setattr(bot, "_track_listing_meta", lambda lid: (51_000_000, "Payload lot"))
+    monkeypatch.setattr(bot, "_track_listing_meta", lambda lid: (51_000_000, "Payload lot", "prodazha"))
     calls = []
     monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
 
@@ -470,35 +470,33 @@ def test_format_reply_shows_model_band():
     assert "Диапазон" not in bot.format_reply(SAMPLE_RESULT)
 
 
-def test_track_rent_link_is_refused_with_hint(tmp_path, monkeypatch):
-    """Аренду /track не берёт: проверка слежки идёт только по базе продажи."""
+def test_track_rent_link_is_tracked_as_rent(tmp_path, monkeypatch):
+    """/track на аренду: лот попадает в слежку с deal=arenda, ответ — в ₸/мес и про вечернюю проверку."""
     from krisha import tracking
 
     monkeypatch.setattr("krisha.subscriptions._push_to_github", lambda *a, **k: None)
     monkeypatch.setattr(tracking, "TRACKED_PATH", tmp_path / "tracked.json")
-
-    def rent_meta(lid):
-        raise bot.TrackRentUnsupported
-
-    monkeypatch.setattr(bot, "_track_listing_meta", rent_meta)
+    monkeypatch.setattr(bot, "_track_listing_meta", lambda lid: (320_000, "2-комн в аренду", "arenda"))
     calls = []
     monkeypatch.setattr(bot, "tg_call", lambda m, **kw: calls.append((m, kw)) or {"ok": True})
 
     bot.handle_update({"message": {"chat": {"id": 9}, "text": "/track https://krisha.kz/a/show/1012607661"}})
 
     sent = [kw["text"] for m, kw in calls if m == "sendMessage"]
-    assert sent and sent[-1] == bot.TRACK_RENT_HINT
-    assert tracking.list_tracked(9) == {}
+    assert sent and "Слежу" in sent[-1] and "320 000 ₸/мес" in sent[-1] and "вечернего" in sent[-1]
+    assert tracking.list_tracked(9)["1012607661"]["deal"] == "arenda"
+
+    bot.handle_update({"message": {"chat": {"id": 9}, "text": "/track"}})
+    assert "320 тыс ₸/мес" in [kw["text"] for m, kw in calls if m == "sendMessage"][-1]
 
 
-def test_track_meta_does_not_store_rent_in_sale_db(tmp_path, monkeypatch):
-    """Объявление об аренде с сайта не пишется в базу продажи и даёт TrackRentUnsupported."""
-    import pytest
-
+def test_track_meta_stores_rent_in_rent_db(tmp_path, monkeypatch):
+    """Аренда с сайта ложится в базу аренды (не продажи) и возвращается с deal=arenda."""
     from krisha import config, db, predict
     from krisha.scraping import detail_parser
 
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "sale.db")
+    monkeypatch.setattr(config, "RENT_DB_PATH", tmp_path / "rent.db")
 
     class FakeClient:
         def __enter__(self):
@@ -514,8 +512,23 @@ def test_track_meta_does_not_store_rent_in_sale_db(tmp_path, monkeypatch):
     monkeypatch.setattr(detail_parser, "parse_detail",
                         lambda page, url: {"id": 1012607661, "price": 320_000, "deal": "arenda", "title": "2-комн"})
     stored = []
-    monkeypatch.setattr(db, "upsert_listing", lambda listing, *a, **k: stored.append(listing))
+    monkeypatch.setattr(db, "upsert_listing", lambda listing, *a, **k: stored.append(k.get("db_path")))
 
-    with pytest.raises(bot.TrackRentUnsupported):
-        bot._track_listing_meta(1012607661)
-    assert stored == []
+    assert bot._track_listing_meta(1012607661) == (320_000, "2-комн", "arenda")
+    assert stored == [tmp_path / "rent.db"]
+
+
+def test_track_meta_finds_rent_in_rent_db_without_fetch(tmp_path, monkeypatch):
+    """Лот уже есть в базе аренды — сайт не дёргаем."""
+    from krisha import config, predict
+    from krisha.db import init_db, price_bounds_for, upsert_listing
+
+    monkeypatch.setattr(config, "DB_PATH", tmp_path / "sale.db")
+    monkeypatch.setattr(config, "RENT_DB_PATH", tmp_path / "rent.db")
+    init_db(tmp_path / "rent.db")
+    upsert_listing({"id": 555, "url": "https://krisha.kz/a/show/555", "title": "Аренда 1к",
+                    "price": 250_000, "source": "test"}, db_path=tmp_path / "rent.db",
+                   price_bounds=price_bounds_for("arenda"))
+    monkeypatch.setattr(predict, "user_client", lambda **kw: (_ for _ in ()).throw(AssertionError("fetch")))
+
+    assert bot._track_listing_meta(555) == (250_000, "Аренда 1к", "arenda")
