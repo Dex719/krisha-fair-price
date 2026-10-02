@@ -113,13 +113,24 @@ unicode-range:U+0020,U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1;}
 .dp a:hover,.dnote a:hover,.drow a:hover,.contact a:not(.gobtn):hover{text-decoration-color:var(--limeink)}
 code{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:.88em;font-weight:500;padding:2px 7px;border-radius:6px;background:var(--soft);color:var(--ink);white-space:nowrap}
 
-/* коротко: три цифры в одной панели, дальше список с линиями */
-.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-bottom:30px;background:var(--line);border:1px solid var(--line);border-radius:var(--r3);overflow:hidden;box-shadow:var(--sh1)}
-.kpi{background:var(--panel);padding:26px 26px 28px}
-.kpi b{display:block;font-family:Unbounded,UnboundedFB,sans-serif;font-weight:700;font-size:clamp(34px,4vw,52px);letter-spacing:-.04em;line-height:1;color:var(--limeink);font-variant-numeric:tabular-nums;white-space:nowrap}
-.kpi b small{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:15px;font-weight:500;letter-spacing:0;color:var(--dim);margin-left:6px}
-.kpi span{display:block;margin-top:14px;font-size:14.5px;line-height:1.5;color:var(--dim)}
-.kpi span strong{color:var(--ink);font-weight:600}
+/* коротко: отдельная сводка над документом — слева главное списком, справа три цифры */
+.psum{position:relative;isolation:isolate;display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);margin:0 0 88px;border:1px solid var(--line);border-radius:var(--r3);background:var(--panel);box-shadow:var(--sh1);overflow:hidden}
+.psum::before{content:"";position:absolute;z-index:-1;left:-12%;bottom:-55%;width:62%;height:130%;background:radial-gradient(closest-side,color-mix(in srgb,var(--lime) 9%,transparent),transparent);pointer-events:none}
+.psl{padding:40px 44px 44px}
+.pse{display:inline-flex;align-items:center;gap:10px;font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:12.5px;color:var(--limeink)}
+.pse::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 4px color-mix(in srgb,var(--lime) 18%,transparent)}
+.psh{margin:16px 0 28px;font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:clamp(26px,2.8vw,36px);line-height:1.12;letter-spacing:-.035em;color:var(--ink);text-wrap:balance}
+.pcheck{list-style:none;margin:0;padding:0;display:grid;gap:18px}
+.pcheck li{position:relative;max-width:60ch;padding-left:38px;font-size:16px;line-height:1.6;color:var(--ink);text-wrap:pretty}
+.pcheck li::before{content:"";position:absolute;left:0;top:1px;width:24px;height:24px;border-radius:8px;background:color-mix(in srgb,var(--lime) 14%,transparent)}
+.pcheck li::after{content:"";position:absolute;left:8px;top:8px;width:8px;height:4.5px;border-left:2px solid var(--limeink);border-bottom:2px solid var(--limeink);transform:rotate(-45deg)}
+.psr{display:flex;flex-direction:column;border-left:1px solid var(--line);background:var(--panel2)}
+.pkpi{flex:1;display:flex;flex-direction:column;justify-content:center;padding:26px 36px 28px}
+.pkpi+.pkpi{border-top:1px solid var(--line)}
+.pkpi b{display:flex;align-items:baseline;gap:8px;font-family:Unbounded,UnboundedFB,sans-serif;font-weight:700;font-size:clamp(34px,3.6vw,46px);letter-spacing:-.04em;line-height:1;color:var(--limeink);font-variant-numeric:tabular-nums;white-space:nowrap}
+.pkpi b small{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:14px;font-weight:500;letter-spacing:0;color:var(--dim)}
+.pkpi span{display:block;margin-top:10px;font-size:14.5px;line-height:1.5;color:var(--dim)}
+.pkpi span strong{color:var(--ink);font-weight:600}
 .dlist{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 .dlist li{position:relative;padding:17px calc(100% - 68ch) 17px 28px;border-bottom:1px solid var(--line);font-size:16.5px;line-height:1.6;color:var(--ink);text-wrap:pretty}
 .dlist li::before{content:"";position:absolute;left:3px;top:27px;width:8px;height:8px;border-radius:50%;background:var(--limeink)}
@@ -212,9 +223,10 @@ code{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:.88em;font-w
  .contact{padding:26px 22px}
 }
 @media(max-width:640px){
- .kpis{grid-template-columns:minmax(0,1fr)}
- .kpi{padding:22px 22px 24px}
- .kpi span{margin-top:10px}
+ .psum{grid-template-columns:minmax(0,1fr);margin-bottom:56px}
+ .psl{padding:28px 22px 30px}
+ .psr{border-left:0;border-top:1px solid var(--line)}
+ .pkpi{padding:22px}
  .cmd{grid-template-columns:minmax(0,1fr);gap:10px;padding:16px 0 18px}
  .dp,.dlist li{font-size:16px}
  .contact .gobtn{width:100%;justify-content:center}
@@ -283,7 +295,7 @@ html.lite .sk{animation:none}
 <nav><div class="wrap nrow">
 <a class="logo" href="/" aria-label="baǵam — на главную">baǵam<span>.</span></a>
 <div class="menu"><a href="/">Оценка</a><a href="/stats">Рынок</a><a href="/rent">Аренда</a><a href="/about">О проекте</a></div>
-<button class="thbtn" type="button" data-theme-toggle aria-label="Сменить тему"><svg class="tm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg><svg class="ts" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button><a class="tgbtn" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><span class="tgn">Telegram-бот</span><span class="tghw"><span class="tgh">@fairprice_kzbot</span></span><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.9"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.9"/></svg></a>
+<button class="thbtn" type="button" data-theme-toggle aria-label="Сменить тему"><svg class="tm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg><svg class="ts" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button><a class="tgbtn" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><span class="tgn">Telegram-бот</span><span class="tghw"><span class="tgh">@fairprice_kzbot</span></span><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 10l-4 4l6 6l4-16l-18 7l4 2l2 6l3-4" stroke="currentColor" stroke-width="1.9"/></svg></a>
 <button class="burg" type="button" aria-label="Меню" aria-expanded="false" aria-controls="mmenu"><span></span><span></span></button>
 </div></nav>
 <div class="mmenu" id="mmenu" aria-label="Меню" aria-hidden="true">
@@ -327,49 +339,51 @@ html.lite .sk{animation:none}
 </div></section>
 
 <section class="sect"><div class="wrap">
+<div class="psum" id="summary">
+ <div class="psl">
+  <span class="pse">коротко</span>
+  <h2 class="psh">Главное за полминуты</h2>
+  <ul class="pcheck">
+   <li>Ссылка на объявление не сохраняется и не связывается с вами: из неё берётся только публичный номер лота.</li>
+   <li>Номер вашего чата бот хранит, только пока вы подписаны на алерты или следите за лотами, и хранит его зашифрованным. Для статистики из номера считается короткий хэш.</li>
+   <li>Состояние бота лежит в приватном репозитории автора на GitHub. Код проекта открыт, данные нет.</li>
+   <li>Отписаться и удалить данные можно командой в боте или сообщением автору.</li>
+  </ul>
+ </div>
+ <div class="psr">
+  <div class="pkpi"><b>0</b><span><strong>cookie.</strong> Код сайта не создаёт и не читает cookie.</span></div>
+  <div class="pkpi"><b>0</b><span><strong>сторонних трекеров.</strong> Ни аналитики, ни рекламы, ни пикселей.</span></div>
+  <div class="pkpi"><b>60<small>дней</small></b><span><strong>срок счётчиков.</strong> Столько хранятся счётчики визитов и короткие хэши пользователей бота.</span></div>
+ </div>
+</div>
+
 <div class="doc">
 
 <div class="tocw"><div role="navigation" aria-label="Содержание"><details class="toc" id="toc">
 <summary>Содержание</summary>
 <ol>
- <li><a href="#summary"><i aria-hidden="true">01</i>Коротко</a></li>
- <li><a href="#operator"><i aria-hidden="true">02</i>Кто оператор</a></li>
- <li><a href="#site"><i aria-hidden="true">03</i>Что обрабатывает сайт</a></li>
- <li><a href="#bot"><i aria-hidden="true">04</i>Что обрабатывает бот</a></li>
- <li><a href="#none"><i aria-hidden="true">05</i>Чего мы не собираем</a></li>
- <li><a href="#data"><i aria-hidden="true">06</i>Данные, цели и сроки</a></li>
- <li><a href="#storage"><i aria-hidden="true">07</i>Где хранятся и кто имеет доступ</a></li>
- <li><a href="#third"><i aria-hidden="true">08</i>Третьи лица</a></li>
- <li><a href="#delete"><i aria-hidden="true">09</i>Как удалить данные</a></li>
- <li><a href="#changes"><i aria-hidden="true">10</i>Изменения и контакты</a></li>
+ <li><a href="#operator"><i aria-hidden="true">01</i>Кто оператор</a></li>
+ <li><a href="#site"><i aria-hidden="true">02</i>Что обрабатывает сайт</a></li>
+ <li><a href="#bot"><i aria-hidden="true">03</i>Что обрабатывает бот</a></li>
+ <li><a href="#none"><i aria-hidden="true">04</i>Чего мы не собираем</a></li>
+ <li><a href="#data"><i aria-hidden="true">05</i>Данные, цели и сроки</a></li>
+ <li><a href="#storage"><i aria-hidden="true">06</i>Где хранятся и кто имеет доступ</a></li>
+ <li><a href="#third"><i aria-hidden="true">07</i>Третьи лица</a></li>
+ <li><a href="#delete"><i aria-hidden="true">08</i>Как удалить данные</a></li>
+ <li><a href="#changes"><i aria-hidden="true">09</i>Изменения и контакты</a></li>
 </ol>
 </details></div></div>
 
 <div class="docb">
 
-<section class="ds" id="summary">
-<h2 class="dh"><span class="dn" aria-hidden="true">01</span>Коротко</h2>
-<div class="kpis">
- <div class="kpi"><b>0</b><span><strong>cookie.</strong> Код сайта не создаёт и не читает cookie.</span></div>
- <div class="kpi"><b>0</b><span><strong>сторонних трекеров.</strong> Ни аналитики, ни рекламы, ни пикселей.</span></div>
- <div class="kpi"><b>60<small>дней</small></b><span><strong>срок счётчиков.</strong> Столько хранятся счётчики визитов и короткие хэши пользователей бота.</span></div>
-</div>
-<ul class="dlist">
- <li>Ссылка на объявление не сохраняется и не связывается с вами: из неё берётся только публичный номер лота.</li>
- <li>Номер вашего чата бот хранит, только пока вы подписаны на алерты или следите за лотами, и хранит его зашифрованным. Для статистики из номера считается короткий хэш.</li>
- <li>Состояние бота лежит в приватном репозитории автора на GitHub. Код проекта открыт, данные нет.</li>
- <li>Отписаться и удалить данные можно командой в боте или сообщением автору.</li>
-</ul>
-</section>
-
 <section class="ds" id="operator">
-<h2 class="dh"><span class="dn" aria-hidden="true">02</span>Кто оператор</h2>
+<h2 class="dh"><span class="dn" aria-hidden="true">01</span>Кто оператор</h2>
 <p class="dp">baǵam — некоммерческий проект. Его ведёт автор: <a href="https://t.me/Hopepe1" target="_blank" rel="noopener">@Hopepe1</a> в Telegram. Сайт и бот бесплатны, рекламы на них нет.</p>
 <p class="dp">Политика относится к сайту <code>dex719-krisha-fair-price.hf.space</code> и боту <a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">@fairprice_kzbot</a>. Исходный код опубликован <a href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener">на GitHub</a> (лицензия Elastic License 2.0), поэтому всё описанное ниже можно проверить самому.</p>
 </section>
 
 <section class="ds" id="site">
-<h2 class="dh"><span class="dn" aria-hidden="true">03</span>Что обрабатывает сайт</h2>
+<h2 class="dh"><span class="dn" aria-hidden="true">02</span>Что обрабатывает сайт</h2>
 <p class="dp">Сайт работает без аккаунтов и регистрации. Вот что происходит, когда вы им пользуетесь.</p>
 <div class="drows">
  <div class="drow"><h3>Ссылка на объявление</h3><div>
@@ -399,7 +413,7 @@ html.lite .sk{animation:none}
 </section>
 
 <section class="ds" id="bot">
-<h2 class="dh"><span class="dn" aria-hidden="true">04</span>Что обрабатывает бот</h2>
+<h2 class="dh"><span class="dn" aria-hidden="true">03</span>Что обрабатывает бот</h2>
 <p class="dp">Бот работает через Telegram: сообщение приходит на наш сервер (webhook), ответ уходит через Bot API. Подробности команд — <a href="/bot">на странице бота</a>.</p>
 <div class="drows">
  <div class="drow"><h3>Что бот читает</h3><div>
@@ -428,7 +442,7 @@ html.lite .sk{animation:none}
 </section>
 
 <section class="ds" id="none">
-<h2 class="dh"><span class="dn" aria-hidden="true">05</span>Чего мы не собираем</h2>
+<h2 class="dh"><span class="dn" aria-hidden="true">04</span>Чего мы не собираем</h2>
 <p class="dp">Список проверяет тест в репозитории: если на страницах появятся cookie или внешний скрипт, он упадёт.</p>
 <ul class="dlist no">
  <li><b>Cookie.</b> Сайт их не создаёт и не читает.</li>
@@ -437,12 +451,12 @@ html.lite .sk{animation:none}
  <li><b>Аккаунты и пароли.</b> Регистрации нет. E-mail, телефон и платёжные данные никто не спрашивает.</li>
  <li><b>Геолокацию, камеру, микрофон и контакты.</b> Сайт этих разрешений не запрашивает.</li>
  <li><b>Имя и @username в Telegram.</b> Бот их не читает.</li>
- <li><b>Ваши сообщения боту.</b> Приложение не сохраняет их текст. Единственное место, куда он уходит, — Gemini, когда вы присылаете текст объявления без ссылки (раздел 04).</li>
+ <li><b>Ваши сообщения боту.</b> Приложение не сохраняет их текст. Единственное место, куда он уходит, — Gemini, когда вы присылаете текст объявления без ссылки (раздел 03).</li>
 </ul>
 </section>
 
 <section class="ds" id="data">
-<h2 class="dh"><span class="dn" aria-hidden="true">06</span>Данные, цели и сроки</h2>
+<h2 class="dh"><span class="dn" aria-hidden="true">05</span>Данные, цели и сроки</h2>
 <p class="dp">Всё, что живёт дольше одного запроса, собрано в таблицу. Остальное лежит в памяти сервера и исчезает при перезапуске.</p>
 <div class="tw"><table class="dt">
 <thead><tr><th scope="col">Данные</th><th scope="col">Зачем</th><th scope="col">Где хранятся</th><th scope="col">Сколько</th></tr></thead>
@@ -459,7 +473,7 @@ html.lite .sk{animation:none}
 </section>
 
 <section class="ds" id="storage">
-<h2 class="dh"><span class="dn" aria-hidden="true">07</span>Где хранятся и кто имеет доступ</h2>
+<h2 class="dh"><span class="dn" aria-hidden="true">06</span>Где хранятся и кто имеет доступ</h2>
 <div class="flow" role="group" aria-label="Путь данных">
  <div class="fn"><b>Вы</b><span>Браузер или Telegram: ссылка на объявление, команды бота</span></div>
  <div class="fa" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
@@ -490,7 +504,7 @@ html.lite .sk{animation:none}
 </section>
 
 <section class="ds" id="third">
-<h2 class="dh"><span class="dn" aria-hidden="true">08</span>Третьи лица</h2>
+<h2 class="dh"><span class="dn" aria-hidden="true">07</span>Третьи лица</h2>
 <p class="dp">У каждого из этих сервисов свои правила и свои журналы. Мы ими не управляем.</p>
 <div class="drows">
  <div class="drow"><h3>Telegram</h3><div>
@@ -516,7 +530,7 @@ html.lite .sk{animation:none}
 </section>
 
 <section class="ds" id="delete">
-<h2 class="dh"><span class="dn" aria-hidden="true">09</span>Как удалить данные</h2>
+<h2 class="dh"><span class="dn" aria-hidden="true">08</span>Как удалить данные</h2>
 <p class="dp">Почти всё удаляется одной командой в боте.</p>
 <div class="cmds">
  <div class="cmd"><span class="k">/alerts_off</span><p>Отписаться от алертов: запись о подписке удаляется.</p></div>
@@ -541,7 +555,7 @@ html.lite .sk{animation:none}
 </section>
 
 <section class="ds" id="changes">
-<h2 class="dh"><span class="dn" aria-hidden="true">10</span>Изменения и контакты</h2>
+<h2 class="dh"><span class="dn" aria-hidden="true">09</span>Изменения и контакты</h2>
 <p class="dp">Если политика изменится, например появится новая интеграция или аналитика, страница обновится, а дата редакции сменится. Прошлые редакции остаются в <a href="https://github.com/Dex719/krisha-fair-price/commits/main/static/privacy.html" target="_blank" rel="noopener">истории файла</a> в репозитории проекта.</p>
 <p class="dp sp"><b>Сверить с кодом.</b> Файлы, на которых стоят утверждения выше:</p>
 <div class="cmds">
@@ -570,7 +584,7 @@ html.lite .sk{animation:none}
 <div class="shead"><div class="shl"><h2 class="shttl">Куда дальше</h2><p class="shsub">Правила пользования, как устроен бот и код, по которому можно всё проверить.</p></div></div>
 <div class="ncards">
 <a class="ncard v" href="/terms"><span class="ntop"><span class="nidx">01</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3.5h7l4 4V20.5H7Z"/><path d="M14 3.5v4h4"/><path d="M9.8 12.2h5.4M9.8 15.6h5.4"/></svg></span></span><span class="nttl">Условия использования</span><span class="nbot"><span class="nmeta">что сервис обещает<br>и чего не обещает</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
-<a class="ncard g" href="/bot"><span class="ntop"><span class="nidx">02</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5h14a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.8V16.5H5A1.5 1.5 0 0 1 3.5 15V6A1.5 1.5 0 0 1 5 4.5Z"/><path d="M8 9.2h8M8 12.4h5"/></svg></span></span><span class="nttl">Telegram-бот</span><span class="nbot"><span class="nmeta">оценка, слежка, алерты<br>команды и примеры</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard g" href="/bot"><span class="ntop"><span class="nidx">02</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 10l-4 4l6 6l4-16l-18 7l4 2l2 6l3-4"/></svg></span></span><span class="nttl">Telegram-бот</span><span class="nbot"><span class="nmeta">оценка, слежка, алерты<br>команды и примеры</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
 <a class="ncard w" href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener"><span class="ntop"><span class="nidx">03</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8.5 7.5-4.5 4.5 4.5 4.5"/><path d="m15.5 7.5 4.5 4.5-4.5 4.5"/><path d="m13.4 5.5-2.8 13"/></svg></span></span><span class="nttl">Исходный код</span><span class="nbot"><span class="nmeta">открытый репозиторий<br>на GitHub</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
 </div>
 </div></section>
@@ -596,7 +610,7 @@ html.lite .sk{animation:none}
   <div class="flinks">
    <a class="flink" href="/about">О проекте</a>
    <a class="flink" href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48l-.01-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.35 4.68-4.58 4.93.36.31.68.92.68 1.85l-.01 2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>Исходный код</a>
-   <a class="flink" href="https://t.me/Hopepe1" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.7"/></svg>Автор</a>
+   <a class="flink" href="https://t.me/Hopepe1" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 10l-4 4l6 6l4-16l-18 7l4 2l2 6l3-4" stroke="currentColor" stroke-width="1.7"/></svg>Автор</a>
   </div>
  </div>
  <div>
@@ -791,15 +805,6 @@ if(!staticMode){
   from('.fn',{y:22,opacity:0,duration:.7,stagger:.1,ease:'expo.out',clearProps:'transform'},'.flow');
   from('.ncard',{y:26,opacity:0,duration:.75,stagger:.08,ease:'expo.out',clearProps:'transform'},'.ncards','top 85%');
   from('.fgrid > div',{y:24,opacity:0,duration:.7,stagger:.09,ease:'expo.out',clearProps:'transform'},'footer');
-  if(matchMedia('(pointer:fine)').matches){
-    document.querySelectorAll('.gobtn').forEach(btn=>{
-      const clamp=v=>Math.max(-7,Math.min(7,v));
-      btn.addEventListener('mouseenter',()=>gsap.to(btn,{scale:1.04,duration:.35,ease:'power2.out'}));
-      btn.addEventListener('mousemove',e=>{const r=btn.getBoundingClientRect();
-        gsap.to(btn,{x:clamp((e.clientX-r.left-r.width/2)*.14),y:clamp((e.clientY-r.top-r.height/2)*.16),duration:.45,ease:'power3.out',overwrite:'auto'});});
-      btn.addEventListener('mouseleave',()=>gsap.to(btn,{x:0,y:0,scale:1,duration:.5,ease:'power3.out',overwrite:'auto'}));
-    });
-  }
 }
 
 /* форма на подстранице уводит разбор на главную */

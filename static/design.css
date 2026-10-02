@@ -101,7 +101,6 @@ h1 .l3{display:block}
 .gobtn:hover{background:color-mix(in oklab,var(--lime) 86%,#fff)}
 
 .gobtn i{font-style:normal;display:inline-block;transition:transform .3s cubic-bezier(.2,.7,.2,1)}
-.gobtn:hover i{transform:translateX(5px)}
 /* TICKER */
 .dband{position:relative;z-index:2;margin-top:-24px;padding:0}
 .nw{white-space:nowrap}
@@ -149,20 +148,40 @@ h1 .l3{display:block}
 .rsttl{font-size:17px;font-weight:600;letter-spacing:-.01em}
 .rwttl{font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:20px;letter-spacing:-.02em;color:var(--ink)}
 .rwsub{font-size:14.5px;color:var(--dim)}
-.rax{position:relative;height:74px;margin-top:40px}
-.rtrack{position:absolute;left:0;right:0;top:48px;height:6px;border-radius:99px;background:var(--track)}
-.rband{position:absolute;left:0;right:0;top:48px;height:6px;border-radius:99px;background:linear-gradient(90deg,rgba(58,220,124,.9),rgba(233,180,76,.9))}
-.rmk{position:absolute;top:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px}
-.rmk.edgeL{transform:none;align-items:flex-start}
-.rmk.edgeR{transform:translateX(-100%);align-items:flex-end}
-.rmk span{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:12.5px;color:var(--dim);white-space:nowrap}
-.rmk i{width:2px;height:26px;background:var(--dim)}
-.rmk.ask span{color:var(--ink);font-weight:600}
-.rmk.ask i{background:var(--ink)}
-.rmk.fair{top:auto;bottom:0;flex-direction:column-reverse}
-.rmk.fair span{color:var(--limeink);font-weight:600}
-.rmk.fair i{background:var(--lime)}
-.rends{display:flex;justify-content:space-between;font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:12.5px;color:var(--dim);margin-top:10px}
+.rslg{display:flex;flex-wrap:wrap;gap:6px 18px;font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:12px;font-weight:400;letter-spacing:0;color:var(--dim)}
+.rslg i{display:inline-block;width:9px;height:9px;margin-right:7px;border-radius:3px;vertical-align:-1px}
+.rslg i.lo,.rz.lo.on{background:var(--lime)}
+.rslg i.mid,.rz.mid.on{background:var(--vio)}
+.rslg i.hi,.rz.hi.on{background:var(--bad)}
+.rax{position:relative;margin-top:34px;padding:46px 0 58px}
+.rax.stack{padding-bottom:80px}
+.rbar{position:relative;height:14px}
+.rz{position:absolute;top:0;bottom:0;border:0 solid transparent;border-width:0 2px;background-clip:padding-box;border-radius:5px;transition:background-color .5s}
+.rz.lo{border-left:0;border-radius:99px 5px 5px 99px;background-color:color-mix(in srgb,var(--lime) 24%,transparent)}
+.rz.mid{background-color:color-mix(in srgb,var(--vio) 24%,transparent)}
+.rz.hi{border-right:0;border-radius:5px 99px 99px 5px;background-color:color-mix(in srgb,var(--bad) 24%,transparent)}
+/* метки: .rmk — нулевая ширина в точке цены, подпись центрируется сама, gsap двигает только .rmk */
+.rmk{position:absolute;width:0;z-index:2}
+.rmk span{position:absolute;left:0;transform:translateX(-50%);font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:12.5px;font-weight:600;line-height:1.2;white-space:nowrap}
+.rmk.edgeL span{transform:translateX(-16px)}
+.rmk.edgeR span{transform:translateX(calc(-100% + 16px))}
+.rmk.fair.edgeL span{transform:translateX(-12px)}
+.rmk.fair.edgeR span{transform:translateX(calc(-100% + 12px))}
+.rmk.ask{top:0;height:60px}
+.rmk.ask span{top:0;padding:7px 12px;border-radius:99px;background:var(--ink);color:var(--bg)}
+.rmk.ask span::after{content:"";position:absolute;left:50%;bottom:-4px;width:9px;height:9px;margin-left:-4.5px;border-radius:2px;background:var(--ink);transform:rotate(45deg)}
+.rmk.ask.edgeL span::after{left:16px}
+.rmk.ask.edgeR span::after{left:auto;right:11.5px;margin-left:0}
+.rmk.ask i{position:absolute;left:-1px;top:30px;bottom:0;width:2px;border-radius:2px;background:var(--ink);box-shadow:0 0 0 2px var(--panel)}
+.rmk.fair{top:46px;height:14px}
+.rmk.fair i{position:absolute;left:-9px;top:-2px;width:18px;height:18px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 3px var(--panel),0 3px 10px rgba(0,0,0,.35)}
+.rmk.fair span{top:24px;padding:2px 6px;border-radius:6px;background:var(--panel);color:var(--limeink)}
+/* границы интервала: подпись снаружи интервала, не влезает — внутрь, но всегда в пределах шкалы;
+   пунктир-выноска (--gx) остаётся точно под краем зоны */
+.rtk{position:absolute;top:104px;left:0;z-index:1;font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:12px;line-height:1.2;color:var(--dim);white-space:nowrap}
+.rtk::before{content:"";position:absolute;left:var(--gx,0px);bottom:calc(100% + 3px);height:41px;width:1px;background:repeating-linear-gradient(180deg,var(--faint) 0 3px,transparent 3px 6px)}
+.rax.stack .rtk.hi{top:126px}
+.rax.stack .rtk.hi::before{height:63px}
 .rwhy{padding:32px 36px}
 .fxlist{display:grid;grid-template-columns:repeat(auto-fit,minmax(184px,1fr));gap:10px;margin-top:22px}
 .fx{background:var(--bg);border:1px solid var(--line);border-radius:var(--r2);padding:18px 18px 20px;display:flex;flex-direction:column;gap:10px;transition:background-color .2s,border-color .2s}
@@ -434,11 +453,9 @@ a.rxr:hover .rxv{color:var(--lime)}
  .rn{padding:22px 20px;border-right:0}
  .rscale,.rwhy{padding:26px 20px}
  .rfoot{padding:0 20px 26px}
- .rax{height:104px;margin-top:34px}
- .rtrack,.rband{top:62px}
- .rmk span{max-width:104px;white-space:normal;text-align:center;line-height:1.35}
- .rmk i{height:22px}
- .rends{flex-direction:column;gap:5px}
+ .rax{margin-top:26px}
+ .rslg{gap:4px 14px}
+ .rmk span,.rtk{font-size:11.5px}
  .fxlist{grid-template-columns:1fr 1fr;gap:8px}
  .fx{padding:16px 15px 18px;gap:8px}
  .fxn{font-size:14px}
