@@ -8,6 +8,13 @@
 
 ## Не выпущено
 
+- **Свой домен через Cloudflare Worker** (`docs/domain-worker.js`). Свой
+  домен у HF Spaces только на PRO, поэтому bagam.info смотрит в Cloudflare,
+  а воркер пересылает запросы в Space; `www` → 301 на голый домен. Настоящий
+  IP посетителя для rate-limit приходит в `X-Bagam-Client-IP` и принимается
+  только вместе с секретом `PROXY_KEY` (иначе все посетители домена делили бы
+  один лимит по IP Cloudflare). Webhook бота остаётся на адресе Space
+  (`bot.webhook_base_url`), `PUBLIC_BASE_URL` — для ссылок и sitemap.
 - **Доходность сдачи в аренду для объявлений о продаже** (`krisha.rental_yield`,
   поле `rental_yield` ответа `/api/predict`, строка в боте). Продажный лот
   переводится на словарь арендной страницы (ремонт, санузел, балкон) и

@@ -69,6 +69,38 @@ def test_client_ip_two_hops_picks_second_from_right(monkeypatch):
     assert app_module._client_ip(_request_with_xff(xff)) == "203.0.113.10"
 
 
+def _request_via_domain_proxy(key: str | None, ip: str = "203.0.113.77"):
+    """Запрос, как его шлёт Cloudflare Worker домена (docs/domain-worker.js):
+    правый XFF — общий IP Cloudflare, настоящий — в X-Bagam-Client-IP."""
+    request = _request_with_xff("203.0.113.77, 104.16.0.1")
+    extra = [(b"x-bagam-client-ip", ip.encode())]
+    if key is not None:
+        extra.append((b"x-bagam-proxy-key", key.encode()))
+    request.scope["headers"] = [*request.scope["headers"], *extra]
+    return request
+
+
+def test_client_ip_from_domain_proxy_with_valid_key(monkeypatch):
+    """Через домен правый XFF — IP Cloudflare, общий для всех посетителей;
+    настоящий IP берём из заголовка воркера, только если ключ совпал."""
+    monkeypatch.delenv("TRUSTED_PROXY_HOPS", raising=False)
+    monkeypatch.setenv("PROXY_KEY", "k" * 40)
+    assert app_module._client_ip(_request_via_domain_proxy("k" * 40)) == "203.0.113.77"
+
+
+def test_client_ip_domain_proxy_header_ignored_without_valid_key(monkeypatch):
+    """Подделанный X-Bagam-Client-IP без ключа (или с чужим) не даёт нового бакета."""
+    monkeypatch.delenv("TRUSTED_PROXY_HOPS", raising=False)
+    monkeypatch.setenv("PROXY_KEY", "k" * 40)
+    assert app_module._client_ip(_request_via_domain_proxy(None)) == "104.16.0.1"
+    assert app_module._client_ip(_request_via_domain_proxy("wrong")) == "104.16.0.1"
+    # битый IP при верном ключе — обычный путь через XFF
+    assert app_module._client_ip(_request_via_domain_proxy("k" * 40, ip="not-an-ip")) == "104.16.0.1"
+    # PROXY_KEY не задан — заголовку не верим, даже с пустым ключом
+    monkeypatch.delenv("PROXY_KEY")
+    assert app_module._client_ip(_request_via_domain_proxy("")) == "104.16.0.1"
+
+
 def test_rate_limit_not_bypassed_by_spoofed_left_xff(monkeypatch):
     """Регрессия обхода: смена крайнего ЛЕВОГО XFF не даёт нового бакета.
 

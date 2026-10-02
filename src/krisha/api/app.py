@@ -558,6 +558,18 @@ def _trusted_proxy_hops() -> int:
         return 1
 
 
+def _proxy_client_ip(request: Request) -> str | None:
+    """IP посетителя от своего прокси домена — только при верном ключе."""
+    key = os.environ.get("PROXY_KEY", "")
+    sent = request.headers.get("x-bagam-proxy-key", "")
+    if not key or not hmac.compare_digest(sent.encode(), key.encode()):
+        return None
+    try:
+        return str(ipaddress.ip_address(request.headers.get("x-bagam-client-ip", "").strip()))
+    except ValueError:
+        return None
+
+
 def _client_ip(request: Request) -> str:
     """IP для rate-limit: адрес, вписанный ДОВЕРЕННЫМ ближайшим прокси.
 
@@ -569,7 +581,15 @@ def _client_ip(request: Request) -> str:
     берёт крайний левый и кладёт в request.client, поэтому IP читаем из
     заголовка сами. Правый элемент дописывает доверенный прокси HF/Railway —
     на него клиент влиять не может.
+
+    Запрос через свой домен (Cloudflare Worker, docs/domain-worker.js)
+    приходит с IP Cloudflare — правый элемент XFF общий для всех посетителей
+    домена. Воркер кладёт настоящий IP в X-Bagam-Client-IP вместе с ключом
+    PROXY_KEY; без совпадения ключа заголовок игнорируется.
     """
+    proxied = _proxy_client_ip(request)
+    if proxied:
+        return proxied
     hops = _trusted_proxy_hops()
     if hops > 0:
         fwd = request.headers.get("x-forwarded-for")

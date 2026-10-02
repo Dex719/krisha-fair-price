@@ -6,8 +6,9 @@
 
 Настройка (env):
 - TELEGRAM_BOT_TOKEN — токен от @BotFather (без него бот выключен, приложение работает как обычно)
-- PUBLIC_BASE_URL / SPACE_HOST — публичный адрес для регистрации webhook
-  (на Hugging Face Spaces SPACE_HOST выставляется автоматически)
+- SPACE_HOST — адрес для регистрации webhook (на Hugging Face Spaces
+  выставляется автоматически; без него — PUBLIC_BASE_URL)
+- PUBLIC_BASE_URL — публичный адрес сайта (свой домен) для ссылок и sitemap
 - TG_API_BASE — базовый адрес Bot API (по умолчанию https://api.telegram.org).
   Нужен, когда хостинг не пускает исходящие запросы к Telegram напрямую:
   ставим прокси (см. docs/tg-proxy-worker.js) и указываем его адрес здесь.
@@ -748,6 +749,18 @@ def public_base_url() -> str | None:
     return f"https://{domain}" if domain else None
 
 
+def webhook_base_url() -> str | None:
+    """Адрес для webhook: домен хостинга, PUBLIC_BASE_URL — только без него.
+
+    Свой домен (bagam.info) идёт через Cloudflare Worker; webhook на адресе
+    Space не зависит от лишнего звена: упадёт домен — бот продолжит отвечать.
+    """
+    domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN") or os.environ.get("SPACE_HOST")
+    if domain:
+        return f"https://{domain}"
+    return public_base_url()
+
+
 def setup_webhook(retries: int = 3) -> bool:
     """Регистрирует webhook при старте приложения (no-op без токена/домена).
 
@@ -758,7 +771,7 @@ def setup_webhook(retries: int = 3) -> bool:
     if not token:
         logger.info("TELEGRAM_BOT_TOKEN не задан — Telegram-бот выключен")
         return False
-    base = public_base_url()
+    base = webhook_base_url()
     if not base:
         logger.warning("Токен бота есть, но публичный URL неизвестен — webhook не настроен")
         return False
@@ -803,7 +816,7 @@ def webhook_status(force: bool = False) -> str:
     token = bot_token()
     if not token:
         return "no_token"
-    base = public_base_url()
+    base = webhook_base_url()
     if not base:
         return "no_public_url"
     now = time.monotonic()
