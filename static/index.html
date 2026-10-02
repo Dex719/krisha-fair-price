@@ -41,8 +41,8 @@
   };
 })();
 </script>
-<title>Справедливая цена квартиры в Алматы по ссылке с Krisha │ baǵam</title>
-<meta name="description" content="baǵam сравнивает объявление Krisha с рынком Алматы, показывает справедливую цену, диапазон модели и факторы, которые двигают цену.">
+<title>Справедливая цена покупки и аренды квартир в Алматы │ baǵam</title>
+<meta name="description" content="baǵam сравнивает объявление о продаже или аренде с Krisha с рынком Алматы: справедливая цена, диапазон модели, факторы цены и доходность, если квартиру сдавать.">
 <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/onest-cyr.woff2">
 <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/unb-cyr.woff2">
 <style>
@@ -113,8 +113,8 @@ html.lite .sk{animation:none}
 <link rel="canonical" href="https://dex719-krisha-fair-price.hf.space/">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://dex719-krisha-fair-price.hf.space/">
-<meta property="og:title" content="Справедливая цена квартиры в Алматы по ссылке с Krisha │ baǵam">
-<meta property="og:description" content="baǵam сравнивает объявление Krisha с рынком Алматы, показывает справедливую цену, диапазон модели и факторы, которые двигают цену.">
+<meta property="og:title" content="Справедливая цена покупки и аренды квартир в Алматы │ baǵam">
+<meta property="og:description" content="baǵam сравнивает объявление о продаже или аренде с Krisha с рынком Алматы: справедливая цена, диапазон модели, факторы цены и доходность, если квартиру сдавать.">
 <meta property="og:image" content="https://dex719-krisha-fair-price.hf.space/static/img/city-1400.webp">
 <meta property="og:locale" content="ru_RU">
 <meta name="twitter:card" content="summary_large_image">
@@ -123,13 +123,14 @@ html.lite .sk{animation:none}
 <div class="progress" id="prog"></div>
 <nav><div class="wrap nrow">
 <a class="logo" href="/" aria-label="baǵam — на главную">baǵam<span>.</span></a>
-<div class="menu"><a class="on" href="#" aria-current="page">Оценка</a><a href="/stats">Рынок</a><a href="/about">О проекте</a></div>
+<div class="menu"><a class="on" href="#" aria-current="page">Оценка</a><a href="/stats">Рынок</a><a href="/rent">Аренда</a><a href="/about">О проекте</a></div>
 <button class="thbtn" type="button" data-theme-toggle aria-label="Сменить тему"><svg class="tm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg><svg class="ts" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button><a class="tgbtn" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><span class="tgn">Telegram-бот</span><span class="tghw"><span class="tgh">@fairprice_kzbot</span></span><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.9"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.9"/></svg></a>
 <button class="burg" type="button" aria-label="Меню" aria-expanded="false" aria-controls="mmenu"><span></span><span></span></button>
 </div></nav>
 <div class="mmenu" id="mmenu" aria-label="Меню" aria-hidden="true">
 <a class="ml" data-href="/" href="/">Оценка<i>главная</i></a>
-<a class="ml" data-href="/stats" href="/stats">Рынок<i>цены по районам</i></a>
+<a class="ml" data-href="/stats" href="/stats">Рынок<i>цены продажи по районам</i></a>
+<a class="ml" data-href="/rent" href="/rent">Аренда<i>цены аренды и доходность</i></a>
 <a class="ml" data-href="/about" href="/about">О проекте<i>как считает модель</i></a>
 <div class="msub">
 <a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">Telegram-бот · @fairprice_kzbot</a>
@@ -163,14 +164,14 @@ html.lite .sk{animation:none}
 
 <header class="hero"><div class="wrap">
 <h1>
-<span class="l1">Сколько</span>
-<span class="l2"><em>на самом деле</em></span>
-<span class="l3">стоит квартира?</span>
+<span class="l1">Справедливая цена</span>
+<span class="l2"><em>покупки и аренды</em></span>
+<span class="l3">квартир в Алматы</span>
 </h1>
 <div class="herorow">
-<div class="lede"><div class="ledetag">как это работает</div><p>Вставьте ссылку с krisha.kz. Модель сверит лот с <b><span data-l="total">21 113</span> живыми объявлениями</b> Алматы и ответит: выгодно, в рынке или переплата.</p></div>
+<div class="lede"><div class="ledetag">как это работает</div><p>Вставьте ссылку на продажу или аренду с krisha.kz. Модель сверит лот с <b><span data-l="total">21 113</span> живыми объявлениями</b> Алматы и ответит: выгодно, в рынке или переплата.</p></div>
 <div>
-<form class="inbar" data-check novalidate><label class="vh" for="lotUrl">Ссылка на объявление с krisha.kz</label><input id="lotUrl" name="url" type="url" inputmode="url" autocomplete="url" enterkeyhint="go" spellcheck="false" placeholder="krisha.kz/a/show/1012607661"><button class="pastebtn" type="button" data-paste aria-label="Вставить ссылку из буфера" title="Вставить из буфера"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1.6" stroke="currentColor" stroke-width="1.8"/><path d="M8 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="pbl">Вставить</span></button><button class="gobtn" type="submit">Проверить <i>→</i></button></form><p class="inerr" data-err role="alert"></p><button class="demolink" type="button" data-demo hidden>показать на примере активного объявления</button>
+<form class="inbar" data-check novalidate><label class="vh" for="lotUrl">Ссылка на объявление с krisha.kz</label><input id="lotUrl" name="url" type="url" inputmode="url" autocomplete="url" enterkeyhint="go" spellcheck="false" placeholder="krisha.kz/a/show/1012607661"><button class="pastebtn" type="button" data-paste aria-label="Вставить ссылку из буфера" title="Вставить из буфера"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1.6" stroke="currentColor" stroke-width="1.8"/><path d="M8 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="pbl">Вставить</span></button><button class="gobtn" type="submit">Проверить <i>→</i></button></form><p class="inerr" data-err role="alert"></p><p class="demos" data-demos hidden><span>нет ссылки под рукой?</span><button class="demolink" type="button" data-demo hidden>пример продажи</button><button class="demolink" type="button" data-demo-rent hidden>пример аренды</button></p>
 </div>
 </div>
 </div>
@@ -219,7 +220,7 @@ html.lite .sk{animation:none}
 </div></section>
 
 <section class="statement"><div class="wrap">
-<h2 id="fillTxt">Модель ошибается на <span data-l="mape">7,3%</span>. Риелтор и продавец ошибаются ровно настолько, насколько им выгодно.</h2>
+<h2 id="fillTxt">Модель ошибается на <span data-l="mape">7,3%</span>. Риелтор, продавец и арендодатель — ровно настолько, насколько им выгодно.</h2>
 </div></section>
 
 <section><div class="wrap bento">
@@ -244,10 +245,10 @@ html.lite .sk{animation:none}
 </div>
 <div class="card c2">
 <h3 class="hrow"><span class="icw"><svg class="ic2 icb" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16" stroke="currentColor" stroke-width="1.7"/><path d="M8 17v-3" stroke="currentColor" stroke-width="1.7"/><path d="M13 17V5" stroke="var(--vio)" stroke-width="1.7"/><path d="M18 17V9" stroke="currentColor" stroke-width="1.7"/></svg></span>Не «примерно», а с опубликованной ошибкой</h3>
-<p>Еженедельное переобучение с гейтом качества: новая модель заезжает, только если не хуже старой на свежем тесте. Методика открыта.</p>
+<p>Две модели — для продажи и для аренды. Обе переобучаются каждую неделю с гейтом качества: новая заезжает, только если не хуже старой на свежем тесте. Методика открыта.</p>
 <div class="mets">
-<div class="met"><b class="cnt" data-l="mape" data-v="7,3%">7,3%</b><span>MAPE модели</span></div>
-<div class="met"><b class="cnt" data-l="r2" data-v="0.937">0.937</b><span>R² на holdout</span></div>
+<div class="met"><b class="cnt" data-l="mape" data-v="7,3%">7,3%</b><span>ошибка продажи</span></div>
+<div class="met"><b class="cnt" data-l="rmape" data-v="11,0%">11,0%</b><span>ошибка аренды</span></div>
 <div class="met"><b class="cnt" data-l="total" data-v="21 113">21 113</b><span>живых лотов</span></div>
 </div>
 </div>
@@ -277,12 +278,12 @@ html.lite .sk{animation:none}
 </div></section>
 
 <section class="next"><div class="wrap">
-<div class="shead"><div class="shl"><h2 class="shttl">Куда дальше</h2><p class="shsub">Живая статистика рынка, устройство модели и исходный код.</p></div></div>
+<div class="shead"><div class="shl"><h2 class="shttl">Куда дальше</h2><p class="shsub">Цены продажи и аренды по районам, бот и устройство модели.</p></div></div>
 <div class="ncards">
-<a class="ncard g" href="/stats"><span class="ntop"><span class="nidx">01</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M6.5 40.4h35" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><g stroke="currentColor" stroke-width="4.6" stroke-linecap="round"><path d="M13 35.4V28.6"/><path d="M22 35.4V23.4"/><path d="M31 35.4V26.2"/><path d="M40 35.4V13.4"/></g></svg></span></span><span class="nttl">Рынок Алматы</span><span class="nbot"><span class="nmeta">медиана 742 тыс ₸/м²<br>8 районов</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
-<a class="ncard v" href="/about"><span class="ntop"><span class="nidx">02</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><circle cx="24" cy="10" r="4.4" fill="currentColor"/><path d="M24 14.4v3.8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M11 27.4v-6.2a3 3 0 0 1 3-3h20a3 3 0 0 1 3 3v6.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M24 18.2v9.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="11" cy="32" r="4.4" stroke="currentColor" stroke-width="2.2"/><circle cx="24" cy="32" r="4.4" fill="currentColor" opacity=".45"/><circle cx="37" cy="32" r="4.4" stroke="currentColor" stroke-width="2.2"/></svg></span></span><span class="nttl">О проекте</span><span class="nbot"><span class="nmeta">как считает модель<br>ошибка <span data-l="mape">7,3%</span></span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
-<a class="ncard w" href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener"><span class="ntop"><span class="nidx">03</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><g transform="scale(2)" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></g></svg></span></span><span class="nttl">GitHub</span><span class="nbot"><span class="nmeta">открытый код<br>FastAPI + CatBoost</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
-<a class="ncard g" href="https://t.me/Dex719" target="_blank" rel="noopener"><span class="ntop"><span class="nidx">04</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><g transform="scale(2)" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 2.6 10.4 13.6"/><path d="M21.4 2.6 14.5 22.1l-4.1-8.5L2 9.5Z"/></g></svg></span></span><span class="nttl">Автор в Telegram</span><span class="nbot"><span class="nmeta">вопросы, баги, идеи<br>отвечаю сам</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard g" href="/stats"><span class="ntop"><span class="nidx">01</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M6.5 40.4h35" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><g stroke="currentColor" stroke-width="4.6" stroke-linecap="round"><path d="M13 35.4V28.6"/><path d="M22 35.4V23.4"/><path d="M31 35.4V26.2"/><path d="M40 35.4V13.4"/></g></svg></span></span><span class="nttl">Рынок продажи</span><span class="nbot"><span class="nmeta">медиана 742 тыс ₸/м²<br>8 районов</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard v" href="/rent"><span class="ntop"><span class="nidx">02</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M9 21.5 24 9l15 12.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 19v19.5h22V19" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><circle cx="21" cy="28" r="3.6" stroke="currentColor" stroke-width="2.4"/><path d="M24.4 28H31v3.4" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></span><span class="nttl">Аренда</span><span class="nbot"><span class="nmeta">медиана аренды<br>и доходность районов</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard g" href="/bot"><span class="ntop"><span class="nidx">03</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><g transform="scale(2)" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.4 2.6 10.4 13.6"/><path d="M21.4 2.6 14.5 22.1l-4.1-8.5L2 9.5Z"/></g></svg></span></span><span class="nttl">Telegram-бот</span><span class="nbot"><span class="nmeta">оценка по ссылке,<br>слежение за ценой</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard w" href="/about"><span class="ntop"><span class="nidx">04</span><span class="nico"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><circle cx="24" cy="10" r="4.4" fill="currentColor"/><path d="M24 14.4v3.8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M11 27.4v-6.2a3 3 0 0 1 3-3h20a3 3 0 0 1 3 3v6.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M24 18.2v9.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="11" cy="32" r="4.4" stroke="currentColor" stroke-width="2.2"/><circle cx="24" cy="32" r="4.4" fill="currentColor" opacity=".45"/><circle cx="37" cy="32" r="4.4" stroke="currentColor" stroke-width="2.2"/></svg></span></span><span class="nttl">О проекте</span><span class="nbot"><span class="nmeta">как считает модель<br>ошибка <span data-l="mape">7,3%</span></span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
 </div>
 </div></section>
 
@@ -298,21 +299,26 @@ html.lite .sk{animation:none}
   <div class="fh">Продукт</div>
   <div class="flinks">
    <a class="flink" href="#">Оценка объявления</a>
-   <a class="flink" href="/stats">Рынок Алматы</a>
-   <a class="flink" href="/about">О проекте</a>
+   <a class="flink" href="/stats">Рынок продажи</a>
+   <a class="flink" href="/rent">Рынок аренды</a>
+   <a class="flink" href="/bot">Telegram-бот</a>
   </div>
  </div>
  <div>
   <div class="fh">Проект</div>
   <div class="flinks">
-   <a class="flink" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.7"/></svg>Telegram-бот</a>
+   <a class="flink" href="/about">О проекте</a>
    <a class="flink" href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48l-.01-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.35 4.68-4.58 4.93.36.31.68.92.68 1.85l-.01 2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>Исходный код</a>
    <a class="flink" href="https://t.me/Dex719" target="_blank" rel="noopener"><svg class="ic2" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" stroke="currentColor" stroke-width="1.7"/><path d="M22 2 11 13" stroke="currentColor" stroke-width="1.7"/></svg>Автор</a>
   </div>
  </div>
  <div>
-  <div class="fh">Как это работает</div>
-  <p class="fnote">Модель <b>CatBoost</b> сравнивает объявление с активными лотами Алматы. Средняя ошибка <b data-l="mape">7,3%</b> на отложенной выборке. Оценка справочная и не является офертой.</p>
+  <div class="fh">Документы</div>
+  <div class="flinks">
+   <a class="flink" href="/privacy">Конфиденциальность</a>
+   <a class="flink" href="/terms">Условия использования</a>
+  </div>
+  <p class="fnote">Оценка справочная и не является офертой. Средняя ошибка модели продажи <b data-l="mape">7,6%</b>, аренды — <b data-l="rmape">~11%</b>.</p>
  </div>
 </div>
 
@@ -824,18 +830,21 @@ else {
     inp.addEventListener('input', () => { err.classList.remove('on'); inp.removeAttribute('aria-invalid'); });
     /* «Показать на примере»: берём случайный активный лот у сервиса, чтобы
        человек без ссылки под рукой всё равно увидел живой разбор. */
-    const demo = form.parentElement.querySelector('[data-demo]');
-    if (demo){
-      fetch('/api/demo').then(r => r.ok ? r.json() : null).then(d => {
+    const demos = form.parentElement.querySelector('[data-demos]');
+    [['[data-demo]', '/api/demo'], ['[data-demo-rent]', '/api/demo?deal=arenda']].forEach(([sel, src]) => {
+      const demo = form.parentElement.querySelector(sel);
+      if (!demo) return;
+      fetch(src).then(r => r.ok ? r.json() : null).then(d => {
         if (!d || !d.url) return;
         demo.hidden = false;
+        if (demos) demos.hidden = false;
         demo.addEventListener('click', () => {
           inp.value = d.url;
           err.classList.remove('on');
           form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event('submit', {cancelable:true}));
         });
       }).catch(() => {});
-    }
+    });
     form.addEventListener('submit', async e => {
       e.preventDefault();
       const val = inp.value.trim();
@@ -976,6 +985,7 @@ bagamTG(function(tg){
     if(h){
       if(h.model_error_pct)put('[data-l=mape]',pc(h.model_error_pct)+'%');
       if(h.model_median_error_pct)put('[data-l=mdape]',pc(h.model_median_error_pct)+'%');
+      if(h.rent_model_error_pct)put('[data-l=rmape]',pc(h.rent_model_error_pct)+'%');
       if(h.model_r2)put('[data-l=r2]',h.model_r2.toFixed(3));
       if(h.data_age_hours!=null)put('[data-l=age]',age(h.data_age_hours));
       document.querySelectorAll('[data-l=status]').forEach(function(e){

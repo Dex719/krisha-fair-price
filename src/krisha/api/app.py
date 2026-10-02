@@ -22,6 +22,7 @@ import uuid
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
+from typing import Literal
 
 import anyio
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, Response
@@ -54,7 +55,7 @@ from krisha.db import get_conn, remember_update_id
 from krisha.predict import InvalidListingUrl, ListingNotFound
 from krisha.predict_gate import PredictBusy
 from krisha.scraping.client import ChallengeBlocked, SourceUnavailable
-from krisha.stats import get_stats, heatmap_points
+from krisha.stats import compute_rent_stats, get_stats, heatmap_points
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -754,8 +755,9 @@ DEMO_POOL_SIZE = 100
 _demo_pool_cache = TTLCache(ttl=DEMO_POOL_TTL_S, stale_ttl=3600, maxsize=4)
 
 
-def _demo_pool() -> list[tuple[int, str]]:
-    with get_conn(DB_PATH) as conn:
+def _demo_pool(db_path: pathlib.Path | None = None) -> list[tuple[int, str]]:
+    # DB_PATH читается в момент вызова, а не при определении: тесты его подменяют
+    with get_conn(db_path or DB_PATH) as conn:
         rows = conn.execute(
             """
             SELECT id, url
@@ -772,12 +774,16 @@ def _demo_pool() -> list[tuple[int, str]]:
 
 
 @app.get("/api/demo", response_model=DemoResponse)
-def demo(request: Request) -> DemoResponse:
-    """URL живого активного объявления для кнопки «Показать на примере»."""
+def demo(request: Request, deal: Literal["prodazha", "arenda"] = "prodazha") -> DemoResponse:
+    """URL живого активного объявления для кнопки «Показать на примере»:
+    продажа по умолчанию, ?deal=arenda — из базы аренды."""
     _check_rate_limit(request, bucket="demo", limit=DEMO_RATE_LIMIT)
-    if not DB_PATH.exists():
+    db_path = RENT_DB_PATH if deal == "arenda" else DB_PATH
+    if not db_path.exists():
         raise HTTPException(status_code=503, detail="Демо-объявление временно недоступно")
-    pool = _demo_pool_cache.get_or_call(str(DB_PATH), _demo_pool)
+    # продажа — прежний вызов без аргументов (его же греет warmup), аренда — своя база
+    producer = (lambda: _demo_pool(db_path)) if deal == "arenda" else _demo_pool
+    pool = _demo_pool_cache.get_or_call(str(db_path), producer)
     if not pool:
         raise HTTPException(status_code=503, detail="Демо-объявление временно недоступно")
     listing_id, url = random.choice(pool)
@@ -803,6 +809,20 @@ def stats(response: Response) -> dict:
     except FileNotFoundError:
         logger.exception("stats: данные недоступны")
         raise HTTPException(status_code=503, detail="Статистика временно недоступна") from None
+
+
+_rent_stats_cache = TTLCache(ttl=STATS_CACHE_TTL, stale_ttl=3600, maxsize=2)
+
+
+@app.get("/api/stats/rent")
+def rent_stats(response: Response) -> dict:
+    """Рынок аренды: медианы ₸/мес по районам и комнатам, распределение, доходность районов."""
+    response.headers["Cache-Control"] = "public, max-age=300"
+    try:
+        return _rent_stats_cache.get_or_call("rent", compute_rent_stats)
+    except FileNotFoundError:
+        logger.warning("stats/rent: база аренды недоступна")
+        raise HTTPException(status_code=503, detail="Статистика аренды временно недоступна") from None
 
 
 _heatmap_cache = TTLCache(ttl=STATS_CACHE_TTL, stale_ttl=3600, maxsize=2)
@@ -1086,6 +1106,11 @@ def _warmup_runtime_caches() -> None:
                     cache.get_or_call(key, producer)
                 except Exception:  # noqa: BLE001, PERF203 — прогрев не критичен
                     logger.warning("warmup: %s не прогрелся", name, exc_info=True)
+        if RENT_DB_PATH.exists():
+            try:
+                _rent_stats_cache.get_or_call("rent", compute_rent_stats)
+            except Exception:  # noqa: BLE001 — прогрев не критичен
+                logger.warning("warmup: stats/rent не прогрелся", exc_info=True)
         logger.info("runtime caches warmed up")
     except Exception:  # noqa: BLE001 — warmup не должен валить запуск Space
         logger.warning("runtime warmup failed", exc_info=True)
@@ -1208,7 +1233,7 @@ async def readyz() -> Response:
 
 
 # issue #190 §2.6: до этого оба URL отдавали 404 — сайт не просился в индекс.
-_PUBLIC_PAGES = ("/", "/stats", "/about")
+_PUBLIC_PAGES = ("/", "/stats", "/rent", "/about", "/bot", "/privacy", "/terms")
 
 
 def _site_base_url(request: Request) -> str:
@@ -1268,6 +1293,21 @@ async def about_page(request: Request) -> Response:
     if request.method == "GET":
         usage.record_event("site")
     return _asset_response(request, "about.html")
+
+
+def _static_page(name: str):
+    """Обработчик простой страницы: та же отдача и тот же учёт визита, что у /about."""
+    async def page(request: Request) -> Response:
+        if request.method == "GET":
+            usage.record_event("site")
+        return _asset_response(request, name)
+    return page
+
+
+# Аренда, бот и документы — те же статичные страницы на общем design.css
+for _path, _name in (("/rent", "rent.html"), ("/bot", "bot.html"),
+                     ("/privacy", "privacy.html"), ("/terms", "terms.html")):
+    app.add_api_route(_path, _static_page(_name), methods=["GET", "HEAD"], include_in_schema=False)
 
 
 class _CachedStatic(StaticFiles):

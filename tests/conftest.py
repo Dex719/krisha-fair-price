@@ -66,6 +66,7 @@ def _clear_api_caches():
         app_module._freshness_cache,
         app_module._model_meta_cache,
         app_module._stats_cache,
+        app_module._rent_stats_cache,
         app_module._heatmap_cache,
         app_module._forecast_cache,
         app_module._demo_pool_cache,

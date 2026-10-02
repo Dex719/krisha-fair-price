@@ -86,7 +86,7 @@ html[data-theme=light] .cityband{margin:48px max(36px,calc((100% - 1208px)/2)) 0
 html[data-theme=light] .cityband img{object-position:center 38%}
 html[data-theme=light] .cityfade{background:linear-gradient(180deg,rgba(8,13,10,.18),transparent 30%,transparent 70%,rgba(8,13,10,.3))}
 html[data-theme=light] .dband{margin-top:64px}
-h1{font-family:Unbounded,UnboundedFB,sans-serif;font-weight:700;font-size:clamp(42px,6.8vw,92px);line-height:1.02;letter-spacing:-.035em;text-wrap:balance}
+h1{font-family:Unbounded,UnboundedFB,sans-serif;font-weight:700;font-size:clamp(31px,8.2vw,92px);line-height:1.02;letter-spacing:-.035em;text-wrap:balance}
 h1 .l2{display:block;color:var(--dim)}
 h1 .l2 em{font-style:normal;color:var(--lime)}
 h1 .l3{display:block}
@@ -382,7 +382,9 @@ a.rxr:hover .rxv{color:var(--lime)}
 .rynote{margin-top:12px;font-size:13px;line-height:1.5;color:var(--dim)}
 /* ссылка «показать на примере» под формой */
 .demolink{background:none;border:0;padding:0;margin-top:14px;font-family:Onest;font-size:13.5px;color:var(--dim);cursor:pointer;border-bottom:1px solid var(--line);transition:color .25s,border-color .25s}
-.demolink:hover{color:var(--lime);border-color:var(--lime)}
+.demolink:hover{color:var(--limeink);border-color:var(--limeink)}
+.demos{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;margin-top:14px;font-size:13.5px;color:var(--dim)}
+.demos .demolink{margin-top:0}
 @media (max-width:760px){
  .rwarn{padding:16px 20px;flex-wrap:wrap;gap:10px}
  .rwarn svg{margin-top:2px}
@@ -514,3 +516,6 @@ body.mopen{overflow:hidden}
 }
 /* лёгкий режим: без размытия под шапкой */
 html.lite nav .nrow{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--bg)}
+/* ссылка внутри лида подстраницы */
+.plink{color:var(--limeink);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--limeink) 45%,transparent);transition:border-color .2s}
+.plink:hover{border-color:var(--limeink)}

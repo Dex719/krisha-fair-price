@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from krisha.config import DB_PATH, DISTRICT_RU, MODELS_DIR
+from krisha.config import DB_PATH, DISTRICT_RU, MODELS_DIR, RENT_DB_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +188,75 @@ def compute_stats(db_path: Path | str = DB_PATH) -> dict:
             "novostroiki": int(cat.get("novostroiki", 0)),
             "vtorichka": int(len(df) - cat.get("novostroiki", 0)),
         },
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "source": "db",
+    }
+
+
+# Корзины гистограммы аренды (тыс ₸/мес)
+RENT_BINS = [0, 100, 150, 200, 250, 300, 400, 500, 700, 1000, 100_000]
+
+
+def compute_rent_stats(db_path: Path | str = RENT_DB_PATH, sale_db_path: Path | str = DB_PATH) -> dict:
+    """Рынок аренды: медианы ₸/мес по районам и комнатам, распределение, тренд ₸/м².
+
+    Если рядом есть база продажи — валовая доходность района: 12 × медиана
+    ₸/м² аренды / медиана ₸/м² продажи (как district_yield у лота, но по всему
+    району). Бросает FileNotFoundError, если базы аренды нет."""
+    db_path = Path(db_path)
+    if not db_path.exists():
+        raise FileNotFoundError(f"БД аренды не найдена: {db_path}")
+
+    query = ("SELECT price, area, rooms, district FROM listings "
+             "WHERE is_active = 1 AND price IS NOT NULL AND price > 0 AND area IS NOT NULL AND area > 0")
+    with sqlite3.connect(db_path) as conn:
+        df = pd.read_sql(query, conn)
+    df["ppsm"] = df["price"] / df["area"]
+
+    sale_ppsm: dict[str, float] = {}
+    if Path(sale_db_path).exists():
+        with sqlite3.connect(sale_db_path) as conn:
+            sale = pd.read_sql(query, conn)
+        if not sale.empty:
+            sale["ppsm"] = sale["price"] / sale["area"]
+            sale_ppsm = sale.dropna(subset=["district"]).groupby("district")["ppsm"].median().to_dict()
+
+    by_district = []
+    for key, grp in df.dropna(subset=["district"]).groupby("district"):
+        rent_ppsm = float(grp["ppsm"].median())
+        sale_med = sale_ppsm.get(key)
+        by_district.append({
+            "district": DISTRICT_RU.get(key, key),
+            "n": int(len(grp)),
+            "median_rent": int(grp["price"].median()),
+            "median_ppsm": int(round(rent_ppsm)),
+            "gross_yield_pct": round(12 * rent_ppsm / sale_med * 100, 1) if sale_med else None,
+        })
+    by_district.sort(key=lambda x: x["median_ppsm"], reverse=True)
+
+    hist = pd.cut(df["price"] / 1000, bins=RENT_BINS, right=False).value_counts().sort_index()
+    rent_hist = [
+        {
+            "label": f"{int(iv.left)}–{int(iv.right)} тыс" if iv.right < RENT_BINS[-1] else f"{int(iv.left)}+ тыс",
+            "count": int(cnt),
+        }
+        for iv, cnt in hist.items()
+    ]
+
+    by_rooms = [
+        {"rooms": int(r), "n": int(len(g)), "median_rent": int(g["price"].median())}
+        for r, g in df.dropna(subset=["rooms"]).groupby("rooms")
+        if 1 <= r <= 5
+    ]
+
+    return {
+        "total_listings": int(len(df)),
+        "median_rent": int(df["price"].median()) if not df.empty else 0,
+        "median_ppsm": int(round(df["ppsm"].median())) if not df.empty else 0,
+        "by_district": by_district,
+        "rent_hist": rent_hist,
+        "by_rooms": by_rooms,
+        "trend": _weekly_trend(db_path, min_n=50),
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "source": "db",
     }
