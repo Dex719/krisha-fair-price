@@ -120,6 +120,11 @@ def test_room_share_gets_no_verdict(rent_env):
     assert r["room_share"] is True
     assert r["verdict"] is None
     assert r["fair_price"] > 90_000  # оценка — за квартиру целиком
+    # Цена за койку против оценки квартиры: ни процента, ни «подозрительно
+    # дёшево», ни «похожие по цене» (было: −75% и «не вносите задаток»).
+    assert r["diff_pct"] is None
+    assert r["scam_risk"] is None
+    assert not (r["liquidity"] or {}).get("band")
 
 
 # --- бот ---------------------------------------------------------------------------
