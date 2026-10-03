@@ -514,6 +514,8 @@ def test_home_rent_room_share_has_no_verdict(hermetic_page, mock_api, hermetic_s
     expect(page.locator(".vpct")).to_be_hidden()
     expect(page.locator("#rWarn")).to_be_visible()
     expect(page.locator("#rWarn")).to_contain_text("Похоже на подселение или сдачу комнаты")
+    # строка статуса — те же слова, без процента (было «Готово: В рынке, −69,0%»)
+    expect(page.locator("#checkStatus")).to_have_text("Готово: Оценка модели")
 
 
 def test_home_sale_after_rent_restores_sale_units(hermetic_page, mock_api, hermetic_server, predict_rent, predict_fair):
