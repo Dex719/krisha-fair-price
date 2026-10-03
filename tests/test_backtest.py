@@ -300,7 +300,7 @@ def test_run_fold_trains_with_prod_functions(tmp_path, monkeypatch):
 
     out = bt.run_fold(train_raw, test_raw, learning_rate=0.1, depth=6)
 
-    assert seen == {"point": (2000, 0.1, 6), "quantile": 800}
+    assert seen == {"point": (bt.POINT_ITERATIONS, 0.1, 6), "quantile": 800}
     assert out is not None and out.attrs["best_iterations"] >= 1
 
 

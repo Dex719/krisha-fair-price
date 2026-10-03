@@ -6,12 +6,12 @@ import argparse
 import logging
 
 from krisha.model_spec import SPECS, spec_for
-from krisha.train import train
+from krisha.train import POINT_ITERATIONS, train
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Обучение CatBoost на данных из SQLite")
-    parser.add_argument("--iterations", type=int, default=2000)
+    parser.add_argument("--iterations", type=int, default=POINT_ITERATIONS)
     parser.add_argument(
         "--deal", choices=sorted(SPECS), default="prodazha",
         help="какую модель учить: продажа (₸) или аренда (₸/мес)",

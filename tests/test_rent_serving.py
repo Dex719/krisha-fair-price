@@ -196,7 +196,8 @@ def test_estimate_gives_monthly_rent_and_gross_yield(rent_env, monkeypatch):
     assert y["monthly_rent_low"] <= y["monthly_rent"] <= y["monthly_rent_high"]
     assert y["gross_yield_pct"] == round(12 * y["monthly_rent"] / 45_000_000 * 100, 1)
     assert y["gross_yield_low_pct"] <= y["gross_yield_pct"] <= y["gross_yield_high_pct"]
-    assert y["payback_years"] == round(45_000_000 / (12 * y["monthly_rent"]), 1)
+    # окупаемость считается от неокруглённой аренды, monthly_rent в ответе округлён
+    assert abs(y["payback_years"] - 45_000_000 / (12 * y["monthly_rent"])) <= 0.1
     assert (y["district_yield_pct"], y["district_yield_scope"]) == (8.6, "district_rooms")
     from krisha.api.schemas import RentalYield
 

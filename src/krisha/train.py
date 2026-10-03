@@ -481,6 +481,15 @@ def _save_gate_samples(
 QUANTILE_ALPHA_LO = 0.10  # нижний квантиль log(price)
 QUANTILE_ALPHA_HI = 0.90  # верхний квантиль log(price)
 INTERVAL_TARGET_COVERAGE = 0.80  # целевая доля цен, попавших в интервал
+# Потолок деревьев точечной модели — реально режется early stopping. При 2000
+# ES упирался в потолок почти на каждом фолде стенда (1950–2000 из 2000), то
+# есть модель недоучивалась; при 4000 он сам выбирает ~3400, и MAPE стенда
+# −0.16 п.п. (8 фолдов, 7 из 8 лучше; серия экспериментов 10.2026).
+POINT_ITERATIONS = 4000
+# Ретрейн, который в test почти не видит строк, незнакомых прошлой модели
+# (повторный запуск в тот же день), сравнить её с новой честно не может —
+# гейт блокирует публикацию (fail-closed), а не сравнивает на шуме.
+GATE_MIN_UNSEEN_ROWS = 200
 QUANTILE_ITERATIONS = 800  # верхний потолок итераций — реально режется early stopping (issue #132)
 QUANTILE_EARLY_STOPPING_ROUNDS = 100  # как у точечной RMSE-модели ниже
 CQR_SCALE_MAX = 10.0  # защита от переполнения expm1 при аномальном scale (см. MIN_INTERVAL_WIDTH_LOG)
@@ -729,7 +738,7 @@ class PointFit:
 def fit_point_model(
     raw_train: pd.DataFrame,
     spec: ModelSpec = SALE,
-    iterations: int = 2000,
+    iterations: int = POINT_ITERATIONS,
     *,
     learning_rate: float = 0.05,
     depth: int = 8,
@@ -804,13 +813,21 @@ def fit_point_model(
 
 def train(
     df: pd.DataFrame | None = None,
-    iterations: int = 2000,
+    iterations: int = POINT_ITERATIONS,
     save: bool = True,
     old_model_path: str | Path | None = None,
     spec: ModelSpec = SALE,
     old_meta_path: str | Path | None = None,
+    refit_on_all: bool = True,
 ) -> dict:
     """Полный пайплайн обучения. Возвращает метрики (model vs baseline).
+
+    Метрики считаются на модели, обученной без test-окна (свежие ~2 недели), а
+    в прод уходит модель, переобученная на ВСЕХ данных (refit_on_all): test
+    нужен, чтобы честно измерить качество, но выбрасывать самые свежие цены из
+    модели, которая потом оценивает сегодняшние объявления, — дорого. На стенде
+    (scripts/backtest.py --gap-days 0 против 14) это −0.29 п.п. MAPE, лучше на
+    всех 8 фолдах. Метрики описывают модель, которая чуть хуже отгружаемой.
 
     old_model_path — путь к прошлой model.cbm: если задан, старая модель
     оценивается на том же свежем test-сплите → metrics["old_model"], и
@@ -965,13 +982,46 @@ def train(
             old_model = CatBoostRegressor()
             old_model.load_model(str(old_model_path))
             y_old = np.expm1(old_model.predict(_old_model_pool(old_model, test_df, old_meta_path)))
-            metrics["old_model"] = evaluate(y_true, y_old)
+            # Прошлая модель, переобученная на всех данных, уже видела начало
+            # этого test-окна — на нём она выглядела бы лучше, чем есть, и гейт
+            # отклонял бы честные ретрейны. Сравниваем обе модели только на
+            # строках, появившихся после её данных.
+            unseen = _unseen_by_old_model(raw_test, old_meta_path)
+            if unseen is not None:
+                if int(unseen.sum()) < GATE_MIN_UNSEEN_ROWS:
+                    raise ValueError(
+                        f"в test {int(unseen.sum())} строк новее данных прошлой модели "
+                        f"(нужно ≥ {GATE_MIN_UNSEEN_ROWS}) — сравнивать не на чем"
+                    )
+                y_true_g, y_model_g, y_old_g = y_true[unseen], y_model[unseen], y_old[unseen]
+                metrics["model_vs_old"] = evaluate(y_true_g, y_model_g)
+                metrics["old_model_rows"] = int(unseen.sum())
+            else:
+                y_true_g, y_model_g, y_old_g = y_true, y_model, y_old
+            metrics["old_model"] = evaluate(y_true_g, y_old_g)
             logger.info("Старая модель на новом test: %s", json.dumps(metrics["old_model"]))
             if save:
-                _save_gate_samples(y_true, y_model, y_old, path=spec.gate_samples_path)
+                _save_gate_samples(y_true_g, y_model_g, y_old_g, path=spec.gate_samples_path)
         except Exception as exc:  # набор фичей мог измениться — гейт уходит в fail-closed
             metrics["old_model_error"] = str(exc)
             logger.warning("Не удалось оценить старую модель (%s): %s", old_model_path, exc)
+    if save and refit_on_all:
+        # В прод — модель на всех данных; ₸/м²-карты, пространственный
+        # референс и типичные значения — от неё же, чтобы признаки на
+        # инференсе считались так же, как при её обучении. Интервал остаётся
+        # от калибровки выше: ему нужна отложенная выборка, а точечная модель
+        # в него входит только центром (finalize_interval).
+        final = fit_point_model(df, spec, iterations)
+        model, ppsm_maps, spatial_ref = final.model, final.ppsm_maps, final.spatial_ref
+        feature_defaults = _typical_values(final.train_df, spec)
+        metrics["final_fit"] = {
+            "data": "train+test",
+            "n_rows": len(final.train_df),
+            "best_iterations": final.best_iterations,
+            # граница данных отгруженной модели — следующий ретрейн сравнивает
+            # её с новой только на более свежих строках (_unseen_by_old_model)
+            "max_first_seen": _max_first_seen(df),
+        }
     logger.info("Метрики: %s", json.dumps(metrics, indent=2))
 
     if save:
@@ -1016,6 +1066,29 @@ def train(
                 logger.warning("Не удалось сохранить снапшот статистики: %s", exc)
         logger.info("Модель сохранена: %s", spec.model_path)
     return metrics
+
+
+def _max_first_seen(df: pd.DataFrame) -> str | None:
+    if "first_seen" not in df.columns:
+        return None
+    ts = pd.to_datetime(df["first_seen"], errors="coerce", utc=True).max()
+    return None if pd.isna(ts) else ts.isoformat()
+
+
+def _unseen_by_old_model(raw_test: pd.DataFrame, old_meta_path) -> np.ndarray | None:
+    """Маска test-строк, которых прошлая модель не видела при обучении.
+
+    None — сравнивать можно на всём test: у прошлой модели нет final_fit в мете
+    (училась без test-окна, как до 10.2026) или у строк нет first_seen.
+    """
+    if not old_meta_path or not Path(old_meta_path).exists():
+        return None
+    meta = json.loads(Path(old_meta_path).read_text(encoding="utf-8"))
+    cutoff = ((meta.get("metrics") or {}).get("final_fit") or {}).get("max_first_seen")
+    if not cutoff or "first_seen" not in raw_test.columns:
+        return None
+    ts = pd.to_datetime(raw_test["first_seen"], errors="coerce", utc=True)
+    return (ts > pd.Timestamp(cutoff)).to_numpy()
 
 
 def _old_model_pool(old_model: CatBoostRegressor, test_df: pd.DataFrame, old_meta_path) -> Pool:
