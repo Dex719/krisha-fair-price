@@ -21,11 +21,19 @@ def main() -> None:
         help="Путь к прошлой model.cbm: оценить её на новом test-сплите "
              "(честное сравнение для метрического гейта)",
     )
+    parser.add_argument(
+        "--compare-old-meta", default=None, metavar="PATH",
+        help="Мета прошлой модели (model_meta.json): признаки для неё считаются "
+             "так же, как при её обучении (точка центра города)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     spec = spec_for(args.deal)
-    metrics = train(iterations=args.iterations, old_model_path=args.compare_old, spec=spec)
+    metrics = train(
+        iterations=args.iterations, old_model_path=args.compare_old, spec=spec,
+        old_meta_path=args.compare_old_meta,
+    )
     unit = "₸/мес" if spec.is_rent else "₸"
     print(f"\n=== Итог ({spec.label}) ===")
     print(f"Модель:   MAE {metrics['model']['mae']:,.0f} {unit} | MAPE {metrics['model']['mape']:.1%} | R² {metrics['model']['r2']:.3f}")

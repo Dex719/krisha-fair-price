@@ -12,6 +12,7 @@ from krisha.config import (
     ALMATY_CENTER,
     AREA_MAX,
     AREA_MIN,
+    LEGACY_ALMATY_CENTER,
     PPSM_MAX,
     PPSM_MIN,
     PRICE_MAX,
@@ -396,12 +397,16 @@ def build_features(
     complex_lookup: dict | None = None,
     spatial_ref: dict | None = None,
     knn_self_indices=None,
+    center: tuple[float, float] | None = None,
 ) -> pd.DataFrame:
     """Добавляет производные фичи. Работает и для одного объявления (predict).
 
     spatial_ref/knn_self_indices — референс пространственных фичей (train
     передаёт свежепостроенный по train-части и позиции строк в нём, predict —
     сохранённый в models/spatial_ref.json через krisha.spatial.load_spatial_ref).
+
+    center — точка «центра города» для dist_center_km: train берёт текущую
+    (ALMATY_CENTER), predict — ту, на которой училась модель (model_center).
     """
     from krisha.geo import add_geo_features
     from krisha.zones import resolve_zones
@@ -431,10 +436,7 @@ def build_features(
     df["is_first_floor"] = (df["floor"] == 1).astype(int)
     df["is_last_floor"] = (df["floor"] == df["total_floors"]).astype(int)
     df["building_age"] = (current_year() - df["year_built"]).clip(lower=-5)
-    df["dist_center_km"] = [
-        haversine_km(lat, lon, *ALMATY_CENTER) if pd.notna(lat) and pd.notna(lon) else np.nan
-        for lat, lon in zip(df["lat"], df["lon"])
-    ]
+    df["dist_center_km"] = dist_to_center(df, center or ALMATY_CENTER)
 
     # Финансово-регуляторные фичи (разведка №1). building_type здесь ещё сырой
     # (нормализация категорий ниже), NaN → 'nan' → False; building_age NaN → False.
@@ -492,19 +494,38 @@ def build_features(
     return df
 
 
+def dist_to_center(df: pd.DataFrame, center: tuple[float, float]) -> list[float]:
+    """dist_center_km по колонкам lat/lon (NaN без координат)."""
+    return [
+        haversine_km(lat, lon, *center) if pd.notna(lat) and pd.notna(lon) else np.nan
+        for lat, lon in zip(df["lat"], df["lon"])
+    ]
+
+
+def model_center(meta: dict | None) -> tuple[float, float]:
+    """Точка центра, на которой обучалась модель (city_center в мете).
+
+    Меты старых моделей её не хранят — они учились на LEGACY_ALMATY_CENTER.
+    """
+    center = (meta or {}).get("city_center")
+    return (float(center[0]), float(center[1])) if center else LEGACY_ALMATY_CENTER
+
+
 def listing_to_frame(
     listing: dict[str, Any],
     ppsm_maps: dict | None = None,
     spatial_ref: dict | None = None,
+    center: tuple[float, float] | None = None,
 ) -> pd.DataFrame:
     """Один распарсенный listing-dict → DataFrame с фичами для предсказания."""
-    return listings_to_frame([listing], ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)
+    return listings_to_frame([listing], ppsm_maps=ppsm_maps, spatial_ref=spatial_ref, center=center)
 
 
 def listings_to_frame(
     listings: list[dict[str, Any]],
     ppsm_maps: dict | None = None,
     spatial_ref: dict | None = None,
+    center: tuple[float, float] | None = None,
 ) -> pd.DataFrame:
     """Пачка listing-dict → DataFrame с фичами, строка на объявление, порядок сохранён.
 
@@ -512,4 +533,6 @@ def listings_to_frame(
     вызывается), а категориальные фичи — строки, так что пачка даёт те же
     фичи, что поштучный listing_to_frame (.kiro/specs/rescrape-post-steps).
     """
-    return build_features(pd.DataFrame(listings), ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)
+    return build_features(
+        pd.DataFrame(listings), ppsm_maps=ppsm_maps, spatial_ref=spatial_ref, center=center,
+    )

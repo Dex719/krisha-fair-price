@@ -223,6 +223,10 @@ def test_rent_training_writes_only_rent_artifacts(tmp_path, monkeypatch):
     # типичные значения арендных признаков — для оценки аренды продажного лота
     assert meta["feature_defaults"]["n_facilities"] == 4
     assert meta["feature_defaults"]["bathroom"] == "душевая кабина, ванна"
+    # точка центра, на которой училась модель, — инференс берёт её из меты
+    from krisha.config import ALMATY_CENTER
+
+    assert meta["city_center"] == list(ALMATY_CENTER)
     for path in (spec.model_path, spec.quantile_path, spec.spatial_ref_path, spec.metrics_history_path):
         assert path.exists(), path
     assert snapshot == [], "снапшот /api/stats — продажный, аренда его не пишет"

@@ -22,6 +22,7 @@ from sklearn.model_selection import GroupShuffleSplit
 
 from krisha.config import (
     ALMATY_BBOX,
+    ALMATY_CENTER,
     DB_PATH,
     MODEL_GATE_SAMPLES_PATH,
     RANDOM_STATE,
@@ -668,12 +669,14 @@ def train(
     save: bool = True,
     old_model_path: str | Path | None = None,
     spec: ModelSpec = SALE,
+    old_meta_path: str | Path | None = None,
 ) -> dict:
     """Полный пайплайн обучения. Возвращает метрики (model vs baseline).
 
     old_model_path — путь к прошлой model.cbm: если задан, старая модель
     оценивается на том же свежем test-сплите → metrics["old_model"], и
     метрический гейт сравнивает яблоки с яблоками (см. scripts/model_gate.py).
+    old_meta_path — её мета: из неё берётся точка центра (см. _old_model_pool).
 
     spec — какую модель учим (krisha.model_spec: SALE или RENT).
     """
@@ -886,7 +889,7 @@ def train(
         try:
             old_model = CatBoostRegressor()
             old_model.load_model(str(old_model_path))
-            y_old = np.expm1(old_model.predict(test_pool))
+            y_old = np.expm1(old_model.predict(_old_model_pool(old_model, test_df, old_meta_path)))
             metrics["old_model"] = evaluate(y_true, y_old)
             logger.info("Старая модель на новом test: %s", json.dumps(metrics["old_model"]))
             if save:
@@ -910,6 +913,9 @@ def train(
                 "cat_features": cat_features,
                 "metrics": metrics,
                 "ppsm_maps": ppsm_maps,
+                # точка «центра города» для dist_center_km — инференс берёт её
+                # отсюда (features.model_center), а не из текущего config
+                "city_center": list(ALMATY_CENTER),
                 # типичные значения арендных признаков (медиана/мода train) —
                 # подставляются, когда аренду оценивают для продажного лота,
                 # у которого этих полей нет (krisha.rental_yield)
@@ -935,6 +941,30 @@ def train(
                 logger.warning("Не удалось сохранить снапшот статистики: %s", exc)
         logger.info("Модель сохранена: %s", spec.model_path)
     return metrics
+
+
+def _old_model_pool(old_model: CatBoostRegressor, test_df: pd.DataFrame, old_meta_path) -> Pool:
+    """Тот же test, но в признаках, на которых училась прошлая модель.
+
+    Колонки — по feature_names_ самой модели: раньше брался список НОВОЙ
+    модели, и удалённый или переименованный признак ронял оценку старой
+    («Feature X is present in model but not in pool») — гейт после этого
+    отклонял бы каждый ретрейн. dist_center_km — от её точки центра (city_center
+    из её меты; у мет до 10.2026 его нет — LEGACY_ALMATY_CENTER), иначе после
+    смены центра старая модель видела бы чужие расстояния и гейт сравнивал
+    бы нечестно.
+    """
+    from krisha.features import dist_to_center, model_center
+
+    df = test_df
+    if old_meta_path and Path(old_meta_path).exists():
+        old_center = model_center(json.loads(Path(old_meta_path).read_text(encoding="utf-8")))
+        if old_center != tuple(ALMATY_CENTER):
+            df = test_df.copy()
+            df["dist_center_km"] = dist_to_center(df, old_center)
+    names = list(old_model.feature_names_)
+    cat_idx = set(old_model.get_cat_feature_indices())
+    return Pool(df[names], cat_features=[n for i, n in enumerate(names) if i in cat_idx])
 
 
 def _typical_values(train_df: pd.DataFrame, spec: ModelSpec) -> dict:
