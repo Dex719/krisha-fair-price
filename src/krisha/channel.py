@@ -64,7 +64,11 @@ def post_channel_digest(
         return None
 
     posted = load_posted()
-    fresh = [d for d in deals if d.get("id") not in set(posted)][:DIGEST_SIZE]
+    # Подозрительно дешёвые в публичный «Топ» не берём: карточка тех же лотов
+    # пишет «цена сильно ниже рынка, проверьте» — рекламировать их нельзя.
+    fresh = [
+        d for d in deals if d.get("id") not in set(posted) and not d.get("suspicious")
+    ][:DIGEST_SIZE]
     if not fresh:
         logger.info("channel: новых лотов для дайджеста нет")
         return None

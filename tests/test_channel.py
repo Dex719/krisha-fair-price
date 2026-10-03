@@ -54,3 +54,14 @@ def test_post_digest_no_channel_or_no_fresh(monkeypatch, tmp_path):
     monkeypatch.setattr(channel, "POSTED_PATH", tmp_path / "fresh.json")
     text = channel.post_channel_digest(DEALS[:1], dry_run=True)
     assert text and "Лот 1" in text
+
+
+def test_suspicious_lots_never_reach_the_public_top(monkeypatch, tmp_path):
+    """«Топ дня» в канале — реклама лотов. Подозрительно дешёвые (карточка
+    пишет «проверьте внимательнее») туда не попадают, даже если скидка больше."""
+    _no_persist(monkeypatch, tmp_path, posted=[])
+    deals = [{**DEALS[0], "id": 100, "title": "Битая цена", "suspicious": True}] + DEALS[:3]
+
+    text = channel.post_channel_digest(deals, dry_run=True)
+
+    assert "Битая цена" not in text and "Лот 1" in text
