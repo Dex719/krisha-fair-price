@@ -1019,7 +1019,20 @@ def _startup() -> None:
         _prepare_data()
     _warmup_runtime_caches()
     _start_session_warmup()
-    bot.setup_webhook()
+    _start_webhook_setup()
+
+
+def _start_webhook_setup() -> threading.Thread:
+    """Регистрация webhook — фоном, а не в startup.
+
+    uvicorn открывает порт только после startup, а setup_webhook при
+    недоступном Telegram крутит 3 попытки по ~30 с: сайт ~100 с не отвечал
+    вовсе. Бот без webhook подождёт — сайт ждать не должен; если регистрация
+    не удалась, её повторит самолечение в webhook_status (/api/health).
+    """
+    thread = threading.Thread(target=bot.setup_webhook, name="tg-webhook-setup", daemon=True)
+    thread.start()
+    return thread
 
 
 # Сколько лотов из демо-пула пробовать, прогревая сессию krisha: первый мог

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import statistics
+import time
 from functools import lru_cache
 from typing import Any
 
@@ -33,20 +34,20 @@ def _pct(part: float, base: float) -> int:
     return round((part - base) / base * 100)
 
 
-def _db_mtime() -> float:
-    """mtime базы — ключ кэша: база обновилась (деплой/рескрейп) → пересчёт."""
-    try:
-        return DB_PATH.stat().st_mtime
-    except OSError:
-        return 0.0
+# Медианы меняются только с новой базой, а новая база приходит рестартом
+# Space (скачивается при старте). Ключом раньше был mtime файла — но его
+# двигает сам предикт: upsert лота + лог предикта, и при закрытии последнего
+# соединения SQLite сливает WAL в файл. Кэш сбрасывался каждым запросом,
+# и каждая проверка ссылки платила ~1.9 с за пересчёт (замер на снимке прода).
+MARKET_STATS_TTL_S = 6 * 3600
 
 
 def market_stats() -> dict[str, Any]:
-    return _market_stats_cached(_db_mtime())
+    return _market_stats_cached(str(DB_PATH), int(time.time() // MARKET_STATS_TTL_S))
 
 
 @lru_cache(maxsize=2)
-def _market_stats_cached(db_mtime: float) -> dict[str, Any]:
+def _market_stats_cached(db_path: str, _bucket: int) -> dict[str, Any]:
     """Медианы ₸/м² по срезам базы. Пустой dict, если базы нет."""
     # Проверяем ДО get_conn: sqlite3.connect на отсутствующий путь молча
     # создаёт пустой файл, и дальше всё, что судит по DB_PATH.exists()

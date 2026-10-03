@@ -479,6 +479,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # свежих активных лотов для демо-кнопки. Здесь, а не в SCHEMA: в старых
     # базах колонка last_seen появляется миграцией строкой выше.
     conn.execute("CREATE INDEX IF NOT EXISTS idx_listings_last_seen ON listings(last_seen)")
+    # _coords_approx на каждом upsert ищет соседей по точке: без индекса это
+    # полный скан (≈210 мс на 200 тыс. строк — и на предикте, и в ночном проходе)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_listings_latlon ON listings(lat, lon)")
     # Бэкфилл: для старых записей точка отсчёта — момент скрейпа
     conn.execute("UPDATE listings SET first_seen = scraped_at WHERE first_seen IS NULL")
     conn.execute("UPDATE listings SET last_seen = scraped_at WHERE last_seen IS NULL")
@@ -768,10 +771,15 @@ def _coords_approx(
     if lat is None or lon is None:
         return None
     try:
+        # BETWEEN — чтобы шёл индекс (lat, lon): функция от колонки (ROUND) его
+        # не использует. Одинаково округлённые до 5 знаков точки отличаются
+        # меньше чем на 1e-5, так что окно ±1e-5 ничего не теряет, а ROUND
+        # оставляет прежнюю точную проверку.
         count = conn.execute(
             "SELECT COUNT(*) FROM listings WHERE id != ? "
+            "AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ? "
             "AND ROUND(lat, 5) = ROUND(?, 5) AND ROUND(lon, 5) = ROUND(?, 5)",
-            (int(listing_id), lat, lon),
+            (int(listing_id), lat - 1e-5, lat + 1e-5, lon - 1e-5, lon + 1e-5, lat, lon),
         ).fetchone()[0]
     except sqlite3.OperationalError:
         return None

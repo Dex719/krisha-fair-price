@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import threading
 import tomllib
 from pathlib import Path
 
@@ -29,8 +30,30 @@ def test_startup_runs_warmup_without_db_download(monkeypatch, tmp_path):
     monkeypatch.setattr(app_mod.bot, "setup_webhook", lambda: calls.append("webhook"))
 
     app_mod._startup()
+    for thread in threading.enumerate():  # webhook регистрируется фоном
+        if thread.name == "tg-webhook-setup":
+            thread.join(timeout=5)
 
     assert calls == ["ensure_db", "warmup", "webhook"]
+
+
+def test_startup_does_not_wait_for_telegram(monkeypatch, tmp_path):
+    """Недоступный Telegram (setup_webhook ~100 с) не держит startup:
+    uvicorn откроет порт только после него, и сайт всё это время лежал."""
+    import time
+
+    release = threading.Event()
+    monkeypatch.setattr(app_mod.db_release, "ensure_db", lambda: None)
+    monkeypatch.setattr(app_mod, "DB_PATH", tmp_path / "missing.db")
+    monkeypatch.setattr(app_mod, "_warmup_runtime_caches", lambda: None)
+    monkeypatch.setattr(app_mod.bot, "setup_webhook", lambda: release.wait(10))
+
+    started = time.monotonic()
+    app_mod._startup()
+    elapsed = time.monotonic() - started
+    release.set()
+
+    assert elapsed < 2
 
 
 def _record_loaders(monkeypatch, calls):
