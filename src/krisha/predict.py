@@ -478,7 +478,11 @@ def _predict_from_listing(
         "fair_price_low": _round_price(fair_low, deal) if fair_low is not None else None,
         "fair_price_high": _round_price(fair_high, deal) if fair_high is not None else None,
         "verdict": verdict,
-        "diff_pct": round((actual - fair_price) / fair_price * 100, 1) if actual else None,
+        # Подселение: цена за койку против оценки квартиры — процент бессмыслен,
+        # а от него считаются и «похожие по цене», и «подозрительно дёшево».
+        "diff_pct": (
+            round((actual - fair_price) / fair_price * 100, 1) if actual and not room_share else None
+        ),
         "top_factors": _with_hints(
             listing, _with_money_impact(top_factors(model, pool, features), fair_price, deal), deal
         ),
@@ -515,7 +519,7 @@ def _predict_from_listing(
     # а не выдуманный порог в процентах. days_on_market посчитан выше.
     from krisha.scam import assess_scam_risk
 
-    result["scam_risk"] = assess_scam_risk(
+    result["scam_risk"] = None if room_share else assess_scam_risk(
         result.get("fair_price_low"),
         result.get("actual_price"),
         result.get("days_on_market"),

@@ -936,9 +936,13 @@ else {
         }
         const data = await res.json();
         render(data);
+        // Те же слова, что в карточке: подселение без процента (было «В рынке, −0,0%»),
+        // аренда — словарём аренды
         status.textContent = data.actual_price == null
           ? 'Готово: ' + VERD.NO_PRICE[0]
-          : 'Готово: ' + (VERD[data.verdict] || VERD.FAIR)[0] + ', ' + pct(data.diff_pct);
+          : data.room_share
+          ? 'Готово: ' + VERD.ROOM_SHARE[0]
+          : 'Готово: ' + ((RENT ? VERD_RENT : VERD)[data.verdict] || VERD.FAIR)[0] + ', ' + pct(data.diff_pct);
       } catch (ex){
         const em = (ex && ex.message) || '';
         const net = /failed to fetch|network ?error|load failed|networkrequest|timed? ?out|abort/i.test(em);
