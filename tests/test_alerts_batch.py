@@ -210,3 +210,19 @@ def test_log_predictions_skips_empty_input(tmp_path, rows, expected):
     db = tmp_path / "t.db"
     init_db(db)
     assert log_predictions(rows, db_path=db) == expected
+
+
+def test_window_skips_old_lots_whose_details_just_arrived(tmp_path, monkeypatch):
+    """Докачка деталей двигает scraped_at у давно висящих лотов. Они не новые
+    для подписчика, а «подозрительно дёшево» для них не включается."""
+    db = tmp_path / "t.db"
+    _seed_window(db, [1, 2, 3])
+    with get_conn(db) as conn:
+        # 2 — деталь пришла сегодня, но на рынке он 30 дней; 3 — 3 дня
+        conn.execute("UPDATE listings SET first_seen = datetime('now', '-30 days') WHERE id = 2")
+        conn.execute("UPDATE listings SET first_seen = datetime('now', '-3 days') WHERE id = 3")
+    monkeypatch.setattr(alerts, "ALERTED_PATH", tmp_path / "alerted.json")
+
+    ids = sorted(row["id"] for row in alerts.new_listings(db))
+
+    assert ids == [1, 3]

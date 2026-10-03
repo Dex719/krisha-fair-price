@@ -54,3 +54,21 @@ def test_train_commands_parse(monkeypatch):
         except SystemExit as exc:  # argparse на лишнем аргументе
             raise AssertionError(f"не разбирается: {cmd}") from exc
     assert any(kw.get("old_meta_path") == "/tmp/old_rent_meta.json" for kw in seen)
+
+
+def test_rent_model_download_failure_is_not_first_model():
+    """Сбой скачивания старой модели аренды не должен выглядеть как «первой
+    модели нет»: иначе гейт подменяется проверкой «MAPE < 20%»."""
+    steps = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["retrain-rent"]["steps"]
+    run = next(s["run"] for s in steps if s.get("id") == "old")
+    assert "set -euo pipefail" in run
+    assert "gh release view model-latest" in run
+    assert "--rent --models --require" in run
+
+
+def test_rent_rescrape_does_not_start_empty_on_gh_errors():
+    """`if gh … | grep` не отличал «ассета нет» от «gh упал»: сбой GitHub
+    запускал проход с пустой базой, и она затирала db-latest."""
+    rent = WORKFLOW.with_name("rescrape-rent.yml").read_text(encoding="utf-8")
+    assert "assets=$(gh release view db-latest" in rent
+    assert "| grep -qx 'krisha_rent.db.gz'" not in rent

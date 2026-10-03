@@ -17,6 +17,7 @@ from typing import Any
 
 from krisha.config import DB_PATH
 from krisha.db import get_conn
+from krisha.scam import FRESH_DAYS
 from krisha.stats import DISTRICT_RU
 
 logger = logging.getLogger(__name__)
@@ -77,10 +78,16 @@ def new_listings(db_path: Path | str = DB_PATH, hours: int = ALERT_WINDOW_HOURS)
     # issue #115: get_conn (WAL/busy_timeout) вместо голого sqlite3.connect —
     # рассылка идёт рядом по времени с рескрейпом, который активно пишет в базу.
     with get_conn(db_path) as conn:
+        # scraped_at двигает и докачка деталей старых лотов (#102): одно окно
+        # по нему тащило в «новые» объявления, висящие неделями (84% окна в
+        # замере), а «подозрительно дёшево» для них не включалось — scam
+        # считает уровень high только у свежих. Лот, чья деталь приехала
+        # позже, остаётся кандидатом, если на рынке он не дольше недели.
         rows = conn.execute(
             "SELECT * FROM listings WHERE is_active = 1 AND price > 0 AND area > 0 "
-            "AND (first_seen >= datetime('now', ?) OR scraped_at >= datetime('now', ?))",
-            (f"-{hours} hours", f"-{hours} hours"),
+            "AND (first_seen >= datetime('now', ?) "
+            "     OR (scraped_at >= datetime('now', ?) AND first_seen >= datetime('now', ?)))",
+            (f"-{hours} hours", f"-{hours} hours", f"-{FRESH_DAYS} days"),
         ).fetchall()
     already = set(load_alerted())
     return [dict(r) for r in rows if r["id"] not in already]

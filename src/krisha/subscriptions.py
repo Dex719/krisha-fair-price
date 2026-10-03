@@ -309,6 +309,18 @@ def pull_state(names=STATE_FILES) -> tuple[int, int]:
                 logger.warning("Состояние %s не загружено: HTTP %s", name, resp.status_code)
                 failed += 1
                 continue
+            if resp.text.strip() and _decode_payload(resp.text, name) is None:
+                # Файл на сервере есть, но не читается (сменился ключ шифрования,
+                # битый JSON). Раньше это молча превращалось в «подписчиков нет»:
+                # алерты и слежка выключались, и никто об этом не знал. Локальную
+                # копию не трогаем, считаем сбоем и говорим админу.
+                logger.error("Состояние %s скачано, но не читается — проверь ключ шифрования", name)
+                _alert_admin(
+                    f"⛔️ data/{name}: состояние не расшифровывается (сменился "
+                    f"STATE_ENCRYPTION_KEY или токен бота?). Алерты и слежка по нему не работают."
+                )
+                failed += 1
+                continue
             _write_local(DATA_DIR / name, resp.text)
             pulled += 1
     logger.info("Состояние из %s: загружено %d, ошибок %d", STATE_REPO, pulled, failed)
