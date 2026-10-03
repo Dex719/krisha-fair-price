@@ -481,7 +481,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_listings_last_seen ON listings(last_seen)")
     # _coords_approx на каждом upsert ищет соседей по точке: без индекса это
     # полный скан (≈210 мс на 200 тыс. строк — и на предикте, и в ночном проходе)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_listings_latlon ON listings(lat, lon)")
+    # Самые старые базы без координат (до колонки lat) — индекс не нужен и не создаётся
+    listing_cols = {r[1] for r in conn.execute("PRAGMA table_info(listings)")}
+    if {"lat", "lon"} <= listing_cols:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_listings_latlon ON listings(lat, lon)")
     # Бэкфилл: для старых записей точка отсчёта — момент скрейпа
     conn.execute("UPDATE listings SET first_seen = scraped_at WHERE first_seen IS NULL")
     conn.execute("UPDATE listings SET last_seen = scraped_at WHERE last_seen IS NULL")
