@@ -799,6 +799,7 @@ def setup_webhook(retries: int = 3) -> bool:
 
 
 _WEBHOOK_CHECK_INTERVAL_S = 3600.0
+_WEBHOOK_RETRY_S = 600.0  # повтор после неудачной проверки — не час и не каждый пинг
 # None = «ещё не проверяли». Нельзя использовать 0.0: time.monotonic() — это
 # секунды с загрузки машины, на свежем контейнере now < 3600 и «0.0» выглядит
 # как недавняя проверка — кэш отдаёт unknown, не дёргая Telegram вообще.
@@ -826,9 +827,11 @@ def webhook_status(force: bool = False) -> str:
     _last_webhook_check[0] = now
     data = tg_call("getWebhookInfo")
     if not data or not data.get("ok"):
-        # сеть/Telegram моргнули — не кэшируем неудачу на час,
-        # следующий же пинг /api/health попробует снова
-        _last_webhook_check[0] = None
+        # Сеть/Telegram моргнули — неудачу не кэшируем на час, но и не дёргаем
+        # Telegram на каждом пинге: при недоступном API каждый такой вызов
+        # висит ~30 с по таймауту, и /api/health (его зовут все страницы
+        # сайта) висел вместе с ним. Повтор — через _WEBHOOK_RETRY_S.
+        _last_webhook_check[0] = now - _WEBHOOK_CHECK_INTERVAL_S + _WEBHOOK_RETRY_S
         _last_webhook_status[0] = "unknown"
         return "unknown"
     current = (data.get("result") or {}).get("url") or ""

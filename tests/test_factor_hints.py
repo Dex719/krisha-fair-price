@@ -69,3 +69,21 @@ def test_market_stats_without_db_does_not_create_an_empty_db(tmp_path, monkeypat
 
     assert factor_hints.market_stats() == {}
     assert not missing.exists()
+
+
+def test_market_stats_cache_survives_writes_to_the_db(tmp_path, monkeypatch):
+    """Предикт сам пишет в базу (upsert + лог), и mtime файла меняется.
+    Кэш по mtime сбрасывался каждым запросом: +1.9 с на каждую проверку."""
+    from krisha import factor_hints
+    from krisha.db import init_db, upsert_listing
+
+    db = tmp_path / "k.db"
+    init_db(db)
+    monkeypatch.setattr(factor_hints, "DB_PATH", db)
+    factor_hints._market_stats_cached.cache_clear()
+    factor_hints.market_stats()
+    upsert_listing({"id": 1, "url": "u", "price": 30_000_000, "area": 50.0, "source": "user"}, db_path=db)
+    factor_hints.market_stats()
+
+    info = factor_hints._market_stats_cached.cache_info()
+    assert info.misses == 1 and info.hits == 1

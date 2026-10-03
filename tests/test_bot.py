@@ -360,8 +360,14 @@ def test_webhook_status_failure_not_cached(monkeypatch):
     monkeypatch.setattr(bot, "tg_call", flaky_tg)
     bot._last_webhook_check[0] = None
 
+    clock = [10_000.0]
+    monkeypatch.setattr(bot.time, "monotonic", lambda: clock[0])
     assert bot.webhook_status() == "unknown"
-    # без force и без ожидания часа — повторный вызов сразу дёргает Telegram
+    # следующий пинг сразу Telegram не дёргает (при недоступном API каждый
+    # вызов висел ~30 с и держал /api/health), но и не ждёт часа
+    assert bot.webhook_status() == "unknown"
+    assert calls == ["getWebhookInfo"]
+    clock[0] += bot._WEBHOOK_RETRY_S + 1
     assert bot.webhook_status() == "ok"
     assert calls == ["getWebhookInfo", "getWebhookInfo"]
 
