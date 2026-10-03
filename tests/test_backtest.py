@@ -341,3 +341,38 @@ def test_compare_runs_raises_on_no_overlap(tmp_path):
     b.to_csv(csv_b, index=False)
     with pytest.raises(ValueError):
         bt.compare_runs(csv_a, csv_b, "a", "b")
+
+
+def test_cb_params_seed_and_point_only(tmp_path, monkeypatch):
+    """Эксперименты стенда: любые параметры CatBoost, сид, без интервала."""
+    monkeypatch.setattr("krisha.zones.load_zone_index", lambda *a, **k: None)
+    db = tmp_path / "cb.db"
+    _synthetic_db(db, n=600, weeks=8)
+    combined, report = bt.run_backtest(
+        db_path=db, n_folds=1, point_iterations=30, with_interval=False,
+        cb_params={"l2_leaf_reg": 10, "loss_function": "MAE"}, seed=7,
+    )
+    assert report["config"]["cb_params"] == {"l2_leaf_reg": 10, "loss_function": "MAE"}
+    assert report["config"]["seed"] == 7
+    assert combined["price_lo"].isna().all() and "building" in combined
+
+
+def test_parse_cb_params():
+    assert bt._parse_cb_params(["l2_leaf_reg=10", "loss_function=MAE", 'x={"a":1}']) == {
+        "l2_leaf_reg": 10, "loss_function": "MAE", "x": {"a": 1},
+    }
+
+
+def test_compare_reports_cluster_ci(tmp_path):
+    rows = []
+    for fold in (0, 1):
+        for i in range(40):
+            rows.append({"fold": fold, "listing_id": i, "price_true": 100.0, "price_lo": 90.0,
+                         "price_hi": 110.0, "fold_valid": True, "building": f"b{i // 2}",
+                         "test_start": f"2026-0{fold + 1}-01"})
+    a = pd.DataFrame([{**r, "price_pred": 110.0} for r in rows])
+    b = pd.DataFrame([{**r, "price_pred": 105.0} for r in rows])
+    a.to_csv(tmp_path / "a.csv", index=False)
+    b.to_csv(tmp_path / "b.csv", index=False)
+    text = bt.compare_runs(tmp_path / "a.csv", tmp_path / "b.csv", "a", "b")
+    assert "ΔMAPE -5.00%" in text and "лучше" in text and "лучше в 2 из 2" in text

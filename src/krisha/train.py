@@ -736,6 +736,8 @@ def fit_point_model(
     target_fn: Callable[[pd.DataFrame], Any] | None = None,
     weight_fn: Callable[[pd.DataFrame], Any] | None = None,
     verbose: int | bool = 200,
+    cb_params: dict | None = None,
+    seed: int = RANDOM_STATE,
 ) -> PointFit:
     """Точечная RMSE-модель так, как её учит прод: probe с early stopping →
     число деревьев → финальная модель на всём raw_train.
@@ -744,6 +746,8 @@ def fit_point_model(
     стенда мерили тот же пайплайн, что работает в проде. target_fn/weight_fn
     (фичефрейм → таргет / веса строк) — хуки экспериментов стенда (issue #131:
     другой таргет, веса по свежести); по умолчанию log1p(price) без весов.
+    cb_params — любые параметры CatBoost поверх прод-набора (l2_leaf_reg,
+    loss_function, border_count…), seed — сид модели и разбиения early stopping.
     """
     from krisha.spatial import build_spatial_ref, self_indices_for
 
@@ -772,7 +776,7 @@ def fit_point_model(
     # district_ppsm/hex_ppsm/knn считались по ВСЕМУ raw_train, включая val —
     # val-строки видели собственную цену в своих же референсных статистиках,
     # best_iterations выбирался по оценке, которая уже частично «списала».
-    es_splitter = GroupShuffleSplit(n_splits=1, test_size=0.15, random_state=RANDOM_STATE)
+    es_splitter = GroupShuffleSplit(n_splits=1, test_size=0.15, random_state=seed)
     fit_idx, val_idx = next(es_splitter.split(raw_train, groups=building_groups(raw_train)))
     fit_raw_es = raw_train.iloc[fit_idx].reset_index(drop=True)
     val_raw_es = raw_train.iloc[val_idx].reset_index(drop=True)
@@ -785,8 +789,9 @@ def fit_point_model(
     val_df_es = build_features(val_raw_es, ppsm_maps=ppsm_maps_es, spatial_ref=spatial_ref_es)
     params = dict(
         learning_rate=learning_rate, depth=depth, loss_function="RMSE",
-        random_seed=RANDOM_STATE, verbose=verbose,
+        random_seed=seed, verbose=verbose,
     )
+    params.update(cb_params or {})
     probe = CatBoostRegressor(iterations=iterations, early_stopping_rounds=100, **params)
     probe.fit(pool(fit_df_es), eval_set=pool(val_df_es, weighted=False))
     best_iterations = max(int(probe.tree_count_), 1)
