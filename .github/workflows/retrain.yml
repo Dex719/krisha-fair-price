@@ -175,7 +175,7 @@ jobs:
       - name: Train rent model
         run: |
           if [ "${{ steps.old.outputs.has_old }}" = "1" ]; then
-            python scripts/train.py --deal arenda --compare-old /tmp/old_rent_model.cbm \n              --compare-old-meta /tmp/old_rent_meta.json
+            python scripts/train.py --deal arenda --compare-old /tmp/old_rent_model.cbm --compare-old-meta /tmp/old_rent_meta.json
           else
             python scripts/train.py --deal arenda
           fi
