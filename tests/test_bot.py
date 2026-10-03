@@ -297,6 +297,21 @@ def test_webhook_status_self_heals(monkeypatch):
     assert calls == []
 
 
+def test_webhook_stays_on_space_host_with_custom_domain(monkeypatch):
+    """Свой домен (PUBLIC_BASE_URL) — для ссылок; webhook остаётся на адресе
+    Space и не зависит от Cloudflare-прокси домена."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://bagam.info")
+    monkeypatch.setenv("SPACE_HOST", "dex719-krisha-fair-price.hf.space")
+    monkeypatch.delenv("RAILWAY_PUBLIC_DOMAIN", raising=False)
+    calls = []
+    monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
+
+    assert bot.public_base_url() == "https://bagam.info"
+    assert bot.setup_webhook() is True
+    assert calls[0][1]["url"] == "https://dex719-krisha-fair-price.hf.space/tg/webhook"
+
+
 def test_setup_webhook_keeps_pending_updates(monkeypatch):
     """Рестарт не имеет права выбрасывать недоставленные сообщения.
 
