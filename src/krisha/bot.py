@@ -129,7 +129,7 @@ HELP_TEXT = (
     "пришлю алерт, если цена изменится или объявление снимут.\n"
     "4) <code>/alerts</code> — алерты о новых выгодных объявлениях с фильтрами; "
     "<code>/alerts_on 2к до 45млн бостандыкский</code> включает комнаты, бюджет и район.\n\n"
-    "Веб-версия: https://dex719-krisha-fair-price.hf.space"
+    "Веб-версия: https://bagam.info"
 )
 
 MARKET_DISTRICT_SLUGS = {

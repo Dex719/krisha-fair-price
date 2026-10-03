@@ -75,7 +75,7 @@ def test_bot_page_chrome_meta_and_single_h1():
     assert "│ baǵam</title>" in html
     assert '<meta name="description"' in html
     assert 'href="/static/design.css"' in html
-    assert 'rel="canonical" href="https://dex719-krisha-fair-price.hf.space/bot"' in html
+    assert 'rel="canonical" href="https://bagam.info/bot"' in html
     assert len(re.findall(r"<h1[ >]", html)) == 1
     assert "FairPrice" not in html
 
@@ -139,7 +139,7 @@ def test_page_links_to_neighbours_and_has_faq():
 def test_page_has_no_external_assets_or_promises():
     html = _page()
 
-    assert not re.search(r'<(?:script|link|img|iframe|source)\b[^>]*\b(?:src|href)="(?:https?:)?//(?!t\.me|dex719-krisha-fair-price\.hf\.space)', html)
+    assert not re.search(r'<(?:script|link|img|iframe|source)\b[^>]*\b(?:src|href)="(?:https?:)?//(?!t\.me|bagam\.info)', html)
     for host in ("googleapis", "gstatic", "cdn.", "unpkg", "jsdelivr", "cdnjs"):
         assert host not in html
     for promise in ("скоро добавим", "скоро появится", "в разработке"):

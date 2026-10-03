@@ -28,7 +28,7 @@ def test_rent_route_serves_html_with_title_and_design_css():
     title = re.search(r"<title>(.*?)</title>", resp.text, re.S)
     assert title and "Аренда" in title.group(1)
     assert '<meta name="description"' in resp.text
-    assert 'rel="canonical" href="https://dex719-krisha-fair-price.hf.space/rent"' in resp.text
+    assert 'rel="canonical" href="https://bagam.info/rent"' in resp.text
     assert "/static/design.css" in resp.text
     assert "/api/stats/rent" in resp.text
 

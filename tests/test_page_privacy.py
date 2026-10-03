@@ -53,7 +53,7 @@ def test_privacy_is_listed_for_search_engines():
 
     assert "/privacy</loc>" in client.get("/sitemap.xml").text
     html = _page()
-    assert '<link rel="canonical" href="https://dex719-krisha-fair-price.hf.space/privacy">' in html
+    assert '<link rel="canonical" href="https://bagam.info/privacy">' in html
     assert '<meta name="description"' in html
 
 

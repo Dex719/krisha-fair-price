@@ -53,13 +53,16 @@ export default {
       redirect: "manual",
     });
 
+    const out = new Response(response.body, response);
+    // HF вешает на каждый ответ Link: <huggingface.co/spaces/…>; rel="canonical" —
+    // поисковик склеил бы домен со страницей Space и не индексировал bagam.info.
+    // Канонический адрес задаёт <link rel="canonical"> в самих страницах.
+    out.headers.delete("link");
     // Редирект приложения на адрес Space → тот же путь на домене
     const location = response.headers.get("location");
     if (location && location.startsWith(ORIGIN)) {
-      const rewritten = new Response(response.body, response);
-      rewritten.headers.set("location", `https://${CANONICAL_HOST}${location.slice(ORIGIN.length)}`);
-      return rewritten;
+      out.headers.set("location", `https://${CANONICAL_HOST}${location.slice(ORIGIN.length)}`);
     }
-    return response;
+    return out;
   },
 };
