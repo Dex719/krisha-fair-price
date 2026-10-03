@@ -21,7 +21,7 @@ import time
 import uuid
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager, contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 import anyio
@@ -359,29 +359,53 @@ def _data_freshness_cached() -> tuple[float | None, str]:
 
 
 def _data_freshness() -> tuple[float | None, str]:
-    """Возраст данных по максимальному реальному last_seen в базе."""
+    """Возраст данных: когда сборщик последний раз прошёл по рынку.
+
+    Раньше брался MAX(last_seen) по всей базе, а его двигает и пользователь:
+    проверка ссылки пишет лот с last_seen = now (UPSERT_SQL_USER), в том числе
+    поверх строки сборщика, и смоук делает это дважды в сутки. Ночной сбор мог
+    сломаться, а health, keepalive и «обновлено N ч назад» на сайте видели
+    «только что». Теперь источник — sweep_runs (пишет только сборщик): конец
+    последнего прохода = старт + время фаз. Старые базы без таблицы —
+    по last_seen строк, которые завёл сборщик.
+    """
     if not DB_PATH.exists():
         return None, "stale"
     try:
         with get_conn(DB_PATH) as conn:
-            row = conn.execute(
-                "SELECT MAX(last_seen) FROM listings WHERE last_seen IS NOT NULL"
-            ).fetchone()
+            observed_dt = _last_sweep_end(conn)
+            if observed_dt is None:
+                row = conn.execute(
+                    "SELECT MAX(last_seen) FROM listings WHERE last_seen IS NOT NULL "
+                    "AND COALESCE(source, 'scrape') <> 'user'"
+                ).fetchone()
+                observed_dt = _parse_db_datetime(str(row[0])) if row and row[0] else None
     except sqlite3.Error:
         logger.warning("health: не удалось прочитать freshness из базы", exc_info=True)
         return None, "stale"
 
-    observed_at = row[0] if row else None
-    if not observed_at:
-        return None, "stale"
-
-    observed_dt = _parse_db_datetime(str(observed_at))
     if observed_dt is None:
         return None, "stale"
 
     age_hours = max(0.0, (_utcnow() - observed_dt).total_seconds() / 3600)
     freshness = "ok" if age_hours <= DATA_STALE_AFTER_HOURS else "stale"
     return round(age_hours, 2), freshness
+
+
+def _last_sweep_end(conn: sqlite3.Connection) -> datetime | None:
+    """Конец последнего прохода сборщика продажи по sweep_runs (None — нет записей)."""
+    try:
+        row = conn.execute(
+            "SELECT started_at, COALESCE(search_seconds, 0) + COALESCE(detail_seconds, 0) "
+            "FROM sweep_runs WHERE COALESCE(deal, 'prodazha') = 'prodazha' "
+            "ORDER BY started_at DESC LIMIT 1"
+        ).fetchone()
+    except sqlite3.OperationalError:  # старая база без sweep_runs
+        return None
+    if not row or not row[0]:
+        return None
+    started = _parse_db_datetime(str(row[0]))
+    return started + timedelta(seconds=float(row[1] or 0)) if started else None
 
 
 def _parse_db_datetime(value: str) -> datetime | None:
