@@ -292,3 +292,43 @@ def test_legacy_rent_lot_without_deal_is_healed_by_rent_pass(tmp_path, monkeypat
     assert len(updates) == 1 and "280 тыс ₸/мес" in updates[0][1]
     lots = tracking.list_tracked(42, path=path)
     assert lots["222"]["deal"] == "arenda" and "deal" not in lots["111"]
+
+
+def test_bot_edit_starts_from_a_fresh_server_copy(tmp_path, monkeypatch):
+    """Перед /track Space подтягивает tracked.json с сервера: иначе правка
+    поверх копии со старта вернула бы старую цену лота, и ночной алерт об
+    изменении пришёл бы второй раз."""
+    from krisha import subscriptions
+
+    _no_github_push(monkeypatch)
+    path = tmp_path / "tracked.json"
+    monkeypatch.setattr(tracking, "TRACKED_PATH", path)
+    path.write_text('{"42": {"111": {"price": 50000000, "title": "Квартира"}}}', encoding="utf-8")
+    server = '{"42": {"111": {"price": 47500000, "title": "Квартира"}}}'
+
+    def fake_pull(names):
+        assert names == ("tracked.json",)
+        path.write_text(server, encoding="utf-8")
+        return 1, 0
+
+    monkeypatch.setattr(subscriptions, "pull_state", fake_pull)
+
+    ok, _ = tracking.add_tracked(42, 222, 30_000_000, "Другая")
+
+    lots = tracking.list_tracked(42, path=path)
+    assert ok and lots["111"]["price"] == 47_500_000 and "222" in lots
+
+
+def test_nightly_pass_saves_only_chats_it_changed(tmp_path, monkeypatch):
+    _no_github_push(monkeypatch)
+    path = tmp_path / "tracked.json"
+    db = _make_db(tmp_path, price=47_500_000)
+    tracking.add_tracked(42, 111, 50_000_000, "Квартира", path=path)   # цена изменится
+    tracking.add_tracked(7, 999, 10_000_000, "Нет в базе", path=path)  # не трогается
+    saved = {}
+    monkeypatch.setattr(tracking, "_save",
+                        lambda tracked, msg, p=None, **kw: saved.update(kw))
+
+    tracking.check_tracked_updates(db_path=db, path=path)
+
+    assert saved["touched_keys"] == {"42"}

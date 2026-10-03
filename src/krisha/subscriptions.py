@@ -184,7 +184,7 @@ def set_subscription(chat_id: int, flt: dict[str, Any]) -> None:
         subs = load_subscriptions()
         subs[str(chat_id)] = {**flt, "since": datetime.now(timezone.utc).isoformat()}
         # Без chat_id в message: репозиторий публичный, история коммитов — тоже
-        _save(subs, "alerts: обновление подписок")
+        _save(subs, "alerts: обновление подписок", touched_keys={str(chat_id)})
 
 
 def remove_subscription(chat_id: int) -> bool:
@@ -194,12 +194,19 @@ def remove_subscription(chat_id: int) -> bool:
             return False
         del subs[str(chat_id)]
         # deleted_keys: иначе слияние с удалённой копией вернёт отписавшегося
-        _save(subs, "alerts: обновление подписок", deleted_keys={str(chat_id)})
+        _save(subs, "alerts: обновление подписок", deleted_keys={str(chat_id)}, touched_keys=set())
         return True
 
 
-def _save(subs: dict[str, Any], message: str, deleted_keys: set[str] | None = None) -> None:
-    save_json_state(SUBSCRIPTIONS_PATH, subs, message, deleted_keys=deleted_keys)
+def _save(
+    subs: dict[str, Any],
+    message: str,
+    deleted_keys: set[str] | None = None,
+    touched_keys: set[str] | None = None,
+) -> None:
+    save_json_state(
+        SUBSCRIPTIONS_PATH, subs, message, deleted_keys=deleted_keys, touched_keys=touched_keys,
+    )
 
 
 def save_json_state(
@@ -208,6 +215,7 @@ def save_json_state(
     message: str,
     encrypt: bool = True,
     deleted_keys: set[str] | None = None,
+    touched_keys: set[str] | None = None,
 ) -> None:
     """Сохраняет JSON-состояние локально и коммитит в GitHub (см. докстринг модуля).
 
@@ -219,6 +227,12 @@ def save_json_state(
     (отписка, /untrack). Нужны для слияния при конкурентной записи: без них
     «ключа нет у нас, но есть на сервере» неотличимо от «его только что
     добавил другой писатель», см. _push_to_github (issue #111).
+
+    `touched_keys` — единственные ключи, которые вызывающий менял (команда
+    бота трогает один чат). Остальное при слиянии берётся с сервера, а не из
+    локальной копии: у Space она с момента старта, и ночные правки Actions
+    (новые базовые цены, снятые лоты) одна команда /track любого чата
+    откатывала у ВСЕХ чатов. None — писатель отвечает за файл целиком.
     """
     payload, encrypted = _encode_payload(data, encrypt)
     if encrypt and not encrypted:
@@ -229,7 +243,7 @@ def save_json_state(
     _write_local(path, payload)
     # PII-состояние без ключа никогда не публикуем в репозиторий.
     if not encrypt or encrypted:
-        _push_to_github(path, payload, message, data, deleted_keys, encrypt)
+        _push_to_github(path, payload, message, data, deleted_keys, encrypt, touched_keys)
 
 
 def _write_local(path, text: str) -> None:
@@ -330,7 +344,12 @@ def _alert_admin(text: str) -> None:
         logger.warning("Не удалось отправить алерт о состоянии: %s", exc)
 
 
-def _merge_remote(local: Any, remote: Any, deleted_keys: set[str] | None) -> Any:
+def _merge_remote(
+    local: Any,
+    remote: Any,
+    deleted_keys: set[str] | None,
+    touched_keys: set[str] | None = None,
+) -> Any:
     """Сливает удалённое состояние в локальное перед PUT (issue #111).
 
     Ключ верхнего уровня во всех state-файлах — chat_id, поэтому слияние
@@ -346,11 +365,17 @@ def _merge_remote(local: Any, remote: Any, deleted_keys: set[str] | None) -> Any
     хранить дельту, а не итоговое состояние (см. issue #111 про переход к
     единственному писателю).
 
+    С `touched_keys` (см. save_json_state) поверх сервера кладём только их:
+    локальная копия остальных чатов может быть устаревшей.
+
     Не словари (или сервер отдал мусор) — сливать нечего, пишем как есть.
     """
     if not isinstance(local, dict) or not isinstance(remote, dict):
         return local
-    merged = {**remote, **local}
+    if touched_keys is None:
+        merged = {**remote, **local}
+    else:
+        merged = {**remote, **{k: local[k] for k in touched_keys if k in local}}
     for key in deleted_keys or ():
         merged.pop(key, None)
     return merged
@@ -363,6 +388,7 @@ def _push_to_github(
     data: Any = None,
     deleted_keys: set[str] | None = None,
     encrypt: bool = True,
+    touched_keys: set[str] | None = None,
 ) -> None:
     """Коммитит файл состояния в STATE_REPO, чтобы пережить рестарт.
 
@@ -417,7 +443,7 @@ def _push_to_github(
                         rel, FORCE_OVERWRITE_ENV,
                     )
                 elif remote is not None:
-                    merged = _merge_remote(data, remote, deleted_keys)
+                    merged = _merge_remote(data, remote, deleted_keys, touched_keys)
                     if merged != data:
                         logger.info(
                             "%s: слил конкурентные изменения с сервера (+%d ключей)",
@@ -432,6 +458,9 @@ def _push_to_github(
             }
             put = httpx.put(url, headers=headers, json=body, timeout=15.0)
             if put.status_code in (200, 201):
+                if body_payload != payload:
+                    # локально — то же, что ушло на сервер, а не устаревшая копия
+                    _write_local(path, body_payload)
                 return
             if put.status_code in (409, 422) and attempt < PUSH_MAX_ATTEMPTS:
                 # Кто-то записал файл между нашими GET и PUT — перечитываем

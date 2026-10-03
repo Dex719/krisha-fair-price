@@ -58,10 +58,27 @@ def _save(
     message: str,
     path: Path | None = None,
     deleted_keys: set[str] | None = None,
+    touched_keys: set[str] | None = None,
 ) -> None:
     from krisha.subscriptions import save_json_state
 
-    save_json_state(path or TRACKED_PATH, tracked, message, deleted_keys=deleted_keys)
+    save_json_state(
+        path or TRACKED_PATH, tracked, message, deleted_keys=deleted_keys, touched_keys=touched_keys,
+    )
+
+
+def _refresh(path: Path | None) -> None:
+    """Перед правкой из бота — свежая копия с сервера (fail-soft).
+
+    Space читает состояние один раз при старте, а ночью Actions обновляют
+    базовые цены и убирают снятые лоты. Правка поверх старой копии своего же
+    чата вернула бы старую цену — и тот же алерт пришёл бы второй раз.
+    """
+    if path is not None:  # явный путь — тесты и разовые скрипты, не прод-файл
+        return
+    from krisha.subscriptions import pull_state
+
+    pull_state((TRACKED_PATH.name,))
 
 
 def add_tracked(
@@ -79,6 +96,7 @@ def add_tracked(
     # обрабатываются параллельно (BackgroundTasks поверх тредпула), и без
     # него оба читают одну версию файла, а записавший вторым теряет чужой лот.
     with STATE_LOCK:
+        _refresh(path)
         tracked = load_tracked(path)
         chat = tracked.setdefault(str(chat_id), {})
         if str(listing_id) in chat:
@@ -92,7 +110,7 @@ def add_tracked(
             **({"deal": RENT} if deal == RENT else {}),
         }
         # Без chat_id/listing_id в message: история коммитов публична
-        _save(tracked, "track: обновление слежки", path)
+        _save(tracked, "track: обновление слежки", path, touched_keys={str(chat_id)})
         return True, None
 
 
@@ -101,6 +119,7 @@ def remove_tracked(chat_id: int, listing_id: int | None, path: Path | None = Non
     from krisha.subscriptions import STATE_LOCK
 
     with STATE_LOCK:
+        _refresh(path)
         tracked = load_tracked(path)
         chat = tracked.get(str(chat_id))
         if not chat:
@@ -118,7 +137,8 @@ def remove_tracked(chat_id: int, listing_id: int | None, path: Path | None = Non
         # Если чат ушёл целиком — это удаление ключа верхнего уровня, о котором
         # надо сказать слиянию (issue #111), иначе он вернётся с сервера.
         gone = {str(chat_id)} if str(chat_id) not in tracked else None
-        _save(tracked, "track: обновление слежки", path, deleted_keys=gone)
+        _save(tracked, "track: обновление слежки", path, deleted_keys=gone,
+              touched_keys={str(chat_id)})
         return removed
 
 
@@ -154,7 +174,9 @@ def check_tracked_updates(
         return []
 
     messages: list[tuple[int, str]] = []
-    changed = False
+    # Сохраняем только чаты, которые этот проход реально поменял: остальные
+    # мог за это время поправить бот на Space (/track), и наша копия их старее.
+    touched: set[str] = set()
     with get_conn(db_path) as conn:
         for chat_id, lots in tracked.items():
             if only_chats is not None and int(chat_id) not in only_chats:
@@ -178,13 +200,13 @@ def check_tracked_updates(
                     # висели без алертов. id на krisha общий, так что раз лот нашёлся
                     # в базе аренды — это аренда; помечаем и дальше проверяем как её.
                     state["deal"] = RENT
-                    changed = True
+                    touched.add(chat_id)
                 event = _lot_event(lid, state, row, rent=deal == RENT)
                 if not row["is_active"]:
                     if event is not None:
                         events.append(event)
                         del lots[lid]  # снят с продажи — слежка закончена
-                        changed = True
+                        touched.add(chat_id)
                     continue
                 # Цену активного лота подтягиваем из базы ВСЕГДА, а не только
                 # когда есть что отправить. Лот, взятый в слежку с неизвестной
@@ -198,14 +220,14 @@ def check_tracked_updates(
                 ):
                     state["price"] = row["price"]
                     state["title"] = state.get("title") or row["title"]
-                    changed = True
+                    touched.add(chat_id)
                 if event is not None:
                     events.append(event)
             if events:
                 messages.append((int(chat_id), "\n\n".join(events)))
 
-    if changed and persist:
-        _save(tracked, "track: обновление цен после рескрейпа", path)
+    if touched and persist:
+        _save(tracked, "track: обновление цен после рескрейпа", path, touched_keys=touched)
     return messages
 
 
