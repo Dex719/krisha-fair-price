@@ -56,6 +56,23 @@ def test_passes_when_new_model_is_better(tmp_path):
     assert _run(tmp_path, old, new) == 0
 
 
+def test_compares_on_rows_unseen_by_old_model(tmp_path):
+    """Прошлая модель обучена на всех данных и видела начало test-окна: на всём
+    test она «лучше» новой, на незнакомых ей строках — хуже. Гейт смотрит на
+    вторые (model_vs_old), иначе отклонял бы честные ретрейны."""
+    new_meta = _meta(
+        model={"mae": 6_000_000, "mape": 0.12, "r2": 0.80},
+        interval=OLD_INTERVAL, old_model=OLD_MODEL,
+    )
+    new_meta["metrics"]["model_vs_old"] = {"mae": 4_800_000, "mape": 0.095, "r2": 0.86}
+    new_meta["metrics"]["old_model_rows"] = 900
+    old_meta = _meta(model=OLD_MODEL, interval=OLD_INTERVAL)
+
+    assert _run(tmp_path, old_meta, new_meta) == 0
+    del new_meta["metrics"]["model_vs_old"]
+    assert _run(tmp_path, old_meta, new_meta) == 1
+
+
 def test_fails_closed_on_old_model_error(tmp_path):
     """issue #106: сравнение со старой моделью не удалось — блокируем, не fallback."""
     old = _meta(OLD_MODEL, interval=OLD_INTERVAL)

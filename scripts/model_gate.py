@@ -139,6 +139,12 @@ def main() -> None:
     if old_on_new_test:
         old = old_on_new_test
         mode = "старая модель на том же test-сплите (честное сравнение)"
+        # Прошлая модель обучена на всех данных и видела начало test-окна —
+        # train.py сравнил обе модели только на более свежих строках.
+        if new_meta["metrics"].get("model_vs_old"):
+            new = new_meta["metrics"]["model_vs_old"]
+            rows = new_meta["metrics"].get("old_model_rows")
+            mode += f", только строки новее данных старой модели ({rows})"
     else:
         old = old_meta_full["metrics"]["model"]
         mode = "метрики прошлой недели (разные test-выборки — возможен дрейф данных)"

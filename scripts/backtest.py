@@ -75,6 +75,7 @@ from krisha.targets import (
     target_col,
 )
 from krisha.train import (
+    POINT_ITERATIONS,
     QUANTILE_ITERATIONS,
     baseline_predict,
     building_groups,
@@ -99,7 +100,7 @@ MIN_VALID_FOLDS = 3
 # Потолки — как в проде (scripts/train.py, train.QUANTILE_ITERATIONS): реальное
 # число деревьев режет early stopping. Облегчённые потолки стенда (600/400 без
 # early stopping) мерили не ту модель, что работает в проде.
-POINT_ITERATIONS_DEFAULT = 2000
+POINT_ITERATIONS_DEFAULT = POINT_ITERATIONS
 QUANTILE_ITERATIONS_DEFAULT = QUANTILE_ITERATIONS
 
 
