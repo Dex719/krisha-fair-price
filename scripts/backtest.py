@@ -77,6 +77,7 @@ from krisha.targets import (
 from krisha.train import (
     QUANTILE_ITERATIONS,
     baseline_predict,
+    building_groups,
     dedup_relistings,
     fit_point_model,
     fit_quantile_interval,
@@ -253,6 +254,9 @@ def run_fold(
     freshness_half_life_days: float | None = None,
     train_window_weeks: int | None = None,
     as_of: pd.Timestamp | None = None,
+    cb_params: dict | None = None,
+    seed: int = 42,
+    with_interval: bool = True,
 ) -> pd.DataFrame | None:
     """Обучает точечную и квантильную модели прод-кодом на train_raw и
     предсказывает test_raw. Возвращает per-row DataFrame (в .attrs — число
@@ -294,6 +298,7 @@ def run_fold(
     point = fit_point_model(
         train_raw, spec, point_iterations, learning_rate=learning_rate, depth=depth,
         target_fn=target_fn, weight_fn=weight_fn, verbose=False,
+        cb_params=cb_params, seed=seed,
     )
     test_df = build_features(test_raw, ppsm_maps=point.ppsm_maps, spatial_ref=point.spatial_ref)
     test_pool = Pool(test_df[spec.all_features], cat_features=list(spec.cat_features))
@@ -302,8 +307,12 @@ def run_fold(
     )
     y_base_test = baseline_predict(point.train_df, test_df)
 
-    quantile_model, scale, quantile_meta = fit_quantile_interval(train_raw, spec, quantile_iterations)
-    price_lo, price_hi = interval_bounds(quantile_model, scale, test_df, y_point_test, spec)
+    if with_interval:
+        quantile_model, scale, quantile_meta = fit_quantile_interval(train_raw, spec, quantile_iterations)
+        price_lo, price_hi = interval_bounds(quantile_model, scale, test_df, y_point_test, spec)
+    else:  # эксперимент только про точку — интервал (~40% CPU) не считаем
+        quantile_meta = {"quantile_best_iterations": None, "n_calib": None}
+        price_lo = price_hi = np.full(len(test_df), np.nan)
 
     out = pd.DataFrame({
         "listing_id": test_df["id"].to_numpy() if "id" in test_df else np.arange(len(test_df)),
@@ -315,6 +324,8 @@ def run_fold(
         "price_baseline": y_base_test,
         "price_lo": price_lo,
         "price_hi": price_hi,
+        # кластер для бутстрепа сравнения: строки одного дома не независимы
+        "building": building_groups(test_df).astype(str).to_numpy(),
     })
     out.attrs.update({
         "best_iterations": point.best_iterations,
@@ -409,6 +420,10 @@ def run_backtest(
     gap_days: int = 0,
     learning_rate: float = 0.05,
     depth: int = 8,
+    cb_params: dict | None = None,
+    seed: int = 42,
+    with_interval: bool = True,
+    skip_invalid_folds: bool = False,
 ) -> tuple[pd.DataFrame, dict]:
     if target_mode not in TARGET_MODES:
         raise ValueError(f"target_mode должен быть один из {TARGET_MODES}, получено {target_mode!r}")
@@ -425,6 +440,10 @@ def run_backtest(
         "target_mode": target_mode,
         "freshness_half_life_days": freshness_half_life_days,
         "train_window_weeks": train_window_weeks,
+        "cb_params": cb_params or {},
+        "seed": seed,
+        "with_interval": with_interval,
+        "max_first_seen": str(max_ts),
     }
 
     all_preds = []
@@ -433,12 +452,19 @@ def run_backtest(
     invalid = 0
     for fold in folds:
         train_raw, test_raw, n_purged = build_fold_data(listings, price_history, fold, spec)
+        if skip_invalid_folds and len(test_raw):
+            # валидность зависит только от теста — проверяем ДО обучения
+            if not representativeness(test_raw, listings)["representative"]:
+                invalid += 1
+                logger.warning("fold %d невалиден — пропущен без обучения", fold.index)
+                continue
         preds = run_fold(
             train_raw, test_raw, spec,
             point_iterations=point_iterations, quantile_iterations=quantile_iterations,
             learning_rate=learning_rate, depth=depth,
             target_mode=target_mode, freshness_half_life_days=freshness_half_life_days,
             train_window_weeks=train_window_weeks, as_of=fold.train_end,
+            cb_params=cb_params, seed=seed, with_interval=with_interval,
         )
         if preds is None:
             skipped += 1
@@ -595,13 +621,40 @@ def _report_markdown(report: dict, label: str) -> str:
 
 # --- Сравнение двух прогонов -------------------------------------------------
 
-def compare_runs(csv_a: Path | str, csv_b: Path | str, label_a: str = "A", label_b: str = "B") -> str:
-    """Парное сравнение двух прогонов на ОДНИХ фолдах (join по fold+listing_id)."""
+def _cluster_bootstrap_ci(
+    delta: np.ndarray, clusters: np.ndarray, n_boot: int = 2000, seed: int = 0,
+) -> tuple[float, float]:
+    """95% ДИ среднего парной разности с ресемплом по домам (строки одного
+    дома зависимы — построчный бутстреп дал бы слишком узкий интервал)."""
+    codes, uniq = pd.factorize(pd.Series(clusters))
+    sums = np.bincount(codes, weights=delta, minlength=len(uniq))
+    counts = np.bincount(codes, minlength=len(uniq))
+    rng = np.random.default_rng(seed)
+    idx = rng.integers(0, len(uniq), size=(n_boot, len(uniq)))
+    means = sums[idx].sum(axis=1) / counts[idx].sum(axis=1)
+    lo, hi = np.quantile(means, [0.025, 0.975])
+    return float(lo), float(hi)
+
+
+def compare_runs(
+    csv_a: Path | str, csv_b: Path | str, label_a: str = "A", label_b: str = "B",
+    include_invalid: bool = False,
+) -> str:
+    """Парное сравнение двух прогонов на ОДНИХ фолдах (join по fold+listing_id).
+
+    Только валидные фолды (если не include_invalid); ΔMAPE с 95% ДИ кластерного
+    бутстрепа по домам и разбивкой по фолдам — разница 0.1 п.п. без интервала
+    неотличима от шума сида.
+    """
     a = pd.read_csv(csv_a)
     b = pd.read_csv(csv_b)
     joined = a.merge(b, on=["fold", "listing_id"], suffixes=("_a", "_b"))
+    if not include_invalid and "fold_valid_a" in joined:
+        joined = joined[joined["fold_valid_a"].astype(bool) & joined["fold_valid_b"].astype(bool)]
     if joined.empty:
         raise ValueError("Нет пересечения по (fold, listing_id) — прогоны не на одних фолдах/БД")
+    if "test_start_a" in joined and (joined["test_start_a"] != joined["test_start_b"]).any():
+        raise ValueError("Фолды с одним номером приходятся на разные недели — база менялась между прогонами")
 
     ape_a = _ape(joined["price_true_a"].to_numpy(), joined["price_pred_a"].to_numpy())
     ape_b = _ape(joined["price_true_b"].to_numpy(), joined["price_pred_b"].to_numpy())
@@ -625,7 +678,38 @@ def compare_runs(csv_a: Path | str, csv_b: Path | str, label_a: str = "A", label
         f"| Pinball q10 | {pin10_a:,.0f} | {pin10_b:,.0f} | {pin10_b - pin10_a:+,.0f} |",
         f"| Pinball q90 | {pin90_a:,.0f} | {pin90_b:,.0f} | {pin90_b - pin90_a:+,.0f} |",
     ]
+    delta = ape_b - ape_a
+    clusters = joined["building_a"].to_numpy() if "building_a" in joined else joined["listing_id"].to_numpy()
+    lo, hi = _cluster_bootstrap_ci(delta, clusters)
+    verdict = "лучше" if hi < 0 else ("хуже" if lo > 0 else "разница в пределах шума")
+    lines += [
+        "",
+        f"**ΔMAPE {np.mean(delta):+.2%}, 95% ДИ [{lo:+.2%}; {hi:+.2%}]** "
+        f"(кластерный бутстреп по домам) — `{label_b}` {verdict}",
+        "",
+        "| Фолд | n | ΔMAPE |",
+        "|---|---|---|",
+    ]
+    joined = joined.assign(_delta=delta)
+    better = 0
+    for fold, g in joined.groupby("fold"):
+        d = g["_delta"].mean()
+        better += d < 0
+        lines.append(f"| {fold} | {len(g)} | {d:+.2%} |")
+    lines.append(f"\n`{label_b}` лучше в {better} из {joined['fold'].nunique()} фолдов")
     return "\n".join(lines)
+
+
+def _parse_cb_params(items: list[str]) -> dict:
+    """['l2_leaf_reg=10', 'loss_function=MAE'] → {'l2_leaf_reg': 10, 'loss_function': 'MAE'}."""
+    out = {}
+    for item in items:
+        key, _, raw = item.partition("=")
+        try:
+            out[key.strip()] = json.loads(raw)
+        except json.JSONDecodeError:
+            out[key.strip()] = raw
+    return out
 
 
 def main() -> None:
@@ -642,6 +726,18 @@ def main() -> None:
                         help="потолок деревьев точечной модели (early stopping режет раньше)")
     parser.add_argument("--quantile-iterations", type=int, default=QUANTILE_ITERATIONS_DEFAULT)
     parser.add_argument("--learning-rate", type=float, default=0.05)
+    parser.add_argument(
+        "--cb-param", action="append", default=[], metavar="KEY=JSON",
+        help="любой параметр CatBoost точечной модели, напр. --cb-param l2_leaf_reg=10 "
+             "--cb-param loss_function='\"MAE\"' (значение — JSON, иначе строка)",
+    )
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--no-interval", action="store_true",
+                        help="не строить интервал (эксперимент только про точку, ~40%% быстрее)")
+    parser.add_argument("--skip-invalid-folds", action="store_true",
+                        help="не обучать на непредставительных фолдах (в агрегат они и так не идут)")
+    parser.add_argument("--include-invalid", action="store_true",
+                        help="--compare: учитывать и невалидные фолды")
     parser.add_argument("--depth", type=int, default=8)
     parser.add_argument(
         "--gap-days", type=int, default=0,
@@ -673,7 +769,7 @@ def main() -> None:
         csv_a, csv_b = args.compare
         label_a = Path(csv_a).stem.replace("_predictions", "")
         label_b = Path(csv_b).stem.replace("_predictions", "")
-        report_md = compare_runs(csv_a, csv_b, label_a, label_b)
+        report_md = compare_runs(csv_a, csv_b, label_a, label_b, include_invalid=args.include_invalid)
         print(report_md)
         (out_dir / f"compare_{label_a}_vs_{label_b}.md").write_text(
             report_md, encoding="utf-8"
@@ -686,6 +782,8 @@ def main() -> None:
         target_mode=args.target_mode, freshness_half_life_days=args.freshness_half_life_days,
         train_window_weeks=args.train_window_weeks, spec=spec_for(args.deal),
         gap_days=args.gap_days, learning_rate=args.learning_rate, depth=args.depth,
+        cb_params=_parse_cb_params(args.cb_param), seed=args.seed,
+        with_interval=not args.no_interval, skip_invalid_folds=args.skip_invalid_folds,
     )
     csv_path = out_dir / f"{args.label}_predictions.csv"
     combined.to_csv(csv_path, index=False)
