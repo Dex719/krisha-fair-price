@@ -152,6 +152,31 @@ def test_one_broken_listing_does_not_sink_its_batch(tmp_path, monkeypatch):
     assert logged == [1, 3]
 
 
+def test_suspiciously_cheap_lots_go_last_and_are_marked(tmp_path, monkeypatch):
+    """Свежий лот глубоко ниже нижней границы — карточка пишет про него
+    «цена сильно ниже рынка, проверьте». В рассылке он не может идти первым
+    «лучшим предложением» только потому, что скидка самая большая."""
+    from krisha import predict as predict_mod
+
+    db = tmp_path / "t.db"
+    _seed_window(db, [1, 2])  # цена у обоих 30 млн
+    monkeypatch.setattr(alerts, "ALERTED_PATH", tmp_path / "alerted.json")
+    lows = {1: 31_000_000.0, 2: 40_000_000.0}  # ниже границы на 3% и на 25%
+    monkeypatch.setattr(predict_mod, "predict_listings_batch", lambda listings: [
+        {"listing_id": x["id"], "fair_price": lows[x["id"]] * 1.1, "fair_price_low": lows[x["id"]],
+         "fair_price_high": lows[x["id"]] * 1.2, "verdict": "GOOD_DEAL",
+         "diff_pct": -5.0 if x["id"] == 1 else -32.0, "model_version": "t"}
+        for x in listings
+    ])
+
+    deals = alerts.find_good_deals(db)
+
+    assert [d["id"] for d in deals] == [1, 2], "подозрительный — после обычного"
+    assert [d["suspicious"] for d in deals] == [False, True]
+    text = alerts.format_alert(deals)
+    assert text.count("Цена сильно ниже рынка") == 1 and "на 25% ниже нижней границы" in text
+
+
 def test_whole_window_failing_is_an_error_not_zero_deals(tmp_path, monkeypatch):
     """Нет модели — это поломка, а не «выгодных нет»: иначе рассылка и канал
     молча пустеют, а ран зелёный (так было 01.10–03.10)."""
