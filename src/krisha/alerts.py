@@ -11,6 +11,7 @@ from __future__ import annotations
 import html
 import logging
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -110,11 +111,12 @@ def find_good_deals(db_path: Path | str = DB_PATH, hours: int = ALERT_WINDOW_HOU
             # issue #128: вердикты копим для проверки на судьбе лотов — как и раньше.
             log_predictions([result for _, result in priced], conn=conn)
             deals.extend(
-                {**listing, "fair_price": result["fair_price"], "diff_pct": result["diff_pct"]}
-                for listing, result in priced
+                _deal(listing, result) for listing, result in priced
                 if result["verdict"] == "GOOD_DEAL"
             )
-    deals.sort(key=lambda d: d.get("diff_pct") or 0)  # самая большая скидка первой
+    # Подозрительные — в конец: иначе первыми шли бы как раз лоты с −60%,
+    # про которые карточка пишет «цена сильно ниже рынка, проверьте».
+    deals.sort(key=lambda d: (d["suspicious"], d.get("diff_pct") or 0))
     logger.info(
         "alerts: оценено %s из %s лотов окна за %.1f с, выгодных %s",
         priced_total, len(candidates), time.monotonic() - started, len(deals),
@@ -130,6 +132,24 @@ def find_good_deals(db_path: Path | str = DB_PATH, hours: int = ALERT_WINDOW_HOU
 
 class AlertsPricingFailed(RuntimeError):
     """Окно алертов не оценилось целиком — рассылать нечего, нужен админ."""
+
+
+def _deal(listing: dict, result: dict) -> dict:
+    """Выгодный лот для рассылки + та же пометка «подозрительно дёшево», что
+    на карточке (scam.assess_scam_risk: глубоко ниже нижней границы и свежий)."""
+    from krisha.market import _parse_dt
+    from krisha.scam import assess_scam_risk
+
+    first_seen = _parse_dt(listing.get("first_seen"))
+    days = (datetime.now(timezone.utc) - first_seen).days if first_seen else None
+    risk = assess_scam_risk(result.get("fair_price_low"), listing.get("price"), days)
+    return {
+        **listing,
+        "fair_price": result["fair_price"],
+        "diff_pct": result["diff_pct"],
+        "suspicious": bool(risk and risk["level"] == "high"),
+        "below_low_pct": risk["below_pct"] if risk else None,
+    }
 
 
 def _price_chunk(chunk: list[dict]) -> list[tuple[dict, dict]]:
@@ -163,6 +183,12 @@ def format_alert(deals: list[dict]) -> str:
         if district:
             detail += f" · {district}"
         lines.append(detail)
+        if d.get("suspicious"):
+            # та же формулировка, что в карточке бота (issue #157)
+            lines.append(
+                f"🚨 Цена сильно ниже рынка — проверьте внимательнее: на "
+                f"{d['below_low_pct']:.0f}% ниже нижней границы справедливого интервала"
+            )
         lines.append("")
     lines.append("Отписаться: /alerts_off")
     return "\n".join(lines)
