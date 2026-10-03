@@ -152,6 +152,32 @@ def test_one_broken_listing_does_not_sink_its_batch(tmp_path, monkeypatch):
     assert logged == [1, 3]
 
 
+def test_whole_window_failing_is_an_error_not_zero_deals(tmp_path, monkeypatch):
+    """Нет модели — это поломка, а не «выгодных нет»: иначе рассылка и канал
+    молча пустеют, а ран зелёный (так было 01.10–03.10)."""
+    from krisha import predict as predict_mod
+
+    db = tmp_path / "t.db"
+    _seed_window(db, [1, 2, 3])
+    monkeypatch.setattr(alerts, "ALERTED_PATH", tmp_path / "alerted.json")
+
+    def no_model(chunk):
+        raise FileNotFoundError("Модель не найдена")
+
+    monkeypatch.setattr(predict_mod, "predict_listings_batch", no_model)
+
+    with pytest.raises(alerts.AlertsPricingFailed, match="3 лотов"):
+        alerts.find_good_deals(db)
+
+
+def test_empty_window_is_not_an_error(tmp_path, monkeypatch):
+    db = tmp_path / "t.db"
+    _seed_window(db, [])
+    monkeypatch.setattr(alerts, "ALERTED_PATH", tmp_path / "alerted.json")
+
+    assert alerts.find_good_deals(db) == []
+
+
 @pytest.mark.parametrize("rows, expected", [([], 0), ([{"listing_id": None}], 0)])
 def test_log_predictions_skips_empty_input(tmp_path, rows, expected):
     from krisha.db import log_predictions
