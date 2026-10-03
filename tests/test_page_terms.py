@@ -43,7 +43,7 @@ def test_terms_head_has_title_meta_canonical_and_design_css():
     assert '<meta name="description"' in html
     assert 'href="/static/design.css"' in html
     assert 'rel="icon" type="image/svg+xml" href="/static/favicon.svg"' in html
-    assert 'rel="canonical" href="https://dex719-krisha-fair-price.hf.space/terms"' in html
+    assert 'rel="canonical" href="https://bagam.info/terms"' in html
     assert 'property="og:title"' in html
     assert 'lang="ru"' in html
 
