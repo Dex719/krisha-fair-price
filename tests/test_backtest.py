@@ -26,11 +26,18 @@ def test_make_folds_boundaries_and_order():
     last = folds[-1]
     assert last.test_end == max_ts
     assert last.test_start == max_ts - pd.Timedelta(days=7)
-    assert last.calib_start == max_ts - pd.Timedelta(days=14)
+    # по умолчанию модель переобучена прямо перед неделей теста
+    assert last.train_end == last.test_start
     # Фолды идут строго по возрастанию времени, без пропусков/перекрытий
     for prev, nxt in zip(folds, folds[1:]):
         assert prev.test_end == nxt.test_start
-        assert prev.test_start == nxt.calib_start
+
+
+def test_make_folds_gap_hides_days_before_test():
+    """--gap-days 14 повторяет прод: свежий test ретрейна в модель не попадает."""
+    max_ts = pd.Timestamp("2026-04-01", tz="utc")
+    last = bt.make_folds(max_ts, n_folds=2, window_days=7, gap_days=14)[-1]
+    assert last.train_end == last.test_start - pd.Timedelta(days=14)
 
 
 # --- asof_prices ---------------------------------------------------------
@@ -128,7 +135,7 @@ def test_build_fold_data_train_price_ignores_future_change(tmp_path):
     max_ts = listings["first_seen"].max()
     folds = bt.make_folds(max_ts, n_folds=1, window_days=7)
     fold = folds[0]
-    train_raw, calib_raw, test_raw, _ = bt.build_fold_data(listings, price_history, fold)
+    train_raw, test_raw, _ = bt.build_fold_data(listings, price_history, fold)
 
     row1 = train_raw[train_raw["id"] == 1]
     if len(row1):  # дедуп/purge теоретически могли его выкинуть — если остался, цена честная
@@ -151,14 +158,10 @@ def test_build_fold_data_respects_first_seen_boundaries(tmp_path):
     max_ts = listings["first_seen"].max()
     folds = bt.make_folds(max_ts, n_folds=1, window_days=7)
     fold = folds[0]
-    train_raw, calib_raw, test_raw, _ = bt.build_fold_data(listings, price_history, fold)
+    train_raw, test_raw, _ = bt.build_fold_data(listings, price_history, fold)
 
     if len(train_raw):
-        assert (train_raw["first_seen"] < fold.calib_start).all()
-    if len(calib_raw):
-        assert (
-            (calib_raw["first_seen"] >= fold.calib_start) & (calib_raw["first_seen"] < fold.test_start)
-        ).all()
+        assert (train_raw["first_seen"] < fold.train_end).all()
     if len(test_raw):
         assert (
             (test_raw["first_seen"] >= fold.test_start) & (test_raw["first_seen"] < fold.test_end)
@@ -248,7 +251,57 @@ def test_run_backtest_rejects_unknown_target_mode(tmp_path, monkeypatch):
 
 def test_run_fold_returns_none_when_too_small():
     empty = pd.DataFrame()
-    assert bt.run_fold(empty, empty, empty) is None
+    assert bt.run_fold(empty, empty) is None
+
+
+# --- один код с продом ------------------------------------------------------
+
+def test_fold_rows_are_prepared_like_prod(tmp_path, monkeypatch):
+    """Строки фолда готовит тот же prepare_frame, что train(): районы по
+    OSM-зонам чинятся ДО дедупа и ppsm-карт. Старый стенд этот шаг пропускал
+    и строил district/microdistrict_ppsm по сырым районам krisha."""
+    calls = []
+    real = bt.prepare_frame
+    monkeypatch.setattr(bt, "prepare_frame", lambda df, spec: calls.append(spec.deal) or real(df, spec))
+    monkeypatch.setattr("krisha.zones.load_zone_index", lambda *a, **k: None)
+    db = tmp_path / "prep.db"
+    _synthetic_db(db, n=300, weeks=6)
+    listings, price_history = bt.load_raw_with_history(db)
+    fold = bt.make_folds(listings["first_seen"].max(), n_folds=1)[0]
+
+    bt.build_fold_data(listings, price_history, fold)
+
+    assert calls == ["prodazha", "prodazha"], "и train, и test — через prepare_frame"
+
+
+def test_run_fold_trains_with_prod_functions(tmp_path, monkeypatch):
+    """Точечная модель — fit_point_model (early stopping, финал на всём
+    train), интервал — fit_quantile_interval + interval_bounds: те же функции,
+    что в train(), с потолками деревьев прода."""
+    monkeypatch.setattr("krisha.zones.load_zone_index", lambda *a, **k: None)
+    seen = {}
+    real_point, real_q = bt.fit_point_model, bt.fit_quantile_interval
+
+    def spy_point(raw, spec, iterations, **kw):
+        seen["point"] = (iterations, kw["learning_rate"], kw["depth"])
+        return real_point(raw, spec, 30, **kw)
+
+    def spy_q(raw, spec, iterations):
+        seen["quantile"] = iterations
+        return real_q(raw, spec, 30)
+
+    monkeypatch.setattr(bt, "fit_point_model", spy_point)
+    monkeypatch.setattr(bt, "fit_quantile_interval", spy_q)
+    db = tmp_path / "prod.db"
+    _synthetic_db(db, n=600, weeks=8)
+    listings, price_history = bt.load_raw_with_history(db)
+    fold = bt.make_folds(listings["first_seen"].max(), n_folds=1)[0]
+    train_raw, test_raw, _ = bt.build_fold_data(listings, price_history, fold)
+
+    out = bt.run_fold(train_raw, test_raw, learning_rate=0.1, depth=6)
+
+    assert seen == {"point": (2000, 0.1, 6), "quantile": 800}
+    assert out is not None and out.attrs["best_iterations"] >= 1
 
 
 # --- compare_runs ----------------------------------------------------------

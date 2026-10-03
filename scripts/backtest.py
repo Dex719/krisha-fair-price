@@ -5,22 +5,34 @@
 еженедельных «срезов» (folds) назад по времени. Для каждого среза с датой
 начала test-недели `T`:
 
-  - train = объявления с first_seen < (T - 7д), цена — последняя точка
-    price_history СТРОГО ДО T (не текущая цена из listings — та отражает
-    самый свежий скрейп, а не то, что было известно на момент среза);
-  - calib = объявления с first_seen в [T-7д, T) — последняя неделя перед
-    срезом, цена тоже восстановлена по состоянию на T;
+  - train = объявления с first_seen < T - gap, цена — последняя точка
+    price_history СТРОГО ДО T - gap (не текущая цена из listings — та
+    отражает самый свежий скрейп, а не то, что было известно на момент
+    обучения). gap по умолчанию 0: модель переобучена прямо перед неделей;
+    --gap-days 14 повторяет прод, где свежие ~10–14 дней уходят в test
+    ретрейна и в боевую модель не попадают;
   - test = объявления, впервые увиденные в неделю среза, first_seen в
     [T, T+7д) — цена восстановлена по состоянию на T+7д (конец недели теста,
     это единственная точка, где мы «заглядываем» на неделю вперёд, и то
     только в пределах собственного окна теста, не дальше).
 
-purge по fingerprint убирает из train+calib строки, чей отпечаток (та же
+ОДИН КОД С ПРОДОМ. Подготовка строк (krisha.train.prepare_frame: очистка,
+подселение, районы по OSM), точечная модель (fit_point_model: early
+stopping, финал на всём train) и интервал (fit_quantile_interval +
+interval_bounds: своя временная калибровка CQR внутри train) — те же
+функции, что в train(). До 10.2026 стенд держал свою копию пайплайна, и
+она разошлась с продом: без resolve_zones district/microdistrict_ppsm
+строились по сырым районам krisha, точечная модель — 600 деревьев без
+early stopping, а последняя неделя перед тестом в неё не попадала вовсе.
+Выводы «фича не помогла», сделанные на старом стенде, стоит перепроверить.
+
+purge по fingerprint убирает из train строки, чей отпечаток (та же
 квартира, перевыставленная под другим id) всплывает в test — иначе test
-частично протекает в train. ppsm_maps/spatial_ref строятся только по train
-каждого фолда (не train+calib) — так же, как fit-референс для CQR в
-train.train_quantile_interval, чтобы calib не видела свою же цену в
-district_ppsm/hex_ppsm/knn.
+частично протекает в train.
+
+Эксперименты (сравниваются парой прогонов и --compare): --point-iterations,
+--learning-rate, --depth, --gap-days, --target-mode, --freshness-half-life-days,
+--train-window-weeks; --deal arenda — то же для модели аренды.
 
 Запуск (обычный прогон одной версии пайплайна):
     python scripts/backtest.py --label current --out reports/backtest
@@ -49,18 +61,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from catboost import CatBoostRegressor, Pool
+from catboost import Pool
 
-from krisha.config import DB_PATH, RANDOM_STATE, REPORTS_DIR
-from krisha.features import (
-    ALL_FEATURES,
-    CAT_FEATURES,
-    build_features,
-    clean,
-    compute_ppsm_maps,
-)
-from krisha.interval import MIN_INTERVAL_WIDTH_LOG, finalize_interval
-from krisha.spatial import build_spatial_ref, self_indices_for
+from krisha.config import REPORTS_DIR
+from krisha.features import build_features
+from krisha.model_spec import SALE, SPECS, ModelSpec, spec_for
 from krisha.targets import (
     TARGET_MODES,
     add_target_column,
@@ -70,11 +75,13 @@ from krisha.targets import (
     target_col,
 )
 from krisha.train import (
-    CQR_SCALE_MAX,
-    INTERVAL_TARGET_COVERAGE,
-    _fit_multiquantile,
+    QUANTILE_ITERATIONS,
     baseline_predict,
     dedup_relistings,
+    fit_point_model,
+    fit_quantile_interval,
+    interval_bounds,
+    prepare_frame,
     purge_leaked_train_rows,
 )
 from krisha.validity import representativeness
@@ -88,8 +95,11 @@ N_FOLDS_DEFAULT = 8
 # а не свойства модели: разброс между неделями сам по себе больше разницы
 # между моделями, которую мы пытаемся померить.
 MIN_VALID_FOLDS = 3
-POINT_ITERATIONS_DEFAULT = 600     # легче прод. train.py (2000) — стенд не еженедельный, но быстрый
-QUANTILE_ITERATIONS_DEFAULT = 400  # легче прод. (800), та же логика
+# Потолки — как в проде (scripts/train.py, train.QUANTILE_ITERATIONS): реальное
+# число деревьев режет early stopping. Облегчённые потолки стенда (600/400 без
+# early stopping) мерили не ту модель, что работает в проде.
+POINT_ITERATIONS_DEFAULT = 2000
+QUANTILE_ITERATIONS_DEFAULT = QUANTILE_ITERATIONS
 
 
 # --- Фолды ---------------------------------------------------------------
@@ -97,32 +107,36 @@ QUANTILE_ITERATIONS_DEFAULT = 400  # легче прод. (800), та же ло�
 @dataclass(frozen=True)
 class Fold:
     index: int
-    calib_start: pd.Timestamp   # train: first_seen < calib_start
-    test_start: pd.Timestamp    # calib: first_seen в [calib_start, test_start)
-    test_end: pd.Timestamp      # test: first_seen в [test_start, test_end)
+    train_end: pd.Timestamp     # train: first_seen < train_end (= test_start - gap)
+    test_start: pd.Timestamp    # test: first_seen в [test_start, test_end)
+    test_end: pd.Timestamp
 
 
 def make_folds(
-    max_ts: pd.Timestamp, n_folds: int = N_FOLDS_DEFAULT, window_days: int = FOLD_WINDOW_DAYS
+    max_ts: pd.Timestamp,
+    n_folds: int = N_FOLDS_DEFAULT,
+    window_days: int = FOLD_WINDOW_DAYS,
+    gap_days: int = 0,
 ) -> list[Fold]:
     """N еженедельных фолдов, самый свежий — test = последняя неделя данных.
 
     Фолд i=n_folds-1 (последний): test = [max_ts - window, max_ts).
     Фолд i=0 (самый старый): test = [max_ts - n_folds*window, max_ts - (n_folds-1)*window).
+    gap_days — сколько дней перед тестом модель не видит (прод: свежий test ретрейна).
     """
     folds = []
     for i in range(n_folds):
         offset_weeks = n_folds - 1 - i
         test_end = max_ts - pd.Timedelta(days=offset_weeks * window_days)
         test_start = test_end - pd.Timedelta(days=window_days)
-        calib_start = test_start - pd.Timedelta(days=window_days)
-        folds.append(Fold(index=i, calib_start=calib_start, test_start=test_start, test_end=test_end))
+        train_end = test_start - pd.Timedelta(days=gap_days)
+        folds.append(Fold(index=i, train_end=train_end, test_start=test_start, test_end=test_end))
     return folds
 
 
 # --- Загрузка данных: сырые листинги + полная история цены ----------------
 
-def load_raw_with_history(db_path: Path | str = DB_PATH) -> tuple[pd.DataFrame, pd.DataFrame]:
+def load_raw_with_history(db_path: Path | str = SALE.db_path) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Полная таблица listings (без source='user') + вся price_history.
 
     В отличие от train.load_dataset(): НЕ фильтруем по is_active/delisted_at
@@ -179,88 +193,82 @@ def _frame_for_ids(listings: pd.DataFrame, ids: pd.Index, price_series: pd.Serie
     return sub
 
 
-# --- Сборка train/calib/test одного фолда ---------------------------------
+# --- Сборка train/test одного фолда ---------------------------------------
 
 def build_fold_data(
-    listings: pd.DataFrame, price_history: pd.DataFrame, fold: Fold
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, int]:
-    """Возвращает (train_raw, calib_raw, test_raw, n_purged) для фолда.
+    listings: pd.DataFrame, price_history: pd.DataFrame, fold: Fold, spec: ModelSpec = SALE,
+) -> tuple[pd.DataFrame, pd.DataFrame, int]:
+    """Возвращает (train_raw, test_raw, n_purged) для фолда.
 
-    train/calib: цена восстановлена по состоянию на fold.test_start (что
-    было известно ДО начала недели теста). test: цена восстановлена по
-    состоянию на fold.test_end (конец собственной недели теста — единственный
-    взгляд «вперёд», не дальше границы фолда).
+    train: first_seen < fold.train_end, цена — по состоянию на fold.train_end
+    (что было известно, когда модель учили). test: цена по состоянию на
+    fold.test_end (конец собственной недели теста — единственный взгляд
+    «вперёд», не дальше границы фолда). Строки готовит prepare_frame — тот же
+    шаг, что в train().
     """
     fs = listings["first_seen"]
-    ids_train = listings.index[fs < fold.calib_start]
-    ids_calib = listings.index[(fs >= fold.calib_start) & (fs < fold.test_start)]
+    ids_train = listings.index[fs < fold.train_end]
     ids_test = listings.index[(fs >= fold.test_start) & (fs < fold.test_end)]
 
-    price_before_test = asof_prices(price_history, fold.test_start)
-    price_by_test_end = asof_prices(price_history, fold.test_end)
+    train_raw = _frame_for_ids(
+        listings, listings.loc[ids_train, "id"], asof_prices(price_history, fold.train_end)
+    )
+    test_raw = _frame_for_ids(
+        listings, listings.loc[ids_test, "id"], asof_prices(price_history, fold.test_end)
+    )
+    train_raw = prepare_frame(train_raw, spec) if len(train_raw) else train_raw
+    test_raw = prepare_frame(test_raw, spec) if len(test_raw) else test_raw
 
-    train_raw = _frame_for_ids(listings, listings.loc[ids_train, "id"], price_before_test)
-    calib_raw = _frame_for_ids(listings, listings.loc[ids_calib, "id"], price_before_test)
-    test_raw = _frame_for_ids(listings, listings.loc[ids_test, "id"], price_by_test_end)
+    # Дедуп перезалитых — как в проде dedup_relistings(df) до сплита, но без
+    # last_seen/scraped_at: они отражают состояние БД НА СЕЙЧАС, не на дату
+    # фолда, и порядок «свежести» внутри группы подглядывал бы в будущее.
+    train_raw = train_raw.drop(columns=[c for c in ("last_seen", "scraped_at") if c in train_raw])
+    n_before_dedup = len(train_raw)
+    if n_before_dedup:
+        train_raw = dedup_relistings(train_raw)
+    n_deduped = n_before_dedup - len(train_raw)
 
-    train_raw = clean(train_raw) if len(train_raw) else train_raw
-    calib_raw = clean(calib_raw) if len(calib_raw) else calib_raw
-    test_raw = clean(test_raw) if len(test_raw) else test_raw
-
-    # Дедуп перезалитых (train+calib вместе, как в проде dedup_relistings(df)
-    # до сплита) — но без last_seen/scraped_at (они отражают состояние БД
-    # НА СЕЙЧАС, не на дату фолда): порядок «свежести» внутри группы должен
-    # опираться только на first_seen/id, иначе дедуп подглядывает в будущее
-    # относительно фолда.
-    train_calib = pd.concat([train_raw, calib_raw], ignore_index=True)
-    train_calib = train_calib.drop(columns=[c for c in ("last_seen", "scraped_at") if c in train_calib])
-    n_before_dedup = len(train_calib)
-    train_calib = dedup_relistings(train_calib)
-    n_deduped = n_before_dedup - len(train_calib)
-
-    train_calib, n_purged = purge_leaked_train_rows(train_calib, test_raw)
+    n_purged = 0
+    if len(train_raw) and len(test_raw):
+        train_raw, n_purged = purge_leaked_train_rows(train_raw, test_raw)
     if n_deduped or n_purged:
         logger.info(
-            "fold %d: дедуп -%d, purge fingerprint -%d (train+calib %d -> %d)",
-            fold.index, n_deduped, n_purged, n_before_dedup, len(train_calib),
+            "fold %d: дедуп -%d, purge fingerprint -%d (train %d -> %d)",
+            fold.index, n_deduped, n_purged, n_before_dedup, len(train_raw),
         )
-
-    fs2 = train_calib["first_seen"]
-    train_raw2 = train_calib[fs2 < fold.calib_start].reset_index(drop=True)
-    calib_raw2 = train_calib[fs2 >= fold.calib_start].reset_index(drop=True)
-    return train_raw2, calib_raw2, test_raw, n_purged
+    return train_raw.reset_index(drop=True), test_raw.reset_index(drop=True), n_purged
 
 
 # --- Обучение и предсказание одного фолда ---------------------------------
 
 def run_fold(
     train_raw: pd.DataFrame,
-    calib_raw: pd.DataFrame,
     test_raw: pd.DataFrame,
+    spec: ModelSpec = SALE,
     point_iterations: int = POINT_ITERATIONS_DEFAULT,
     quantile_iterations: int = QUANTILE_ITERATIONS_DEFAULT,
+    learning_rate: float = 0.05,
+    depth: int = 8,
     target_mode: str = "price",
     freshness_half_life_days: float | None = None,
     train_window_weeks: int | None = None,
     as_of: pd.Timestamp | None = None,
 ) -> pd.DataFrame | None:
-    """Обучает point + quantile модели на train_raw (референсы — только по
-    train_raw, не train+calib — issue #130 требование), калибрует интервал по
-    calib_raw, предсказывает test_raw. Возвращает per-row DataFrame или None,
-    если фолд недостаточно полон (мало train/calib/test) для честной оценки.
+    """Обучает точечную и квантильную модели прод-кодом на train_raw и
+    предсказывает test_raw. Возвращает per-row DataFrame (в .attrs — число
+    деревьев и размер калибровки) или None, если фолд слишком мал.
 
-    issue #131 — три доп. режима эксперимента (ALL_FEATURES не меняются):
+    issue #131 — режимы эксперимента (признаки spec.all_features не меняются):
     - target_mode: "price" (прод, log1p(price)) | "ppsm" (log(price/area)) |
       "index_residual" (log(price/area) минус лог city_index недели, см.
-      krisha.targets). Оценка/coverage всегда в ₸ (обратный переход перед
-      метриками), поэтому сравнение режимов честное.
-    - freshness_half_life_days: вес train-строк 0.5**(age_days/half_life) —
-      age_days относительно `as_of` (граница фолда). None — веса не заданы
-      (все строки равны, как раньше).
-    - train_window_weeks: обрезает train_raw до последних N недель перед
-      `as_of` (None — вся доступная история, как раньше).
+      krisha.targets) — только у точечной модели; интервал, как в проде, по
+      log1p(price). Оценка/coverage всегда в ₸, сравнение режимов честное.
+    - freshness_half_life_days: вес train-строк 0.5**(age_days/half_life),
+      age_days относительно `as_of` (граница фолда). None — без весов.
+    - train_window_weeks: train — только последние N недель перед `as_of`.
+    learning_rate/depth/point_iterations — гиперпараметры точечной модели.
     """
-    if len(train_raw) < 30 or len(calib_raw) < 5 or len(test_raw) < 5:
+    if len(train_raw) < 30 or len(test_raw) < 5:
         return None
     if as_of is None:
         as_of = pd.to_datetime(train_raw["first_seen"], utc=True, errors="coerce").max()
@@ -272,79 +280,46 @@ def run_fold(
         if len(train_raw) < 30:
             return None
 
-    ppsm_maps = compute_ppsm_maps(train_raw)
-    spatial_ref = build_spatial_ref(train_raw)
-    train_df = build_features(
-        train_raw, ppsm_maps=ppsm_maps, spatial_ref=spatial_ref,
-        knn_self_indices=self_indices_for(train_raw),
-    )
-    calib_df = build_features(calib_raw, ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)
-    test_df = build_features(test_raw, ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)
-
     index_ref = build_city_index(train_raw) if target_mode == "index_residual" else None
     tcol = target_col(target_mode)
-    train_df, _ = add_target_column(train_df, target_mode, index_ref=index_ref)
-    calib_df, _ = add_target_column(calib_df, target_mode, index_ref=index_ref)
 
-    weight = None
+    def target_fn(frame: pd.DataFrame):
+        return add_target_column(frame, target_mode, index_ref=index_ref)[0][tcol]
+
+    weight_fn = None
     if freshness_half_life_days is not None:
-        weight = freshness_weight(train_df["first_seen"], as_of, freshness_half_life_days)
+        def weight_fn(frame: pd.DataFrame):
+            return freshness_weight(frame["first_seen"], as_of, freshness_half_life_days)
 
-    train_pool = Pool(
-        train_df[ALL_FEATURES], train_df[tcol], cat_features=CAT_FEATURES, weight=weight,
+    point = fit_point_model(
+        train_raw, spec, point_iterations, learning_rate=learning_rate, depth=depth,
+        target_fn=target_fn, weight_fn=weight_fn, verbose=False,
     )
-    calib_pool = Pool(calib_df[ALL_FEATURES], cat_features=CAT_FEATURES)
-    test_pool = Pool(test_df[ALL_FEATURES], cat_features=CAT_FEATURES)
-
-    point_model = CatBoostRegressor(
-        iterations=point_iterations, learning_rate=0.05, depth=8,
-        loss_function="RMSE", random_seed=RANDOM_STATE, verbose=False,
-    )
-    point_model.fit(train_pool)
+    test_df = build_features(test_raw, ppsm_maps=point.ppsm_maps, spatial_ref=point.spatial_ref)
+    test_pool = Pool(test_df[spec.all_features], cat_features=list(spec.cat_features))
     y_point_test = predict_price(
-        point_model.predict(test_pool), test_df["area"], target_mode, index_ref=index_ref,
+        point.model.predict(test_pool), test_df["area"], target_mode, index_ref=index_ref,
     )
-    y_base_test = baseline_predict(train_df, test_df)
+    y_base_test = baseline_predict(point.train_df, test_df)
 
-    # issue #132: одна MultiQuantile-модель вместо model_lo/model_hi — тот же
-    # метод, что и прод train.py, чтобы стенд честно сравнивал будущий прод.
-    quantile_model = _fit_multiquantile(train_pool, quantile_iterations)
+    quantile_model, scale, quantile_meta = fit_quantile_interval(train_raw, spec, quantile_iterations)
+    price_lo, price_hi = interval_bounds(quantile_model, scale, test_df, y_point_test, spec)
 
-    y_cal = calib_df[tcol].to_numpy()
-    preds_cal = quantile_model.predict(calib_pool)
-    lo_cal, hi_cal = preds_cal[:, 0], preds_cal[:, 1]
-    width_cal = np.maximum(hi_cal - lo_cal, MIN_INTERVAL_WIDTH_LOG)
-    scores = np.maximum(lo_cal - y_cal, y_cal - hi_cal) / width_cal
-    n = len(scores)
-    level = min(1.0, np.ceil((n + 1) * INTERVAL_TARGET_COVERAGE) / n)
-    scale = min(max(float(np.quantile(scores, level, method="higher")), 0.0), CQR_SCALE_MAX)
-
-    preds_test = quantile_model.predict(test_pool)
-    lo_test, hi_test = preds_test[:, 0], preds_test[:, 1]
-    width_test = np.maximum(hi_test - lo_test, MIN_INTERVAL_WIDTH_LOG)
-    log_lo = lo_test - scale * width_test
-    log_hi = hi_test + scale * width_test
-    # issue #131: клип теперь в пространстве таргета (может быть log_price ИЛИ
-    # log_ppsm[-index]) — граница +-30 остаётся безопасной для expm1/exp в
-    # predict_price (все три режима — плавные монотонные функции без насыщения
-    # ниже этого диапазона).
-    log_lo = np.clip(log_lo, -30.0, 30.0)
-    log_hi = np.clip(log_hi, -30.0, 30.0)
-    price_lo = predict_price(log_lo, test_df["area"], target_mode, index_ref=index_ref)
-    price_hi = predict_price(log_hi, test_df["area"], target_mode, index_ref=index_ref)
-    price_lo, price_hi = finalize_interval(y_point_test, price_lo, price_hi)
-
-    y_true = test_df["price"].to_numpy()
     out = pd.DataFrame({
         "listing_id": test_df["id"].to_numpy() if "id" in test_df else np.arange(len(test_df)),
         "first_seen": test_df["first_seen"].to_numpy(),
         "district": test_df["district"].to_numpy(),
         "is_new_building": test_df["is_new_building"].to_numpy(),
-        "price_true": y_true,
+        "price_true": test_df["price"].to_numpy(),
         "price_pred": y_point_test,
         "price_baseline": y_base_test,
         "price_lo": price_lo,
         "price_hi": price_hi,
+    })
+    out.attrs.update({
+        "best_iterations": point.best_iterations,
+        "quantile_best_iterations": quantile_meta["quantile_best_iterations"],
+        "n_calib": quantile_meta["n_calib"],
     })
     return out
 
@@ -422,7 +397,7 @@ def summarize(df: pd.DataFrame) -> dict:
 # --- Основной прогон --------------------------------------------------------
 
 def run_backtest(
-    db_path: Path | str = DB_PATH,
+    db_path: Path | str | None = None,
     n_folds: int = N_FOLDS_DEFAULT,
     window_days: int = FOLD_WINDOW_DAYS,
     point_iterations: int = POINT_ITERATIONS_DEFAULT,
@@ -430,30 +405,46 @@ def run_backtest(
     target_mode: str = "price",
     freshness_half_life_days: float | None = None,
     train_window_weeks: int | None = None,
+    spec: ModelSpec = SALE,
+    gap_days: int = 0,
+    learning_rate: float = 0.05,
+    depth: int = 8,
 ) -> tuple[pd.DataFrame, dict]:
     if target_mode not in TARGET_MODES:
         raise ValueError(f"target_mode должен быть один из {TARGET_MODES}, получено {target_mode!r}")
-    listings, price_history = load_raw_with_history(db_path)
+    listings, price_history = load_raw_with_history(db_path or spec.db_path)
     max_ts = listings["first_seen"].max()
-    folds = make_folds(max_ts, n_folds=n_folds, window_days=window_days)
+    folds = make_folds(max_ts, n_folds=n_folds, window_days=window_days, gap_days=gap_days)
+    config = {
+        "deal": spec.deal,
+        "gap_days": gap_days,
+        "point_iterations": point_iterations,
+        "quantile_iterations": quantile_iterations,
+        "learning_rate": learning_rate,
+        "depth": depth,
+        "target_mode": target_mode,
+        "freshness_half_life_days": freshness_half_life_days,
+        "train_window_weeks": train_window_weeks,
+    }
 
     all_preds = []
     fold_summaries = []
     skipped = 0
     invalid = 0
     for fold in folds:
-        train_raw, calib_raw, test_raw, n_purged = build_fold_data(listings, price_history, fold)
+        train_raw, test_raw, n_purged = build_fold_data(listings, price_history, fold, spec)
         preds = run_fold(
-            train_raw, calib_raw, test_raw,
+            train_raw, test_raw, spec,
             point_iterations=point_iterations, quantile_iterations=quantile_iterations,
+            learning_rate=learning_rate, depth=depth,
             target_mode=target_mode, freshness_half_life_days=freshness_half_life_days,
-            train_window_weeks=train_window_weeks, as_of=fold.calib_start,
+            train_window_weeks=train_window_weeks, as_of=fold.train_end,
         )
         if preds is None:
             skipped += 1
             logger.warning(
-                "fold %d пропущен: недостаточно данных (train=%d calib=%d test=%d)",
-                fold.index, len(train_raw), len(calib_raw), len(test_raw),
+                "fold %d пропущен: недостаточно данных (train=%d test=%d)",
+                fold.index, len(train_raw), len(test_raw),
             )
             continue
         preds["fold"] = fold.index
@@ -469,7 +460,9 @@ def run_backtest(
         fold_stats = summarize(preds)["overall"]
         fold_stats.update({
             "fold": fold.index, "test_start": str(fold.test_start), "test_end": str(fold.test_end),
-            "n_train": len(train_raw), "n_calib": len(calib_raw), "n_purged": n_purged,
+            "n_train": len(train_raw), "n_calib": preds.attrs.get("n_calib"), "n_purged": n_purged,
+            "best_iterations": preds.attrs.get("best_iterations"),
+            "quantile_best_iterations": preds.attrs.get("quantile_best_iterations"),
             "valid": fold_validity["representative"],
             "worst_tvd": fold_validity["worst_tvd"],
         })
@@ -507,11 +500,7 @@ def run_backtest(
                 f"(пропущено по нехватке данных: {skipped}, непредставительных: {invalid}) "
                 "— временная оценка недоступна"
             ),
-            "config": {
-                "target_mode": target_mode,
-                "freshness_half_life_days": freshness_half_life_days,
-                "train_window_weeks": train_window_weeks,
-            },
+            "config": config,
         }
         logger.error("issue #158: %s", report["reason"])
         # per-row предикты (с fold_valid=False) возвращаем ради --compare;
@@ -532,11 +521,7 @@ def run_backtest(
     report["n_folds_run"] = len(valid_preds)
     report["n_folds_invalid"] = invalid
     report["n_folds_skipped"] = skipped
-    report["config"] = {
-        "target_mode": target_mode,
-        "freshness_half_life_days": freshness_half_life_days,
-        "train_window_weeks": train_window_weeks,
-    }
+    report["config"] = config
     return combined, report
 
 
@@ -646,13 +631,23 @@ def compare_runs(csv_a: Path | str, csv_b: Path | str, label_a: str = "A", label
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--db", default=str(DB_PATH))
+    parser.add_argument("--db", default=None, help="по умолчанию — база выбранной сделки")
+    parser.add_argument("--deal", choices=sorted(SPECS), default="prodazha",
+                        help="какую модель проверять: продажа или аренда")
     parser.add_argument("--label", default="current", help="Тег версии пайплайна для имён файлов")
     parser.add_argument("--out", default=str(REPORTS_DIR / "backtest"))
     parser.add_argument("--n-folds", type=int, default=N_FOLDS_DEFAULT)
     parser.add_argument("--window-days", type=int, default=FOLD_WINDOW_DAYS)
-    parser.add_argument("--point-iterations", type=int, default=POINT_ITERATIONS_DEFAULT)
+    parser.add_argument("--point-iterations", type=int, default=POINT_ITERATIONS_DEFAULT,
+                        help="потолок деревьев точечной модели (early stopping режет раньше)")
     parser.add_argument("--quantile-iterations", type=int, default=QUANTILE_ITERATIONS_DEFAULT)
+    parser.add_argument("--learning-rate", type=float, default=0.05)
+    parser.add_argument("--depth", type=int, default=8)
+    parser.add_argument(
+        "--gap-days", type=int, default=0,
+        help="дней перед тестом, которых модель не видит: 0 — переобучена перед неделей, "
+             "14 — как прод (свежий test ретрейна в боевую модель не попадает)",
+    )
     parser.add_argument(
         "--target-mode", choices=TARGET_MODES, default="price",
         help="issue #131: таргет точечной/квантильной модели (см. krisha.targets)",
@@ -689,7 +684,8 @@ def main() -> None:
         db_path=args.db, n_folds=args.n_folds, window_days=args.window_days,
         point_iterations=args.point_iterations, quantile_iterations=args.quantile_iterations,
         target_mode=args.target_mode, freshness_half_life_days=args.freshness_half_life_days,
-        train_window_weeks=args.train_window_weeks,
+        train_window_weeks=args.train_window_weeks, spec=spec_for(args.deal),
+        gap_days=args.gap_days, learning_rate=args.learning_rate, depth=args.depth,
     )
     csv_path = out_dir / f"{args.label}_predictions.csv"
     combined.to_csv(csv_path, index=False)

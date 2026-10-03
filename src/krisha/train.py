@@ -11,8 +11,11 @@
 import json
 import logging
 import sqlite3
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -513,14 +516,17 @@ def _fit_multiquantile(
     return model
 
 
-def train_quantile_interval(
+def fit_quantile_interval(
     raw_train: pd.DataFrame,
-    test_df: pd.DataFrame,
-    point_pred: np.ndarray,
-    iterations: int = QUANTILE_ITERATIONS,
     spec: ModelSpec = SALE,
-) -> tuple[CatBoostRegressor, dict]:
+    iterations: int = QUANTILE_ITERATIONS,
+) -> tuple[CatBoostRegressor, float, dict]:
     """MultiQuantile-модель q10+q90 (issue #132) + конформная калибровка (CQR).
+
+    Возвращает (модель, cqr_scale, мета обучения). Границы для конкретных
+    строк — interval_bounds(); train_quantile_interval() — то же плюс покрытие
+    на holdout. Отдельно, чтобы стенд (scripts/backtest.py) строил интервал
+    ровно тем же кодом, что прод.
 
     Метод (Conformalized Quantile Regression, Romano et al. 2019; вариант с
     нормировкой ширины — adaptive/normalized CQR):
@@ -559,10 +565,6 @@ def train_quantile_interval(
     что и у точечной RMSE-модели в train() (probe → best_iterations → финал
     на полном train).
 
-    Покрытие/ширину меряем на holdout test_df через общий finalize_interval()
-    (issue #105 доп.: раньше predict.py свопал/растягивал границы интервала,
-    а train.py при подсчёте coverage_test — нет, метрики не совпадали с тем,
-    что реально видит пользователь).
     """
     fit_idx, cal_idx = time_based_split(raw_train, window_days=TEST_WINDOW_DAYS)
     # len(fit_idx) == 0 — не гипотетика, а причина падения еженедельного
@@ -629,8 +631,23 @@ def train_quantile_interval(
     n = len(scores)
     level = min(1.0, np.ceil((n + 1) * INTERVAL_TARGET_COVERAGE) / n)
     scale = min(max(float(np.quantile(scores, level, method="higher")), 0.0), CQR_SCALE_MAX)
+    fit_meta = {
+        "n_fit": len(fit_df),
+        "n_calib": len(cal_df),
+        "quantile_best_iterations": best_iterations,  # issue #132: early stopping
+    }
+    return model, scale, fit_meta
 
-    # Оценка покрытия и ширины на holdout (expm1 монотонна → сохраняет квантили)
+
+def interval_bounds(
+    model: CatBoostRegressor,
+    scale: float,
+    test_df: pd.DataFrame,
+    point_pred: np.ndarray,
+    spec: ModelSpec = SALE,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Границы интервала в ₸ для строк test_df — как их видит пользователь."""
+    features, cat_features = spec.all_features, list(spec.cat_features)
     test_pool = Pool(test_df[features], cat_features=cat_features)
     preds_test = model.predict(test_pool)
     lo_test, hi_test = preds_test[:, 0], preds_test[:, 1]
@@ -640,9 +657,25 @@ def train_quantile_interval(
     # ниже по цепочке при вычислении width_pct).
     log_lo = np.clip(lo_test - scale * width_test, -30.0, 30.0)
     log_hi = np.clip(hi_test + scale * width_test, -30.0, 30.0)
-    price_lo = np.expm1(log_lo)
-    price_hi = np.expm1(log_hi)
-    price_lo, price_hi = finalize_interval(point_pred, price_lo, price_hi)
+    return finalize_interval(point_pred, np.expm1(log_lo), np.expm1(log_hi))
+
+
+def train_quantile_interval(
+    raw_train: pd.DataFrame,
+    test_df: pd.DataFrame,
+    point_pred: np.ndarray,
+    iterations: int = QUANTILE_ITERATIONS,
+    spec: ModelSpec = SALE,
+) -> tuple[CatBoostRegressor, dict]:
+    """fit_quantile_interval + границы на holdout test_df + покрытие и ширина.
+
+    Покрытие/ширину меряем через общий finalize_interval() (issue #105 доп.:
+    раньше predict.py свопал/растягивал границы интервала, а train.py при
+    подсчёте coverage_test — нет, метрики не совпадали с тем, что реально
+    видит пользователь).
+    """
+    model, scale, fit_meta = fit_quantile_interval(raw_train, spec, iterations)
+    price_lo, price_hi = interval_bounds(model, scale, test_df, point_pred, spec)
     y_true = test_df["price"].to_numpy()
     covered = (y_true >= price_lo) & (y_true <= price_hi)
     mid = np.maximum((price_lo + price_hi) / 2.0, 1.0)
@@ -655,12 +688,113 @@ def train_quantile_interval(
         "cqr_scale": scale,  # множитель ширины интервала (нормированный CQR)
         "coverage_test": float(np.mean(covered)),
         "median_width_pct": float(np.median(width_pct)),
-        "n_fit": len(fit_df),
-        "n_calib": len(cal_df),
-        "quantile_best_iterations": best_iterations,  # issue #132: early stopping
+        **fit_meta,
     }
     logger.info("Интервал (CQR): %s", json.dumps(interval_meta))
     return model, interval_meta
+
+
+def prepare_frame(df: pd.DataFrame, spec: ModelSpec = SALE) -> pd.DataFrame:
+    """Сырые лоты → строки для обучения: очистка по границам сделки, без
+    подселения (аренда), районы по OSM-полигонам.
+
+    Общий шаг train() и стенда scripts/backtest.py. Зоны чиним до любых
+    ppsm-карт и дедупа: и district_ppsm, и отпечаток перевыставления считаются
+    по району — стенд без этого шага строил карты по сырым районам krisha
+    (microdistrict пуст у 60% строк против 23% после resolve_zones).
+    """
+    df = clean(df, spec.price_bounds, spec.ppsm_bounds)
+    if spec.is_rent:
+        from krisha.rent import drop_room_shares
+
+        df = drop_room_shares(df)
+    if df.empty:
+        return df
+    from krisha.zones import resolve_zones
+
+    return resolve_zones(df)
+
+
+@dataclass
+class PointFit:
+    """Точечная модель и всё, что для её признаков построено по train."""
+
+    model: CatBoostRegressor
+    best_iterations: int
+    ppsm_maps: dict
+    spatial_ref: dict
+    train_df: pd.DataFrame
+
+
+def fit_point_model(
+    raw_train: pd.DataFrame,
+    spec: ModelSpec = SALE,
+    iterations: int = 2000,
+    *,
+    learning_rate: float = 0.05,
+    depth: int = 8,
+    target_fn: Callable[[pd.DataFrame], Any] | None = None,
+    weight_fn: Callable[[pd.DataFrame], Any] | None = None,
+    verbose: int | bool = 200,
+) -> PointFit:
+    """Точечная RMSE-модель так, как её учит прод: probe с early stopping →
+    число деревьев → финальная модель на всём raw_train.
+
+    Общий код train() и стенда (scripts/backtest.py) — чтобы эксперименты
+    стенда мерили тот же пайплайн, что работает в проде. target_fn/weight_fn
+    (фичефрейм → таргет / веса строк) — хуки экспериментов стенда (issue #131:
+    другой таргет, веса по свежести); по умолчанию log1p(price) без весов.
+    """
+    from krisha.spatial import build_spatial_ref, self_indices_for
+
+    target_fn = target_fn or (lambda frame: frame[TARGET])
+    features, cat_features = spec.all_features, list(spec.cat_features)
+
+    def pool(frame: pd.DataFrame, weighted: bool = True) -> Pool:
+        weight = weight_fn(frame) if (weight_fn and weighted) else None
+        return Pool(frame[features], target_fn(frame), cat_features=cat_features, weight=weight)
+
+    ppsm_maps = compute_ppsm_maps(raw_train)
+    spatial_ref = build_spatial_ref(raw_train)
+    # На train сосед-«сам» исключается из KNN — иначе утечка таргета
+    train_df = build_features(
+        raw_train, ppsm_maps=ppsm_maps, spatial_ref=spatial_ref,
+        knn_self_indices=self_indices_for(raw_train),
+    )
+
+    # Early stopping — по val-сплиту из train (по «зданиям»), а не по test:
+    # иначе число деревьев подгоняется под тестовую выборку и метрики чуть
+    # оптимистичнее реальности. Схема: probe-модель находит оптимальное число
+    # итераций на val, финальная переобучается на всём train.
+    #
+    # issue #104 (доп.): ppsm_maps/spatial_ref для fit/val СВОИ, построенные
+    # только на fit-части — раньше probe.fit использовал train_df, чьи
+    # district_ppsm/hex_ppsm/knn считались по ВСЕМУ raw_train, включая val —
+    # val-строки видели собственную цену в своих же референсных статистиках,
+    # best_iterations выбирался по оценке, которая уже частично «списала».
+    es_splitter = GroupShuffleSplit(n_splits=1, test_size=0.15, random_state=RANDOM_STATE)
+    fit_idx, val_idx = next(es_splitter.split(raw_train, groups=building_groups(raw_train)))
+    fit_raw_es = raw_train.iloc[fit_idx].reset_index(drop=True)
+    val_raw_es = raw_train.iloc[val_idx].reset_index(drop=True)
+    ppsm_maps_es = compute_ppsm_maps(fit_raw_es)
+    spatial_ref_es = build_spatial_ref(fit_raw_es)
+    fit_df_es = build_features(
+        fit_raw_es, ppsm_maps=ppsm_maps_es, spatial_ref=spatial_ref_es,
+        knn_self_indices=self_indices_for(fit_raw_es),
+    )
+    val_df_es = build_features(val_raw_es, ppsm_maps=ppsm_maps_es, spatial_ref=spatial_ref_es)
+    params = dict(
+        learning_rate=learning_rate, depth=depth, loss_function="RMSE",
+        random_seed=RANDOM_STATE, verbose=verbose,
+    )
+    probe = CatBoostRegressor(iterations=iterations, early_stopping_rounds=100, **params)
+    probe.fit(pool(fit_df_es), eval_set=pool(val_df_es, weighted=False))
+    best_iterations = max(int(probe.tree_count_), 1)
+    logger.info("Early stopping по val: %s деревьев из %s", best_iterations, iterations)
+
+    model = CatBoostRegressor(iterations=best_iterations, **params)
+    model.fit(pool(train_df))
+    return PointFit(model, best_iterations, ppsm_maps, spatial_ref, train_df)
 
 
 def train(
@@ -682,17 +816,9 @@ def train(
     """
     if df is None:
         df = load_dataset(spec.db_path)
-    df = clean(df, spec.price_bounds, spec.ppsm_bounds)
-    if spec.is_rent:
-        from krisha.rent import drop_room_shares
-
-        df = drop_room_shares(df)
+    df = prepare_frame(df, spec)
     logger.info("После очистки (%s): %s строк", spec.label, len(df))
     features, cat_features = spec.all_features, list(spec.cat_features)
-    # Зоны чиним до сплита: ppsm-статистика должна считаться по верным районам
-    from krisha.zones import resolve_zones
-
-    df = resolve_zones(df)
     # Честная схема валидации (issue #104):
     # 1) дедуп перезалитых объявлений (одна квартира под разными id);
     # 2) временной holdout — test — самые свежие объявления по first_seen, train —
@@ -725,70 +851,14 @@ def train(
     raw_test = df.iloc[test_idx].reset_index(drop=True)
     raw_train, n_purged = purge_leaked_train_rows(raw_train_all, raw_test)
 
-    # ₸/м²-статистику считаем только на train, чтобы не было утечки в метрики
-    ppsm_maps = compute_ppsm_maps(raw_train)
-    from krisha.spatial import build_spatial_ref, self_indices_for
-
-    spatial_ref = build_spatial_ref(raw_train)
-    # На train сосед-«сам» исключается из KNN — иначе утечка таргета
-    train_df = build_features(
-        raw_train, ppsm_maps=ppsm_maps, spatial_ref=spatial_ref,
-        knn_self_indices=self_indices_for(raw_train),
-    )
+    # ₸/м²-статистику и пространственный референс — только по train, чтобы не
+    # было утечки в метрики; число деревьев — early stopping (fit_point_model)
+    point = fit_point_model(raw_train, spec, iterations)
+    model, best_iterations = point.model, point.best_iterations
+    ppsm_maps, spatial_ref, train_df = point.ppsm_maps, point.spatial_ref, point.train_df
     test_df = build_features(raw_test, ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)
     feature_defaults = _typical_values(train_df, spec)
-    train_pool = Pool(train_df[features], train_df[TARGET], cat_features=cat_features)
     test_pool = Pool(test_df[features], test_df[TARGET], cat_features=cat_features)
-
-    # Early stopping — по val-сплиту из train (по «зданиям»), а не по test:
-    # иначе число деревьев подгоняется под тестовую выборку и метрики чуть
-    # оптимистичнее реальности. Схема: probe-модель находит оптимальное число
-    # итераций на val, финальная переобучается на всём train.
-    #
-    # issue #104 (доп.): ppsm_maps/spatial_ref для fit/val СВОИ, построенные
-    # только на fit-части — раньше probe.fit использовал train_df, чьи
-    # district_ppsm/hex_ppsm/knn считались по ВСЕМУ raw_train, включая val —
-    # val-строки видели собственную цену в своих же референсных статистиках,
-    # best_iterations выбирался по оценке, которая уже частично «списала».
-    es_splitter = GroupShuffleSplit(n_splits=1, test_size=0.15, random_state=RANDOM_STATE)
-    fit_idx, val_idx = next(es_splitter.split(raw_train, groups=building_groups(raw_train)))
-    fit_raw_es = raw_train.iloc[fit_idx].reset_index(drop=True)
-    val_raw_es = raw_train.iloc[val_idx].reset_index(drop=True)
-    ppsm_maps_es = compute_ppsm_maps(fit_raw_es)
-    spatial_ref_es = build_spatial_ref(fit_raw_es)
-    fit_df_es = build_features(
-        fit_raw_es, ppsm_maps=ppsm_maps_es, spatial_ref=spatial_ref_es,
-        knn_self_indices=self_indices_for(fit_raw_es),
-    )
-    val_df_es = build_features(val_raw_es, ppsm_maps=ppsm_maps_es, spatial_ref=spatial_ref_es)
-    fit_pool = Pool(
-        fit_df_es[features], fit_df_es[TARGET], cat_features=cat_features,
-    )
-    val_pool = Pool(
-        val_df_es[features], val_df_es[TARGET], cat_features=cat_features,
-    )
-    probe = CatBoostRegressor(
-        iterations=iterations,
-        learning_rate=0.05,
-        depth=8,
-        loss_function="RMSE",
-        random_seed=RANDOM_STATE,
-        early_stopping_rounds=100,
-        verbose=200,
-    )
-    probe.fit(fit_pool, eval_set=val_pool)
-    best_iterations = max(int(probe.tree_count_), 1)
-    logger.info("Early stopping по val: %s деревьев", best_iterations)
-
-    model = CatBoostRegressor(
-        iterations=best_iterations,
-        learning_rate=0.05,
-        depth=8,
-        loss_function="RMSE",
-        random_seed=RANDOM_STATE,
-        verbose=200,
-    )
-    model.fit(train_pool)
 
     y_true = test_df["price"].to_numpy()
     y_model = np.expm1(model.predict(test_pool))
