@@ -267,3 +267,49 @@ def test_missing_remote_file_still_writes(monkeypatch, tmp_path):
 
     save_json_state(tmp_path / "subscriptions.json", {"111": {"rooms": 2}}, "msg", encrypt=False)
     assert len(puts) == 1
+
+
+def test_merge_takes_only_touched_chats_from_a_stale_local_copy():
+    """Space читает состояние при старте; ночью Actions меняют цены и убирают
+    снятые лоты. /track одного чата не должен откатить остальные чаты."""
+    remote = {"111": {"lot": 48}, "222": {"lot": 40}}         # после ночных алертов
+    stale_local = {"111": {"lot": 50}, "222": {"lot": 40, "new": 1}, "333": {"gone": 1}}
+
+    merged = subs_mod._merge_remote(stale_local, remote, None, touched_keys={"222"})
+
+    assert merged == {"111": {"lot": 48}, "222": {"lot": 40, "new": 1}}
+
+
+def test_push_with_touched_keys_keeps_server_versions_and_refreshes_local(monkeypatch, tmp_path):
+    import base64
+
+    monkeypatch.setattr(subs_mod, "_push_to_github", _REAL_PUSH)
+    monkeypatch.setenv("KRISHA_DB_TOKEN", "t")
+    remote = json.dumps({"111": {"price": 48}, "222": {"price": 40}})
+    put_bodies = []
+
+    class _Resp:
+        status_code = 200
+
+        def __init__(self, payload):
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    monkeypatch.setattr(
+        subs_mod.httpx, "get",
+        lambda *a, **k: _Resp({"sha": "abc", "content": base64.b64encode(remote.encode()).decode()}),
+    )
+    monkeypatch.setattr(
+        subs_mod.httpx, "put",
+        lambda url, headers=None, json=None, timeout=None: put_bodies.append(json) or _Resp({}),
+    )
+
+    path = tmp_path / "tracked.json"
+    stale = {"111": {"price": 50}, "222": {"price": 40, "new": 7}}
+    save_json_state(path, stale, "msg", encrypt=False, touched_keys={"222"})
+
+    pushed = _json.loads(base64.b64decode(put_bodies[0]["content"]).decode())
+    assert pushed == {"111": {"price": 48}, "222": {"price": 40, "new": 7}}
+    assert load_json_state(path) == pushed, "локальная копия = то, что ушло на сервер"

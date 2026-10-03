@@ -50,9 +50,12 @@ def probe(url: str) -> tuple[str, str]:
         except Exception as exc:  # noqa: BLE001 — любой сбой сети = down
             last_err = str(exc)
             continue
+        # freshness: README обещает, что health-check следит за свежестью данных,
+        # а проверки не было — сломанный ночной сбор не давал ни одного алерта
         problems = [
             f"{key}={data.get(key)!r}"
-            for key, good in (("status", "ok"), ("model_loaded", True), ("tg_webhook", "ok"))
+            for key, good in (("status", "ok"), ("model_loaded", True), ("tg_webhook", "ok"),
+                              ("freshness", "ok"))
             if data.get(key) != good
         ]
         if problems:
