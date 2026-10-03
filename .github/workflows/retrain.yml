@@ -160,10 +160,20 @@ jobs:
         id: old
         env:
           KRISHA_DB_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+          GH_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
         run: |
+          set -euo pipefail
           python -m krisha.db_release --rent --require
-          # Первой модели аренды в релизе ещё нет — это не ошибка
-          python -m krisha.db_release --rent --models
+          # Первой модели аренды в релизе ещё нет — это не ошибка. Но сбой
+          # скачивания (502, таймаут, битый sha) раньше выглядел так же: шаг
+          # решал «старой модели нет», гейт заменялся проверкой «MAPE < 20%» и
+          # в прод уходила непроверенная модель. Теперь «нет ассета» узнаём
+          # по списку релиза (ошибка gh валит шаг), а если ассет есть —
+          # скачивание обязано пройти (--require).
+          assets=$(gh release view model-latest --repo "$KRISHA_DATA_REPO" --json assets -q '.assets[].name')
+          if grep -qx 'models_rent.tar.gz' <<<"$assets"; then
+            python -m krisha.db_release --rent --models --require
+          fi
           if [ -s models/rent/model.cbm ]; then
             cp models/rent/model.cbm /tmp/old_rent_model.cbm
             cp models/rent/model_meta.json /tmp/old_rent_meta.json

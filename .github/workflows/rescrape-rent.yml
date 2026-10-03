@@ -52,11 +52,14 @@ jobs:
           # новыми» и заливал этот огрызок обратно в db-latest поверх
           # накопленной истории. Отличаем «ассета нет» (нормально для первого
           # запуска) от «скачать не удалось» (падаем).
-          if gh release view db-latest --repo "$KRISHA_DATA_REPO" --json assets -q '.assets[].name' \
-               | grep -qx 'krisha_rent.db.gz'; then
+          # Список ассетов — отдельной командой: `if gh … | grep` не отличал
+          # «ассета нет» от «gh упал» (502, лимит, сеть) — сбой GitHub уводил
+          # в ветку «начинаем с нуля», и пустая база затирала db-latest.
+          # Теперь ошибка gh валит шаг (set -e), а grep смотрит на готовый список.
+          assets=$(gh release view db-latest --repo "$KRISHA_DATA_REPO" --json assets -q '.assets[].name')
+          if grep -qx 'krisha_rent.db.gz' <<<"$assets"; then
             gh release download db-latest --repo "$KRISHA_DATA_REPO" -p krisha_rent.db.gz -O /tmp/krisha_rent.db.gz
-            if gh release view db-latest --repo "$KRISHA_DATA_REPO" --json assets -q '.assets[].name' \
-                 | grep -qx 'krisha_rent.db.gz.sha256'; then
+            if grep -qx 'krisha_rent.db.gz.sha256' <<<"$assets"; then
               gh release download db-latest --repo "$KRISHA_DATA_REPO" -p krisha_rent.db.gz.sha256 -O /tmp/rent.sha256
               echo "$(cat /tmp/rent.sha256)  /tmp/krisha_rent.db.gz" | sha256sum -c -
             fi

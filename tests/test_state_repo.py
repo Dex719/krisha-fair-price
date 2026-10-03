@@ -33,8 +33,10 @@ def test_pull_state_writes_files_and_skips_missing(tmp_path, monkeypatch, no_tok
     """200 — файл кладётся как есть (зашифрованная обёртка тоже), 404 — файла
     в репо ещё нет и это не ошибка, 5xx и сетевой сбой — ошибки."""
     monkeypatch.setenv("KRISHA_DB_TOKEN", "tok")
+    monkeypatch.setenv("STATE_ENCRYPTION_KEY", "k")
     monkeypatch.setattr(subs_mod, "DATA_DIR", tmp_path)
-    wrapped = json.dumps({"_encrypted": "gAAAA..."})
+    wrapped, encrypted = subs_mod._encode_payload({"42": {"rooms": 2}}, encrypt=True)
+    assert encrypted
     seen = []
 
     def fake_get(url, headers=None, timeout=None):
@@ -139,3 +141,24 @@ def test_usage_flush_prunes_days_restored_by_merge(monkeypatch):
     usage._flush({"days": {fresh_day: {"site": 1}}})
 
     assert set(saved["data"]["days"]) == {fresh_day}
+
+
+def test_pull_state_refuses_unreadable_state(tmp_path, monkeypatch, no_tokens):
+    """Файл есть, но не расшифровывается (сменился ключ): раньше он молча
+    читался как «подписчиков нет» — алерты и слежка выключались без следа.
+    Теперь это сбой загрузки: локальную копию не трогаем, админу — сообщение."""
+    monkeypatch.setenv("KRISHA_DB_TOKEN", "tok")
+    monkeypatch.setenv("STATE_ENCRYPTION_KEY", "старый")
+    monkeypatch.setattr(subs_mod, "DATA_DIR", tmp_path)
+    wrapped, _ = subs_mod._encode_payload({"42": {"rooms": 2}}, encrypt=True)
+    monkeypatch.setenv("STATE_ENCRYPTION_KEY", "новый")
+    (tmp_path / "subscriptions.json").write_text("локальная копия", encoding="utf-8")
+    alerts = []
+    monkeypatch.setattr(subs_mod, "_alert_admin", alerts.append)
+    monkeypatch.setattr(subs_mod.httpx, "get", lambda url, headers=None, timeout=None: _Resp(200, wrapped))
+
+    pulled, failed = subs_mod.pull_state(("subscriptions.json",))
+
+    assert (pulled, failed) == (0, 1)
+    assert (tmp_path / "subscriptions.json").read_text(encoding="utf-8") == "локальная копия"
+    assert alerts and "не расшифровывается" in alerts[0]
