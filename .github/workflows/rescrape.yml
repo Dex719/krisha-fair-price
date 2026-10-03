@@ -148,8 +148,13 @@ jobs:
           TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
         # В checkout состояния нет: без --pull алерты не увидели бы подписчиков
         # и заново запостили бы в канал уже опубликованное. Не скачалось — не шлём.
+        # Весов модели в checkout тоже нет (models/*.cbm в приватном релизе
+        # model-latest): без них окно не оценивается, и с 01.10 рассылка с
+        # каналом молча выходили пустыми. Не скачались — send_alerts сам
+        # краснеет и пишет админу, а слежку и отчёты отправляет всё равно.
         run: |
           python -m krisha.subscriptions --pull
+          python -m krisha.db_release --models
           python scripts/send_alerts.py
 
       # Алерты пишут вердикты окна в predictions (issue #128) — заливаем базу
