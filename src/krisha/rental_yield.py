@@ -133,7 +133,7 @@ def estimate(listing: dict[str, Any], sale_price: float | None) -> dict[str, Any
     модели аренды (fail-soft: блок доходности просто не показывается)."""
     from catboost import Pool
 
-    from krisha.features import listing_to_frame
+    from krisha.features import listing_to_frame, model_center
     from krisha.predict import _price_pool, _round_price, load_model
     from krisha.spatial import load_spatial_ref
 
@@ -143,7 +143,8 @@ def estimate(listing: dict[str, Any], sale_price: float | None) -> dict[str, Any
         return None
     adapted, rough = as_rental(listing)
     df = listing_to_frame(
-        adapted, ppsm_maps=meta.get("ppsm_maps"), spatial_ref=load_spatial_ref(RENT_SPATIAL_REF_PATH)
+        adapted, ppsm_maps=meta.get("ppsm_maps"), spatial_ref=load_spatial_ref(RENT_SPATIAL_REF_PATH),
+        center=model_center(meta),
     )
     df = _fill_typical(df, {**FALLBACK_DEFAULTS, **meta.get("feature_defaults", {})})
     pool = Pool(df[meta["features"]], cat_features=meta["cat_features"])

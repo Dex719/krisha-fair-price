@@ -50,7 +50,7 @@ from krisha.config import (
     SPATIAL_REF_PATH,
     STALE_DELISTED_DAYS,
 )
-from krisha.features import CAT_FEATURES, build_features
+from krisha.features import CAT_FEATURES, build_features, model_center
 from krisha.features import clean as clean_listings
 from krisha.spatial import self_indices_for
 from krisha.train import (
@@ -271,7 +271,11 @@ def main() -> None:
     )
 
     # --- Единый фичефрейм: карты train-среза эпохи-якоря (как в гейте) ---
-    test_df = build_features(raw_test, ppsm_maps=ppsm_maps, spatial_ref=spatial_ref)
+    # Точка центра — эпохи-якоря: все эпохи из ERAS учились на ней (city_center
+    # в мете с 10.2026, раньше — LEGACY_ALMATY_CENTER), см. features.model_center
+    test_df = build_features(
+        raw_test, ppsm_maps=ppsm_maps, spatial_ref=spatial_ref, center=model_center(anchor_meta),
+    )
     y_true = test_df["price"].to_numpy()
     test_days = pd.to_datetime(raw_test["first_seen"], errors="coerce", utc=True).dt.floor("D")
     test_window = f"{test_days.min():%Y-%m-%d}..{test_days.max():%Y-%m-%d}"

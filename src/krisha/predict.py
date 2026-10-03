@@ -31,7 +31,7 @@ from krisha.config import (
     feature_vision,
 )
 from krisha.db import get_conn
-from krisha.features import listing_to_frame, listings_to_frame
+from krisha.features import listing_to_frame, listings_to_frame, model_center
 from krisha.geo import build_location_details
 from krisha.interval import MIN_INTERVAL_WIDTH_LOG, finalize_interval
 from krisha.scraping.client import PoliteClient, StickyCookies
@@ -443,6 +443,7 @@ def _predict_from_listing(
         listing,
         ppsm_maps=meta.get("ppsm_maps"),
         spatial_ref=load_spatial_ref(RENT_SPATIAL_REF_PATH) if rent else load_spatial_ref(),
+        center=model_center(meta),
     )
     # Район/микрорайон, восстановленные по OSM-зонам, показываем и в карточке
     from krisha.features import MISSING_CAT
@@ -597,7 +598,10 @@ def predict_listings_batch(listings: list[dict[str, Any]]) -> list[dict[str, Any
     model, meta = load_model()
     from krisha.spatial import load_spatial_ref
 
-    df = listings_to_frame(listings, ppsm_maps=meta.get("ppsm_maps"), spatial_ref=load_spatial_ref())
+    df = listings_to_frame(
+        listings, ppsm_maps=meta.get("ppsm_maps"), spatial_ref=load_spatial_ref(),
+        center=model_center(meta),
+    )
     pool = Pool(df[meta["features"]], cat_features=meta["cat_features"])
     priced = _price_pool(pool, [listing.get("price") for listing in listings], meta, model)
     model_version = meta.get("metrics", {}).get("trained_at")
