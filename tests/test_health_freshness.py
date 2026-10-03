@@ -99,3 +99,49 @@ def test_build_revision_is_none_without_deploy_file(tmp_path, monkeypatch):
     monkeypatch.setattr(app_module, "DATA_DIR", tmp_path)
 
     assert app_module._build_revision() is None
+
+
+# --- Свежесть по сборщику, а не по любым записям в базе -----------------------
+
+def _db_time(dt: datetime) -> str:
+    return dt.astimezone(timezone.utc).replace(tzinfo=None).isoformat(sep=" ")
+
+
+def test_user_check_does_not_make_stale_data_fresh(tmp_path, monkeypatch):
+    """Проверка ссылки пишет лот с last_seen = now. Раньше это поднимало
+    MAX(last_seen), и сломанный ночной сбор выглядел как «обновлено только что»."""
+    db_path = tmp_path / "masked.db"
+    _seed_listing(db_path, last_seen=NOW - timedelta(hours=40))
+    db.upsert_listing(
+        {"id": 9002, "url": "https://krisha.kz/a/show/9002", "title": "Проверил пользователь",
+         "price": 30_000_000, "area": 50.0, "rooms": 2, "source": "user"},
+        db_path=db_path,
+    )
+    with get_conn(db_path) as conn:  # и поверх строки сборщика — тоже user-upsert
+        conn.execute("UPDATE listings SET last_seen = ? WHERE id IN (9001, 9002)", (_db_time(NOW),))
+        conn.execute("UPDATE listings SET source = 'user' WHERE id = 9002")
+        conn.execute(
+            "INSERT INTO sweep_runs (started_at, deal, search_seconds, detail_seconds) VALUES (?, ?, ?, ?)",
+            (_db_time(NOW - timedelta(hours=45)), "prodazha", 3600.0, 3600.0),
+        )
+
+    data = _health_json(monkeypatch, db_path)
+
+    assert data["freshness"] == "stale"
+    assert data["data_age_hours"] == pytest.approx(43.0, abs=0.02)  # конец прохода: старт + 2 ч
+
+
+def test_freshness_counts_from_the_end_of_the_last_sweep(tmp_path, monkeypatch):
+    db_path = tmp_path / "sweep.db"
+    _seed_listing(db_path, last_seen=NOW - timedelta(hours=1))
+    with get_conn(db_path) as conn:
+        conn.executemany(
+            "INSERT INTO sweep_runs (started_at, deal, search_seconds, detail_seconds) VALUES (?, ?, ?, ?)",
+            [(_db_time(NOW - timedelta(hours=30)), "prodazha", 9000.0, 9000.0),
+             (_db_time(NOW - timedelta(hours=6)), "prodazha", 9000.0, 9000.0)],
+        )
+
+    data = _health_json(monkeypatch, db_path)
+
+    assert data["freshness"] == "ok"
+    assert data["data_age_hours"] == pytest.approx(1.0, abs=0.02)  # 6 ч назад старт, 5 ч проход
