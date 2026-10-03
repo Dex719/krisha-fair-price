@@ -376,3 +376,21 @@ def test_compare_reports_cluster_ci(tmp_path):
     b.to_csv(tmp_path / "b.csv", index=False)
     text = bt.compare_runs(tmp_path / "a.csv", tmp_path / "b.csv", "a", "b")
     assert "ΔMAPE -5.00%" in text and "лучше" in text and "лучше в 2 из 2" in text
+
+
+def test_fold_validity_compares_test_with_prepared_train(tmp_path, monkeypatch):
+    """Тест фолда сравнивается с train того же prepare_frame, а не с сырым
+    listings: у сырого районы krisha до OSM-починки, и все фолды выходили
+    «невалидными» (worst TVD 0.496 на каждой неделе прод-базы)."""
+    monkeypatch.setattr("krisha.zones.load_zone_index", lambda *a, **k: None)
+    seen = []
+    real = bt.representativeness
+    monkeypatch.setattr(bt, "representativeness", lambda test, ref: seen.append(len(ref)) or real(test, ref))
+    db = tmp_path / "v.db"
+    _synthetic_db(db, n=600, weeks=8)
+    listings, _ = bt.load_raw_with_history(db)
+
+    bt.run_backtest(db_path=db, n_folds=1, point_iterations=20, with_interval=False,
+                    skip_invalid_folds=True)
+
+    assert seen and all(n < len(listings) for n in seen), "эталон — train фолда, не весь listings"

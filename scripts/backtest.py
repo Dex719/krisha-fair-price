@@ -454,7 +454,7 @@ def run_backtest(
         train_raw, test_raw, n_purged = build_fold_data(listings, price_history, fold, spec)
         if skip_invalid_folds and len(test_raw):
             # валидность зависит только от теста — проверяем ДО обучения
-            if not representativeness(test_raw, listings)["representative"]:
+            if not representativeness(test_raw, train_raw)["representative"]:
                 invalid += 1
                 logger.warning("fold %d невалиден — пропущен без обучения", fold.index)
                 continue
@@ -481,7 +481,10 @@ def run_backtest(
         # перенос между районами: сбор шёл по алфавиту с лимитом 1000/день,
         # поэтому «неделя» в июле означала «район». Невалидный фолд считается
         # и показывается, но НЕ входит в агрегат.
-        fold_validity = representativeness(test_raw, listings)
+        # Сравниваем с train фолда, подготовленным тем же prepare_frame: сырой
+        # listings (районы krisha до OSM-починки, лоты без деталей) отличался
+        # от любой недели по районам, и все 8 фолдов уходили в «невалидные».
+        fold_validity = representativeness(test_raw, train_raw)
         preds["fold_valid"] = fold_validity["representative"]
         fold_stats = summarize(preds)["overall"]
         fold_stats.update({
