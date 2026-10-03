@@ -119,7 +119,17 @@ def find_good_deals(db_path: Path | str = DB_PATH, hours: int = ALERT_WINDOW_HOU
         "alerts: оценено %s из %s лотов окна за %.1f с, выгодных %s",
         priced_total, len(candidates), time.monotonic() - started, len(deals),
     )
+    if candidates and not priced_total:
+        # Ни один лот не оценился — это не «сегодня выгодных нет», а поломка
+        # (нет модели, сломалась схема фич). С 01.10 по 03.10 так и было: модели
+        # переехали в приватный релиз, в джобе их никто не скачивал, и рассылка
+        # с каналом три ночи молча выходили пустыми при зелёном ране.
+        raise AlertsPricingFailed(f"ни один из {len(candidates)} лотов окна не оценился")
     return deals
+
+
+class AlertsPricingFailed(RuntimeError):
+    """Окно алертов не оценилось целиком — рассылать нечего, нужен админ."""
 
 
 def _price_chunk(chunk: list[dict]) -> list[tuple[dict, dict]]:

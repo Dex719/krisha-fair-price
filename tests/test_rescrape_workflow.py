@@ -41,6 +41,18 @@ def test_alerts_has_its_own_ceiling_within_the_job_budget():
     assert budget + alerts["timeout-minutes"] + 5 < job["timeout-minutes"]
 
 
+def test_alerts_download_models_before_pricing():
+    """Веса в приватном релизе, в checkout их нет: без скачивания окно
+    алертов не оценивается (01.10–03.10 рассылка шла пустой при зелёном ране)."""
+    steps = _job()["steps"]
+    alerts = steps[_index(steps, "Alerts")]
+    run = alerts["run"]
+
+    assert "krisha.db_release --models" in run
+    assert run.index("krisha.db_release --models") < run.index("send_alerts.py")
+    assert alerts["env"].get("KRISHA_DB_TOKEN"), "приватный релиз качается только с токеном"
+
+
 def test_second_upload_only_after_successful_first_upload_and_alerts():
     steps = _job()["steps"]
     again_at = _index(steps, "Upload DB again")

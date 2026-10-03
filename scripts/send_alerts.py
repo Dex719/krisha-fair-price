@@ -6,8 +6,9 @@
     python scripts/send_alerts.py --deal arenda  # только слежка за арендой
                                                  # (после вечернего обхода аренды)
 
-Нужен env TELEGRAM_BOT_TOKEN (в GitHub Actions — секрет); для сохранения
-состояния слежки — GITHUB_PAT или GITHUB_TOKEN с contents:write.
+Нужен env TELEGRAM_BOT_TOKEN (в GitHub Actions — секрет); для состояния
+(подписчики, слежка) — KRISHA_DB_TOKEN с доступом к приватному репо данных.
+Модели должны лежать в models/ (в Actions: python -m krisha.db_release --models).
 Опционально TG_CHANNEL_ID (@канал или -100…) — дайджест «Топ-5 лотов дня».
 """
 
@@ -15,8 +16,14 @@ import argparse
 import logging
 import sys
 
-from krisha.alerts import find_good_deals, format_alert, match_filters, send_alerts
-from krisha.subscriptions import load_subscriptions
+from krisha.alerts import (
+    AlertsPricingFailed,
+    find_good_deals,
+    format_alert,
+    match_filters,
+    send_alerts,
+)
+from krisha.subscriptions import _alert_admin, load_subscriptions
 from krisha.tracking import check_tracked_updates
 
 
@@ -138,13 +145,26 @@ def main() -> int:
         _send_track_alerts(args.dry_run, deal="arenda")
         return 0
 
-    deals = find_good_deals()
-    _send_deal_alerts(args.dry_run, deals)
+    try:
+        deals, pricing_error = find_good_deals(), None
+    except AlertsPricingFailed as exc:
+        # Слежка, отчёты и утренний отчёт модели не требуют — шлём их всё равно,
+        # а выгодные лоты и дайджест пропускаем: пустой дайджест хуже никакого.
+        deals, pricing_error = [], exc
+    if pricing_error is None:
+        _send_deal_alerts(args.dry_run, deals)
     _send_track_alerts(args.dry_run)
-    _post_channel_digest(args.dry_run, deals)
+    if pricing_error is None:
+        _post_channel_digest(args.dry_run, deals)
     _maybe_monthly_report(args.dry_run)
     _maybe_weekly_usage_report(args.dry_run)
     _send_daily_admin_report(args.dry_run)
+    if pricing_error is not None:
+        message = f"⚠️ Алерты: {pricing_error}. Выгодные лоты и дайджест канала сегодня не отправлены."
+        print(message, file=sys.stderr)
+        if not args.dry_run:
+            _alert_admin(message)
+        return 1  # шаг краснеет — поломку видно в ране, а не только в логах
     return 0
 
 
