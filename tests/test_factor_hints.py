@@ -151,7 +151,7 @@ def test_merged_factor_keys_get_their_hints(monkeypatch):
     assert "Дом 1970 года" in hints["building_age"] and "старый фонд" in hints["building_age"]
     assert "Этаж 3 из 5" in hints["floor"]
     assert hints["district"]  # района в объявлении нет — общий текст, а не None
-    assert "Координаты дома" in hints["lat"]
+    assert "Расположение на карте" in hints["lat"]
     assert hints["is_new_building"].startswith("Вторичка")
     assert hints["ceiling"] is None  # потолков нет — подсказки нет
 
@@ -174,3 +174,39 @@ def test_age_hint_explains_when_segment_median_contradicts_the_text(monkeypatch)
 
     assert "при прочих равных" in hint
     assert "ближе к центру" in hint
+
+
+def test_hints_speak_to_a_buyer_not_a_data_scientist(monkeypatch):
+    """Подсказки читает покупатель: без «гексагонов», «температуры локации»,
+    «сегментов» и «медиан» — только что это за фактор и куда он двигает цену."""
+    from krisha import factor_hints
+
+    market = {**_MARKET, "area_big": 830_000.0, "area_small": 1_150_000.0, "age_mid_age": 980_000.0,
+              "district": {"nauryzbajskij": (660_000.0, 2_000)}}
+    monkeypatch.setattr(factor_hints, "market_stats", lambda: market)
+    listing = {"area": 134.0, "year_built": 2015, "floor": 3, "total_floors": 9, "rooms": 4,
+               "district": "nauryzbajskij", "lat": 43.24, "lon": 76.9, "photos_count": 12}
+    keys = ["area", "building_age", "district", "lat", "rooms", "photos_count", "housing_class",
+            "hex7_ppsm", "hex8_ppsm", "renovation", "walk_score", "user_type", "knn_n"]
+    factors = [{"feature": k, "impact_tenge": 35_000_000 if k == "area" else -1.0} for k in keys]
+    hints = {f["feature"]: f["hint"] for f in factor_hints.build_factor_hints(
+        listing, factors, {"housing_class": "бизнес", "renovation": "черновая отделка"})}
+
+    for key, hint in hints.items():
+        assert hint, key
+        for jargon in ("гексагон", "температур", "сегмент", "медиан", "модель", "линейно"):
+            assert jargon not in hint.lower(), f"{key}: {hint}"
+    assert hints["area"].startswith("Площадь 134 м²: квартира больше типичной, поэтому целиком стоит дороже")
+    assert "дешевле, чем в среднем по городу" in hints["district"]
+    assert hints["renovation"].startswith("Черновая отделка")
+    assert "около 2 км" in hints["hex7_ppsm"] and "около 500 м" in hints["hex8_ppsm"]
+
+
+def test_renovation_hint_quotes_only_real_renovation_states(monkeypatch):
+    """В поле состояния бывает «свободная планировка» — это не про ремонт, в кавычки не берём."""
+    hints = _hints(monkeypatch, {"area": 50.0}, ["renovation"], facts={"renovation": "свободная планировка"})
+    assert "свободная планировка" not in hints["renovation"]
+    assert hints["renovation"].startswith("Состояние ремонта")
+
+    good = _hints(monkeypatch, {"area": 50.0}, ["renovation"], facts={"renovation": "хорошее"})
+    assert "«хорошее»" in good["renovation"]

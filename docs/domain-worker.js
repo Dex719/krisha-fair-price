@@ -25,6 +25,12 @@
 const ORIGIN = "https://dex719-krisha-fair-price.hf.space";
 const CANONICAL_HOST = "bagam.info";
 
+// Что можно отдавать из кэша Cloudflare: html-страницы сайта и статика с версией в URL.
+const PAGE_PATHS = new Set(["/", "/stats", "/about", "/bot", "/privacy", "/terms", "/robots.txt", "/sitemap.xml"]);
+function isCacheablePath(pathname) {
+  return PAGE_PATHS.has(pathname) || pathname.startsWith("/static/");
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -46,11 +52,17 @@ export default {
     headers.set("x-forwarded-proto", "https");
 
     const hasBody = !["GET", "HEAD"].includes(request.method);
+    // Страницы и статика одинаковы для всех (живые цифры приходят по /api/*),
+    // а первый байт из Space идёт ~1,5 с: держим их в кэше Cloudflare две
+    // минуты, чтобы повторные заходы и соседи по региону не ждали Space.
+    // /api/*, /tg/* и всё с телом запроса — только из origin.
+    const cacheable = !hasBody && isCacheablePath(url.pathname);
     const response = await fetch(ORIGIN + url.pathname + url.search, {
       method: request.method,
       headers,
       body: hasBody ? request.body : undefined,
       redirect: "manual",
+      cf: cacheable ? { cacheEverything: true, cacheTtlByStatus: { "200-299": 120, "404": 10, "500-599": 0 } } : undefined,
     });
 
     const out = new Response(response.body, response);

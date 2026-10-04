@@ -6,10 +6,11 @@
 <meta name="theme-color" content="#F1F4EC" media="(prefers-color-scheme: light)">
 <script>
 /* до первой отрисовки: тема (сохранённый выбор, иначе системная) и режим движения; bagam.ready — очередь до загрузки site.js */
+/* лёгкий режим (без анимаций, теней и размытия) — только по явным признакам: экономия трафика, 2G, ≤2 ГБ памяти; «4 ядра и 4 ГБ» — это обычный Android, ему оставляем полную версию */
 (function(d,w){var n=navigator,c=n.connection||{},m=function(q){return !!(w.matchMedia&&w.matchMedia(q).matches)},t;
 try{t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme')}catch(e){}
 d.setAttribute('data-theme',t==='light'||t==='dark'?t:m('(prefers-color-scheme: light)')?'light':'dark');
-var lite=!!c.saveData||/(^|-)(slow-2g|2g)$/.test(c.effectiveType||'')||(n.deviceMemory&&n.deviceMemory<=2)||(n.hardwareConcurrency&&n.hardwareConcurrency<=4&&n.deviceMemory&&n.deviceMemory<=4);
+var lite=!!c.saveData||/(^|-)(slow-2g|2g)$/.test(c.effectiveType||'')||(n.deviceMemory&&n.deviceMemory<=2);
 d.classList.add('js',lite?'lite':'anim');if(m('(prefers-reduced-motion: reduce)'))d.classList.add('rm');
 w.bagam={q:[],ready:function(f){this.q.push(f)}};
 })(document.documentElement,window);
@@ -40,6 +41,7 @@ html.anim .hform{animation:bgmup .8s cubic-bezier(.16,1,.3,1) .2s both}
 </style>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="manifest" href="/static/site.webmanifest">
 <link rel="canonical" href="https://bagam.info/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="baǵam">
@@ -264,7 +266,9 @@ bagam.ready(function(){
   const LIMIT = 45000;
   const ru = n => Math.round(n).toLocaleString('ru-RU');
   const f1 = n => n.toFixed(1).replace('.', ',');
-  const mln = n => f1(n / 1e6) + ' млн';
+  /* суммы — без хвоста «,0»: 85 млн, а не 85,0 млн; проценты остаются с десятыми */
+  const m1 = n => f1(n).replace(/,0$/, '');
+  const mln = n => m1(n / 1e6) + ' млн';
   /* Аренда — ₸ в месяц: сотни тысяч, «0,3 млн» там ничего не говорит. */
   let RENT = false;
   const tys = n => Math.round(n / 1000).toLocaleString('ru-RU') + ' тыс';
@@ -276,7 +280,7 @@ bagam.ready(function(){
   /* «25,6–31,9 млн ₸»: единица не отрывается от числа при переносе */
   const range = (lo, hi) => RENT
     ? tys(lo).replace(' тыс', '') + '–' + tys(hi) + ' ₸/мес'
-    : f1(lo / 1e6) + '–' + mln(hi) + ' ₸';
+    : m1(lo / 1e6) + '–' + mln(hi) + ' ₸';
   const $ = s => document.querySelector(s);
   const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, c =>
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -368,17 +372,21 @@ bagam.ready(function(){
       parts.push('<div><b>Похоже на подселение или сдачу комнаты</b>' +
         '<i>Цена в объявлении — за место или комнату, а модель оценивает квартиру целиком, поэтому вердикта нет.</i></div>');
     }
+    const high = !!r.scam_risk && r.scam_risk.level === 'high';
     if (r.scam_risk){
       const reasons = (r.scam_risk.reasons || []).map(esc).join(' · ');
-      parts.push('<div><b>' + (r.scam_risk.level === 'high' ? 'Цена сильно ниже рынка' : 'Цена ниже ожидаемой') +
+      parts.push('<div><b>' + (high ? 'Цена сильно ниже рынка' : 'Цена ниже обычной — проверьте объявление') +
         '</b><i>' + (reasons ? reasons.replace(/\.$/, '') + '. ' : '') +
-        'Не вносите задаток до просмотра квартиры и проверки документов.</i></div>');
+        (high ? 'Не вносите задаток до просмотра квартиры и проверки документов.'
+          : 'Низкая цена бывает и честной, но перед задатком посмотрите квартиру и документы.') + '</i></div>');
     }
     if (r.duplicate_of){
       parts.push('<div><b>Похоже на перезалив объявления №' + esc(r.duplicate_of) + '</b>' +
         '<i>Квартиру с теми же характеристиками уже выставляли — проверьте, не подняли ли цену при новом размещении.</i></div>');
     }
     box.innerHTML = parts.length ? WARN_ICON + parts.join('') : '';
+    /* красный — только настоящий риск (подозрительно дёшево, подселение); остальное — янтарное «проверьте» */
+    box.classList.toggle('soft', !high && !r.room_share);
     box.hidden = !parts.length;
   }
 
@@ -431,12 +439,12 @@ bagam.ready(function(){
         a.floor ? a.floor + (a.total_floors ? '/' + a.total_floors : '') + ' этаж' : null]
         .filter(Boolean).join(' · ');
       return '<a class="rxr" href="' + esc(lotUrl(a)) + '" target="_blank" rel="noopener noreferrer">' +
-        '<span class="rxd">' + (a.ppsm ? ru(a.ppsm) : '—') + '</span>' +
+        '<span class="rxd">' + (a.ppsm ? ru(a.ppsm) + ' <small>₸/м²' + (RENT ? ' в мес' : '') + '</small>' : '—') + '</span>' +
         '<span class="rxn">' + esc(meta || 'объявление') + '</span>' +
         '<span class="rxv">' + money(a.price) + ' ↗</span></a>';
     }).join('');
     box.innerHTML = '<div class="rxttl">Похожие объявления</div>' +
-      '<div class="rxsum">Сравните сами: серым — цена за метр' + (RENT ? ' в месяц' : '') + '</div>' + rows;
+      '<div class="rxsum">Сравните сами: цена за метр' + (RENT ? ' в месяц' : '') + ', параметры и цена целиком</div>' + rows;
     box.hidden = false;
   }
 
@@ -509,14 +517,20 @@ bagam.ready(function(){
   /* Одна строка под вердиктом: почему −6% — «в рынке», а −4% у другой квартиры — «выгодно».
      Вердикт ставится по обычному разбросу цен для таких квартир, а не по проценту. */
   function whyLine(r, lo, hi, scam){
-    const fp = r.fair_price;
-    const band = (r.fair_price_low && r.fair_price_high)
-      ? 'Обычный разброс для таких квартир — от ' + pct((lo / fp - 1) * 100) + ' до ' + pct((hi / fp - 1) * 100) + '.'
-      : 'Обычный разброс для таких квартир — около ±10%.';
+    const fp = r.fair_price, known = !!(r.fair_price_low && r.fair_price_high);
+    const loP = (lo / fp - 1) * 100, hiP = (hi / fp - 1) * 100;
+    /* проценты от оценки читаются, пока интервал похож на «±N%». Когда нижняя граница почти
+       совпала с оценкой или одно плечо в разы длиннее другого («от 0,0% до +59,3%»), проценты
+       выглядят как ошибка — тогда говорим в деньгах: «такие квартиры обычно стоят 91,6–146 млн ₸» */
+    const skew = known && (Math.abs(loP) < 2 || Math.abs(hiP) < 2 ||
+      Math.max(Math.abs(loP), Math.abs(hiP)) > 2.5 * Math.min(Math.abs(loP), Math.abs(hiP)));
+    const band = !known ? 'Обычный разброс для таких квартир — около ±10%.'
+      : skew ? 'Такие квартиры обычно ' + (RENT ? 'сдают за ' : 'стоят ') + range(lo, hi) + '.'
+      : 'Обычный разброс для таких квартир — от ' + pct(loP) + ' до ' + pct(hiP) + '.';
     if (scam) return band + ' Эта цена — намного ниже нижней границы.';
-    if (r.verdict === 'GOOD_DEAL') return band + ' Цена ниже даже нижней границы.';
-    if (r.verdict === 'OVERPRICED') return band + ' Цена выше даже верхней границы.';
-    return band + ' Разница ' + pct(r.diff_pct) + ' в него укладывается.';
+    if (r.verdict === 'GOOD_DEAL') return band + (skew ? ' Цена в объявлении ниже нижней границы.' : ' Цена ниже даже нижней границы.');
+    if (r.verdict === 'OVERPRICED') return band + (skew ? ' Цена в объявлении выше верхней границы.' : ' Цена выше даже верхней границы.');
+    return band + ' Разница ' + pct(r.diff_pct) + (skew ? ' в этот диапазон укладывается.' : ' в него укладывается.');
   }
 
   /* «Почему такая оценка»: типичная квартира → особенности этой → оценка.

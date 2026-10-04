@@ -84,8 +84,12 @@ CSP = (
     "img-src 'self' data: https://*.kcdn.online https://*.basemaps.cartocdn.com; "
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
     "font-src 'self'; "
-    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://telegram.org; "
-    "connect-src 'self'; "
+    # static.cloudflareinsights.com / cloudflareinsights.com — маяк Cloudflare Web
+    # Analytics, который Cloudflare сам дописывает в html на домене; без них
+    # браузер режет скрипт с ошибкой в консоли, а статистика посещений пустая.
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://telegram.org "
+    "https://static.cloudflareinsights.com; "
+    "connect-src 'self' https://cloudflareinsights.com; "
     "base-uri 'self'; "
     # iframe на странице Space + Telegram Mini App (web-клиенты и webview
     # открывают сайт во фрейме — без этих origins браузер блокирует загрузку)

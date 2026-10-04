@@ -56,7 +56,7 @@ def assess_scam_risk(
 
     below_pct = (1 - actual_price / fair_low) * 100
     reasons = [
-        f"цена на {below_pct:.0f}% ниже нижней границы справедливого интервала"
+        f"цена на {below_pct:.0f}% ниже нижней границы обычного диапазона"
     ]
 
     fresh = days_on_market is not None and days_on_market <= FRESH_DAYS
