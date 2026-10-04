@@ -7,7 +7,6 @@ models/stats.json — снапшота, который создаётся при
 import json
 import logging
 import sqlite3
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -128,6 +127,25 @@ def _weekly_trend(
     return trend
 
 
+def data_updated_at(conn: sqlite3.Connection, deal: str) -> str | None:
+    """updated_at для /api/stats: когда сборщик последний раз прошёл по рынку.
+
+    Раньше здесь стояло datetime.now() — «Дата обновления» на сайте всегда
+    была сегодняшней, даже если ночной сбор неделю как сломан. Источник тот же,
+    что у data_age_hours в /api/health (db.data_observed_at). Формат прежний —
+    ISO 8601 в UTC с зоной («2026-10-03T05:12:40+00:00»), None — сборов в базе
+    не было.
+    """
+    from krisha.db import data_observed_at
+
+    try:
+        observed = data_observed_at(conn, deal)
+    except sqlite3.Error:
+        logger.warning("stats: не удалось прочитать время сбора", exc_info=True)
+        return None
+    return observed.isoformat(timespec="seconds") if observed else None
+
+
 def compute_stats(db_path: Path | str = DB_PATH) -> dict:
     """Считает статистику по базе. Бросает FileNotFoundError, если БД нет."""
     db_path = Path(db_path)
@@ -141,6 +159,7 @@ def compute_stats(db_path: Path | str = DB_PATH) -> dict:
             "WHERE is_active = 1 AND price IS NOT NULL AND area IS NOT NULL AND area > 0",
             conn,
         )
+        updated_at = data_updated_at(conn, "prodazha")
 
     df["ppsm"] = df["price"] / df["area"]
     df["price_mln"] = df["price"] / 1_000_000
@@ -188,7 +207,7 @@ def compute_stats(db_path: Path | str = DB_PATH) -> dict:
             "novostroiki": int(cat.get("novostroiki", 0)),
             "vtorichka": int(len(df) - cat.get("novostroiki", 0)),
         },
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": updated_at,
         "source": "db",
     }
 
@@ -211,6 +230,7 @@ def compute_rent_stats(db_path: Path | str = RENT_DB_PATH, sale_db_path: Path | 
              "WHERE is_active = 1 AND price IS NOT NULL AND price > 0 AND area IS NOT NULL AND area > 0")
     with sqlite3.connect(db_path) as conn:
         df = pd.read_sql(query, conn)
+        updated_at = data_updated_at(conn, "arenda")
     df["ppsm"] = df["price"] / df["area"]
 
     sale_ppsm: dict[str, float] = {}
@@ -257,7 +277,7 @@ def compute_rent_stats(db_path: Path | str = RENT_DB_PATH, sale_db_path: Path | 
         "rent_hist": rent_hist,
         "by_rooms": by_rooms,
         "trend": _weekly_trend(db_path, min_n=50),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": updated_at,
         "source": "db",
     }
 

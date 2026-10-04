@@ -394,12 +394,12 @@ def send_daily_report(
     if not chat_id:
         logger.info("%s не задан — ежедневный отчёт не отправляем", ADMIN_CHAT_ENV)
         return False
-    from krisha.bot import tg_call
+    from krisha.bot import tg_call, tg_error_summary
 
     resp = tg_call("sendMessage", chat_id=chat_id, text=text, parse_mode="HTML")
     ok = bool(resp and resp.get("ok"))
     if not ok:
-        logger.warning("daily_report: отправка не удалась: %s", resp)
+        logger.warning("daily_report: отправка не удалась: %s", tg_error_summary(resp))
     return ok
 
 

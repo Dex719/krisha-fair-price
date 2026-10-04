@@ -80,7 +80,7 @@ def send_monthly_report(dry_run: bool = False) -> int:
         print(text)
         return 0
 
-    from krisha.bot import tg_call
+    from krisha.bot import tg_call, tg_error_summary
 
     sent = 0
     for env in (ADMIN_CHAT_ENV, CHANNEL_ENV):
@@ -91,7 +91,7 @@ def send_monthly_report(dry_run: bool = False) -> int:
         if resp and resp.get("ok"):
             sent += 1
         else:
-            logger.warning("report: не отправилось в %s: %s", env, resp)
+            logger.warning("report: не отправилось в %s: %s", env, tg_error_summary(resp))
     if not sent:
         logger.info("report: ни один чат не задан — отчёт не отправлен")
     return sent

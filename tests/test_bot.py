@@ -553,3 +553,46 @@ def test_track_meta_finds_rent_in_rent_db_without_fetch(tmp_path, monkeypatch):
     monkeypatch.setattr(predict, "user_client", lambda **kw: (_ for _ in ()).throw(AssertionError("fetch")))
 
     assert bot._track_listing_meta(555) == (250_000, "Аренда 1к", "arenda")
+
+
+def test_tg_call_error_log_has_no_chat_ids(monkeypatch, caplog):
+    """Ответ ошибки Telegram бывает с parameters.migrate_to_chat_id — целиком
+    в лог (он публичный в Actions) его писать нельзя."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+
+    class FakeClient:
+        def post(self, url, json=None):
+            class R:
+                @staticmethod
+                def json():
+                    return {"ok": False, "error_code": 400,
+                            "description": "Bad Request: group chat was upgraded to a supergroup chat",
+                            "parameters": {"migrate_to_chat_id": -1009876543210}}
+
+            return R()
+
+    monkeypatch.setattr(bot, "_get_tg_client", lambda: FakeClient())
+    with caplog.at_level("WARNING"):
+        bot.tg_call("sendMessage", chat_id=987654321, text="x")
+
+    assert "400 Bad Request" in caplog.text
+    assert "9876543210" not in caplog.text and "987654321" not in caplog.text
+
+
+def test_format_reply_explains_reference_point_and_merged_age_label():
+    """Вклады — от «типичной квартиры» модели: бот называет её цену; год
+    постройки и возраст дома — одна подпись, как на сайте."""
+    result = dict(
+        SAMPLE_RESULT,
+        factors_base=43_760_000,
+        top_factors=[
+            {"feature": "building_age", "impact": -0.08, "impact_pct": -7.7, "impact_tenge": -3_200_000},
+            {"feature": "lat", "impact": 0.05, "impact_pct": 5.1, "impact_tenge": 2_000_000},
+        ],
+    )
+    text = bot.format_reply(result)
+
+    assert "от типичной квартиры — 43.8 млн ₸" in text
+    assert "Возраст дома: -7.7% (-3.2 млн ₸)" in text
+    assert "Расположение на карте" in text
+    assert bot.FEATURE_RU["year_built"] == bot.FEATURE_RU["building_age"]

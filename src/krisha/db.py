@@ -4,6 +4,7 @@ import hashlib
 import logging
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -1101,6 +1102,59 @@ def recent_sweep_runs(
     except sqlite3.Error:
         return []
     return [dict(zip(_SWEEP_RUN_COLUMNS, r)) for r in rows]
+
+
+def parse_db_datetime(value: str) -> datetime | None:
+    """Время из базы (`2026-07-07 10:00:00`, ISO, с зоной или без) → aware UTC.
+
+    Без зоны — UTC: так пишут и SQLite (`datetime('now')`), и сборщик.
+    """
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        logger.warning("некорректное время в базе: %r", value)
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def last_sweep_end(conn: sqlite3.Connection, deal: str = "prodazha") -> datetime | None:
+    """Конец последнего прохода сборщика по sweep_runs (None — нет записей)."""
+    try:
+        row = conn.execute(
+            "SELECT started_at, COALESCE(search_seconds, 0) + COALESCE(detail_seconds, 0) "
+            "FROM sweep_runs WHERE COALESCE(deal, 'prodazha') = ? "
+            "ORDER BY started_at DESC LIMIT 1",
+            (deal,),
+        ).fetchone()
+    except sqlite3.OperationalError:  # старая база без sweep_runs
+        return None
+    if not row or not row[0]:
+        return None
+    started = parse_db_datetime(str(row[0]))
+    return started + timedelta(seconds=float(row[1] or 0)) if started else None
+
+
+def data_observed_at(conn: sqlite3.Connection, deal: str = "prodazha") -> datetime | None:
+    """Когда сборщик последний раз прошёл по рынку — единый источник
+    «свежести данных» для /api/health (data_age_hours), /api/stats и
+    /api/stats/rent (updated_at) и sitemap (lastmod).
+
+    MAX(last_seen) по всей базе для этого не годится: его двигает и
+    пользователь — проверка ссылки пишет лот с last_seen = now, и сломанный
+    ночной сбор выглядел бы как «обновлено только что». Поэтому: конец
+    последнего прохода по sweep_runs (пишет только сборщик); старые базы без
+    истории — last_seen строк, которые завёл сборщик. None — данных нет.
+    """
+    observed = last_sweep_end(conn, deal)
+    if observed is not None:
+        return observed
+    row = conn.execute(
+        "SELECT MAX(last_seen) FROM listings WHERE last_seen IS NOT NULL "
+        "AND COALESCE(source, 'scrape') <> 'user'"
+    ).fetchone()
+    return parse_db_datetime(str(row[0])) if row and row[0] else None
 
 
 def count_listings(db_path: Path | str = DB_PATH) -> int:

@@ -47,11 +47,13 @@ FEATURE_RU = {
     "floor_ratio": "Положение по этажам",
     "is_first_floor": "Первый этаж",
     "is_last_floor": "Последний этаж",
-    "year_built": "Год постройки",
+    # Год постройки и возраст — один фактор (predict.FACTOR_GROUPS сливает их
+    # в building_age); подпись одна, как на сайте.
+    "year_built": "Возраст дома",
     "building_age": "Возраст дома",
     "ceiling": "Потолки",
-    "lat": "Широта",
-    "lon": "Долгота",
+    "lat": "Расположение на карте",
+    "lon": "Расположение на карте",
     "dist_center_km": "Расстояние до центра",
     "district": "Район",
     "microdistrict": "Микрорайон",
@@ -168,6 +170,32 @@ def _get_tg_client() -> httpx.Client:
     return _tg_client[0]
 
 
+def mask_chat_id(chat_id: Any) -> str:
+    """Номер чата для логов: только две последние цифры («***89»).
+
+    Логи рассылки (scripts/send_alerts.py) публичны — это лог GitHub Actions
+    открытого репозитория. Полный chat_id там — персональные данные
+    подписчика; двух цифр хватает, чтобы отличить строки одного прохода.
+    """
+    digits = "".join(ch for ch in str(chat_id) if ch.isdigit())
+    return f"***{digits[-2:]}" if digits else "***"
+
+
+def tg_error_summary(data: Any) -> str:
+    """Короткое описание неудачного ответа Bot API — без полей с chat_id.
+
+    Ответ ошибки бывает с `parameters.migrate_to_chat_id` (группа стала
+    супергруппой): целиком в лог его писать нельзя, логи публичны.
+    """
+    if not isinstance(data, dict):
+        return "нет ответа"
+    summary = f"{data.get('error_code', '?')} {data.get('description', '')}".strip()
+    retry_after = (data.get("parameters") or {}).get("retry_after")
+    if retry_after is not None:
+        summary += f" (retry_after={retry_after})"
+    return summary
+
+
 def tg_call(method: str, **payload: Any) -> dict | None:
     """Вызов метода Telegram Bot API. Ошибки логируем, наружу не роняем."""
     token = bot_token()
@@ -177,7 +205,7 @@ def tg_call(method: str, **payload: Any) -> dict | None:
         resp = _get_tg_client().post(f"{tg_api_base()}/bot{token}/{method}", json=payload)
         data = resp.json()
         if not data.get("ok"):
-            logger.warning("Telegram %s: %s", method, data)
+            logger.warning("Telegram %s: %s", method, tg_error_summary(data))
         return data
     except (httpx.HTTPError, ValueError) as exc:
         # Текст исключения может содержать URL с /bot<token>/ — вырезаем токен.
@@ -295,7 +323,15 @@ def format_reply(result: dict[str, Any]) -> str:
     factors = result.get("top_factors") or []
     if factors:
         lines.append("")
-        lines.append("📊 <b>Почему такая цена</b> (топ-3 фактора):")
+        base = result.get("factors_base")
+        # Вклады считаются от «типичной квартиры» модели — без неё «всё снижает,
+        # а оценка выше цены» выглядит ошибкой.
+        ref = ""
+        if base:
+            ref = "; от типичной квартиры — " + (
+                f"{base / 1_000:.0f} тыс ₸/мес" if rent else f"{base / 1_000_000:.1f} млн ₸"
+            )
+        lines.append(f"📊 <b>Почему такая цена</b> (топ-3 фактора{ref}):")
         for f in factors[:3]:
             arrow = "▲" if f["impact"] > 0 else "▼"
             name = FEATURE_RU.get(f["feature"], f["feature"])
@@ -792,7 +828,7 @@ def setup_webhook(retries: int = 3) -> bool:
         if data and data.get("ok"):
             logger.info("Telegram webhook настроен: %s%s", base, WEBHOOK_PATH)
             return True
-        logger.warning("setWebhook попытка %d/%d не удалась: %s", attempt, retries, data)
+        logger.warning("setWebhook попытка %d/%d не удалась: %s", attempt, retries, tg_error_summary(data))
         if attempt < retries:
             time.sleep(2 * attempt)
     return False

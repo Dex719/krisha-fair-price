@@ -134,3 +134,56 @@ def test_compute_rent_stats_missing_db(tmp_path):
     import pytest
     with pytest.raises(FileNotFoundError):
         stats.compute_rent_stats(tmp_path / "nope.db")
+
+
+# --- updated_at: свежесть данных, а не «сейчас» -----------------------------------
+
+def _set(path, sql, *args):
+    from krisha.db import get_conn
+
+    with get_conn(path) as conn:
+        conn.execute(sql, args)
+
+
+def test_updated_at_is_end_of_last_sweep_not_now(tmp_path):
+    """Раньше updated_at = datetime.now(): «Дата обновления» на сайте всегда
+    была сегодняшней. Теперь — конец последнего прохода сборщика, тот же
+    источник, что у data_age_hours в /api/health."""
+    path = _make_db(tmp_path)
+    _set(path, "INSERT INTO sweep_runs (started_at, deal, search_seconds, detail_seconds) "
+               "VALUES (?, ?, ?, ?)", "2026-09-01 02:00:00", "prodazha", 1800.0, 1800.0)
+    _set(path, "INSERT INTO sweep_runs (started_at, deal, search_seconds, detail_seconds) "
+               "VALUES (?, ?, ?, ?)", "2026-09-02 02:00:00", "prodazha", 3600.0, 1800.0)
+
+    s = stats.compute_stats(path)
+
+    assert s["updated_at"] == "2026-09-02T03:30:00+00:00"  # ISO 8601, UTC, с зоной
+
+
+def test_updated_at_without_sweeps_ignores_user_checks(tmp_path):
+    """Старые базы без sweep_runs — last_seen строк сборщика; проверка ссылки
+    пользователем (source='user', last_seen=now) свежести не добавляет."""
+    path = _make_db(tmp_path)
+    _set(path, "UPDATE listings SET last_seen = '2026-08-10 04:00:00'")
+    _set(path, "UPDATE listings SET last_seen = '2026-10-04 12:00:00', source = 'user' WHERE id = 3")
+
+    assert stats.compute_stats(path)["updated_at"] == "2026-08-10T04:00:00+00:00"
+
+
+def test_updated_at_is_none_without_any_scrape(tmp_path):
+    path = tmp_path / "empty.db"
+    db.init_db(path)
+
+    assert stats.compute_stats(path)["updated_at"] is None
+
+
+def test_rent_updated_at_counts_only_rent_sweeps(tmp_path):
+    rent = _make_rent_db(tmp_path)
+    _set(rent, "INSERT INTO sweep_runs (started_at, deal, search_seconds, detail_seconds) "
+               "VALUES (?, ?, ?, ?)", "2026-09-03 15:00:00", "arenda", 600.0, 600.0)
+    _set(rent, "INSERT INTO sweep_runs (started_at, deal, search_seconds, detail_seconds) "
+               "VALUES (?, ?, ?, ?)", "2026-09-04 02:00:00", "prodazha", 0.0, 0.0)
+
+    s = stats.compute_rent_stats(rent, tmp_path / "no-sale.db")
+
+    assert s["updated_at"] == "2026-09-03T15:20:00+00:00"

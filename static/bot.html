@@ -2,92 +2,43 @@
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<script>(function(){try{var t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme');if(!t)t='dark';document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();</script>
+<meta name="theme-color" content="#0A100C" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F1F4EC" media="(prefers-color-scheme: light)">
 <script>
-(function(){
-  var d=document.documentElement, c=navigator.connection||{},
-      rm=matchMedia('(prefers-reduced-motion: reduce)').matches,
-      weak=!!c.saveData
-          ||/(^|-)(slow-2g|2g)$/.test(c.effectiveType||'')
-          ||(navigator.deviceMemory&&navigator.deviceMemory<=2)
-          ||(navigator.hardwareConcurrency&&navigator.hardwareConcurrency<=4
-             &&navigator.deviceMemory&&navigator.deviceMemory<=4),
-      lite=weak;
-  d.classList.add(lite?'lite':'anim');
-  if(rm)d.classList.add('rm');
-  window.bagamLite=lite;window.bagamRM=rm;
-  var q=[];
-  function flushTG(){var tg=window.Telegram&&window.Telegram.WebApp;if(!tg)return;while(q.length)q.shift()(tg);}
-  window.bagamTG=function(cb){q.push(cb);flushTG();};
-  var inTG=/tgWebApp/i.test(location.search+location.hash)||!!window.TelegramWebviewProxy||/Telegram/i.test(navigator.userAgent);
-  if(inTG){var s=document.createElement('script');s.src='https://telegram.org/js/telegram-web-app.js';s.async=true;s.onload=flushTG;document.head.appendChild(s);}
-  window.bagamBoot=function(cb){
-    if(lite){cb();return;}
-    var fired=false,fin=function(){if(fired)return;fired=true;cb();};
-    var guard=setTimeout(fin,7000);
-    function load(src,next){
-      var el=document.createElement('script');el.src=src;el.async=false;
-      el.onload=next;el.onerror=function(){clearTimeout(guard);fin();};
-      document.head.appendChild(el);
-    }
-    var start=function(){
-      /* Сеть сама себя измерила: если html полз дольше двух секунд,
-         анимации не грузим — 65 КБ библиотеки важнее украшений. */
-      var nv=performance.getEntriesByType('navigation')[0];
-      if(nv&&(nv.responseEnd-nv.requestStart)>2000){d.classList.remove('anim');d.classList.add('lite');window.bagamLite=true;fin();return;}
-      load('/static/js/gsap.min.js',function(){
-      load('/static/js/ScrollTrigger.min.js',function(){clearTimeout(guard);fin();});});};
-    if(document.readyState==='complete')start();
-    else addEventListener('load',function(){('requestIdleCallback' in window)?requestIdleCallback(start,{timeout:1200}):setTimeout(start,80);});
-  };
-})();
+/* до первой отрисовки: тема (сохранённый выбор, иначе системная) и режим движения; bagam.ready — очередь до загрузки site.js */
+(function(d,w){var n=navigator,c=n.connection||{},m=function(q){return !!(w.matchMedia&&w.matchMedia(q).matches)},t;
+try{t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme')}catch(e){}
+d.setAttribute('data-theme',t==='light'||t==='dark'?t:m('(prefers-color-scheme: light)')?'light':'dark');
+var lite=!!c.saveData||/(^|-)(slow-2g|2g)$/.test(c.effectiveType||'')||(n.deviceMemory&&n.deviceMemory<=2)||(n.hardwareConcurrency&&n.hardwareConcurrency<=4&&n.deviceMemory&&n.deviceMemory<=4);
+d.classList.add('js',lite?'lite':'anim');if(m('(prefers-reduced-motion: reduce)'))d.classList.add('rm');
+w.bagam={q:[],ready:function(f){this.q.push(f)}};
+})(document.documentElement,window);
 </script>
-<title>Telegram-бот baǵam — оценка квартиры, слежение за ценой и алерты │ baǵam</title>
-<meta name="description" content="Telegram-бот baǵam оценивает квартиру по ссылке или тексту, следит за ценой лота и присылает алерты о выгодных объявлениях.">
+<title>Telegram-бот baǵam — оценка квартиры, слежение за ценой и выгодные объявления │ baǵam</title>
+<meta name="description" content="Telegram-бот baǵam оценивает квартиру по ссылке или тексту, следит за ценой объявления и присылает уведомления о выгодных объявлениях.">
+<link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/unb-lat.woff2">
+<link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/unb-gacute.woff2">
 <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/onest-cyr.woff2">
+<link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/onest-lat.woff2">
 <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/unb-cyr.woff2">
-<style>
-@font-face{font-family:'Onest';font-style:normal;font-weight:300 700;font-display:swap;src:url(/static/fonts/onest-cyr.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
-@font-face{font-family:'Onest';font-style:normal;font-weight:300 700;font-display:swap;src:url(/static/fonts/onest-lat.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
-@font-face{font-family:'Unbounded';font-style:normal;font-weight:400 800;font-display:swap;src:url(/static/fonts/unb-cyr.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
-@font-face{font-family:'Unbounded';font-style:normal;font-weight:400 800;font-display:swap;src:url(/static/fonts/unb-lat.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
-/* ǵ в слове baǵam: этой буквы нет в обычных наборах, без неё логотип рисуется системным шрифтом */
-@font-face{font-family:'Unbounded';font-style:normal;font-weight:400 800;font-display:swap;src:url(/static/fonts/unb-gacute.woff2) format('woff2');unicode-range:U+01F5}
-/* запасные шрифты с теми же метриками: подмена не двигает строки */
-@font-face{font-family:'OnestFB';src:local('Arial'),local('Helvetica'),local('Roboto');size-adjust:106.4%;ascent-override:91.1%;descent-override:28.7%;line-gap-override:0%}
-@font-face{font-family:'UnboundedFB';src:local('Arial'),local('Helvetica'),local('Roboto');size-adjust:139%;ascent-override:71.6%;descent-override:17.6%;line-gap-override:0%}
-@font-face{font-family:'DataFB';src:local('Courier New'),local('DejaVu Sans Mono'),local('Roboto Mono');size-adjust:100%;ascent-override:102%;descent-override:30%;line-gap-override:0%}
-</style>
-<style>
-/* Гибридный «дата»-шрифт: латиница/цифры — JetBrains Mono, кириллица — Onest (моно-кириллица читается плохо) */
-@font-face{font-family:'Data';font-weight:400 600;font-display:swap;
-src:url(/static/fonts/jbm-lat.woff2) format('woff2');
-unicode-range:U+0021-00FF,U+2000-206F,U+20A0-20BF,U+2116,U+2190-21FF,U+25A0-25FF,U+2070-209F,U+2212,U+2215,U+2248,U+2264-2265;}
-@font-face{font-family:'Data';font-weight:400 600;font-display:swap;size-adjust:103%;
-src:url(/static/fonts/onest-cyr.woff2) format('woff2');
-unicode-range:U+0020,U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1;}
-</style>
 <link rel="stylesheet" href="/static/design.css">
 <style>
-/* Страница «Telegram-бот». Шапки секций (.shead), сцена (.cta), «Куда дальше» (.ncards), подвал и макет Telegram (.iph, .tgb …) берутся из design.css.
+/* Страница «Telegram-бот» — посадочная: герой с кнопкой, три сценария, вопросы, справочник в <details>.
+   Шапки секций (.shead), сцена (.cta), «Куда дальше» (.ncards), подвал и макет Telegram (.iph, .tgb …) — из design.css.
    Тексты акцентных цветов — только через --limeink/--violink: сырой --lime/--vio в светлой теме не дотягивает до контраста. */
-.phero{padding:164px 0 0}
-.phero h1{font-family:Unbounded,UnboundedFB,sans-serif;font-weight:700;font-size:clamp(38px,5.1vw,72px);letter-spacing:-.04em;line-height:1.03;text-wrap:balance}
-.phero h1 em{font-style:normal;color:var(--limeink)}
-.sect{padding:104px 0 0}
+/* герой с телефоном рядом: заголовок мельче, до первой секции — полный отступ */
+.phero h1{font-size:clamp(38px,5.1vw,72px)}
 .phero+.sect{padding-top:104px}
-/* герой: слева слова и кнопка, справа телефон на спокойной панели */
 .bhgrid{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,.88fr);gap:56px;align-items:center}
-.plede{margin-top:30px;max-width:540px;font-size:17.5px;line-height:1.62;color:var(--dim);text-wrap:pretty}
-.plede b{color:var(--ink);font-weight:600}
-.plede code{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:15.5px;color:var(--ink)}
+.plede{margin-top:30px;max-width:540px}
 .bact{display:flex;align-items:center;flex-wrap:wrap;gap:14px 18px;margin-top:34px}
 a.gobtn{display:inline-flex;align-items:center;gap:10px;text-decoration:none}
-.bhandle{padding:11px 15px;border:1px solid var(--line);border-radius:var(--r1);background:var(--panel);box-shadow:var(--sh1);font-size:14px;font-weight:500;color:var(--ink);user-select:all}
-.pupd{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px 14px;margin-top:22px;padding:9px 14px;border:1px solid var(--line);border-radius:var(--r1);background:var(--panel);box-shadow:var(--sh1);font-size:13.5px;line-height:1.35;color:var(--dim)}
-.pupd b{font-family:'Data','JetBrains Mono',DataFB,monospace;font-weight:600;color:var(--limeink)}
+.bhint{font-size:14.5px;line-height:1.45;color:var(--dim)}
+.bhint b{color:var(--ink);font-weight:600;user-select:all}
+.pupd{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px 14px;margin-top:26px;padding:9px 14px;border:1px solid var(--line);border-radius:var(--r1);background:var(--panel);box-shadow:var(--sh1);font-size:13.5px;line-height:1.35;color:var(--dim)}
+.pupd b{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font-weight:600;color:var(--limeink)}
 .pupd span{white-space:nowrap}
-.bstage{position:relative;justify-self:end;width:100%;max-width:468px;display:flex;flex-direction:column;align-items:center;gap:18px;padding:34px 20px 20px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r3);box-shadow:var(--sh1)}
+.bstage{justify-self:end;width:100%;max-width:468px;display:flex;flex-direction:column;align-items:center;gap:18px;padding:34px 20px 20px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r3);box-shadow:var(--sh1)}
 .bstage .iph{margin:0}
 .bcap{max-width:34ch;text-align:center;font-size:13px;line-height:1.45;color:var(--dim)}
 /* Telegram-макет: крупный ответ и ссылки */
@@ -95,69 +46,25 @@ a.gobtn{display:inline-flex;align-items:center;gap:10px;text-decoration:none}
 .tgb .ln.gap{margin-top:8px}
 .tgb .lk{color:#6FB0E8}
 .tgb .ln b{font-variant-numeric:tabular-nums}
-/* ответ бота: одна панель, ячейки разделены линией в 1px */
-.bgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r3);overflow:hidden;box-shadow:var(--sh1)}
-.bcell{display:flex;flex-direction:column;gap:10px;min-width:0;padding:28px 30px 30px;background:var(--panel)}
-.bcell h3{font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:20px;letter-spacing:-.025em;line-height:1.22}
-.bcell p{max-width:52ch;font-size:15.5px;line-height:1.6;color:var(--dim)}
-.bex{display:flex;flex-direction:column;gap:3px;margin-top:auto;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r1)}
-.bcell p+.bex{margin-top:6px}
-.bex code{display:block;font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:12.5px;line-height:1.55;color:var(--ink);overflow-wrap:anywhere}
-.mnote{margin:18px 4px 0;max-width:80ch;font-size:14.5px;line-height:1.65;color:var(--dim);text-wrap:pretty}
-.mnote b{color:var(--ink);font-weight:600}
-.mnote code{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:13px;color:var(--ink);white-space:nowrap}
-/* команды: список с разделителями, группы подписаны */
-.cmds{overflow:hidden;background:var(--panel);border:1px solid var(--line);border-radius:var(--r3);box-shadow:var(--sh1)}
-.cgrp{padding:13px 28px;font-family:Onest,OnestFB,sans-serif;font-size:14px;font-weight:500;line-height:1.3;color:var(--dim);background:var(--bg);border-bottom:1px solid var(--line)}
-.cgrp:not(:first-child){border-top:1px solid var(--line)}
-.crow{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.5fr) minmax(0,1.15fr);gap:6px 32px;align-items:baseline;padding:22px 28px;border-bottom:1px solid var(--line)}
-.crow:last-child{border-bottom:0}
-.cmd{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:15px;font-weight:600;line-height:1.4;color:var(--limeink);overflow-wrap:anywhere}
-.cmd small{display:block;margin-top:2px;font-size:12.5px;font-weight:500;color:var(--dim)}
-.cmd.plain{font-family:Onest,OnestFB,sans-serif;font-size:16.5px;letter-spacing:-.015em;color:var(--ink)}
-.ctx{font-size:15.5px;line-height:1.6;color:var(--dim);text-wrap:pretty}
-.ctx b{color:var(--ink);font-weight:600}
-.cex{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:12.5px;line-height:1.6;color:var(--dim);overflow-wrap:anywhere}
-/* слежка и алерты: двухколоночные ряды, чат то справа, то слева */
+/* три сценария: текст и чат рядом, чат то справа, то слева */
 .bsplit{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:64px;align-items:center}
 .bsplit+.bsplit{margin-top:80px}
 .bsplit.rev .bchat{order:-1}
-.bh3{font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:clamp(22px,2.1vw,28px);letter-spacing:-.032em;line-height:1.12;text-wrap:balance}
-.btx{margin-top:14px;max-width:54ch;font-size:16.5px;line-height:1.65;color:var(--dim);text-wrap:pretty}
+.bnum{display:block;margin-bottom:12px;font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font-size:13px;color:var(--dim)}
+.bh3{font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:clamp(24px,2.3vw,32px);letter-spacing:-.032em;line-height:1.12;text-wrap:balance}
+.btx{margin-top:14px;max-width:52ch;font-size:16.5px;line-height:1.65;color:var(--dim);text-wrap:pretty}
 .btx b,.btx code{color:var(--ink);font-weight:600}
-.btx code{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:14.5px}
-.bkv{margin-top:26px;border-top:1px solid var(--line)}
-.bkv>div{display:grid;grid-template-columns:minmax(0,.62fr) minmax(0,1.6fr);gap:4px 24px;padding:15px 0;border-bottom:1px solid var(--line)}
+.btx code,.bkv code{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font-size:.88em}
+.bkv{margin-top:24px;border-top:1px solid var(--line)}
+.bkv>div{display:grid;grid-template-columns:minmax(0,.62fr) minmax(0,1.6fr);gap:4px 24px;padding:14px 0;border-bottom:1px solid var(--line)}
 .bkv dt{font-size:14px;font-weight:500;line-height:1.5;color:var(--dim)}
 .bkv dd{font-size:15.5px;line-height:1.55;color:var(--ink)}
-.bkv dd code{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:13.5px}
 .bchat{justify-self:center;width:100%;max-width:470px;overflow:hidden;background:#0E1621;color:#fff;border:1px solid var(--line);border-radius:var(--r3);box-shadow:var(--sh1);font-family:-apple-system,'SF Pro Text','Onest',OnestFB,sans-serif}
 .bchat .tghd{padding:12px 16px}
 .bchat .tgch{padding:16px 18px 20px;gap:8px}
 .bchat .tgb{max-width:88%;font-size:15px}
 .bchat .tgb .mono{font-size:13.5px;overflow-wrap:anywhere}
 .bchat .tgb.out{max-width:92%}
-/* как читаются фильтры алертов */
-.bflt{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;margin-top:64px;background:var(--line);border:1px solid var(--line);border-radius:var(--r3);overflow:hidden;box-shadow:var(--sh1)}
-.bf{padding:26px 28px 30px;background:var(--panel)}
-.bf h4{font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:18px;letter-spacing:-.02em;line-height:1.25}
-.bf p{margin-top:8px;font-size:15px;line-height:1.6;color:var(--dim)}
-.bf p b{color:var(--ink);font-weight:600}
-.bchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:16px}
-.bchips code{padding:5px 10px;font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:13px;line-height:1.35;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:var(--r1)}
-.bfnote{margin:16px 4px 0;max-width:80ch;font-size:14.5px;line-height:1.65;color:var(--dim)}
-.bfnote code{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:13px;color:var(--ink)}
-/* как начать: слева подпись, справа три шага */
-.bstart{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.5fr);gap:64px;align-items:start}
-.bstart .shead{position:sticky;top:112px;margin:0;display:block}
-.bhs{display:inline-block;margin-top:22px}
-.bsteps{border-top:1px solid var(--line)}
-.bstep{display:grid;grid-template-columns:44px minmax(0,1fr);gap:8px 12px;align-items:baseline;padding:30px 0;border-bottom:1px solid var(--line)}
-.sidx{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:13px;color:var(--dim);font-variant-numeric:tabular-nums}
-.sttl{font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:clamp(21px,2.1vw,26px);letter-spacing:-.03em;line-height:1.15;text-wrap:balance}
-.stx{grid-column:2;max-width:60ch;font-size:16.5px;line-height:1.65;color:var(--dim);text-wrap:pretty}
-.stx b{color:var(--ink);font-weight:600}
-.stx code{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:14px;color:var(--ink);overflow-wrap:anywhere}
 /* вопросы: одна панель, строки через линию */
 .faq{overflow:hidden;background:var(--panel);border:1px solid var(--line);border-radius:var(--r3);box-shadow:var(--sh1)}
 .qa+.qa{border-top:1px solid var(--line)}
@@ -168,14 +75,51 @@ a.gobtn{display:inline-flex;align-items:center;gap:10px;text-decoration:none}
 .qi::before,.qi::after{content:"";position:absolute;background:var(--limeink);border-radius:2px;transition:transform .4s cubic-bezier(.22,.75,.2,1),opacity .3s}
 .qi::before{left:0;right:0;top:9px;height:2px}
 .qi::after{top:0;bottom:0;left:9px;width:2px}
-.qa.open .qi::after{transform:scaleY(0);opacity:0}
-.a{overflow:hidden;height:0}
+.qa.open .qi::after,.ref details[open]>summary .qi::after{transform:scaleY(0);opacity:0}
+/* ответы свёрнуты, только когда работает скрипт (site.js): без JS текст виден целиком */
+html.js .a{overflow:hidden;height:0}
+html:not(.js) .qi{display:none}
 .a p{max-width:76ch;padding:0 28px 28px;font-size:16px;line-height:1.7;color:var(--dim)}
 .a p+p{margin-top:-12px}
 .a p b{color:var(--ink);font-weight:600}
-.a p code{font-family:'Data','JetBrains Mono',DataFB,monospace;font-size:14px;color:var(--ink);overflow-wrap:anywhere}
-.a p a{color:var(--limeink);text-decoration:underline;text-underline-offset:3px}
-/* сцена: ссылка на сайт под кнопкой */
+.a p code,.ref code{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font-size:.88em;color:var(--ink);overflow-wrap:anywhere}
+.a p a,.ref a{color:var(--limeink);text-decoration:underline;text-underline-offset:3px}
+/* справочник: свёрнутые <details>, по умолчанию закрыты */
+.ref{overflow:hidden;background:var(--panel);border:1px solid var(--line);border-radius:var(--r3);box-shadow:var(--sh1)}
+.ref details+details{border-top:1px solid var(--line)}
+.ref summary{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:22px 28px;list-style:none;cursor:pointer;font-family:Onest,OnestFB,sans-serif;font-size:17px;font-weight:600;letter-spacing:-.02em;line-height:1.3;color:var(--ink);transition:background-color .25s}
+.ref summary::-webkit-details-marker{display:none}
+.ref summary:hover{background:var(--hover)}
+.ref summary:focus-visible{outline-offset:-4px;border-radius:var(--r2)}
+html:not(.js) .ref .qi{display:block}
+.rbody{padding:0 28px 28px}
+.rbody>p{max-width:76ch;font-size:15.5px;line-height:1.65;color:var(--dim);text-wrap:pretty}
+.rbody>p+p,.rbody>*+p{margin-top:12px}
+.rbody>p b{color:var(--ink);font-weight:600}
+/* команды: строки «команда — что делает — пример» */
+.cmds{border-top:1px solid var(--line)}
+.cgrp{padding:16px 0 4px;font-family:Onest,OnestFB,sans-serif;font-size:14px;font-weight:600;line-height:1.3;color:var(--dim)}
+.crow{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.6fr) minmax(0,1fr);gap:4px 28px;align-items:baseline;padding:14px 0;border-bottom:1px solid var(--line)}
+.cmd{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font-size:14.5px;font-weight:600;line-height:1.4;color:var(--limeink);overflow-wrap:anywhere}
+.cmd.plain{font-family:Onest,OnestFB,sans-serif;font-size:15.5px;color:var(--ink)}
+.ctx{font-size:15px;line-height:1.6;color:var(--dim);text-wrap:pretty}
+.ctx b{color:var(--ink);font-weight:600}
+.cex{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font-size:12.5px;line-height:1.6;color:var(--dim);overflow-wrap:anywhere}
+/* блоки ответа: название, пояснение, строка из чата */
+.blk{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.6fr);gap:6px 28px;padding:14px 0;border-bottom:1px solid var(--line)}
+.blk h3{font-family:Onest,OnestFB,sans-serif;font-size:15.5px;font-weight:600;line-height:1.4;color:var(--ink)}
+.blk p{font-size:15px;line-height:1.6;color:var(--dim)}
+.blk code{display:block;margin-top:6px;font-size:12.5px;line-height:1.55}
+.blks{border-top:1px solid var(--line);margin-bottom:16px}
+/* фильтры подписки на выгодные объявления */
+.bflt{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;margin-bottom:16px;background:var(--line);border:1px solid var(--line);border-radius:var(--r2);overflow:hidden}
+.bf{padding:20px 22px 22px;background:var(--bg)}
+.bf h4{font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:16px;letter-spacing:-.02em;line-height:1.25}
+.bf p{margin-top:6px;font-size:14.5px;line-height:1.55;color:var(--dim)}
+.bf p b{color:var(--ink);font-weight:600}
+.bchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.bchips code{padding:4px 9px;font-size:12.5px;line-height:1.35;background:var(--panel);border:1px solid var(--line);border-radius:var(--r1)}
+/* сцена */
 .cta .gobtn{margin-top:40px}
 .cta .sub{display:inline-block;padding:7px 14px;border-radius:99px;background:rgba(8,13,10,.74)}
 .cta .sub a{color:inherit;text-decoration:underline;text-underline-offset:3px}
@@ -185,103 +129,76 @@ a.gobtn{display:inline-flex;align-items:center;gap:10px;text-decoration:none}
  .bstage{justify-self:center}
  .bsplit{grid-template-columns:1fr;gap:32px}
  .bsplit.rev .bchat{order:0}
- .bstart{grid-template-columns:1fr;gap:28px}
- .bstart .shead{position:static}
- .bflt{grid-template-columns:1fr}
 }
 @media(max-width:820px){
- .phero{padding-top:124px}
- .sect,.phero+.sect{padding-top:72px}
+ .phero+.sect{padding-top:72px}
  .plede{margin-top:24px}
  .bact{margin-top:28px}
- .bgrid{grid-template-columns:1fr}
- .bcell{padding:24px 22px 26px}
  .bsplit+.bsplit{margin-top:64px}
- .bflt{margin-top:48px}
- .crow{grid-template-columns:1fr;gap:6px;padding:20px 20px 22px}
- .cgrp{padding:12px 20px}
- .bkv>div{grid-template-columns:1fr;gap:2px}
- .bstep{grid-template-columns:30px minmax(0,1fr);gap:8px 10px;padding:24px 0}
- .q{padding:20px;font-size:17px}
+ .bkv>div,.crow,.blk{grid-template-columns:1fr;gap:4px}
+ .bflt{grid-template-columns:1fr}
+ .q,.ref summary{padding:20px;font-size:17px}
  .a p{padding:0 20px 24px}
+ .rbody{padding:0 20px 24px}
 }
 @media(max-width:480px){
  .bstage{padding:26px 12px 18px}
  .bchat .tgch{padding:14px 12px 16px}
  .bchat .tgb,.bchat .tgb.out{max-width:94%}
+ .bact .gobtn{flex:1 1 100%;justify-content:center}
 }
-/* ---------- слабое устройство или экономия трафика: только суть ---------- */
-html.lite *{box-shadow:none!important}
-/* ---------- нет сети: плашка из общего скрипта ---------- */
-.offbar{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:80;display:none;
- align-items:center;gap:9px;padding:11px 17px;border:1px solid var(--line);border-radius:13px;
- background:var(--panel);color:var(--ink);font:500 14px Onest;box-shadow:0 12px 34px var(--shadow)}
-.offbar.on{display:flex}
-.offbar i{width:8px;height:8px;border-radius:50%;background:var(--warn);display:block}
-</style><link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+</style>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <link rel="canonical" href="https://bagam.info/bot">
 <meta property="og:type" content="website">
+<meta property="og:site_name" content="baǵam">
 <meta property="og:url" content="https://bagam.info/bot">
-<meta property="og:title" content="Telegram-бот baǵam — оценка квартиры, слежение за ценой и алерты │ baǵam">
-<meta property="og:description" content="Telegram-бот baǵam оценивает квартиру по ссылке или тексту, следит за ценой лота и присылает алерты о выгодных объявлениях.">
-<meta property="og:image" content="https://bagam.info/static/img/city-1400.webp">
+<meta property="og:title" content="Telegram-бот baǵam — оценка квартиры, слежение за ценой и выгодные объявления │ baǵam">
+<meta property="og:description" content="Telegram-бот baǵam оценивает квартиру по ссылке или тексту, следит за ценой объявления и присылает уведомления о выгодных объявлениях.">
+<meta property="og:image" content="https://bagam.info/static/img/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="baǵam — справедливая цена квартир в Алматы: ночной город под Заилийским Алатау">
 <meta property="og:locale" content="ru_RU">
 <meta name="twitter:card" content="summary_large_image">
+<script src="/static/js/site.js" defer></script>
 </head><body>
 <a class="skip" href="#main">Перейти к содержимому</a>
-<div class="progress" id="prog"></div>
-<nav><div class="wrap nrow">
+<div class="progress" id="prog" aria-hidden="true"></div>
+<nav aria-label="Основная навигация"><div class="wrap nrow">
 <a class="logo" href="/" aria-label="baǵam — на главную">baǵam<span>.</span></a>
-<div class="menu"><a href="/">Оценка</a><a href="/stats">Рынок</a><a href="/rent">Аренда</a><a href="/about">О проекте</a></div>
-<button class="thbtn" type="button" data-theme-toggle aria-label="Сменить тему"><svg class="tm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg><svg class="ts" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button><a class="tgbtn" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><span class="tgn">Telegram-бот</span><span class="tghw"><span class="tgh">@fairprice_kzbot</span></span><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 10l-4 4l6 6l4-16l-18 7l4 2l2 6l3-4" stroke="currentColor" stroke-width="1.9"/></svg></a>
+<div class="menu"><a href="/">Оценка</a><a href="/stats">Рынок</a><a href="/bot" aria-current="page">Telegram-бот</a><a href="/about">О проекте</a></div>
+<button class="thbtn" type="button" data-theme-toggle aria-label="Сменить тему"><svg class="tm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg><svg class="ts" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button><a class="tgbtn" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><span class="tgn">Открыть бота</span><span class="tghw"><span class="tgh">@fairprice_kzbot</span></span><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 10l-4 4l6 6l4-16l-18 7l4 2l2 6l3-4" stroke="currentColor" stroke-width="1.9"/></svg></a>
 <button class="burg" type="button" aria-label="Меню" aria-expanded="false" aria-controls="mmenu"><span></span><span></span></button>
 </div></nav>
-<div class="mmenu" id="mmenu" aria-label="Меню" aria-hidden="true">
-<a class="ml" data-href="/" href="/">Оценка<i>главная</i></a>
-<a class="ml" data-href="/stats" href="/stats">Рынок<i>цены продажи по районам</i></a>
-<a class="ml" data-href="/rent" href="/rent">Аренда<i>цены аренды и доходность</i></a>
-<a class="ml" data-href="/about" href="/about">О проекте<i>как считает модель</i></a>
+<div class="mmenu" id="mmenu" role="dialog" aria-modal="true" aria-label="Меню" aria-hidden="true">
+<a class="ml" href="/">Оценка<i>главная</i></a>
+<a class="ml" href="/stats">Рынок<i>цены продажи и аренды по районам</i></a>
+<a class="ml" href="/bot" aria-current="page">Telegram-бот<i>оценка в чате и слежение за ценой</i></a>
+<a class="ml" href="/about">О проекте<i>как считает модель</i></a>
 <div class="msub">
-<a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">Telegram-бот · @fairprice_kzbot</a>
-<a href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener">Открытый код на GitHub</a>
+<a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">Открыть бота · @fairprice_kzbot</a>
+<a href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener">Исходный код на GitHub</a>
 <button class="mth" type="button" data-theme-toggle><span>Тема оформления</span><b data-theme-label>тёмная</b></button>
 <span>данные krisha.kz · Алматы</span>
+<button class="mclose" type="button" data-mclose>Закрыть меню</button>
 </div>
 </div>
-<script>
-(function(){
-  const b=document.querySelector('.burg'), m=document.getElementById('mmenu');
-  if(!b||!m) return;
-  m.querySelectorAll('.ml').forEach(a=>{ if(location.href.split('#')[0]===a.dataset.href) a.classList.add('on'); });
-  let open=false;
-  function set(v){
-    open=v;
-    b.setAttribute('aria-expanded', v?'true':'false');
-    b.setAttribute('aria-label', v?'Закрыть меню':'Меню');
-    document.body.classList.toggle('mopen', v);
-    m.setAttribute('aria-hidden', v?'false':'true');
-    m.classList.toggle('open', v);
-    if(v) m.querySelector('.ml').focus({preventScroll:true}); else b.focus({preventScroll:true});
-  }
-  b.addEventListener('click',()=>set(!open));
-  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&open) set(false); });
-  m.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>{ if(a.classList.contains('on')){ set(false); } }));
-})();
-</script>
 <main id="main">
 <section class="phero"><div class="wrap">
 <div class="bhgrid">
  <div class="bhl">
-  <h1>Бот, который <br><em>знает цену</em></h1>
-  <p class="plede"><b>Telegram-бот умеет три вещи</b>: оценить квартиру по ссылке или тексту, следить за лотом через <code>/track</code> и присылать алерты через <code>/alerts</code>. По ссылке бот оценивает и продажу, и аренду.</p>
+  <h1>Цена квартиры <br><em>в одном сообщении</em></h1>
+  <p class="plede">Пришлите боту ссылку на объявление с krisha.kz. Он сравнит квартиру с тысячами похожих и ответит, <b>выгодная цена, рыночная или завышенная</b> — и почему. Бесплатно и без регистрации.</p>
   <div class="bact">
-   <a class="gobtn" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">Открыть в Telegram <i>→</i></a>
-   <span class="bhandle mono">@fairprice_kzbot</span>
+   <a class="gobtn" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">Открыть бота <i>→</i></a>
+   <span class="bhint">или найдите <b>@fairprice_kzbot</b> в Telegram</span>
   </div>
-  <span class="pupd"><span>средняя ошибка модели:</span><span>продажа <b data-l="mape">7,6%</b></span><span>аренда <b data-l="rmape">~11%</b></span></span>
+  <span class="pupd"><span>средняя ошибка оценки:</span><span>продажа <b data-l="mape">7,6%</b></span><span>аренда <b data-l="rmape">11,0%</b></span></span>
  </div>
  <div class="bstage">
-  <div class="iph" role="img" aria-label="Пример переписки с ботом baǵam в Telegram: пользователь присылает ссылку на объявление, бот отвечает ценой в объявлении, справедливой ценой, вердиктом «Выгодно» и тремя факторами цены">
+  <div class="iph" role="img" aria-label="Пример переписки с ботом baǵam в Telegram: пользователь присылает ссылку на объявление, бот отвечает ценой в объявлении, справедливой ценой, диапазоном оценки, вердиктом «Выгодно» и тремя факторами цены от типичной квартиры">
   <div class="iscr">
    <div class="isb"><span class="isle">21:04</span><span class="iisl"></span><span class="isri"><svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor" aria-hidden="true"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0.5" width="3" height="11.5" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="none" aria-hidden="true"><path d="M1 4.2a10.6 10.6 0 0 1 14 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M3.6 6.9a7 7 0 0 1 8.8 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M6.2 9.5a3.2 3.2 0 0 1 3.6 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none" aria-hidden="true"><rect x="0.7" y="0.7" width="21" height="10.6" rx="3.2" stroke="currentColor" stroke-opacity=".45" stroke-width="1.1"/><rect x="2.3" y="2.3" width="17.8" height="7.4" rx="2" fill="currentColor"/><path d="M23.4 4.3v3.4a2 2 0 0 0 0-3.4Z" fill="currentColor" fill-opacity=".45"/></svg></span></div>
    <div class="tghd"><span class="tgbk"><svg viewBox="0 0 9 15" fill="none" aria-hidden="true"><path d="M7.6 1.4 1.7 7.5l5.9 6.1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="tgttl"><b>baǵam</b><i>бот</i></span><span class="tgav">b</span></div>
@@ -291,10 +208,11 @@ html.lite *{box-shadow:none!important}
     <div class="tgb in wide">
      <span class="ln">🏠 <b>2-комнатная квартира · 49&nbsp;м² · 5/9 этаж</b></span>
      <span class="ln">📍 Алматы, Алатауский р-н, мкр Алтын орда</span>
-     <span class="ln gap">💰 Цена в объявлении: <b>27&nbsp;500&nbsp;000&nbsp;₸</b></span>
+     <span class="ln gap">💰 Цена в объявлении: <b>25&nbsp;900&nbsp;000&nbsp;₸</b></span>
      <span class="ln">⚖️ Справедливая цена: <b>28&nbsp;700&nbsp;000&nbsp;₸</b></span>
-     <span class="ln">🟢 Выгодно — дешевле оценки (-4.2%)</span>
-     <span class="ln gap">📊 <b>Почему такая цена</b> (топ-3 фактора):</span>
+     <span class="ln">📏 Диапазон оценки: <b class="nw">26.4–31.0&nbsp;млн&nbsp;₸</b></span>
+     <span class="ln">🟢 Выгодно — дешевле оценки (-9.8%)</span>
+     <span class="ln gap">📊 <b>Почему такая цена</b> (топ-3 фактора; от типичной квартиры — 27.3&nbsp;млн&nbsp;₸):</span>
      <span class="ln">▲ Уровень цен района: +5.6% (+1.6&nbsp;млн&nbsp;₸)</span>
      <span class="ln">▼ Этаж: -2.1% (-0.6&nbsp;млн&nbsp;₸)</span>
      <span class="ln">▲ Площадь: +1.5% (+0.4&nbsp;млн&nbsp;₸)</span>
@@ -310,52 +228,31 @@ html.lite *{box-shadow:none!important}
 </div></section>
 
 <section class="sect"><div class="wrap">
-<div class="shead"><div class="shl"><h2 class="shttl">Что бот пишет в ответ</h2><p class="shsub">Ответ на ссылку собирается из блоков. Блок появляется, только если для него есть данные: у аренды не будет доходности, а у объявления без фото — оценки ремонта.</p></div><span class="shmeta">формат — как в чате<br>цифры в примерах условные</span></div>
-<div class="bgrid">
- <div class="bcell"><h3>Цена в объявлении и справедливая цена</h3><p>Цена продавца рядом с оценкой модели. Для аренды — «Аренда в объявлении» и «Справедливая аренда» в ₸/мес.</p><div class="bex"><code>💰 Цена в объявлении: 27 500 000 ₸</code><code>⚖️ Справедливая цена: 28 700 000 ₸</code></div></div>
- <div class="bcell"><h3>Вердикт</h3><p>Выгодно, справедливая цена или переплата — и насколько цена объявления отличается от оценки, в процентах.</p><div class="bex"><code>🟢 Выгодно — дешевле оценки (-4.2%)</code></div></div>
- <div class="bcell"><h3>Срок до снятия</h3><p>Сколько дней обычно (медиана) висят похожие объявления с близкой ценой, пока их не снимут с продажи; у аренды — пока не сдадут. Снятие не всегда значит продажу, так что это ориентир.</p><div class="bex"><code>⏳ Похожие по цене (в рынке) снимают с продажи за ~35 дн. (по 112 снятым)</code></div></div>
- <div class="bcell"><h3>Доходность, если сдавать</h3><p>Только для объявлений о продаже: ожидаемая аренда, доходность в год и доходность района для сравнения. Пометка «после ремонта» — если расчёт предполагает ремонт.</p><div class="bex"><code>📈 Если сдавать: ~210 тыс ₸/мес · доходность 9.2% годовых (в районе ~7.9%)</code></div></div>
- <div class="bcell"><h3>Проверка цены</h3><p>Если цена заметно ниже того, что объясняют характеристики квартиры, бот просит проверить объявление внимательнее и называет причины. Это сигнал, а не обвинение продавца.</p><div class="bex"><code>⚠️ Цена ниже ожидаемой — стоит проверить: …</code></div></div>
- <div class="bcell"><h3>Ремонт по фото</h3><p>Оценка состояния ремонта по фотографиям объявления и короткий комментарий. Появляется, когда фото удалось разобрать.</p><div class="bex"><code>🛠 Ремонт по фото: … — комментарий</code></div></div>
- <div class="bcell"><h3>Почему такая цена</h3><p>Три фактора с самым большим вкладом: ▲ поднимает оценку, ▼ опускает. Вклад — в процентах и, если он заметен, в деньгах.</p><div class="bex"><code>▲ Уровень цен района: +5.6% (+1.6 млн ₸)</code><code>▼ Этаж: -2.1% (-0.6 млн ₸)</code></div></div>
- <div class="bcell"><h3>Похожие квартиры</h3><p>До трёх похожих объявлений со ссылкой и ценой — с чем можно сравнить лот самому.</p><div class="bex"><code>• 2-комнатная квартира · 47 м² — 27.9 млн ₸</code></div></div>
-</div>
-<p class="mnote">Если у объявления есть фото, ответ приходит подписью к первому из них; у подписи в Telegram лимит 1024 символа, поэтому длинный ответ бот обрезает по строкам. Если объявление об аренде похоже на подселение или сдачу комнаты, бот предупреждает, что цена указана за место, а оценка — за квартиру целиком, и вердикт не показывает. Оценка по вставленному тексту всегда помечена как <b>примерная</b>: без фото, точного адреса и истории лота.</p>
-</div></section>
+<div class="shead"><div class="shl"><h2 class="shttl">Что умеет бот</h2><p class="shsub">Telegram-бот умеет три вещи — и ничего сверх этого не обещает.</p></div></div>
 
-<section class="sect"><div class="wrap">
-<div class="shead"><div class="shl"><h2 class="shttl">Команды</h2><p class="shsub">Бот понимает ссылку на объявление, текст объявления и семь команд.</p></div><span class="shmeta">слежка и алерты —<br>для объявлений о <b>продаже</b></span></div>
-<div class="cmds">
- <h3 class="cgrp">Оценка</h3>
- <div class="crow"><span class="cmd plain">Ссылка на объявление</span><p class="ctx">Просто пришлите ссылку с krisha.kz. Бот откроет объявление, сам поймёт, продажа это или аренда, и ответит <b>ценой, вердиктом, факторами</b> и похожими лотами.</p><span class="cex">krisha.kz/a/show/1012607661</span></div>
- <div class="crow"><span class="cmd plain">Текст объявления</span><p class="ctx">Нет ссылки — вставьте текст объявления о продаже (от <b>40 символов</b>). Бот найдёт в нём площадь, комнаты, этаж, район, цену и даст примерную оценку. Нужны хотя бы площадь и число комнат.</p><span class="cex">Продам 2-комн. 49 м², 5/9 этаж, Алатауский район, 27,5 млн</span></div>
- <h3 class="cgrp">Команды слежки</h3>
- <div class="crow"><span class="cmd">/track ссылка</span><p class="ctx">Взять объявление в слежку. После каждого обновления базы бот напишет, если <b>цена изменилась</b> или объявление <b>сняли</b>. До 10 лотов на один чат, и продажа, и аренда.</p><span class="cex">/track krisha.kz/a/show/1012607661</span></div>
- <div class="crow"><span class="cmd">/track</span><p class="ctx">Без ссылки: подсказка по командам слежки и список лотов, за которыми бот следит.</p><span class="cex">/track</span></div>
- <div class="crow"><span class="cmd">/untrack ссылка</span><p class="ctx">Перестать следить за одним лотом.</p><span class="cex">/untrack krisha.kz/a/show/1012607661</span></div>
- <div class="crow"><span class="cmd">/untrack all</span><p class="ctx">Очистить весь список слежки.</p><span class="cex">/untrack all</span></div>
- <h3 class="cgrp">Команды алертов</h3>
- <div class="crow"><span class="cmd">/alerts</span><p class="ctx">Как устроены алерты и какая подписка включена сейчас.</p><span class="cex">/alerts</span></div>
- <div class="crow"><span class="cmd">/alerts_on <small>фильтры по желанию</small></span><p class="ctx">Подписаться. Раз в день бот присылает новые объявления дешевле оценки модели. Фильтры: комнаты, бюджет, район — в любом порядке, все необязательные.</p><span class="cex">/alerts_on 2к до 45млн бостандыкский</span></div>
- <div class="crow"><span class="cmd">/alerts_off</span><p class="ctx">Отписаться от алертов.</p><span class="cex">/alerts_off</span></div>
- <h3 class="cgrp">Справка</h3>
- <div class="crow"><span class="cmd">/start <small>и /help</small></span><p class="ctx">Короткая справка. В личном чате под ней есть кнопка «Открыть приложение» — сайт baǵam внутри Telegram.</p><span class="cex">/start</span></div>
-</div>
-<p class="mnote">Ссылки вида <code>t.me/fairprice_kzbot?start=track_&lt;id&gt;</code> открывают бота сразу на слежке за лотом — так работает кнопка «следить за ценой в боте» в разборе объявления. Ссылка <code>?start=market_bostandykskiy</code> (район латиницей) включает алерты по этому району.</p>
-</div></section>
-
-<section class="sect"><div class="wrap">
-<div class="shead"><div class="shl"><h2 class="shttl">Слежка и алерты</h2><p class="shsub">Две подписки, которые работают без вас: бот сам пишет, когда на рынке что-то меняется.</p></div><span class="shmeta">проверка — один раз в день<br>после обновления базы</span></div>
 <div class="bsplit">
  <div>
-  <h3 class="bh3">Слежка за лотом</h3>
-  <p class="btx">Отправьте <code>/track</code> со ссылкой — и можно не открывать объявление каждый день. Бот сравнит лот с базой после очередного обновления и напишет, только если что-то изменилось.</p>
+  <span class="bnum">01</span>
+  <h3 class="bh3">Оценить объявление</h3>
+  <p class="btx">Пришлите ссылку с krisha.kz — бот сам поймёт, продажа это или аренда, и ответит, как в примере выше. Ссылки нет — вставьте текст объявления о продаже: оценка будет <b>примерной</b>, без фото и точного адреса.</p>
+ </div>
+ <div class="bchat" role="img" aria-label="Пример переписки: пользователь вставляет текст объявления о продаже, бот отвечает примерной оценкой по тексту и перечисляет, что распознал">
+  <div class="tghd"><span class="tgbk"><svg viewBox="0 0 9 15" fill="none" aria-hidden="true"><path d="M7.6 1.4 1.7 7.5l5.9 6.1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="tgttl"><b>baǵam</b><i>бот</i></span><span class="tgav">b</span></div>
+  <div class="tgch">
+   <div class="tgb out"><span class="ln">Продам 2-комн. квартиру 49 м², 5/9 этаж, Алатауский район, 27,5 млн</span><span class="tgt">19:20<svg viewBox="0 0 18 11" fill="none" aria-hidden="true"><path d="M1.2 6.3 4 9.1l5.6-6.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m7.6 8.6.9.9 6-7.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+   <div class="tgb in wide"><span class="ln">📝 <b>Оценка по тексту</b> — примерная: без фото, точного адреса и истории лота.</span><span class="ln">Распознал: комнат, площадь, этаж, этажность, район, цена.</span><span class="ln gap">💰 Цена в объявлении: <b>27&nbsp;500&nbsp;000&nbsp;₸</b></span><span class="ln">⚖️ Справедливая цена: <b>28&nbsp;700&nbsp;000&nbsp;₸</b></span><span class="ln">…</span><span class="tgt">19:20</span></div>
+  </div>
+ </div>
+</div>
+
+<div class="bsplit rev">
+ <div>
+  <span class="bnum">02</span>
+  <h3 class="bh3">Следить за ценой</h3>
+  <p class="btx">Отправьте <code>/track</code> со ссылкой — и не нужно открывать объявление каждый день. Бот напишет, только если цена изменилась или объявление сняли.</p>
   <dl class="bkv">
-   <div><dt>Что приходит</dt><dd>Изменение цены с процентом или снятие с продажи</dd></div>
-   <div><dt>Сколько лотов</dt><dd>До 10 на один чат</dd></div>
-   <div><dt>После снятия</dt><dd>Бот сообщает, сколько лот провисел, и завершает слежку за ним сам</dd></div>
-   <div><dt>Если данных мало</dt><dd>Если перед исчезновением лота базу не обновляли больше 7 дней, о снятии бот молчит и оставляет лот в слежке: это мог быть пропуск данных</dd></div>
+   <div><dt>Продажа и аренда</dt><dd>Следит за обеими: продажу сверяет после утреннего обновления базы, аренду — после вечернего</dd></div>
+   <div><dt>Сколько объявлений</dt><dd>До 10 объявлений на один чат</dd></div>
   </dl>
  </div>
  <div class="bchat" role="img" aria-label="Пример переписки: команда /track со ссылкой, ответ бота «Слежу за…» и на следующее утро сообщение о снижении цены с 27,5 до 26,9 млн ₸">
@@ -369,15 +266,15 @@ html.lite *{box-shadow:none!important}
   </div>
  </div>
 </div>
-<div class="bsplit rev">
+
+<div class="bsplit">
  <div>
-  <h3 class="bh3">Алерты о выгодных объявлениях</h3>
-  <p class="btx">Отправьте <code>/alerts_on</code> — и раз в день, после обновления базы, бот пришлёт новые объявления, которые <b>дешевле оценки модели</b>. Фильтры сужают подборку до того, что вам подходит.</p>
+  <span class="bnum">03</span>
+  <h3 class="bh3">Присылать выгодные объявления</h3>
+  <p class="btx">Отправьте <code>/alerts_on</code> — и раз в день бот пришлёт новые объявления о продаже, которые <b>дешевле оценки модели</b>. Можно сузить подборку: комнаты, бюджет, район.</p>
   <dl class="bkv">
-   <div><dt>Что приходит</dt><dd>Ссылка, цена, оценка модели с отклонением и район</dd></div>
-   <div><dt>Сколько лотов</dt><dd>До 5 в одном сообщении, самая большая скидка — первой</dd></div>
-   <div><dt>Повторы</dt><dd>Бот помнит, какие лоты уже разослал, и не присылает их снова</dd></div>
-   <div><dt>Подписка</dt><dd>Одна на чат: новая <code>/alerts_on</code> заменяет прежние фильтры</dd></div>
+   <div><dt>Сколько</dt><dd>До 5 в одном сообщении, самая большая скидка — первой; повторов нет</dd></div>
+   <div><dt>Только продажа</dt><dd>Подборка — только из объявлений о продаже</dd></div>
   </dl>
  </div>
  <div class="bchat" role="img" aria-label="Пример переписки: команда /alerts_on 2к до 45млн бостандыкский, подтверждение подписки и на следующее утро сообщение со списком новых выгодных объявлений">
@@ -399,49 +296,98 @@ html.lite *{box-shadow:none!important}
   </div>
  </div>
 </div>
-<div class="bflt">
- <div class="bf"><h4>Комнаты</h4><p>Число от <b>1 до 6</b>, с «к» или без.</p><div class="bchips"><code>2к</code><code>2-к</code><code>2комн</code><code>2</code></div></div>
- <div class="bf"><h4>Бюджет</h4><p>Максимум цены в <b>млн ₸</b>. Числа от 1 до 6 бот читает как комнаты, от 7 — как бюджет.</p><div class="bchips"><code>45млн</code><code>до 45</code><code>38.5</code></div></div>
- <div class="bf"><h4>Район</h4><p>Название района или его часть, регистр не важен. Районов в городе <b>восемь</b>.</p><div class="bchips"><code>бостандыкский</code><code>ауэзов</code><code>медеу</code></div></div>
-</div>
-<p class="bfnote">Слова можно ставить в любом порядке, «до» бот пропускает. Запятая разделяет слова, поэтому дробное число пишите через точку: <code>38.5</code>. Без фильтров — <code>/alerts_on</code> — придут все выгодные объявления.</p>
-</div></section>
-
-<section class="sect"><div class="wrap">
-<div class="bstart">
- <div class="shead"><div class="shl"><h2 class="shttl">Как начать</h2><p class="shsub">Нужен только Telegram. Первая оценка — с первой же ссылки.</p><span class="bhandle mono bhs">@fairprice_kzbot</span></div></div>
- <div class="bsteps">
-  <div class="bstep"><span class="sidx">01</span><h3 class="sttl">Откройте бота</h3><p class="stx">Нажмите «Открыть в Telegram» или найдите <code>@fairprice_kzbot</code> и нажмите Start. Бот ответит короткой справкой.</p></div>
-  <div class="bstep"><span class="sidx">02</span><h3 class="sttl">Пришлите объявление</h3><p class="stx">Ссылку с <b>krisha.kz/a/show/…</b> или текст объявления. Ответ придёт в этот же чат: цена, вердикт, причины и похожие лоты.</p></div>
-  <div class="bstep"><span class="sidx">03</span><h3 class="sttl">Включите слежку или алерты</h3><p class="stx">Лот интересен — <code>/track ссылка</code>, и бот напишет об изменении цены. Хотите быть в курсе выгодных объявлений — <code>/alerts_on</code>. Обе подписки отключаются одной командой.</p></div>
- </div>
-</div>
 </div></section>
 
 <section class="sect"><div class="wrap">
 <div class="shead"><div class="shl"><h2 class="shttl">Частые вопросы</h2></div></div>
 <div class="faq">
- <div class="qa"><button class="q" type="button" aria-expanded="false" aria-controls="qa0" id="qb0">Бот бесплатный?<span class="qi"></span></button><div class="a" id="qa0" role="region" aria-labelledby="qb0"><p>Да. Бот бесплатный, как и сайт: платных команд и подписок в нём нет. Нужен только аккаунт в Telegram.</p></div></div>
- <div class="qa"><button class="q" type="button" aria-expanded="false" aria-controls="qa1" id="qb1">Какие данные о себе бот хранит?<span class="qi"></span></button><div class="a" id="qa1" role="region" aria-labelledby="qb1"><p>Номер вашего чата бот сохраняет, только если вы включили <code>/track</code> или <code>/alerts_on</code>: ему нужно знать, кому писать. Файл с подписками шифруется, а <code>/untrack all</code> и <code>/alerts_off</code> убирают вас из него. Тексты сообщений приложение не записывает. Для счётчика уникальных пользователей хранится только короткий хэш номера чата с секретной солью: по нему сам номер не восстановить.</p><p>Текст объявления, который вы вставили вместо ссылки, уходит на разбор в Gemini, нейросеть Google (первые 3000 символов). Не вставляйте в него телефон и личные данные. Подробности — в <a href="/privacy">политике конфиденциальности</a>.</p></div></div>
- <div class="qa"><button class="q" type="button" aria-expanded="false" aria-controls="qa2" id="qb2">Как перестать следить за лотом или получать алерты?<span class="qi"></span></button><div class="a" id="qa2" role="region" aria-labelledby="qb2"><p><code>/untrack ссылка</code> убирает один лот, <code>/untrack all</code> — все сразу. Алерты о выгодных объявлениях отключает <code>/alerts_off</code>. Когда лот снимают с продажи, бот сам заканчивает слежку за ним. Блокировки бота недостаточно: подписка остаётся в файле, пока вы не отправите эти команды.</p></div></div>
- <div class="qa"><button class="q" type="button" aria-expanded="false" aria-controls="qa3" id="qb3">Бот работает с арендой?<span class="qi"></span></button><div class="a" id="qa3" role="region" aria-labelledby="qb3"><p>Оценка — да: пришлите ссылку на объявление об аренде, бот сам определит тип и ответит в ₸/мес, с пометкой «справедливая аренда». Слежка и алерты рассчитаны на объявления о продаже, а оценка по вставленному тексту — на текст объявления о продаже. Цены аренды по районам — на странице <a href="/rent">«Аренда»</a>.</p></div></div>
- <div class="qa"><button class="q" type="button" aria-expanded="false" aria-controls="qa4" id="qb4">Насколько можно верить оценке бота?<span class="qi"></span></button><div class="a" id="qa4" role="region" aria-labelledby="qb4"><p>Бот считает той же моделью, что и сайт. Средняя ошибка оценки продажи сейчас <b data-l="mape">7,6%</b>, аренды — <b data-l="rmape">~11%</b>. Это ориентир для торга, а не оферта и не оценка для банка. Как считает модель и где она ошибается — на странице <a href="/about">«О проекте»</a>.</p></div></div>
+ <div class="qa"><button class="q" type="button" aria-expanded="false" aria-controls="qa0" id="qb0">Бот бесплатный?<span class="qi"></span></button><div class="a" id="qa0" role="region" aria-labelledby="qb0"><p>Да, как и сайт: платных команд и подписок нет. Нужен только аккаунт в Telegram.</p></div></div>
+ <div class="qa"><button class="q" type="button" aria-expanded="false" aria-controls="qa1" id="qb1">Бот работает с арендой?<span class="qi"></span></button><div class="a" id="qa1" role="region" aria-labelledby="qb1"><p>Да. Ссылку на объявление об аренде бот оценит в ₸/мес — строкой «Справедливая аренда», а <code>/track</code> следит за арендой так же, как за продажей. Только для продажи — подборка выгодных объявлений <code>/alerts_on</code> и оценка по вставленному тексту. Цены аренды по районам — на странице <a href="/stats?mode=rent">«Рынок», вкладка «Аренда»</a>.</p></div></div>
+ <div class="qa"><button class="q" type="button" aria-expanded="false" aria-controls="qa2" id="qb2">Какие данные о себе бот хранит?<span class="qi"></span></button><div class="a" id="qa2" role="region" aria-labelledby="qb2"><p>Номер вашего чата бот сохраняет, только если вы включили <code>/track</code> или <code>/alerts_on</code>: ему нужно знать, кому писать. Файл с подписками шифруется. Тексты сообщений бот не записывает. Для счётчика пользователей хранится короткий хэш номера чата, по которому сам номер не восстановить.</p><p>Текст объявления, вставленный вместо ссылки, уходит на разбор в Gemini — нейросеть Google. Не вставляйте в него телефон и личные данные. Подробности — в <a href="/privacy">политике конфиденциальности</a>.</p></div></div>
+ <div class="qa"><button class="q" type="button" aria-expanded="false" aria-controls="qa3" id="qb3">Как отписаться?<span class="qi"></span></button><div class="a" id="qa3" role="region" aria-labelledby="qb3"><p><code>/untrack ссылка</code> убирает одно объявление, <code>/untrack all</code> — все сразу, <code>/alerts_off</code> отключает подборку выгодных объявлений. Блокировки бота недостаточно: подписка остаётся, пока вы не отправите эти команды.</p></div></div>
+ <div class="qa"><button class="q" type="button" aria-expanded="false" aria-controls="qa4" id="qb4">Насколько можно верить оценке?<span class="qi"></span></button><div class="a" id="qa4" role="region" aria-labelledby="qb4"><p>Бот считает той же моделью, что и сайт. Средняя ошибка оценки продажи сейчас <b data-l="mape">7,6%</b>, аренды — <b data-l="rmape">11,0%</b>. Это ориентир для торга, а не оферта и не оценка для банка. Как считает модель и где ошибается — на странице <a href="/about">«О проекте»</a>.</p></div></div>
+</div>
+</div></section>
+
+<section class="sect"><div class="wrap">
+<div class="shead"><div class="shl"><h2 class="shttl">Справочник</h2><p class="shsub">Для тех, кто любит знать всё: команды, правила и тонкости.</p></div></div>
+<div class="ref">
+<details>
+ <summary>Все команды<span class="qi" aria-hidden="true"></span></summary>
+ <div class="rbody">
+ <p>Кроме ссылки и текста объявления бот понимает семь команд.</p>
+ <div class="cmds">
+  <h3 class="cgrp">Оценка</h3>
+  <div class="crow"><span class="cmd plain">Ссылка на объявление</span><p class="ctx">Бот откроет объявление, сам поймёт, продажа это или аренда, и ответит <b>ценой, вердиктом, факторами</b> и похожими объявлениями.</p><span class="cex">krisha.kz/a/show/1012607661</span></div>
+  <div class="crow"><span class="cmd plain">Текст объявления</span><p class="ctx">Текст объявления о продаже от <b>40 символов</b>. Бот найдёт площадь, комнаты, этаж, район и цену и даст примерную оценку. Нужны хотя бы площадь и число комнат.</p><span class="cex">Продам 2-комн. 49 м², 5/9 этаж, Алатауский район, 27,5 млн</span></div>
+  <h3 class="cgrp">Слежка</h3>
+  <div class="crow"><span class="cmd">/track ссылка</span><p class="ctx">Взять объявление о продаже или аренде в слежку.</p><span class="cex">/track krisha.kz/a/show/1012607661</span></div>
+  <div class="crow"><span class="cmd">/track</span><p class="ctx">Подсказка и список объявлений, за которыми бот следит.</p><span class="cex">/track</span></div>
+  <div class="crow"><span class="cmd">/untrack ссылка</span><p class="ctx">Перестать следить за одним объявлением.</p><span class="cex">/untrack krisha.kz/a/show/1012607661</span></div>
+  <div class="crow"><span class="cmd">/untrack all</span><p class="ctx">Очистить весь список слежки.</p><span class="cex">/untrack all</span></div>
+  <h3 class="cgrp">Выгодные объявления</h3>
+  <div class="crow"><span class="cmd">/alerts</span><p class="ctx">Как устроена подборка выгодных объявлений и какая подписка включена сейчас.</p><span class="cex">/alerts</span></div>
+  <div class="crow"><span class="cmd">/alerts_on</span><p class="ctx">Подписаться; фильтры по желанию. Новая команда заменяет прежние фильтры: подписка на чат одна.</p><span class="cex">/alerts_on 2к до 45млн бостандыкский</span></div>
+  <div class="crow"><span class="cmd">/alerts_off</span><p class="ctx">Отписаться от подборки.</p><span class="cex">/alerts_off</span></div>
+  <h3 class="cgrp">Справка</h3>
+  <div class="crow"><span class="cmd">/start, /help</span><p class="ctx">Короткая справка. В личном чате под ней есть кнопка «Открыть приложение» — сайт baǵam внутри Telegram.</p><span class="cex">/start</span></div>
+ </div>
+ </div>
+</details>
+<details>
+ <summary>Из чего состоит ответ на ссылку<span class="qi" aria-hidden="true"></span></summary>
+ <div class="rbody">
+ <p>Ответ собирается из блоков. Блок появляется, только если для него есть данные: у аренды не будет доходности, у объявления без фото — оценки ремонта. Цифры в примерах условные.</p>
+ <div class="blks">
+  <div class="blk"><h3>Срок до снятия</h3><p>Сколько дней обычно висят похожие объявления с близкой ценой. Снятие не всегда значит продажу — это ориентир.<code>⏳ Похожие по цене (в рынке) снимают с продажи за ~35 дн. (по 112 снятым)</code></p></div>
+  <div class="blk"><h3>Доходность, если сдавать</h3><p>Только для продажи: ожидаемая аренда и доходность в год рядом с доходностью района.<code>📈 Если сдавать: ~210 тыс ₸/мес · доходность 9.2% годовых (в районе ~7.9%)</code></p></div>
+  <div class="blk"><h3>Проверка цены</h3><p>Если цена заметно ниже того, что объясняют характеристики квартиры, бот советует проверить объявление. Это сигнал, а не обвинение продавца.<code>⚠️ Цена ниже ожидаемой — стоит проверить: …</code></p></div>
+  <div class="blk"><h3>Ремонт по фото</h3><p>Состояние ремонта по фотографиям объявления, если их удалось разобрать.<code>🛠 Ремонт по фото: … — комментарий</code></p></div>
+  <div class="blk"><h3>Похожие квартиры</h3><p>До трёх похожих объявлений со ссылкой и ценой.<code>• 2-комнатная квартира · 47 м² — 27.9 млн ₸</code></p></div>
+ </div>
+ <p>Если у объявления есть фото, ответ приходит подписью к первому из них; у подписи в Telegram лимит 1024 символа, поэтому длинный ответ бот обрезает по строкам. Если аренда похожа на подселение или сдачу комнаты, бот предупреждает, что цена указана за место, а оценка — за квартиру целиком, и вердикт не ставит.</p>
+ </div>
+</details>
+<details>
+ <summary>Как бот читает фильтры подписки<span class="qi" aria-hidden="true"></span></summary>
+ <div class="rbody">
+ <div class="bflt">
+  <div class="bf"><h4>Комнаты</h4><p>Число от <b>1 до 6</b>, с «к» или без.</p><div class="bchips"><code>2к</code><code>2-к</code><code>2комн</code><code>2</code></div></div>
+  <div class="bf"><h4>Бюджет</h4><p>Максимум цены в <b>млн ₸</b>. Числа от 1 до 6 бот читает как комнаты, от 7 — как бюджет.</p><div class="bchips"><code>45млн</code><code>до 45</code><code>38.5</code></div></div>
+  <div class="bf"><h4>Район</h4><p>Название района или его часть, регистр не важен. Районов в городе <b>восемь</b>.</p><div class="bchips"><code>бостандыкский</code><code>ауэзов</code><code>медеу</code></div></div>
+ </div>
+ <p>Слова можно ставить в любом порядке, «до» бот пропускает. Запятая разделяет слова, поэтому дробное число пишите через точку: <code>38.5</code>. Без фильтров — <code>/alerts_on</code> — придут все выгодные объявления.</p>
+ </div>
+</details>
+<details>
+ <summary>Когда приходят сообщения<span class="qi" aria-hidden="true"></span></summary>
+ <div class="rbody">
+ <p>Проверка идёт раз в сутки, после обновления базы. Обновление продажи стартует в 06:00 по Алматы и длится несколько часов, поэтому выгодные объявления и сообщения о цене продажи приходят обычно в первой половине дня. Аренду бот сверяет после вечернего обновления: такие сообщения приходят поздно вечером или ночью, с 22:00 до 08:00 — без звука.</p>
+ <p>Когда объявление снимают, бот пишет, сколько оно провисело, и сам заканчивает слежку. Если перед исчезновением объявления базу не обновляли больше 7 дней, о снятии бот молчит и продолжает следить: это мог быть пропуск данных.</p>
+ </div>
+</details>
+<details>
+ <summary>Ссылки, которые сразу открывают нужное<span class="qi" aria-hidden="true"></span></summary>
+ <div class="rbody">
+ <p>Ссылка <code>t.me/fairprice_kzbot?start=track_&lt;id&gt;</code> открывает бота сразу на слежке за этим объявлением — так работает кнопка «следить за ценой в боте» в разборе объявления на сайте. Ссылка <code>t.me/fairprice_kzbot?start=market_bostandykskiy</code> (район латиницей) включает подборку выгодных объявлений по этому району.</p>
+ </div>
+</details>
 </div>
 </div></section>
 
 <section class="cta"><div class="wrap">
 <h2>Пришлите ссылку — <br><em>получите цену</em></h2>
-<a class="gobtn" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">Открыть в Telegram <i>→</i></a>
+<a class="gobtn" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">Открыть бота <i>→</i></a>
 <p class="sub">@fairprice_kzbot · <a href="/">или проверить объявление на сайте</a></p>
 </div></section>
 
 <section class="next"><div class="wrap">
 <div class="shead"><div class="shl"><h2 class="shttl">Куда дальше</h2><p class="shsub">Проверить квартиру на сайте, посмотреть рынок или узнать, что хранит бот.</p></div></div>
 <div class="ncards">
-<a class="ncard g" href="/"><span class="ntop"><span class="nidx">01</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span></span><span class="nttl">Проверить квартиру</span><span class="nbot"><span class="nmeta">оценка по ссылке<br>на сайте</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
-<a class="ncard v" href="/stats"><span class="ntop"><span class="nidx">02</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4v16h16"/><path d="m7.5 14.5 3.4-3.6 2.8 2.6 5-5.5"/><path d="M15.2 8h3.5v3.5"/></svg></span></span><span class="nttl">Рынок продажи</span><span class="nbot"><span class="nmeta">цены по районам<br>и динамика</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
-<a class="ncard w" href="/rent"><span class="ntop"><span class="nidx">03</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg></span></span><span class="nttl">Рынок аренды</span><span class="nbot"><span class="nmeta">цены аренды<br>и доходность</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
-<a class="ncard g" href="/privacy"><span class="ntop"><span class="nidx">04</span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5 5 6.3v5.4c0 4.3 2.9 7.5 7 8.8 4.1-1.3 7-4.5 7-8.8V6.3Z"/><path d="m9.2 12.2 2 2 3.6-3.8"/></svg></span></span><span class="nttl">Конфиденциальность</span><span class="nbot"><span class="nmeta">что хранит бот<br>и сайт</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard g" href="/"><span class="ntop"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span></span><span class="nttl">Проверить квартиру</span><span class="nbot"><span class="nmeta">оценка по ссылке<br>на сайте</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard v" href="/stats"><span class="ntop"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4v16h16"/><path d="m7.5 14.5 3.4-3.6 2.8 2.6 5-5.5"/><path d="M15.2 8h3.5v3.5"/></svg></span></span><span class="nttl">Рынок продажи</span><span class="nbot"><span class="nmeta">цены по районам<br>и динамика</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard w" href="/stats?mode=rent"><span class="ntop"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg></span></span><span class="nttl">Рынок аренды</span><span class="nbot"><span class="nmeta">цены аренды<br>и доходность</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard g" href="/privacy"><span class="ntop"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5 5 6.3v5.4c0 4.3 2.9 7.5 7 8.8 4.1-1.3 7-4.5 7-8.8V6.3Z"/><path d="m9.2 12.2 2 2 3.6-3.8"/></svg></span></span><span class="nttl">Конфиденциальность</span><span class="nbot"><span class="nmeta">что хранит бот<br>и сайт</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
 </div>
 </div></section>
 </main>
@@ -449,15 +395,15 @@ html.lite *{box-shadow:none!important}
 <div class="fgrid">
  <div>
   <a class="flogo" href="/" aria-label="baǵam — на главную">baǵam<span>.</span></a>
-  <p class="ftag">Считаем справедливую цену квартиры в Алматы по объявлению с krisha.kz — за секунду и бесплатно.</p>
-  <div class="fchips"><span class="fchip"><b data-l="total">21 113</b> активных лотов</span><span class="fchip">ошибка <b data-l="mape">7,6%</b></span><span class="fchip"><b data-l="age">обновление ежедневно</b></span></div>
+  <p class="ftag">Считаем справедливую цену квартиры в Алматы по объявлению с krisha.kz — обычно за несколько секунд, бесплатно.</p>
+  <div class="fchips"><span class="fchip flive"><b data-l="total">—</b>&nbsp;<span data-l="totalw">объявлений</span></span><span class="fchip"><b data-l="age">обновление ежедневно</b></span></div>
  </div>
  <div>
   <div class="fh">Продукт</div>
   <div class="flinks">
    <a class="flink" href="/">Оценка объявления</a>
    <a class="flink" href="/stats">Рынок продажи</a>
-   <a class="flink" href="/rent">Рынок аренды</a>
+   <a class="flink" href="/stats?mode=rent">Рынок аренды</a>
    <a class="flink" href="/bot" aria-current="page">Telegram-бот</a>
   </div>
  </div>
@@ -475,7 +421,7 @@ html.lite *{box-shadow:none!important}
    <a class="flink" href="/privacy">Конфиденциальность</a>
    <a class="flink" href="/terms">Условия использования</a>
   </div>
-  <p class="fnote">Оценка справочная и не является офертой. Средняя ошибка модели продажи <b data-l="mape">7,6%</b>, аренды — <b data-l="rmape">~11%</b>.</p>
+  <p class="fnote">Оценка справочная и не является офертой.<span class="flive"> Средняя ошибка модели: продажа&nbsp;<b data-l="mape">—</b>, аренда&nbsp;<b data-l="rmape">—</b>.</span></p>
  </div>
 </div>
 
@@ -486,255 +432,5 @@ html.lite *{box-shadow:none!important}
 
 </div>
 <div class="fmarkband"><svg class="fmark" viewBox="-4 -203 921 196" preserveAspectRatio="xMidYMin meet" aria-hidden="true" focusable="false"><defs><linearGradient id="markgrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3ADC7C" stop-opacity=".16"/><stop offset="1" stop-color="#3ADC7C" stop-opacity=".025"/></linearGradient></defs><text x="0" y="0">baǵam</text></svg></div>
-<script>
-(function(){
-  var root=document.documentElement;
-  /* прокрутка своими кадрами: системная «меньше анимаций» не должна превращать её в прыжок;
-     время считаем от первого кадра (если он запоздал, не проскакиваем полпути); цель пересчитывается на каждом кадре — если над ней что-то схлопнулось (содержание на телефоне), не промахнёмся */
-  function glide(target,dur,done){
-    var from=window.pageYOffset||root.scrollTop;
-    if(Math.abs(target()-from)<2||root.classList.contains('lite')){window.scrollTo(0,target());if(done)done();return}
-    var prev=root.style.scrollBehavior;root.style.scrollBehavior='auto';
-    var t0=0,stopped=false;
-    function stop(){stopped=true}
-    addEventListener('wheel',stop,{passive:true,once:true});
-    addEventListener('touchstart',stop,{passive:true,once:true});
-    function end(){root.style.scrollBehavior=prev;removeEventListener('wheel',stop);removeEventListener('touchstart',stop);if(done&&!stopped)done()}
-    function frame(t){
-      if(stopped){end();return}
-      if(!t0)t0=t;
-      var pr=Math.min(1,(t-t0)/dur),e=pr<0.5?4*pr*pr*pr:1-Math.pow(-2*pr+2,3)/2;
-      window.scrollTo(0,from+(target()-from)*e);
-      if(pr<1){requestAnimationFrame(frame)}else{end()}
-    }
-    requestAnimationFrame(frame);
-  }
-  var btn=document.querySelector('.ftop');
-  if(btn)btn.addEventListener('click',function(){
-    var from=window.pageYOffset||root.scrollTop;
-    glide(function(){return 0},Math.min(2400,Math.max(1200,from*0.7)));
-  });
-  /* якоря на странице (содержание документов и т.п.): быстрый плавный переход вместо прыжка */
-  document.addEventListener('click',function(e){
-    if(e.defaultPrevented||e.button||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
-    var a=e.target.closest&&e.target.closest('a[href^="#"]');
-    if(!a||a.classList.contains('skip'))return;
-    var id=decodeURIComponent(a.getAttribute('href').slice(1)),el=id&&document.getElementById(id);
-    if(!el)return;
-    e.preventDefault();
-    var target=function(){
-      var off=parseFloat(getComputedStyle(el).scrollMarginTop)||0;
-      var y=el.getBoundingClientRect().top+(window.pageYOffset||root.scrollTop)-off;
-      return Math.max(0,Math.min(y,root.scrollHeight-innerHeight));
-    };
-    var d=Math.abs(target()-(window.pageYOffset||root.scrollTop));
-    glide(target,Math.min(650,Math.max(360,d*0.22)),function(){
-      if(location.hash!=='#'+id&&history.pushState)history.pushState(null,'','#'+id);
-    });
-  });
-})();
-</script>
 </footer>
-<script>
-/* ---------- тема ---------- */
-(function(){
-  var root=document.documentElement;
-  function label(){
-    var v=root.getAttribute('data-theme')==='light'?'светлая':'тёмная';
-    document.querySelectorAll('[data-theme-label]').forEach(function(e){e.textContent=v;});
-    document.querySelectorAll('[data-theme-toggle]').forEach(function(b){
-      b.setAttribute('aria-label', root.getAttribute('data-theme')==='light'?'Включить тёмную тему':'Включить светлую тему');
-    });
-  }
-  function set(v){
-    root.setAttribute('data-theme',v);
-    try{localStorage.setItem('bagam-theme',v);localStorage.setItem('kfp-theme',v);}catch(e){}
-    label();
-    var tg=window.Telegram&&window.Telegram.WebApp;
-    if(tg&&tg.setHeaderColor){try{tg.setHeaderColor(v==='light'?'#F1F4EC':'#0A100C');}catch(e){}}
-  }
-  document.addEventListener('click',function(e){
-    var b=e.target.closest&&e.target.closest('[data-theme-toggle]');
-    if(!b)return;
-    e.preventDefault();
-    set(root.getAttribute('data-theme')==='light'?'dark':'light');
-  });
-  label();
-})();
-
-/* ---------- Telegram Mini App ---------- */
-bagamTG(function(tg){
-  if(!tg.initData&&!(tg.platform&&tg.platform!=='unknown'))return;
-  document.documentElement.classList.add('tma');
-  try{
-    tg.ready();tg.expand();
-    if(tg.setHeaderColor)tg.setHeaderColor(document.documentElement.getAttribute('data-theme')==='light'?'#F1F4EC':'#0A100C');
-    if(tg.BackButton&&!/bagam-v4|\/$/.test(location.pathname)){
-      tg.BackButton.show();
-      tg.BackButton.onClick(function(){history.length>1?history.back():(location.href='/');});
-    }
-  }catch(e){}
-});
-
-/* ---------- живые цифры ---------- */
-(function(){
-  var API='';
-  function ru(n){return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ');}
-  function pc(n){return (Math.round(n*10)/10).toString().replace('.',',');}
-  function put(sel,val){document.querySelectorAll(sel).forEach(function(e){e.textContent=val;if(e.dataset.v!==undefined)e.dataset.v=val;});}
-  function age(h){
-    if(h==null)return '';
-    if(h<1.5)return 'обновлено только что';
-    if(h<24)return 'обновлено '+Math.round(h)+' ч назад';
-    var d=Math.round(h/24),m=d%100,k=d%10;return 'обновлено '+d+' '+((m>10&&m<20)?'дней':(k===1?'день':(k>1&&k<5?'дня':'дней')))+' назад';
-  }
-  function j(p){var a=('AbortController' in window)&&new AbortController();
-    if(a)setTimeout(function(){a.abort();},12000);
-    return fetch(API+p,{cache:'no-store',signal:a?a.signal:undefined}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});}
-  function apply(s,h){
-    if(s){
-      put('[data-l=total]',ru(s.total_listings));
-      put('[data-l=ppsm]',ru(s.median_ppsm));
-      put('[data-l=ppsmk]',Math.round(s.median_ppsm/1000)+' тыс ₸/м²');
-      put('[data-l=medprice]',ru(s.median_price));
-      put('[data-l=medpricem]',(Math.round(s.median_price/1e5)/10).toString().replace('.',',')+' млн ₸');
-      window.__stats=s;
-      document.dispatchEvent(new CustomEvent('stats',{detail:s}));
-    }
-    if(h){
-      if(h.model_error_pct)put('[data-l=mape]',pc(h.model_error_pct)+'%');
-      if(h.model_error_ci_pct&&h.model_error_ci_pct.length===2)put('[data-l=mapeci]',', 95% ДИ '+pc(h.model_error_ci_pct[0])+'–'+pc(h.model_error_ci_pct[1])+'%');
-      if(h.model_median_error_pct)put('[data-l=mdape]',pc(h.model_median_error_pct)+'%');
-      if(h.rent_model_error_pct)put('[data-l=rmape]',pc(h.rent_model_error_pct)+'%');
-      if(h.model_r2)put('[data-l=r2]',h.model_r2.toFixed(3));
-      if(h.model_mae)put('[data-l=mae]',(Math.round(h.model_mae/1e5)/10).toString().replace('.',','));
-      if(h.model_temporal_validity===true)put('[data-l=tvnote]','Как читать эти цифры: временная валидность оценки подтверждена — состав данных не меняется вместе с временем, поэтому число описывает и будущие объявления, а не только сегодняшний сток.');
-      if(h.data_age_hours!=null)put('[data-l=age]',age(h.data_age_hours));
-      document.querySelectorAll('[data-l=status]').forEach(function(e){
-        e.textContent=h.status==='ok'&&h.model_loaded?'сервис работает':'сервис недоступен';
-        e.classList.toggle('off',!(h.status==='ok'&&h.model_loaded));
-      });
-    }
-  }
-
-  /* скелетоны: без свежего кэша живые числа и графики мерцают, пока не придут данные */
-  var cached=false;
-  function skel(on){
-    document.querySelectorAll('[data-l]').forEach(function(e){e.classList.toggle('sk',on);});
-    document.querySelectorAll('[data-skel]').forEach(function(e){e.classList.toggle('loading',on);});
-  }
-  try{
-    var cc=JSON.parse(localStorage.getItem('bagam-stats')||'null');
-    if(cc&&Date.now()-cc.t<86400000){apply(cc.s,cc.h);cached=true;}
-  }catch(e){}
-  if(!cached)skel(true);
-  Promise.all([j('/api/stats'),j('/api/health')]).then(function(res){
-    var s=res[0],h=res[1];
-    skel(false);
-    if(s||h){try{localStorage.setItem('bagam-stats',JSON.stringify({t:Date.now(),s:s,h:h}));}catch(e){}}
-    if(!s&&!h){
-      document.querySelectorAll('[data-l=age]').forEach(function(e){e.textContent='цифры из последнего успешного обновления';});
-      return;
-    }
-    apply(s,h);
-  });
-})();
-</script>
-
-<script>
-/* ---------- вопросы: открываются сразу, не дожидаясь GSAP; он только плавно двигает высоту ---------- */
-(function(){
-  function shut(qa){
-    qa.classList.remove('open');
-    qa.querySelector('.q').setAttribute('aria-expanded','false');
-    var p=qa.querySelector('.a');
-    p.inert=true; /* закрытый ответ не берёт фокус: в нём ссылки */
-    if(window.gsap) gsap.to(p,{height:0,duration:.4,ease:'power2.inOut'}); else p.style.height='0px';
-  }
-  document.querySelectorAll('.qa').forEach(function(qa){
-    var btn=qa.querySelector('.q'), pane=qa.querySelector('.a');
-    pane.inert=true;
-    btn.addEventListener('click',function(){
-      var wasOpen=qa.classList.contains('open');
-      document.querySelectorAll('.qa.open').forEach(shut);
-      if(!wasOpen){
-        qa.classList.add('open');btn.setAttribute('aria-expanded','true');
-        pane.inert=false;
-        if(window.gsap) gsap.to(pane,{height:'auto',duration:.45,ease:'power2.out'}); else pane.style.height='auto';
-      }
-    });
-  });
-})();
-</script>
-<script>
-bagamBoot(function(){
-const staticMode = !window.gsap;
-if(!staticMode){
-  gsap.registerPlugin(ScrollTrigger);
-  const has=s=>document.querySelector(s);
-  /* появление блоков при прокрутке; нет элементов — ничего не делаем */
-  const batch=(sel,o)=>{ if(!has(sel)) return;
-    ScrollTrigger.batch(sel,{start:'top 92%',once:true,onEnter:b=>
-      gsap.from(b,Object.assign({y:22,opacity:0,duration:.7,stagger:.07,ease:'expo.out',clearProps:'transform'},o||{}))}); };
-  addEventListener('scroll',()=>{const h=document.body.scrollHeight-innerHeight;
-    document.getElementById('prog').style.width=(h>0?scrollY/h*100:0)+'%';},{passive:true});
-  gsap.from('.phero h1',{y:60,opacity:0,duration:1,ease:'expo.out',clearProps:'transform'});
-  gsap.from('.bhl > :not(h1)',{y:26,opacity:0,duration:.9,delay:.25,stagger:.1,ease:'expo.out',clearProps:'transform'});
-  gsap.from('.bstage',{y:40,opacity:0,duration:1,delay:.2,ease:'expo.out',clearProps:'transform'});
-  batch('.bgrid',{y:20,duration:.7});
-  batch('.crow',{y:16,duration:.55,stagger:.04});
-  document.querySelectorAll('.bsplit').forEach(r=>gsap.from(r.children,{y:28,opacity:0,duration:.8,stagger:.12,ease:'expo.out',clearProps:'transform',
-    scrollTrigger:{trigger:r,start:'top 86%',once:true}}));
-  batch('.bf',{stagger:.08});
-  batch('.bstep');
-  batch('.qa',{y:18,duration:.6});
-  batch('.ncard',{y:26,duration:.75,stagger:.08});
-  batch('.fgrid > div',{y:24,stagger:.09});
-}
-
-/* форма на подстранице уводит разбор на главную */
-document.querySelectorAll('form[data-jump]').forEach(f=>{
-  const inp=f.querySelector('input'), err=f.parentElement.querySelector('[data-err]'), paste=f.querySelector('[data-paste]');
-  if(paste){
-    if(!navigator.clipboard||!navigator.clipboard.readText) paste.remove();
-    else paste.addEventListener('click',async()=>{try{const t=(await navigator.clipboard.readText()||'').trim();
-      if(t){inp.value=t;err.classList.remove('on');inp.removeAttribute('aria-invalid');} inp.focus();}catch(e){inp.focus();}});
-  }
-  inp.addEventListener('input',()=>{err.classList.remove('on');inp.removeAttribute('aria-invalid');});
-  f.addEventListener('submit',e=>{e.preventDefault();
-    const m=inp.value.trim().match(/krisha\.kz\/a\/show\/(\d+)/i);
-    if(!m){inp.setAttribute('aria-invalid','true');err.textContent='Нужна ссылка на объявление вида krisha.kz/a/show/1012607661';err.classList.add('on');inp.focus();return;}
-    location.href='/#check=' + m[1];
-  });
-});
-});
-</script>
-<script>
-/* ---------- устойчивость к медленной сети ---------- */
-(function(){
-  /* 1. Пропала сеть — говорим об этом, а не молчим */
-  var bar=document.createElement('div');
-  bar.className='offbar';bar.setAttribute('role','status');
-  bar.innerHTML='<i></i>Нет сети. Показываем последние сохранённые цифры';
-  document.body.appendChild(bar);
-  function net(){bar.classList.toggle('on',!navigator.onLine);}
-  addEventListener('online',net);addEventListener('offline',net);net();
-
-  /* 2. Долгий ответ модели: скелетон и честный статус вместо пустого ожидания */
-  var sheet=document.querySelector('.sheet');
-  if(!sheet)return;
-  var msg=document.createElement('p');msg.className='waitmsg';msg.setAttribute('role','status');
-  sheet.appendChild(msg);
-  var timers=[];
-  function stop(){timers.forEach(clearTimeout);timers=[];msg.classList.remove('on');}
-  new MutationObserver(function(){
-    if(sheet.classList.contains('busy')){
-      if(timers.length)return;
-      msg.classList.add('on');msg.textContent='Считаем: тянем объявление и сравниваем с базой…';
-      timers.push(setTimeout(function(){msg.textContent='Сервер просыпается — это занимает до 30 секунд.';},6000));
-      timers.push(setTimeout(function(){msg.textContent='Ещё немного. Если не дождётесь — оценку пришлёт бот @fairprice_kzbot.';},18000));
-    } else stop();
-  }).observe(sheet,{attributes:true,attributeFilter:['class']});
-})();
-</script>
 <!--opt-v1--></body></html>

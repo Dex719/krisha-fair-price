@@ -85,8 +85,46 @@ def test_bot_page_links_to_the_real_bot():
 
     assert 'href="https://t.me/fairprice_kzbot"' in html
     assert "@fairprice_kzbot" in html
-    assert "Открыть в Telegram" in html
+    assert "Открыть бота" in html
     assert "Telegram-бот умеет три вещи" in html
+
+
+def test_first_screen_is_a_landing_with_one_main_button():
+    """Первый экран — польза, пример переписки и одна главная кнопка, а не справочник."""
+    html = _page()
+    hero = html[html.index('<section class="phero">'):html.index("</section>", html.index('<section class="phero">'))]
+
+    assert hero.count('class="gobtn"') == 1
+    assert 'class="gobtn" href="https://t.me/fairprice_kzbot"' in hero and "Открыть бота" in hero
+    assert 'class="iph"' in hero
+    # три сценария — каждый со своим примером переписки
+    for title in ("Оценить объявление", "Следить за ценой", "Присылать выгодные объявления"):
+        assert f'<h3 class="bh3">{title}</h3>' in html
+    assert html.count('class="bchat"') == 3
+
+
+def test_reference_lives_in_collapsed_details_at_the_bottom():
+    """Полный список команд, правила фильтров и deep-link'и свёрнуты в <details> внизу."""
+    html = _page()
+    ref = html[html.index('<div class="ref">'):html.index('<section class="cta">')]
+
+    assert ref.count("<details>") >= 4 and "<details open" not in ref
+    assert html.index('<div class="ref">') > html.index('<div class="faq">')
+    for needle in ('class="cmds"', 'class="bflt"', "start=market_", "start=track_", "/untrack all"):
+        assert needle in ref, f"{needle} должен быть в справочнике"
+    before = html[:html.index('<div class="ref">')]
+    assert 'class="cmds"' not in before and "start=market_" not in before
+
+
+def test_sale_and_rent_scope_matches_the_bot():
+    """Слежка /track — и продажа, и аренда; подборка выгодных и оценка по тексту — только продажа."""
+    text = _main_text()
+
+    assert "аренд" in bot.TRACK_HELP and "продаже или аренде" in bot.HELP_TEXT
+    assert "Следит за обеими" in text
+    assert "для объявлений о продаже" not in text  # прежняя подпись «слежка и алерты — для продажи»
+    assert "Слежка и алерты рассчитаны на объявления о продаже" not in text
+    assert "Только для продажи — подборка выгодных объявлений" in text
 
 
 def test_every_command_on_the_page_exists_in_bot_source():
@@ -109,7 +147,7 @@ def test_commands_list_matches_the_bot_help():
 def test_page_numbers_follow_the_code():
     text = _main_text()
 
-    assert f"До {MAX_TRACKED_PER_CHAT} лотов" in text
+    assert f"До {MAX_TRACKED_PER_CHAT} объявлений" in text
     assert f"До {MAX_DEALS_PER_CHAT} в одном сообщении" in text
     assert f"от {MIN_TEXT_LEN} символов" in text
     assert f"больше {MAX_TRUSTED_DELIST_LAG_DAYS} дней" in text
@@ -128,7 +166,7 @@ def test_page_names_sale_and_rent_and_keeps_live_numbers():
 def test_page_links_to_neighbours_and_has_faq():
     html = _page()
 
-    for href in ('href="/"', 'href="/stats"', 'href="/rent"', 'href="/privacy"', 'href="/about"'):
+    for href in ('href="/"', 'href="/stats"', 'href="/stats?mode=rent"', 'href="/privacy"', 'href="/about"'):
         assert href in html
     assert 'class="faq"' in html and html.count('class="qa"') >= 4
     assert 'aria-controls="qa0"' in html and 'id="qa0"' in html
@@ -175,10 +213,14 @@ def test_hero_chat_is_what_format_reply_produces():
     result = {
         "title": "2-комнатная квартира · 49 м² · 5/9 этаж",
         "address": "Алматы, Алатауский р-н, мкр Алтын орда",
-        "actual_price": 27_500_000,
+        "actual_price": 25_900_000,
         "fair_price": 28_700_000,
+        "fair_price_low": 26_400_000,
+        "fair_price_high": 31_000_000,
         "verdict": "GOOD_DEAL",
-        "diff_pct": -4.2,
+        "diff_pct": -9.8,
+        # «от типичной квартиры — N млн ₸»: базовое значение модели, от которого считаются вклады
+        "factors_base": 27_300_000,
         "top_factors": [
             {"feature": "district_ppsm", "impact": 1, "impact_pct": 5.6, "impact_tenge": 1_600_000},
             {"feature": "floor", "impact": -1, "impact_pct": -2.1, "impact_tenge": -600_000},
@@ -302,12 +344,17 @@ def test_headings_are_unique_and_not_glued_by_br():
 def test_fallback_numbers_agree_and_faq_does_not_wait_for_animation_library():
     html = _page()
 
+    site = (STATIC / "js" / "site.js").read_text(encoding="utf-8")
+
     for key in ("mape", "rmape"):
-        shown = set(re.findall(rf'data-l="{key}">([^<]*)<', html))
-        assert len(shown) == 1, f"запасные значения {key} расходятся: {shown}"
+        # «—» — место под живое число в подвале, пока API не ответил; остальные запасные значения совпадают
+        shown = set(re.findall(rf'data-l="{key}">([^<]*)<', html)) - {"—"}
+        assert len(shown) <= 1, f"запасные значения {key} расходятся: {shown}"
     # закрытый ответ не должен держать фокус на своих ссылках
-    assert ".inert=true" in html
-    # вопросы открываются сразу, а не после загрузки GSAP (bagamBoot ждёт до 7 с)
-    assert html.index("pane.inert=true") < html.index("bagamBoot(function(){")
+    assert "pane.inert = true" in site
+    # вопросы открываются сразу, а не после загрузки GSAP: аккордеон в общем site.js
+    # навешивается при его выполнении (defer), GSAP на этой странице не грузится вовсе
+    assert "bagamBoot" not in html and "data-gsap" not in html
+    assert '<script src="/static/js/site.js" defer>' in html
     # HOME_URL нигде не объявлен: обращение к нему — ReferenceError внутри Telegram
-    assert "HOME_URL" not in html
+    assert "HOME_URL" not in html and "HOME_URL" not in site

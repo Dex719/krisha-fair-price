@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from catboost import CatBoostRegressor
 
 
@@ -55,11 +56,80 @@ def test_with_money_impact_log_space_conversion():
     from krisha.predict import _with_money_impact
 
     fair = 50_000_000.0
+    base = 40_000_000.0
     factors = [{"feature": "area", "impact": 0.2}, {"feature": "floor", "impact": -0.1}]
-    out = _with_money_impact(factors, fair)
+    out = _with_money_impact(factors, fair, base_price=base)
     assert out[0]["impact_pct"] == round((np.expm1(0.2)) * 100, 1)  # +22.1%
-    assert out[0]["impact_tenge"] == round(fair * (1 - np.exp(-0.2)), -4)
+    # тенге на единицу вклада — логарифмическое среднее (1+fair) и (1+base)
+    scale = (fair - base) / (np.log1p(fair) - np.log1p(base))
+    assert out[0]["impact_tenge"] == round(0.2 * scale, -4)
     assert out[1]["impact_pct"] < 0 and out[1]["impact_tenge"] < 0
+
+
+def test_money_impacts_add_up_to_estimate_minus_base():
+    """База + вклады всех факторов = оценка (в тенге, а не только в логах).
+
+    Старая формула fair·(1 − e^{−s}) на реальных лотах расходилась с
+    fair − base на 10–30%: «база + вклады» не давали оценку."""
+    from krisha.predict import _money_per_log_unit
+
+    base_log = 17.59
+    shap = np.array([0.6, -0.16, -0.07, 0.05, 0.03, -0.02])
+    fair = float(np.expm1(base_log + shap.sum()))
+    base = float(np.expm1(base_log))
+
+    tenge = shap * _money_per_log_unit(fair, base)
+
+    assert tenge.sum() == pytest.approx(fair - base, rel=1e-9)
+    # знак и порядок вкладов сохраняются
+    assert list(np.sign(tenge)) == list(np.sign(shap))
+    # без вкладов (fair == base) — без деления на ноль
+    assert _money_per_log_unit(base, base) == pytest.approx(base + 1)
+
+
+def test_explain_price_merges_collinear_features_before_top_n():
+    """Год постройки и возраст дома — один фактор «Возраст дома», вклад суммой,
+    и он не отнимает место у пятого настоящего фактора."""
+    from krisha.predict import explain_price
+
+    features = ["year_built", "building_age", "area", "rooms", "lat", "lon",
+                "floor", "floor_ratio", "is_last_floor", "district", "microdistrict_ppsm",
+                "ceiling", "photos_count"]
+    # rooms (-0.025) сильнее любой этажной части по отдельности, но слабее их суммы
+    shap = np.array([-0.044, -0.039, 0.30, -0.025, 0.02, 0.015,
+                     -0.01, -0.012, -0.008, 0.03, 0.01, 0.004, 0.001])
+    base_log = 17.59
+    fair = float(np.expm1(base_log + shap.sum()))
+
+    factors, base, other = explain_price(shap, base_log, features, fair, n=5)
+
+    keys = [f["feature"] for f in factors]
+    assert len(keys) == len(set(keys)) == 5
+    assert "year_built" not in keys and "lon" not in keys and "floor_ratio" not in keys
+    assert "rooms" not in keys  # шестой после слияния — уходит в factors_other
+    age = next(f for f in factors if f["feature"] == "building_age")
+    assert age["impact"] == pytest.approx(-0.083)
+    floor = next(f for f in factors if f["feature"] == "floor")
+    assert floor["impact"] == pytest.approx(-0.03)
+    assert next(f for f in factors if f["feature"] == "district")["impact"] == pytest.approx(0.04)
+    assert next(f for f in factors if f["feature"] == "lat")["impact"] == pytest.approx(0.035)
+    # база + показанные вклады + остальные == оценка, ровно (всё округлено как цена)
+    assert base == round(float(np.expm1(base_log)), -4)
+    assert base + sum(f["impact_tenge"] for f in factors) + other == round(fair, -4)
+
+
+def test_explain_price_rent_rounds_to_thousands():
+    from krisha.predict import explain_price
+
+    shap = np.array([0.2, -0.05])
+    base_log = float(np.log1p(250_000))
+    fair = float(np.expm1(base_log + shap.sum()))
+
+    factors, base, other = explain_price(shap, base_log, ["area", "rooms"], fair, deal="arenda")
+
+    assert base == 250_000
+    assert all(f["impact_tenge"] % 1_000 == 0 for f in factors)
+    assert base + sum(f["impact_tenge"] for f in factors) + other == round(fair, -3)
 
 
 # --- load_interval_models: миграционный фолбэк на legacy model_lo/model_hi

@@ -38,10 +38,14 @@ def test_rent_stats_endpoint_is_503_without_rent_database(monkeypatch):
 
 def test_new_pages_are_routed_and_in_sitemap():
     client = TestClient(app)
-    for path in ("/rent", "/bot", "/privacy", "/terms"):
+    for path in ("/bot", "/privacy", "/terms"):
         resp = client.get(path)
         assert resp.status_code == 200, path
-        assert 'href="/static/design.css"' in resp.text, path
+        # ссылка на стили — с версией содержимого (static_cache.build_site)
+        assert 'href="/static/design.css?v=' in resp.text, path
     sitemap = client.get("/sitemap.xml").text
-    for path in ("/rent", "/bot", "/privacy", "/terms"):
+    for path in ("/bot", "/privacy", "/terms"):
         assert f"{path}</loc>" in sitemap, path
+    # «Аренда» — режим «Рынка»: /rent ведёт туда и в sitemap не числится
+    assert client.get("/rent", follow_redirects=False).status_code == 301
+    assert "/rent</loc>" not in sitemap

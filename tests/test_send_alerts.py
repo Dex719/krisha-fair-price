@@ -35,3 +35,48 @@ def test_pricing_failure_alerts_admin_and_keeps_the_rest(monkeypatch):
     assert "_send_deal_alerts" not in called and "_post_channel_digest" not in called
     assert {"_send_track_alerts", "_send_daily_admin_report"} <= set(called)
     assert admin and "не оценился" in admin[0]
+
+
+# --- chat_id в публичном логе Actions -------------------------------------------
+
+CHAT = 987654321
+
+
+def test_mask_chat_id_keeps_only_two_last_digits():
+    from krisha.bot import mask_chat_id
+
+    assert mask_chat_id(CHAT) == "***21"
+    assert mask_chat_id("-1001234567890") == "***90"
+    assert mask_chat_id(None) == "***"
+
+
+def test_track_alerts_never_print_full_chat_id(monkeypatch, capsys):
+    """Лог рассылки публичный (GitHub Actions открытого репо): ни dry-run, ни
+    «не доставлено» не печатают номер чата подписчика целиком."""
+    sa = _load()
+    from krisha import bot
+
+    monkeypatch.setattr(
+        sa, "check_tracked_updates", lambda **kw: [] if kw.get("persist") else [(CHAT, "📉 цена")]
+    )
+    monkeypatch.setattr(sa, "_quiet_hours", lambda now=None: False)
+    monkeypatch.setattr(bot, "tg_call", lambda m, **kw: {"ok": False, "error_code": 403})
+
+    sa._send_track_alerts(dry_run=True)
+    sa._send_track_alerts(dry_run=False)
+
+    out = capsys.readouterr().out
+    assert "Не доставлено в chat ***21" in out and "--- chat ***21" in out
+    assert str(CHAT) not in out
+
+
+def test_deal_alerts_dry_run_never_prints_full_chat_id(monkeypatch, capsys):
+    sa = _load()
+    monkeypatch.setattr(sa, "load_subscriptions", lambda: {str(CHAT): {}})
+    monkeypatch.setattr(sa, "match_filters", lambda deal, flt: False)
+
+    sa._send_deal_alerts(True, [{"id": 1}])
+
+    out = capsys.readouterr().out
+    assert "--- chat ***21: 0 лотов" in out
+    assert str(CHAT) not in out
