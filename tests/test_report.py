@@ -19,8 +19,16 @@ def test_build_monthly_report():
     assert "Рынок квартир Алматы" in text
     assert "43 000" in text and "45.0 млн ₸" in text and "750 тыс ₸" in text
     assert "📈 <b>+5.0%</b>" in text  # 735/700 - 1
-    assert "Медеуский: 950 тыс ₸ (5000 лотов)" in text
+    assert "Медеуский: 950 тыс ₸ (5000 объявлений)" in text
     assert "2-комн: 45.0 млн ₸" in text
+
+
+def test_listings_word_declension():
+    words = {n: report._listings_word(n) for n in (1, 2, 4, 5, 11, 12, 14, 21, 22, 25, 101, 111, 4083)}
+    assert words == {1: "объявление", 2: "объявления", 4: "объявления", 5: "объявлений",
+                     11: "объявлений", 12: "объявлений", 14: "объявлений", 21: "объявление",
+                     22: "объявления", 25: "объявлений", 101: "объявление", 111: "объявлений",
+                     4083: "объявления"}
 
 
 def test_month_delta_needs_history():
