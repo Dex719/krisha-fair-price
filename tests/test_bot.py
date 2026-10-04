@@ -618,7 +618,13 @@ def test_alerts_on_reply_speaks_plain_russian(monkeypatch):
     assert not any(w in text for w in JARGON), text
 
 
-def test_overpriced_verdict_matches_site_wording():
-    """На сайте вердикт называется «Дорого» — бот говорит так же."""
+def test_verdicts_match_site_wording():
+    """Вердикты называются как на сайте: «Выгодно», «В рынке», «Дорого»."""
+    assert bot.VERDICT_RU["GOOD_DEAL"].startswith("🟢 Выгодно")
+    assert bot.VERDICT_RU["FAIR"].startswith("🟡 В рынке")
     assert bot.VERDICT_RU["OVERPRICED"].startswith("🔴 Дорого")
     assert not any("ереплат" in v for v in bot.VERDICT_RU.values())
+    # SAMPLE_RESULT — вердикт FAIR: в ответе новое название, сумма оценки подписана как раньше
+    text = bot.format_reply(SAMPLE_RESULT)
+    assert "🟡 В рынке" in text
+    assert "⚖️ Справедливая цена:" in text
