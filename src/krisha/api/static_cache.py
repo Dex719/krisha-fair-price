@@ -26,6 +26,13 @@ mtime в образе — это время COPY при сборке, поэто
 
 Файлы в образе неизменяемы до рестарта контейнера, поэтому перепроверки mtime
 на запросе нет: в dev ``uvicorn --reload`` перезапускает процесс сам.
+
+Версии в URL (``build_site``). Ссылки ``/static/<файл>`` в html/css/js при
+сборке кэша дописываются ``?v=<хэш содержимого>``: такой URL меняется вместе
+с файлом, и его можно держать у браузера год (immutable), а не перепроверять
+блокирующий CSS на каждом переходе. Без версии ассет отдаётся с no-cache —
+браузер спросит ETag. Списков конкретных файлов здесь нет: версионируется всё,
+что лежит в static/ с подходящим расширением (VERSIONED_SUFFIXES).
 """
 
 from __future__ import annotations
@@ -34,7 +41,9 @@ import gzip
 import hashlib
 import logging
 import mimetypes
-from dataclasses import dataclass
+import re
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -88,18 +97,27 @@ def _etag(data: bytes) -> str:
 
 
 def build_asset(path: Path) -> Asset:
-    """Читает файл и готовит оба варианта представления.
+    """Читает файл и готовит оба варианта представления (см. asset_from_bytes)."""
+    return asset_from_bytes(
+        path.read_bytes(),
+        media_type_for(path),
+        compressible=path.suffix.lower() in COMPRESSIBLE_SUFFIXES,
+    )
+
+
+def asset_from_bytes(raw: bytes, media_type: str, *, compressible: bool = True) -> Asset:
+    """Готовое представление для произвольных байтов: файла после
+    переписывания ссылок или JSON-ответа API.
 
     ETag у сжатого и несжатого вариантов РАЗНЫЕ (суффикс ``-gz``): сильный
     ETag идентифицирует конкретное представление ресурса, а Content-Encoding —
     его часть. Один ETag на оба варианта ломает промежуточные кэши: клиенту
     без gzip может прилететь 304 на представление, которого у него нет.
     """
-    raw = path.read_bytes()
     etag = _etag(raw)
     gz: bytes | None = None
     etag_gz: str | None = None
-    if path.suffix.lower() in COMPRESSIBLE_SUFFIXES and len(raw) >= MIN_GZIP_BYTES:
+    if compressible and len(raw) >= MIN_GZIP_BYTES:
         # mtime=0 — детерминированные байты (иначе в gzip-заголовок попадает
         # время сжатия и ETag расходятся между воркерами и рестартами).
         gz = gzip.compress(raw, GZIP_LEVEL, mtime=0)
@@ -107,7 +125,150 @@ def build_asset(path: Path) -> Asset:
             etag_gz = etag[:-1] + '-gz"'
         else:  # редкость, но пусть будет: сжатие не помогло — не отдаём его
             gz = None
-    return Asset(raw=raw, gz=gz, etag=etag, etag_gz=etag_gz, media_type=media_type_for(path))
+    return Asset(raw=raw, gz=gz, etag=etag, etag_gz=etag_gz, media_type=media_type)
+
+
+# ---------------------------------------------------------------- версии в URL
+# Что версионируем ссылкой ?v=: всё, на что страницы ссылаются как на файл.
+VERSIONED_SUFFIXES = (
+    ".css", ".js", ".mjs", ".svg", ".webp", ".jpg", ".jpeg", ".png", ".gif",
+    ".avif", ".ico", ".woff2", ".woff", ".json", ".webmanifest",
+)
+VERSION_LEN = 10
+# /static/<путь> — путь до первого символа, которого в имени файла не бывает
+# (кавычка, скобка, пробел). Уже версионированные (`?…`) не трогаем.
+_STATIC_REF_RE = re.compile(r"/static/([A-Za-z0-9_\-./]+)(?![A-Za-z0-9_\-./?])")
+
+
+def content_version(data: bytes) -> str:
+    """Короткий хэш содержимого для ?v=."""
+    return hashlib.sha256(data).hexdigest()[:VERSION_LEN]
+
+
+def versioned_refs(text: str, versions: Mapping[str, str]) -> str:
+    """`/static/x.css` → `/static/x.css?v=<хэш>` для файлов из versions.
+
+    Незнакомый путь (собранный в JS по кусочкам `'/static/img/' + name`,
+    удалённый файл) остаётся как был — без версии он просто не immutable.
+    """
+
+    def sub(m: re.Match[str]) -> str:
+        version = versions.get(m.group(1))
+        return f"/static/{m.group(1)}?v={version}" if version else m.group(0)
+
+    return _STATIC_REF_RE.sub(sub, text)
+
+
+def replace_origins(text: str, origins: Iterable[str], target: str | None) -> str:
+    """Захардкоженный в страницах адрес сайта (canonical, og:url, og:image) →
+    target. Граница справа — чтобы `https://a.info` не задел `https://a.info.x`."""
+    if not target:
+        return text
+    target = target.rstrip("/")
+    for origin in origins:
+        origin = origin.rstrip("/")
+        if origin and origin != target:
+            text = re.sub(re.escape(origin) + r"(?![A-Za-z0-9.\-])", target, text)
+    return text
+
+
+@dataclass(frozen=True)
+class StaticSite:
+    """Кэш статики: предсжатые текстовые файлы и версии всех ассетов."""
+
+    assets: dict[str, Asset] = field(default_factory=dict)
+    versions: dict[str, str] = field(default_factory=dict)
+
+
+def _versioned_files(root: Path) -> list[str]:
+    return sorted(
+        p.relative_to(root).as_posix()
+        for p in root.rglob("*")
+        if p.is_file() and p.suffix.lower() in VERSIONED_SUFFIXES
+    )
+
+
+def build_site(
+    root: Path,
+    names: list[str],
+    *,
+    origins: Iterable[str] = (),
+    public_origin: str | None = None,
+) -> StaticSite:
+    """Собирает кэш статики с версиями в ссылках.
+
+    1. Файлы, которые отдаются с диска как есть (картинки, шрифты), —
+       версия от сырых байтов.
+    2. Текстовые не-HTML из names (css, js, svg…) — ссылки внутри
+       переписываются (шрифты в css), версия считается от ОТДАВАЕМЫХ байтов:
+       поменялся шрифт — поменялась и версия css. Пара проходов на случай
+       css → svg; цикл ссылок не зацикливает, а оставляет «несвежую» версию,
+       которая отдаётся с no-cache.
+    3. HTML — ссылки на всё из 1–2 и адрес сайта (origins → public_origin).
+    """
+    names_set = set(names)
+    try:
+        leaves = [n for n in _versioned_files(root) if n not in names_set]
+    except OSError:
+        logger.warning("static: не удалось обойти %s", root, exc_info=True)
+        leaves = []
+    versions: dict[str, str] = {}
+    for name in leaves:
+        try:
+            versions[name] = content_version((root / name).read_bytes())
+        except OSError:  # noqa: PERF203
+            logger.warning("static: не удалось прочитать %s", name, exc_info=True)
+
+    sources: dict[str, str] = {}
+    for name in names:
+        try:
+            # read_bytes, а не read_text: тот перевёл бы \r\n в \n, и файл без
+            # единой ссылки отдавался бы не теми байтами, что лежат на диске
+            sources[name] = (root / name).read_bytes().decode("utf-8")
+        except (OSError, UnicodeDecodeError):  # noqa: PERF203 — бинарь/исчез: отдадим с диска
+            logger.warning("static: не удалось прочитать %s", name, exc_info=True)
+
+    def render(name: str) -> str:
+        return replace_origins(versioned_refs(sources[name], versions), origins, public_origin)
+
+    texts = [n for n in sources if not n.lower().endswith(".html")]
+    rendered: dict[str, str] = {}
+    for _ in range(3):
+        changed = False
+        for name in texts:
+            rendered[name] = render(name)
+            if name.lower().endswith(VERSIONED_SUFFIXES):
+                version = content_version(rendered[name].encode("utf-8"))
+                changed |= versions.get(name) != version
+                versions[name] = version
+        if not changed:
+            break
+    for name in sources:
+        if name.lower().endswith(".html"):
+            rendered[name] = render(name)
+
+    assets = {
+        name: asset_from_bytes(
+            text.encode("utf-8"),
+            media_type_for(Path(name)),
+            compressible=Path(name).suffix.lower() in COMPRESSIBLE_SUFFIXES,
+        )
+        for name, text in rendered.items()
+    }
+    _log_cache(assets)
+    return StaticSite(assets=assets, versions=versions)
+
+
+def _log_cache(cache: dict[str, Asset]) -> None:
+    if cache:
+        total_raw = sum(a.sizes[0] for a in cache.values())
+        total_gz = sum(a.sizes[1] or a.sizes[0] for a in cache.values())
+        logger.info(
+            "static: предсжато %d файлов, %d КБ → %d КБ",
+            len(cache),
+            total_raw // 1024,
+            total_gz // 1024,
+        )
 
 
 def build_cache(root: Path, names: list[str]) -> dict[str, Asset]:
@@ -120,15 +281,7 @@ def build_cache(root: Path, names: list[str]) -> dict[str, Asset]:
                 cache[name] = build_asset(path)
         except OSError:  # noqa: PERF203 — файл мог исчезнуть, это не повод падать
             logger.warning("static: не удалось предсжать %s", name, exc_info=True)
-    if cache:
-        total_raw = sum(a.sizes[0] for a in cache.values())
-        total_gz = sum(a.sizes[1] or a.sizes[0] for a in cache.values())
-        logger.info(
-            "static: предсжато %d файлов, %d КБ → %d КБ",
-            len(cache),
-            total_raw // 1024,
-            total_gz // 1024,
-        )
+    _log_cache(cache)
     return cache
 
 

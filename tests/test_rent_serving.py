@@ -249,3 +249,19 @@ def test_bot_reply_shows_rental_yield_for_sale():
                          "assumes_renovation": False},
     })
     assert "Если сдавать: ~<b>330 тыс ₸/мес</b> · доходность <b>8.8%</b> годовых (в районе ~8.5%)" in text
+
+
+def test_rent_factors_are_merged_and_add_up_to_estimate(rent_env):
+    """Без дублей коллинеарных признаков; база + вклады + остальное = оценка
+    (в ₸/мес — единицах ответа аренды)."""
+    with get_conn(rent_env) as conn:
+        r = predict_mod.predict_from_listing(_rent_listing(year_built=1975), live_vision=False, conn=conn)
+
+    keys = [f["feature"] for f in r["top_factors"]]
+    assert len(keys) == len(set(keys))
+    merged_away = {m for k, ms in predict_mod.FACTOR_GROUPS.items() for m in ms if m != k}
+    assert not merged_away & set(keys), keys
+    assert r["factors_base"] > 0 and r["factors_base"] % 1_000 == 0
+    total = r["factors_base"] + sum(f["impact_tenge"] for f in r["top_factors"]) + r["factors_other"]
+    assert total == r["fair_price"]
+    PredictResponse(**r)

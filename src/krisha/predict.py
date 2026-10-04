@@ -251,8 +251,60 @@ def _verdict_interval(actual: float, low: float, high: float) -> str:
     return "FAIR"
 
 
+# Группы коллинеарных признаков: для человека это один смысл, а модель видит
+# его в нескольких колонках (год постройки и возраст дома — одно число с
+# разным знаком). Без слияния карточка показывала две одинаковые «Возраст дома»
+# с одной подсказкой, а топ-5 терял место под настоящий пятый фактор. Вклады
+# SHAP аддитивны, поэтому вклад группы — сумма вкладов её признаков; топ-N
+# выбирается уже по группам. Ключ группы — признак, который фронт (NAMES в
+# static/index.html) и бот (bot.FEATURE_RU) уже умеют подписывать.
+FACTOR_GROUPS: dict[str, tuple[str, ...]] = {
+    "building_age": ("year_built", "building_age"),
+    "floor": ("floor", "floor_ratio", "is_first_floor", "is_last_floor"),
+    # target-encoding района/микрорайона — та же «локация по названию»
+    "district": ("district", "district_ppsm", "microdistrict", "microdistrict_ppsm"),
+    "lat": ("lat", "lon"),  # обе — «Расположение на карте»
+    "security_count": ("security_count", "has_security_guard", "has_intercom", "has_video_surveillance"),
+    # is_new_building выводится из category (+ возраст дома и тип продавца)
+    "is_new_building": ("is_new_building", "category"),
+    # аренда
+    "toilet": ("toilet", "bathroom", "toilet_count"),
+    "balcony": ("balcony", "balcony_n", "loggia_n"),
+    "furniture": ("furniture", "n_furniture_items"),
+}
+_FEATURE_GROUP = {member: key for key, members in FACTOR_GROUPS.items() for member in members}
+
+
+def shap_contributions(model: CatBoostRegressor, pool: Pool) -> tuple[np.ndarray, float]:
+    """SHAP-вклады первой строки пула и базовое значение модели (log-пространство).
+
+    CatBoost кладёт базу (expected value — средний ответ модели на обучении)
+    последним столбцом; база + сумма вкладов = сырой ответ модели, то есть
+    log1p(справедливой цены). Почему Approximate — см. `top_factors`.
+    """
+    row = model.get_feature_importance(pool, type="ShapValues", shap_calc_type="Approximate")[0]
+    return np.asarray(row[:-1], dtype=float), float(row[-1])
+
+
+def merge_factor_groups(shap_vals: Any, features: list[str]) -> dict[str, float]:
+    """{фактор: суммарный вклад} — коллинеарные признаки свёрнуты в FACTOR_GROUPS."""
+    merged: dict[str, float] = {}
+    for name, value in zip(features, shap_vals, strict=True):
+        key = _FEATURE_GROUP.get(name, name)
+        merged[key] = merged.get(key, 0.0) + float(value)
+    return merged
+
+
+def _top_merged(merged: dict[str, float], n: int = 5) -> list[dict]:
+    order = sorted(merged, key=lambda k: abs(merged[k]), reverse=True)
+    return [{"feature": k, "impact": merged[k]} for k in order[:n] if abs(merged[k]) > 1e-9]
+
+
 def top_factors(model: CatBoostRegressor, pool: Pool, features: list[str], n: int = 5) -> list[dict]:
     """Топ-факторы цены для конкретного объявления через SHAP-значения CatBoost.
+
+    Коллинеарные признаки сливаются в один фактор ДО выбора топ-N
+    (FACTOR_GROUPS): пользователь видит N разных факторов, а не два «Возраста дома».
 
     issue #118 — что НЕ сработало и почему: пробовал завести кэшированный
     `shap.TreeExplainer` (лежит на процесс, как `load_model()`), в расчёте, что
@@ -273,15 +325,8 @@ def top_factors(model: CatBoostRegressor, pool: Pool, features: list[str], n: in
     на `shap_calc_type="Regular"` (тогда #118 остаётся без реального фикса,
     честно об этом в PR).
     """
-    shap_vals = model.get_feature_importance(
-        pool, type="ShapValues", shap_calc_type="Approximate"
-    )[0][:-1]
-    order = np.argsort(np.abs(shap_vals))[::-1][:n]
-    return [
-        {"feature": features[i], "impact": float(shap_vals[i])}
-        for i in order
-        if abs(shap_vals[i]) > 1e-9
-    ]
+    shap_vals, _ = shap_contributions(model, pool)
+    return _top_merged(merge_factor_groups(shap_vals, features), n)
 
 
 def _round_price(value: float, deal: str = "prodazha") -> float:
@@ -290,33 +335,85 @@ def _round_price(value: float, deal: str = "prodazha") -> float:
     return round(value, -3 if deal == RENT else -4)
 
 
-def _with_money_impact(factors: list[dict], fair_price: float, deal: str = "prodazha") -> list[dict]:
+def _money_per_log_unit(fair_price: float, base_price: float | None) -> float:
+    """Сколько тенге стоит единица SHAP-вклада (log-пространство).
+
+    Модель отвечает y = b + Σsᵢ, цена = expm1(y), «типичная квартира» —
+    expm1(b). Разность цен (1+F) − (1+B) = e^y − e^b раскладывается по
+    факторам точно, если каждый вклад умножить на логарифмическое среднее
+    L = (e^y − e^b) / (y − b): Σ sᵢ·L = F − B (LMDI-разложение). L лежит между
+    1+B и 1+F, при y → b стремится к e^b — деления на ноль нет.
+
+    Раньше вклад считался как F·(1 − e^{−s}) — «насколько дешевле без этого
+    фактора». Такие вклады не складываются: на реальных лотах их сумма
+    расходилась с F − B на 10–30%, и «база + вклады» не давали оценку.
+    base_price=None (база неизвестна) — множитель итоговой цены 1+F.
+    """
+    hi = float(np.log1p(fair_price))
+    if base_price is None:
+        return float(np.exp(hi))
+    lo = float(np.log1p(base_price))
+    if abs(hi - lo) < 1e-9:
+        return float(np.exp(lo))
+    return float((np.exp(hi) - np.exp(lo)) / (hi - lo))
+
+
+def _with_money_impact(
+    factors: list[dict], fair_price: float, deal: str = "prodazha", base_price: float | None = None
+) -> list[dict]:
     """Переводит SHAP-вклад из log-пространства в понятные % и тенге.
 
     Модель предсказывает log1p(price), поэтому вклад s фактора — это
-    множитель exp(s) к цене: impact_pct = (exp(s) - 1) * 100. В деньгах
-    оцениваем «сколько фактор добавил к итоговой цене»: цена без него
-    была бы fair/exp(s), значит вклад ≈ fair * (1 - exp(-s)).
+    множитель exp(s) к цене: impact_pct = (exp(s) - 1) * 100. В деньгах —
+    доля разницы «оценка − типичная квартира» (base_price), см.
+    `_money_per_log_unit`: вклады всех факторов в сумме дают ровно эту разницу.
     """
+    scale = _money_per_log_unit(fair_price, base_price)
     for f in factors:
         s = f["impact"]
         f["impact_pct"] = round(float(np.expm1(s)) * 100, 1)
-        f["impact_tenge"] = _round_price(float(fair_price * (1 - np.exp(-s))), deal)
+        f["impact_tenge"] = _round_price(float(s * scale), deal)
     return factors
 
 
-def _with_hints(listing: dict[str, Any], factors: list[dict], deal: str = "prodazha") -> list[dict]:
+def explain_price(
+    shap_vals: Any, base_log: float, features: list[str], fair_price: float,
+    deal: str = "prodazha", n: int = 5,
+) -> tuple[list[dict], float, float]:
+    """(top_factors, factors_base, factors_other) для карточки.
+
+    factors_base — «типичная квартира»: базовое значение модели в деньгах
+    (₸, у аренды ₸/мес). factors_other — вклад всех факторов, не вошедших в
+    топ. Все три величины округлены как цена, и остаток считается ПОСЛЕ
+    округления: base + Σ impact_tenge + other == округлённая fair_price
+    ровно, без «пропавших» 10 тысяч.
+    """
+    base_price = float(np.expm1(base_log))
+    factors = _with_money_impact(
+        _top_merged(merge_factor_groups(shap_vals, features), n), fair_price, deal, base_price
+    )
+    base_rounded = _round_price(base_price, deal)
+    other = _round_price(fair_price, deal) - base_rounded - sum(f["impact_tenge"] for f in factors)
+    return factors, base_rounded, _round_price(other, deal)
+
+
+def _with_hints(
+    listing: dict[str, Any], factors: list[dict], deal: str = "prodazha",
+    facts: dict[str, Any] | None = None,
+) -> list[dict]:
     """Подсказки со статистикой рынка к каждому фактору (fail-soft).
 
     Только для продажи: подсказки считаются по продажной базе и написаны для
     покупателя («от 2.8 м потолки — премиальный признак»), аренде они врут.
+    facts — строка фич модели (класс жилья, застройщик, новостройка): по ним
+    подсказка подстраивается под объявление, а не противоречит ему.
     """
     if deal == RENT:
         return factors
     try:
         from krisha.factor_hints import build_factor_hints
 
-        return build_factor_hints(listing, factors)
+        return build_factor_hints(listing, factors, facts)
     except Exception:  # noqa: BLE001
         logger.exception("factor hints failed")
         return factors
@@ -466,6 +563,10 @@ def _predict_from_listing(
         room_share = is_room_share(listing.get("description"))
         if room_share:
             verdict = None
+    shap_vals, base_log = shap_contributions(model, pool)
+    factors, factors_base, factors_other = explain_price(
+        shap_vals, base_log, features, fair_price, deal
+    )
     result = {
         "deal": deal,
         "price_period": "month" if rent else None,
@@ -484,9 +585,13 @@ def _predict_from_listing(
         "diff_pct": (
             round((actual - fair_price) / fair_price * 100, 1) if actual and not room_share else None
         ),
-        "top_factors": _with_hints(
-            listing, _with_money_impact(top_factors(model, pool, features), fair_price, deal), deal
-        ),
+        "top_factors": _with_hints(listing, factors, deal, facts=df.iloc[0].to_dict()),
+        # Точка отсчёта вкладов: «типичная квартира» модели (её базовое
+        # значение) и сумма факторов вне топа. factors_base + Σ impact_tenge +
+        # factors_other == fair_price — «все факторы снижают, а оценка выше
+        # цены» перестаёт быть загадкой: снижают от типичной квартиры.
+        "factors_base": factors_base,
+        "factors_other": factors_other,
         "details": build_details(listing, deal),
         "complex_details": build_complex_details(listing),
         "location_details": _location_details_with_pin_note(listing),

@@ -28,7 +28,10 @@ def _page() -> str:
 
 
 def _site_pages() -> dict[str, str]:
-    return {p.name: p.read_text(encoding="utf-8") for p in sorted(STATIC.glob("*.html"))}
+    """Все страницы и общий скрипт static/js/site.js — он исполняется на каждой из них."""
+    pages = {p.name: p.read_text(encoding="utf-8") for p in sorted(STATIC.glob("*.html"))}
+    pages["js/site.js"] = (STATIC / "js" / "site.js").read_text(encoding="utf-8")
+    return pages
 
 
 def _src(*parts: str) -> str:
@@ -99,8 +102,8 @@ def test_privacy_names_the_real_data_flows():
 def test_privacy_has_edition_date_and_contacts():
     html = _page()
 
-    assert "Редакция от" in html and "2 октября 2026" in html
-    assert 'datetime="2026-10-02"' in html
+    assert "Редакция от" in html and "4 октября 2026" in html
+    assert 'datetime="2026-10-04"' in html
     assert 'href="https://t.me/Hopepe1"' in html
     assert 'href="https://t.me/fairprice_kzbot"' in html
     assert 'href="https://github.com/Dex719/krisha-fair-price"' in html
@@ -161,7 +164,7 @@ def test_policy_numbers_match_the_code():
 
     assert usage.KEEP_DAYS == 60 and "60 дней" in page
     assert prediction_log.MAX_ROWS == 20_000 and "20 000" in page
-    assert tracking.MAX_TRACKED_PER_CHAT == 10 and "10 лотов" in page
+    assert tracking.MAX_TRACKED_PER_CHAT == 10 and "10 объявлений" in page
     assert text_parse.MIN_TEXT_LEN == 40 and "не короче 40 символов" in page
     assert "[:3000]" in _src("text_parse.py") and "3000 символов" in page
     assert inspect.signature(db.remember_update_id).parameters["keep"].default == 5000
@@ -266,8 +269,81 @@ def test_actions_log_claim_matches_the_alert_script():
     script = (ROOT / "scripts" / "send_alerts.py").read_text(encoding="utf-8")
     page = _page()
 
-    assert "Не доставлено в chat {chat_id}" in script
-    assert "Журнал рассылки в GitHub Actions" in page and "номер этого чата" in page
+    # Номер чата в публичный журнал не попадает целиком — только две последние
+    # цифры (bot.mask_chat_id), и политика говорит ровно это.
+    assert "Не доставлено в chat {mask_chat_id(chat_id)}" in script
+    assert "{chat_id}" not in script
+    from krisha.bot import mask_chat_id
+    assert mask_chat_id(123456789) == "***89"
+    assert "Журнал рассылки в GitHub Actions" in page
+    assert "только две последние цифры номера чата" in page
+    assert "номер этого чата" not in page
     # рассылка идёт из Actions, а не с сервера Space
     workflow = (ROOT / ".github" / "workflows" / "rescrape.yml").read_text(encoding="utf-8")
     assert "python -m krisha.subscriptions --pull" in workflow and "scripts/send_alerts.py" in workflow
+
+
+def _section(html: str, sid: str) -> str:
+    m = re.search(rf'<section class="ds" id="{sid}">.*?</section>', html, flags=re.S)
+    assert m, f"нет раздела #{sid}"
+    return m.group(0)
+
+
+def test_operator_is_not_invented_and_owner_todo_is_left():
+    """Оператор — только то, что есть в репозитории (ник автора); ФИО и контакт впишет владелец."""
+    html = _page()
+    operator = _section(html, "operator")
+
+    assert 'href="https://t.me/Hopepe1"' in operator
+    assert "<!-- TODO(владелец):" in operator and "ФИО" in operator
+    assert "№ 94-V" in operator and "О персональных данных и их защите" in operator
+    # ни выдуманных e-mail, ни ИИН
+    assert not re.search(r"[\w.+-]+@[\w-]+\.[a-z]{2,}", re.sub(r"<!--.*?-->", "", html, flags=re.S))
+    assert "ИИН" not in html
+
+
+def test_basis_is_consent_through_bot_actions():
+    basis = _section(_page(), "basis")
+
+    assert "с вашего согласия" in basis
+    assert "<code>/track</code>" in basis and "<code>/alerts_on</code>" in basis
+
+
+def test_cross_border_section_names_the_real_services_and_localization_risk():
+    page = _page()
+    transfer = _section(page, "transfer")
+
+    for service in ("Hugging Face", "Cloudflare", "GitHub", "Telegram", "Google"):
+        assert service in transfer, f"не названа зарубежная платформа: {service}"
+    assert "Статья 12" in transfer and "на территории Республики Казахстан" in transfer
+    # bagam.info идёт через Cloudflare Worker, а webhook бота — мимо него, на адрес Space
+    worker = (ROOT / "docs" / "domain-worker.js").read_text(encoding="utf-8")
+    assert "Cloudflare Worker" in worker and "bot.webhook_base_url" in worker
+    assert "SPACE_HOST" in inspect.getsource(bot.webhook_base_url)
+    assert "Сообщения боту идут мимо Cloudflare" in transfer
+    # Gemini — реально используемый внешний сервис
+    assert "generativelanguage.googleapis.com" in _src("llm_flags.py")
+
+
+def test_rights_explain_how_to_exercise_them():
+    rights = _section(_page(), "rights")
+
+    for right in ("узнать", "исправить", "удалить", "отозвать согласие"):
+        assert right in rights.lower(), right
+    for cmd in ("<code>/track</code>", "<code>/alerts</code>", "<code>/alerts_off</code>", "<code>/untrack all</code>"):
+        assert cmd in rights
+    assert "в сроки, установленные законодательством Республики Казахстан" in rights
+
+
+def test_technical_details_are_collapsed():
+    """Fernet, webhook, Bot API и список исходников — в свёрнутых <details>, не в основном тексте."""
+    html = _page()
+    tech = "".join(re.findall(r'<details class="tech">.*?</details>', html, flags=re.S))
+    rest = re.sub(r'<details class="tech">.*?</details>', "", html, flags=re.S)
+    main = rest[rest.index('<main id="main">'):rest.index("</main>")]
+
+    for needle in ("Fernet", "webhook", "Bot API", "subscriptions.py", "последних 5000"):
+        assert needle in tech, needle
+        assert needle not in main, f"{needle} вне свёрнутых подробностей"
+    assert "<details open" not in html.replace('<details class="toc"', "")
+    assert "Главное за полминуты" in main

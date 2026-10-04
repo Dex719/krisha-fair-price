@@ -1,208 +1,97 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8">
+<html lang="ru" data-live="off"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<script>(function(){try{var t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme');if(!t)t='dark';document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();</script>
+<meta name="theme-color" content="#0A100C" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F1F4EC" media="(prefers-color-scheme: light)">
 <script>
-(function(){
-  var d=document.documentElement, c=navigator.connection||{},
-      rm=matchMedia('(prefers-reduced-motion: reduce)').matches,
-      weak=!!c.saveData
-          ||/(^|-)(slow-2g|2g)$/.test(c.effectiveType||'')
-          ||(navigator.deviceMemory&&navigator.deviceMemory<=2)
-          ||(navigator.hardwareConcurrency&&navigator.hardwareConcurrency<=4
-             &&navigator.deviceMemory&&navigator.deviceMemory<=4),
-      lite=weak;
-  d.classList.add(lite?'lite':'anim');
-  if(rm)d.classList.add('rm');
-  window.bagamLite=lite;window.bagamRM=rm;
-  var q=[];
-  function flushTG(){var tg=window.Telegram&&window.Telegram.WebApp;if(!tg)return;while(q.length)q.shift()(tg);}
-  window.bagamTG=function(cb){q.push(cb);flushTG();};
-  var inTG=/tgWebApp/i.test(location.search+location.hash)||!!window.TelegramWebviewProxy||/Telegram/i.test(navigator.userAgent);
-  if(inTG){var s=document.createElement('script');s.src='https://telegram.org/js/telegram-web-app.js';s.async=true;s.onload=flushTG;document.head.appendChild(s);}
-  window.bagamBoot=function(cb){
-    if(lite){cb();return;}
-    var fired=false,fin=function(){if(fired)return;fired=true;cb();};
-    var guard=setTimeout(fin,7000);
-    function load(src,next){
-      var el=document.createElement('script');el.src=src;el.async=false;
-      el.onload=next;el.onerror=function(){clearTimeout(guard);fin();};
-      document.head.appendChild(el);
-    }
-    var start=function(){
-      /* Сеть сама себя измерила: если html полз дольше двух секунд,
-         анимации не грузим — 65 КБ библиотеки важнее украшений. */
-      var nv=performance.getEntriesByType('navigation')[0];
-      if(nv&&(nv.responseEnd-nv.requestStart)>2000){d.classList.remove('anim');d.classList.add('lite');window.bagamLite=true;fin();return;}
-      load('/static/js/gsap.min.js',function(){
-      load('/static/js/ScrollTrigger.min.js',function(){clearTimeout(guard);fin();});});};
-    if(document.readyState==='complete')start();
-    else addEventListener('load',function(){('requestIdleCallback' in window)?requestIdleCallback(start,{timeout:1200}):setTimeout(start,80);});
-  };
-})();
+/* до первой отрисовки: тема (сохранённый выбор, иначе системная) и режим движения; bagam.ready — очередь до загрузки site.js */
+(function(d,w){var n=navigator,c=n.connection||{},m=function(q){return !!(w.matchMedia&&w.matchMedia(q).matches)},t;
+try{t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme')}catch(e){}
+d.setAttribute('data-theme',t==='light'||t==='dark'?t:m('(prefers-color-scheme: light)')?'light':'dark');
+var lite=!!c.saveData||/(^|-)(slow-2g|2g)$/.test(c.effectiveType||'')||(n.deviceMemory&&n.deviceMemory<=2)||(n.hardwareConcurrency&&n.hardwareConcurrency<=4&&n.deviceMemory&&n.deviceMemory<=4);
+d.classList.add('js',lite?'lite':'anim');if(m('(prefers-reduced-motion: reduce)'))d.classList.add('rm');
+w.bagam={q:[],ready:function(f){this.q.push(f)}};
+})(document.documentElement,window);
 </script>
 <title>Страница не найдена │ baǵam</title>
 <meta name="description" content="Такой страницы нет. Вернитесь к оценке квартиры по ссылке с Krisha.">
+<meta name="robots" content="noindex">
+<link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/unb-lat.woff2">
+<link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/unb-gacute.woff2">
 <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/onest-cyr.woff2">
-<link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/unb-cyr.woff2">
-<style>
-@font-face{font-family:'Onest';font-style:normal;font-weight:300 700;font-display:swap;src:url(/static/fonts/onest-cyr.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
-@font-face{font-family:'Onest';font-style:normal;font-weight:300 700;font-display:swap;src:url(/static/fonts/onest-lat.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
-@font-face{font-family:'Unbounded';font-style:normal;font-weight:400 800;font-display:swap;src:url(/static/fonts/unb-cyr.woff2) format('woff2');unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
-@font-face{font-family:'Unbounded';font-style:normal;font-weight:400 800;font-display:swap;src:url(/static/fonts/unb-lat.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
-/* ǵ в слове baǵam: этой буквы нет в обычных наборах, без неё логотип рисуется системным шрифтом */
-@font-face{font-family:'Unbounded';font-style:normal;font-weight:400 800;font-display:swap;src:url(/static/fonts/unb-gacute.woff2) format('woff2');unicode-range:U+01F5}
-/* запасные шрифты с теми же метриками: подмена не двигает строки */
-@font-face{font-family:'OnestFB';src:local('Arial'),local('Helvetica'),local('Roboto');size-adjust:106.4%;ascent-override:91.1%;descent-override:28.7%;line-gap-override:0%}
-@font-face{font-family:'UnboundedFB';src:local('Arial'),local('Helvetica'),local('Roboto');size-adjust:139%;ascent-override:71.6%;descent-override:17.6%;line-gap-override:0%}
-@font-face{font-family:'DataFB';src:local('Courier New'),local('DejaVu Sans Mono'),local('Roboto Mono');size-adjust:100%;ascent-override:102%;descent-override:30%;line-gap-override:0%}
-</style>
-<style>
-/* Гибридный «дата»-шрифт: латиница/цифры — JetBrains Mono, кириллица — Onest (моно-кириллица читается плохо) */
-@font-face{font-family:'Data';font-weight:400 600;font-display:swap;
-src:url(/static/fonts/jbm-lat.woff2) format('woff2');
-unicode-range:U+0021-00FF,U+2000-206F,U+20A0-20BF,U+2116,U+2190-21FF,U+25A0-25FF,U+2070-209F,U+2212,U+2215,U+2248,U+2264-2265;}
-@font-face{font-family:'Data';font-weight:400 600;font-display:swap;size-adjust:103%;
-src:url(/static/fonts/onest-cyr.woff2) format('woff2');
-unicode-range:U+0020,U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1;}
-</style>
+<link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/onest-lat.woff2">
 <link rel="stylesheet" href="/static/design.css">
 <style>
-/* 404: крупная цифра с лаймовым нулём — характер страницы; под ней слово и один понятный путь назад. */
-.nf{min-height:min(78vh,860px);display:flex;flex-direction:column;justify-content:center;padding:164px 0 96px;position:relative;overflow:hidden}
-.nf>.wrap{width:100%;max-width:832px}
-.nfnum{display:block;width:min(760px,100%);height:auto;user-select:none}
+/* 404: крупная цифра, одна строка объяснения и пути дальше — проверить объявление из адреса, поле для ссылки, разделы.
+   Без запросов к API: <html data-live="off"> — site.js не ходит за живыми цифрами, подвал прячет .flive. */
+.nf{padding:164px 0 104px}
+.nf>.wrap{max-width:832px}
+.nfnum{display:block;width:min(520px,100%);height:auto;user-select:none}
 .nfnum text{font-family:Unbounded,UnboundedFB,sans-serif;font-weight:700;font-size:290px;letter-spacing:-.04em;fill:var(--faint)}
 .nfnum .z{fill:var(--lime)}
-.nfh{font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:clamp(28px,3.4vw,44px);line-height:1.1;letter-spacing:-.035em;margin:30px 0 18px;max-width:15em;text-wrap:balance}
-.nfh em{font-style:normal;color:var(--violink)}
-.nfp{color:var(--dim);font-size:17px;line-height:1.65;max-width:540px;text-wrap:pretty}
-.nfp b{color:var(--ink);font-weight:600}
-.nfrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:38px}
-.nfbtn{display:inline-flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:99px;padding:15px 24px;background:var(--panel);font-weight:600;font-size:15.5px;line-height:1.2;color:var(--ink);text-decoration:none;white-space:nowrap;transition:border-color .25s,color .25s,background-color .25s}
-.nfbtn svg{width:18px;height:18px;flex:none}
+.nfh{font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:clamp(30px,3.6vw,46px);line-height:1.1;letter-spacing:-.035em;margin:24px 0 12px}
+.nfp{color:var(--dim);font-size:17px;line-height:1.6;max-width:560px;text-wrap:pretty}
+.nflot{margin-top:30px}
+.nflot .gobtn{display:inline-flex;align-items:center;gap:10px;margin-top:14px;text-decoration:none}
+.nflot .gobtn b{font-weight:700;font-variant-numeric:tabular-nums}
+.nfp.lab{margin-top:30px}
+.nf .inbar{margin-top:14px;max-width:600px}
+.nfrow{display:flex;flex-wrap:wrap;gap:10px;margin-top:40px}
+.nfbtn{border:1px solid var(--line);border-radius:99px;padding:12px 20px;background:var(--panel);font-weight:600;font-size:15px;line-height:1.2;color:var(--ink);text-decoration:none;transition:border-color .25s,color .25s}
 .nfbtn:hover{border-color:var(--limeink);color:var(--limeink)}
-.nfbtn:focus-visible{outline-color:var(--limeink)}
-.nfbtn.hot{background:var(--lime);border-color:var(--lime);color:var(--onl);box-shadow:inset 0 1px 0 rgba(255,255,255,.28)}
-.nfbtn.hot:hover,.nfbtn.hot:focus-visible{background:color-mix(in oklab,var(--lime) 86%,#fff);border-color:transparent;color:var(--onl)}
 html.tma .nf{padding-top:34px}
-@media(max-width:820px){
- .nf{min-height:0;padding:124px 0 72px}
- .nfh{margin-top:22px}
- .nfrow{margin-top:28px}
-}
-@media(max-width:560px){
- .nfbtn{padding:14px 20px;font-size:15px}
- .nfbtn.hot{flex:1 1 100%;justify-content:center}
-}
-
-/* ---------- скорость: вход героя без JS ---------- */
-@keyframes bgmup{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
-html.anim h1 span{animation:bgmup .85s cubic-bezier(.16,1,.3,1) both}
-html.anim h1 span:nth-child(2){animation-delay:.08s}
-html.anim h1 span:nth-child(3){animation-delay:.16s}
-html.anim h1 span:nth-child(4){animation-delay:.24s}
-html.anim .herorow{animation:bgmup .8s cubic-bezier(.16,1,.3,1) .3s both}
-html.anim .lede{animation:bgmup .8s cubic-bezier(.16,1,.3,1) .42s both}
-/* ---------- слабое устройство или экономия трафика: только суть ---------- */
-html.lite *{box-shadow:none!important}
-html.lite .cityband img{will-change:auto;height:100%}
-html.lite [style*="filter:blur"],html.lite .glow{filter:none!important}
-/* ---------- скелетоны ---------- */
-@keyframes bgmsk{0%{background-position:100% 0}100%{background-position:-100% 0}}
-.sk{position:relative;color:transparent!important;border-radius:8px;
- background:linear-gradient(90deg,var(--soft) 25%,var(--hover) 37%,var(--soft) 63%);
- background-size:250% 100%;animation:bgmsk 1.3s linear infinite}
-.sk *{visibility:hidden}
-html.lite .sk{animation:none}
-.sheet.busy{opacity:1!important}
-.sheet.busy .vbig,.sheet.busy .vpct,.sheet.busy .vsub,.sheet.busy .rv,.sheet.busy .rsub,
-.sheet.busy .rmk,.sheet.busy .rends,.sheet.busy .fxv,.sheet.busy .fxn,.sheet.busy .rchip{
- color:transparent!important;
- background:linear-gradient(90deg,var(--soft) 25%,var(--hover) 37%,var(--soft) 63%);
- background-size:250% 100%;animation:bgmsk 1.3s linear infinite;border-radius:8px}
-.sheet.busy .rv *,.sheet.busy .rchip *,.sheet.busy .rmk *,.sheet.busy .rends *,
-.sheet.busy .fxv *,.sheet.busy .fxn *,.sheet.busy .vbig *,.sheet.busy .vsub *,
-.sheet.busy .rchip::before,.sheet.busy .rchip::after,.sheet.busy .rchip *::before,
-.sheet.busy .rmk::before,.sheet.busy .rmk::after,.sheet.busy .rends::before{color:transparent!important}
-.sheet.busy .verdict{background:var(--panel)!important;border:1px solid var(--line)}
-.sheet.busy .fxb i,.sheet.busy .rband{opacity:.25}
-.waitmsg{display:none;margin-top:12px;font-family:'Data','JetBrains Mono',monospace;font-size:13px;color:var(--dim)}
-.waitmsg.on{display:block}
-.offbar{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:80;display:none;
- align-items:center;gap:9px;padding:11px 17px;border:1px solid var(--line);border-radius:13px;
- background:var(--panel);color:var(--ink);font:500 14px Onest;box-shadow:0 12px 34px var(--shadow)}
-.offbar.on{display:flex}
-.offbar i{width:8px;height:8px;border-radius:50%;background:var(--warn);display:block}
-</style><link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-<meta name="robots" content="noindex">
+@media(max-width:820px){.nf{padding:124px 0 72px}}
+</style>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<script src="/static/js/site.js" defer></script>
 </head><body>
 <a class="skip" href="#main">Перейти к содержимому</a>
-<div class="progress" id="prog"></div>
-<nav><div class="wrap nrow">
+<div class="progress" id="prog" aria-hidden="true"></div>
+<nav aria-label="Основная навигация"><div class="wrap nrow">
 <a class="logo" href="/" aria-label="baǵam — на главную">baǵam<span>.</span></a>
-<div class="menu"><a href="/">Оценка</a><a href="/stats">Рынок</a><a href="/rent">Аренда</a><a href="/about">О проекте</a></div>
-<button class="thbtn" type="button" data-theme-toggle aria-label="Сменить тему"><svg class="tm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg><svg class="ts" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button><a class="tgbtn" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><span class="tgn">Telegram-бот</span><span class="tghw"><span class="tgh">@fairprice_kzbot</span></span><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 10l-4 4l6 6l4-16l-18 7l4 2l2 6l3-4" stroke="currentColor" stroke-width="1.9"/></svg></a>
+<div class="menu"><a href="/">Оценка</a><a href="/stats">Рынок</a><a href="/bot">Telegram-бот</a><a href="/about">О проекте</a></div>
+<button class="thbtn" type="button" data-theme-toggle aria-label="Сменить тему"><svg class="tm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg><svg class="ts" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button><a class="tgbtn" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><span class="tgn">Открыть бота</span><span class="tghw"><span class="tgh">@fairprice_kzbot</span></span><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 10l-4 4l6 6l4-16l-18 7l4 2l2 6l3-4" stroke="currentColor" stroke-width="1.9"/></svg></a>
 <button class="burg" type="button" aria-label="Меню" aria-expanded="false" aria-controls="mmenu"><span></span><span></span></button>
 </div></nav>
-<div class="mmenu" id="mmenu" aria-label="Меню" aria-hidden="true">
-<a class="ml" data-href="/" href="/">Оценка<i>главная</i></a>
-<a class="ml" data-href="/stats" href="/stats">Рынок<i>цены продажи по районам</i></a>
-<a class="ml" data-href="/rent" href="/rent">Аренда<i>цены аренды и доходность</i></a>
-<a class="ml" data-href="/about" href="/about">О проекте<i>как считает модель</i></a>
+<div class="mmenu" id="mmenu" role="dialog" aria-modal="true" aria-label="Меню" aria-hidden="true">
+<a class="ml" href="/">Оценка<i>главная</i></a>
+<a class="ml" href="/stats">Рынок<i>цены продажи и аренды по районам</i></a>
+<a class="ml" href="/bot">Telegram-бот<i>оценка в чате и слежение за ценой</i></a>
+<a class="ml" href="/about">О проекте<i>как считает модель</i></a>
 <div class="msub">
-<a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">Telegram-бот · @fairprice_kzbot</a>
-<a href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener">Открытый код на GitHub</a>
+<a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">Открыть бота · @fairprice_kzbot</a>
+<a href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener">Исходный код на GitHub</a>
 <button class="mth" type="button" data-theme-toggle><span>Тема оформления</span><b data-theme-label>тёмная</b></button>
 <span>данные krisha.kz · Алматы</span>
+<button class="mclose" type="button" data-mclose>Закрыть меню</button>
 </div>
 </div>
-<script>
-(function(){
-  const b=document.querySelector('.burg'), m=document.getElementById('mmenu');
-  if(!b||!m) return;
-  m.querySelectorAll('.ml').forEach(a=>{ if(location.href.split('#')[0]===a.dataset.href) a.classList.add('on'); });
-  let open=false;
-  function set(v){
-    open=v;
-    b.setAttribute('aria-expanded', v?'true':'false');
-    b.setAttribute('aria-label', v?'Закрыть меню':'Меню');
-    document.body.classList.toggle('mopen', v);
-    m.setAttribute('aria-hidden', v?'false':'true');
-    m.classList.toggle('open', v);
-    if(v) m.querySelector('.ml').focus({preventScroll:true}); else b.focus({preventScroll:true});
-  }
-  b.addEventListener('click',()=>set(!open));
-  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&open) set(false); });
-  m.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>{ if(a.classList.contains('on')){ set(false); } }));
-})();
-</script>
 <main id="main">
 <section class="nf"><div class="wrap">
 <svg class="nfnum" viewBox="0 0 760 300" aria-hidden="true"><text x="-8" y="252">4<tspan class="z">0</tspan>4</text></svg>
-<h1 class="nfh">Такой страницы нет.<br>Зато есть <em data-l="total">21 113</em> живых объявлений.</h1>
-<p class="nfp">Ссылка устарела или в адрес закралась опечатка. Вернитесь на главную и проверьте квартиру — это занимает <b>секунду</b>.</p>
-<div class="nfrow">
-<a class="nfbtn hot" href="/">Проверить квартиру<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></a>
-<a class="nfbtn" href="/stats">Рынок Алматы</a>
-<a class="nfbtn" href="/about">О проекте</a>
-</div>
+<h1 class="nfh">Такой страницы нет</h1>
+<p class="nfp">Ссылка устарела, или в адрес закралась опечатка.</p>
+<div class="nflot" id="nflot" hidden><p class="nfp">Похоже, в адресе номер объявления с krisha.kz.</p><a class="gobtn" href="/"><span>Проверить объявление <b></b></span> <i>→</i></a></div>
+<p class="nfp lab">Вставьте ссылку на объявление — оценим его на главной:</p>
+<form class="inbar" data-jump novalidate><label class="vh" for="lotUrlN">Ссылка на объявление с krisha.kz</label><input id="lotUrlN" name="url" type="url" inputmode="url" autocomplete="url" enterkeyhint="go" spellcheck="false" placeholder="krisha.kz/a/show/1012607661"><button class="gobtn" type="submit">Проверить <i>→</i></button></form><p class="inerr" data-err role="alert"></p>
+<div class="nfrow" role="navigation" aria-label="Разделы сайта"><a class="nfbtn" href="/">Главная</a><a class="nfbtn" href="/stats">Рынок</a><a class="nfbtn" href="/bot">Telegram-бот</a><a class="nfbtn" href="/about">О проекте</a></div>
 </div></section>
 </main>
 <footer><div class="wrap">
 <div class="fgrid">
  <div>
   <a class="flogo" href="/" aria-label="baǵam — на главную">baǵam<span>.</span></a>
-  <p class="ftag">Считаем справедливую цену квартиры в Алматы по объявлению с krisha.kz — за секунду и бесплатно.</p>
-  <div class="fchips"><span class="fchip"><b data-l="total">21 113</b> активных лотов</span><span class="fchip">ошибка <b data-l="mape">7,3%</b></span><span class="fchip"><b data-l="age">обновление ежедневно</b></span></div>
+  <p class="ftag">Считаем справедливую цену квартиры в Алматы по объявлению с krisha.kz — обычно за несколько секунд, бесплатно.</p>
+  <div class="fchips"><span class="fchip flive"><b data-l="total">—</b>&nbsp;<span data-l="totalw">объявлений</span></span><span class="fchip"><b data-l="age">обновление ежедневно</b></span></div>
  </div>
  <div>
   <div class="fh">Продукт</div>
   <div class="flinks">
    <a class="flink" href="/">Оценка объявления</a>
    <a class="flink" href="/stats">Рынок продажи</a>
-   <a class="flink" href="/rent">Рынок аренды</a>
+   <a class="flink" href="/stats?mode=rent">Рынок аренды</a>
    <a class="flink" href="/bot">Telegram-бот</a>
   </div>
  </div>
@@ -220,7 +109,7 @@ html.lite .sk{animation:none}
    <a class="flink" href="/privacy">Конфиденциальность</a>
    <a class="flink" href="/terms">Условия использования</a>
   </div>
-  <p class="fnote">Оценка справочная и не является офертой. Средняя ошибка модели продажи <b data-l="mape">7,6%</b>, аренды — <b data-l="rmape">~11%</b>.</p>
+  <p class="fnote">Оценка справочная и не является офертой.<span class="flive"> Средняя ошибка модели: продажа&nbsp;<b data-l="mape">—</b>, аренда&nbsp;<b data-l="rmape">—</b>.</span></p>
  </div>
 </div>
 
@@ -231,154 +120,18 @@ html.lite .sk{animation:none}
 
 </div>
 <div class="fmarkband"><svg class="fmark" viewBox="-4 -203 921 196" preserveAspectRatio="xMidYMin meet" aria-hidden="true" focusable="false"><defs><linearGradient id="markgrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3ADC7C" stop-opacity=".16"/><stop offset="1" stop-color="#3ADC7C" stop-opacity=".025"/></linearGradient></defs><text x="0" y="0">baǵam</text></svg></div>
-<script>
-(function(){
-  var root=document.documentElement;
-  /* прокрутка своими кадрами: системная «меньше анимаций» не должна превращать её в прыжок;
-     время считаем от первого кадра (если он запоздал, не проскакиваем полпути); цель пересчитывается на каждом кадре — если над ней что-то схлопнулось (содержание на телефоне), не промахнёмся */
-  function glide(target,dur,done){
-    var from=window.pageYOffset||root.scrollTop;
-    if(Math.abs(target()-from)<2||root.classList.contains('lite')){window.scrollTo(0,target());if(done)done();return}
-    var prev=root.style.scrollBehavior;root.style.scrollBehavior='auto';
-    var t0=0,stopped=false;
-    function stop(){stopped=true}
-    addEventListener('wheel',stop,{passive:true,once:true});
-    addEventListener('touchstart',stop,{passive:true,once:true});
-    function end(){root.style.scrollBehavior=prev;removeEventListener('wheel',stop);removeEventListener('touchstart',stop);if(done&&!stopped)done()}
-    function frame(t){
-      if(stopped){end();return}
-      if(!t0)t0=t;
-      var pr=Math.min(1,(t-t0)/dur),e=pr<0.5?4*pr*pr*pr:1-Math.pow(-2*pr+2,3)/2;
-      window.scrollTo(0,from+(target()-from)*e);
-      if(pr<1){requestAnimationFrame(frame)}else{end()}
-    }
-    requestAnimationFrame(frame);
-  }
-  var btn=document.querySelector('.ftop');
-  if(btn)btn.addEventListener('click',function(){
-    var from=window.pageYOffset||root.scrollTop;
-    glide(function(){return 0},Math.min(2400,Math.max(1200,from*0.7)));
-  });
-  /* якоря на странице (содержание документов и т.п.): быстрый плавный переход вместо прыжка */
-  document.addEventListener('click',function(e){
-    if(e.defaultPrevented||e.button||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
-    var a=e.target.closest&&e.target.closest('a[href^="#"]');
-    if(!a||a.classList.contains('skip'))return;
-    var id=decodeURIComponent(a.getAttribute('href').slice(1)),el=id&&document.getElementById(id);
-    if(!el)return;
-    e.preventDefault();
-    var target=function(){
-      var off=parseFloat(getComputedStyle(el).scrollMarginTop)||0;
-      var y=el.getBoundingClientRect().top+(window.pageYOffset||root.scrollTop)-off;
-      return Math.max(0,Math.min(y,root.scrollHeight-innerHeight));
-    };
-    var d=Math.abs(target()-(window.pageYOffset||root.scrollTop));
-    glide(target,Math.min(650,Math.max(360,d*0.22)),function(){
-      if(location.hash!=='#'+id&&history.pushState)history.pushState(null,'','#'+id);
-    });
-  });
-})();
-</script>
 </footer>
 <script>
-/* ---------- тема ---------- */
+/* адрес похож на объявление krisha (/a/show/1012345678 или 9–10 цифр подряд) — предлагаем проверить его */
 (function(){
-  var root=document.documentElement;
-  function label(){
-    var v=root.getAttribute('data-theme')==='light'?'светлая':'тёмная';
-    document.querySelectorAll('[data-theme-label]').forEach(function(e){e.textContent=v;});
-    document.querySelectorAll('[data-theme-toggle]').forEach(function(b){
-      b.setAttribute('aria-label', root.getAttribute('data-theme')==='light'?'Включить тёмную тему':'Включить светлую тему');
-    });
-  }
-  function set(v){
-    root.setAttribute('data-theme',v);
-    try{localStorage.setItem('bagam-theme',v);localStorage.setItem('kfp-theme',v);}catch(e){}
-    label();
-    var tg=window.Telegram&&window.Telegram.WebApp;
-    if(tg&&tg.setHeaderColor){try{tg.setHeaderColor(v==='light'?'#F1F4EC':'#0A100C');}catch(e){}}
-  }
-  document.addEventListener('click',function(e){
-    var b=e.target.closest&&e.target.closest('[data-theme-toggle]');
-    if(!b)return;
-    e.preventDefault();
-    set(root.getAttribute('data-theme')==='light'?'dark':'light');
-  });
-  label();
-})();
-
-/* ---------- Telegram Mini App ---------- */
-bagamTG(function(tg){
-  if(!tg.initData&&!(tg.platform&&tg.platform!=='unknown'))return;
-  document.documentElement.classList.add('tma');
-  try{
-    tg.ready();tg.expand();
-    if(tg.setHeaderColor)tg.setHeaderColor(document.documentElement.getAttribute('data-theme')==='light'?'#F1F4EC':'#0A100C');
-    if(tg.BackButton&&!/bagam-v4|\/$/.test(location.pathname)){
-      tg.BackButton.show();
-      tg.BackButton.onClick(function(){history.length>1?history.back():(location.href=HOME_URL);});
-    }
-  }catch(e){}
-});
-
-/* ---------- живые цифры ---------- */
-(function(){
-  var API='';
-  function ru(n){return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ');}
-  function pc(n){return (Math.round(n*10)/10).toString().replace('.',',');}
-  function put(sel,val){document.querySelectorAll(sel).forEach(function(e){e.textContent=val;if(e.dataset.v!==undefined)e.dataset.v=val;});}
-  function age(h){
-    if(h==null)return '';
-    if(h<1.5)return 'обновлено только что';
-    if(h<24)return 'обновлено '+Math.round(h)+' ч назад';
-    var d=Math.round(h/24);return 'обновлено '+d+' '+(d===1?'день':(d<5?'дня':'дней'))+' назад';
-  }
-  function j(p){var a=('AbortController' in window)&&new AbortController();
-    if(a)setTimeout(function(){a.abort();},12000);
-    return fetch(API+p,{cache:'no-store',signal:a?a.signal:undefined}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});}
-  function apply(s,h){
-    if(s){
-      put('[data-l=total]',ru(s.total_listings));
-      put('[data-l=ppsm]',ru(s.median_ppsm));
-      put('[data-l=ppsmk]',Math.round(s.median_ppsm/1000)+' тыс ₸/м²');
-      put('[data-l=medprice]',ru(s.median_price));
-      put('[data-l=medpricem]',(Math.round(s.median_price/1e5)/10).toString().replace('.',',')+' млн ₸');
-      window.__stats=s;
-      document.dispatchEvent(new CustomEvent('stats',{detail:s}));
-    }
-    if(h){
-      if(h.model_error_pct)put('[data-l=mape]',pc(h.model_error_pct)+'%');
-      if(h.model_median_error_pct)put('[data-l=mdape]',pc(h.model_median_error_pct)+'%');
-      if(h.rent_model_error_pct)put('[data-l=rmape]',pc(h.rent_model_error_pct)+'%');
-      if(h.model_r2)put('[data-l=r2]',h.model_r2.toFixed(3));
-      if(h.data_age_hours!=null)put('[data-l=age]',age(h.data_age_hours));
-      document.querySelectorAll('[data-l=status]').forEach(function(e){
-        e.textContent=h.status==='ok'&&h.model_loaded?'сервис работает':'сервис недоступен';
-        e.classList.toggle('off',!(h.status==='ok'&&h.model_loaded));
-      });
-    }
-  }
-
-  /* скелетоны: без свежего кэша живые числа и графики мерцают, пока не придут данные */
-  var cached=false;
-  function skel(on){
-    document.querySelectorAll('[data-l]').forEach(function(e){e.classList.toggle('sk',on);});
-    document.querySelectorAll('[data-skel]').forEach(function(e){e.classList.toggle('loading',on);});
-  }
-  try{
-    var cc=JSON.parse(localStorage.getItem('bagam-stats')||'null');
-    if(cc&&Date.now()-cc.t<86400000){apply(cc.s,cc.h);cached=true;}
-  }catch(e){}
-  if(!cached)skel(true);
-  Promise.all([j('/api/stats'),j('/api/health')]).then(function(res){
-    var s=res[0],h=res[1];
-    skel(false);
-    if(s||h){try{localStorage.setItem('bagam-stats',JSON.stringify({t:Date.now(),s:s,h:h}));}catch(e){}}
-    if(!s&&!h){
-      document.querySelectorAll('[data-l=age]').forEach(function(e){e.textContent='цифры из последнего успешного обновления';});
-      return;
-    }
-    apply(s,h);
-  });
+  var p=location.pathname+location.search,m,box=document.getElementById('nflot');
+  try{p=decodeURIComponent(p)}catch(e){}
+  m=/\/a\/show\/(\d{5,12})(?!\d)/.exec(p)||/(?:^|\D)(\d{9,10})(?!\d)/.exec(p);
+  if(!m||!box)return;
+  var a=box.querySelector('a');
+  a.href='/#check='+m[1];
+  a.querySelector('b').textContent=m[1];
+  box.hidden=false;
 })();
 </script>
+</body></html>

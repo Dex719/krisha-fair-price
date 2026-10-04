@@ -14,6 +14,7 @@ uvicorn и настоящем сокете — потому что именно 
 """
 
 import gzip
+import re
 
 import httpx
 import pytest
@@ -112,11 +113,11 @@ def test_head_matches_get_size(api):
 
 
 def test_static_asset_is_precompressed_and_revalidates(api):
-    """design.css отдаётся сжатым и по ETag, но без долгого max-age.
+    """design.css отдаётся сжатым и по ETag; долгий max-age — только по URL с версией.
 
-    Имя файла не содержит хэша содержимого, поэтому кэшировать его «навсегда»
-    нельзя: после деплоя браузер обязан спросить. Дешёвая часть здесь — 304
-    вместо повторной отдачи 38 КБ.
+    Без ?v= кэшировать «навсегда» нельзя: после деплоя браузер обязан
+    спросить (дешёвая часть — 304 вместо повторной отдачи). Страницы ссылаются
+    на css с ?v=<хэш содержимого> — такой URL immutable.
     """
     r = _raw(api, "/static/design.css")
     assert r.status_code == 200
@@ -127,15 +128,25 @@ def test_static_asset_is_precompressed_and_revalidates(api):
     assert again.status_code == 304
     assert again.content == b""
 
+    versioned = re.search(r"/static/design\.css\?v=[0-9a-f]+", _raw(api, "/").text)
+    assert versioned, "главная ссылается на css без версии"
+    assert "immutable" in _raw(api, versioned.group(0)).headers["cache-control"]
+
 
 def test_binary_asset_is_not_gzipped(api):
     """webp/woff2 уже сжаты: gzip поверх них — сожжённый CPU и больше байт."""
-    r = _raw(api, "/static/img/city-860.webp")
+    r = _raw(api, "/static/img/city-1400.webp")
     if r.status_code == 404:
         pytest.skip("нет фикстуры картинки в сборке")
     assert r.status_code == 200
     assert "content-encoding" not in r.headers
-    assert "immutable" in r.headers["cache-control"]
+    # без версии в URL — перепроверка по ETag, immutable только с ?v=
+    assert r.headers["cache-control"] == "no-cache"
+    font = re.search(r"/static/[\w./-]+\.woff2\?v=[0-9a-f]+", _raw(api, "/").text)
+    if font:
+        f = _raw(api, font.group(0))
+        assert "content-encoding" not in f.headers
+        assert "immutable" in f.headers["cache-control"]
 
 
 def test_unknown_path_serves_precompressed_404(api):

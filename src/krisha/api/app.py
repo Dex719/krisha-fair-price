@@ -21,14 +21,17 @@ import time
 import uuid
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager, contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Literal
+from urllib.parse import parse_qs, urlencode
 
 import anyio
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, Response
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import MutableHeaders
 
 from krisha import __version__, bot, db_release, predict_gate, usage
 from krisha.api import metrics, static_cache
@@ -51,7 +54,7 @@ from krisha.config import (
     ROOT_DIR,
     feature_forecast,
 )
-from krisha.db import get_conn, remember_update_id
+from krisha.db import data_observed_at, get_conn, remember_update_id
 from krisha.predict import InvalidListingUrl, ListingNotFound
 from krisha.predict_gate import PredictBusy
 from krisha.scraping.client import ChallengeBlocked, SourceUnavailable
@@ -212,7 +215,27 @@ class _GZipExceptCompressed(GZipMiddleware):
         if scope["type"] == "http" and scope["path"].lower().endswith(tuple(_BINARY_MEDIA_TYPES)):
             await self.app(scope, receive, send)
             return
-        await super().__call__(scope, receive, send)
+        await super().__call__(scope, receive, _dedupe_vary(send))
+
+
+def _dedupe_vary(send):
+    """Ответы из памяти (статика, /api/stats) сами ставят Vary: Accept-Encoding,
+    а starlette дописывает его ещё раз к несжатому ответу — выходило
+    «Accept-Encoding, Accept-Encoding». Повторы убираем."""
+
+    async def wrapped(message):
+        if message["type"] == "http.response.start":
+            headers = MutableHeaders(raw=message["headers"])
+            vary = headers.get("vary")
+            if vary and "," in vary:
+                seen: dict[str, str] = {}
+                for item in (v.strip() for v in vary.split(",")):
+                    if item:
+                        seen.setdefault(item.lower(), item)
+                headers["vary"] = ", ".join(seen.values())
+        await send(message)
+
+    return wrapped
 
 
 # Сжатие ответов. До этого Space отдавал всё как есть: главная 47 КБ вместо ~10 КБ,
@@ -307,15 +330,39 @@ _freshness_cache = TTLCache(ttl=HEALTH_CACHE_TTL_S, stale_ttl=900, maxsize=8)
 _model_meta_cache = TTLCache(ttl=300, stale_ttl=3600, maxsize=8)
 
 
+def _json_asset(payload) -> static_cache.Asset:
+    """JSON-ответ API как готовое представление: байты, gzip-вариант, ETag."""
+    raw = json.dumps(
+        jsonable_encoder(payload), ensure_ascii=False, allow_nan=False, separators=(",", ":")
+    ).encode("utf-8")
+    return static_cache.asset_from_bytes(raw, "application/json")
+
+
+def _cacheable_json(request: Request, asset: static_cache.Asset, max_age: int) -> Response:
+    """Ответ, который браузер честно кэширует: max-age + ETag + Vary.
+
+    После max-age браузер переспрашивает с If-None-Match и получает 304 без
+    тела. gzip-вариант со своим ETag и Vary: Accept-Encoding — как у статики
+    (static_cache.negotiate): GZipMiddleware навешивал бы ОДИН ETag на оба
+    представления, и кэш мог отдать сжатое клиенту без gzip.
+    """
+    status, body, headers = static_cache.negotiate(
+        asset,
+        accept_encoding=request.headers.get("accept-encoding"),
+        if_none_match=request.headers.get("if-none-match"),
+        cache_control=f"public, max-age={max_age}",
+    )
+    return Response(content=body, status_code=status, headers=headers)
+
+
 @app.get("/api/health", response_model=HealthResponse)
-def health(response: Response) -> HealthResponse:
+def health(request: Request) -> Response:
     # Пусть браузер минуту не переспрашивает: страницы дёргают health при
     # каждой загрузке и в каждой вкладке, а ответ меняется раз в час.
-    response.headers["Cache-Control"] = "public, max-age=60"
     # webhook_status() заодно самолечит webhook (не чаще раза в час):
     # keepalive-пинг каждые 6 часов держит бота живым без ручных действий
     data_age_hours, freshness = _data_freshness_cached()
-    return HealthResponse(
+    payload = HealthResponse(
         status="ok",
         model_loaded=MODEL_PATH.exists(),
         model_error_pct=_model_error_pct(),
@@ -331,6 +378,7 @@ def health(response: Response) -> HealthResponse:
         rent_model_loaded=RENT_MODEL_PATH.exists(),
         rent_model_error_pct=_rent_model_error_pct(),
     )
+    return _cacheable_json(request, _json_asset(payload.model_dump(mode="json")), max_age=60)
 
 
 def _rent_model_error_pct() -> float | None:
@@ -361,62 +409,28 @@ def _data_freshness_cached() -> tuple[float | None, str]:
 def _data_freshness() -> tuple[float | None, str]:
     """Возраст данных: когда сборщик последний раз прошёл по рынку.
 
-    Раньше брался MAX(last_seen) по всей базе, а его двигает и пользователь:
-    проверка ссылки пишет лот с last_seen = now (UPSERT_SQL_USER), в том числе
-    поверх строки сборщика, и смоук делает это дважды в сутки. Ночной сбор мог
-    сломаться, а health, keepalive и «обновлено N ч назад» на сайте видели
-    «только что». Теперь источник — sweep_runs (пишет только сборщик): конец
-    последнего прохода = старт + время фаз. Старые базы без таблицы —
-    по last_seen строк, которые завёл сборщик.
+    Источник — db.data_observed_at (конец последнего прохода по sweep_runs,
+    у старых баз — last_seen строк сборщика, а не пользовательских проверок).
+    Тот же момент отдают /api/stats (updated_at) и sitemap (lastmod).
     """
-    if not DB_PATH.exists():
-        return None, "stale"
-    try:
-        with get_conn(DB_PATH) as conn:
-            observed_dt = _last_sweep_end(conn)
-            if observed_dt is None:
-                row = conn.execute(
-                    "SELECT MAX(last_seen) FROM listings WHERE last_seen IS NOT NULL "
-                    "AND COALESCE(source, 'scrape') <> 'user'"
-                ).fetchone()
-                observed_dt = _parse_db_datetime(str(row[0])) if row and row[0] else None
-    except sqlite3.Error:
-        logger.warning("health: не удалось прочитать freshness из базы", exc_info=True)
-        return None, "stale"
-
+    observed_dt = _data_observed_at()
     if observed_dt is None:
         return None, "stale"
-
     age_hours = max(0.0, (_utcnow() - observed_dt).total_seconds() / 3600)
     freshness = "ok" if age_hours <= DATA_STALE_AFTER_HOURS else "stale"
     return round(age_hours, 2), freshness
 
 
-def _last_sweep_end(conn: sqlite3.Connection) -> datetime | None:
-    """Конец последнего прохода сборщика продажи по sweep_runs (None — нет записей)."""
+def _data_observed_at() -> datetime | None:
+    """Момент последнего прохода сборщика продажи (None — базы/данных нет)."""
+    if not DB_PATH.exists():
+        return None
     try:
-        row = conn.execute(
-            "SELECT started_at, COALESCE(search_seconds, 0) + COALESCE(detail_seconds, 0) "
-            "FROM sweep_runs WHERE COALESCE(deal, 'prodazha') = 'prodazha' "
-            "ORDER BY started_at DESC LIMIT 1"
-        ).fetchone()
-    except sqlite3.OperationalError:  # старая база без sweep_runs
+        with get_conn(DB_PATH) as conn:
+            return data_observed_at(conn)
+    except sqlite3.Error:
+        logger.warning("health: не удалось прочитать freshness из базы", exc_info=True)
         return None
-    if not row or not row[0]:
-        return None
-    started = _parse_db_datetime(str(row[0]))
-    return started + timedelta(seconds=float(row[1] or 0)) if started else None
-
-
-def _parse_db_datetime(value: str) -> datetime | None:
-    try:
-        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        logger.warning("health: некорректный last_seen в базе: %r", value)
-        return None
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
 
 
 def _model_metric(name: str) -> float | None:
@@ -842,45 +856,61 @@ STATS_CACHE_TTL = 600  # секунд
 _stats_cache = TTLCache(ttl=STATS_CACHE_TTL, stale_ttl=3600, maxsize=2)
 
 
+# Кэши хранят уже сериализованный и сжатый ответ (static_cache.Asset):
+# десятки КБ JSON не перегоняются через json.dumps + gzip на каждый запрос.
+# Имена get_stats/compute_rent_stats/heatmap_points берутся в момент вызова —
+# тесты подменяют их на модуле.
+def _stats_asset() -> static_cache.Asset:
+    return _json_asset(get_stats())
+
+
+def _rent_stats_asset() -> static_cache.Asset:
+    return _json_asset(compute_rent_stats())
+
+
+def _heatmap_asset() -> static_cache.Asset:
+    return _json_asset(heatmap_points())
+
+
 @app.get("/api/stats")
-def stats(response: Response) -> dict:
+def stats(request: Request) -> Response:
     """Статистика рынка: всего объявлений, ₸/м² по районам, распределение цен."""
     # max-age меньше серверного TTL: на сервере значение живёт 10 минут,
     # у клиента 5 — никто не увидит цифры старше, чем они есть на бэке.
-    response.headers["Cache-Control"] = "public, max-age=300"
     try:
-        return _stats_cache.get_or_call("stats", get_stats)
+        asset = _stats_cache.get_or_call("stats", _stats_asset)
     except FileNotFoundError:
         logger.exception("stats: данные недоступны")
         raise HTTPException(status_code=503, detail="Статистика временно недоступна") from None
+    return _cacheable_json(request, asset, max_age=300)
 
 
 _rent_stats_cache = TTLCache(ttl=STATS_CACHE_TTL, stale_ttl=3600, maxsize=2)
 
 
 @app.get("/api/stats/rent")
-def rent_stats(response: Response) -> dict:
+def rent_stats(request: Request) -> Response:
     """Рынок аренды: медианы ₸/мес по районам и комнатам, распределение, доходность районов."""
-    response.headers["Cache-Control"] = "public, max-age=300"
     try:
-        return _rent_stats_cache.get_or_call("rent", compute_rent_stats)
+        asset = _rent_stats_cache.get_or_call("rent", _rent_stats_asset)
     except FileNotFoundError:
         logger.warning("stats/rent: база аренды недоступна")
         raise HTTPException(status_code=503, detail="Статистика аренды временно недоступна") from None
+    return _cacheable_json(request, asset, max_age=300)
 
 
 _heatmap_cache = TTLCache(ttl=STATS_CACHE_TTL, stale_ttl=3600, maxsize=2)
 
 
 @app.get("/api/heatmap")
-def heatmap(response: Response) -> list[dict]:
+def heatmap(request: Request) -> Response:
     """Сетка ₸/м² для карты: ячейки ~400 м по активным лотам с координатами."""
-    response.headers["Cache-Control"] = "public, max-age=300"
     try:
-        return _heatmap_cache.get_or_call("heatmap", heatmap_points)
+        asset = _heatmap_cache.get_or_call("heatmap", _heatmap_asset)
     except FileNotFoundError:
         logger.exception("heatmap: база недоступна")
         raise HTTPException(status_code=503, detail="Карта временно недоступна") from None
+    return _cacheable_json(request, asset, max_age=300)
 
 
 _forecast_cache = TTLCache(ttl=STATS_CACHE_TTL, stale_ttl=3600, maxsize=2)
@@ -1154,8 +1184,8 @@ def _warmup_runtime_caches() -> None:
         # полный пересчёт по базе (а при наплыве он платит не один).
         if DB_PATH.exists():
             warmups = (
-                ("stats", _stats_cache, "stats", get_stats),
-                ("heatmap", _heatmap_cache, "heatmap", heatmap_points),
+                ("stats", _stats_cache, "stats", _stats_asset),
+                ("heatmap", _heatmap_cache, "heatmap", _heatmap_asset),
                 ("demo", _demo_pool_cache, str(DB_PATH), _demo_pool),
             )
             for name, cache, key, producer in warmups:
@@ -1165,7 +1195,7 @@ def _warmup_runtime_caches() -> None:
                     logger.warning("warmup: %s не прогрелся", name, exc_info=True)
         if RENT_DB_PATH.exists():
             try:
-                _rent_stats_cache.get_or_call("rent", compute_rent_stats)
+                _rent_stats_cache.get_or_call("rent", _rent_stats_asset)
             except Exception:  # noqa: BLE001 — прогрев не критичен
                 logger.warning("warmup: stats/rent не прогрелся", exc_info=True)
         logger.info("runtime caches warmed up")
@@ -1179,12 +1209,26 @@ def _warmup_runtime_caches() -> None:
 # которых это сделано (главная: 361 rps с gzip против 706 без — половина CPU
 # уходила на повторное сжатие одного и того же файла).
 HTML_CACHE_CONTROL = "no-cache"  # не «не кэшировать», а «спроси ETag»
-# Шрифты и картинки не меняются под тем же именем — их можно держать у клиента
-# год. Стили и скрипты меняются вместе с релизом, поэтому им no-cache: браузер
-# спросит ETag и почти всегда получит 304 вместо повторной загрузки.
-IMMUTABLE_SUFFIXES = (".woff2", ".woff", ".webp", ".png", ".jpg", ".svg", ".ico")
-PRECOMPRESS_SUFFIXES = (".html", ".css", ".js", ".mjs", ".json", ".webmanifest")
+# Ассеты (css, js, картинки, шрифты): страницы ссылаются на них с ?v=<хэш
+# содержимого> (static_cache.build_site) — такой URL меняется вместе с файлом,
+# и его держим у браузера год. Раньше css/js шли с no-cache (блокирующий CSS
+# перепроверялся на каждом переходе), а svg/webp — immutable без версии:
+# поменянный skyline.svg вернувшиеся пользователи не видели. Без ?v= (или со
+# старой версией) — no-cache: браузер спросит ETag.
+IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable"
+ASSET_REVALIDATE_CACHE_CONTROL = "no-cache"
+PRECOMPRESS_SUFFIXES = (".html", ".css", ".js", ".mjs", ".json", ".webmanifest", ".svg")
+# Адрес сайта, захардкоженный в страницах (canonical, og:url, og:image).
+# Если задан PUBLIC_BASE_URL, при сборке кэша он подменяет эти адреса — и
+# страницы, и sitemap/robots объявляют один и тот же домен.
+SITE_ORIGIN = "https://bagam.info"
+HTML_SITE_ORIGINS = (SITE_ORIGIN, "https://dex719-krisha-fair-price.hf.space")
 _ASSETS: dict[str, static_cache.Asset] = {}
+_VERSIONS: dict[str, str] = {}
+
+
+def _public_origin() -> str | None:
+    return (os.environ.get("PUBLIC_BASE_URL") or "").strip().rstrip("/") or None
 
 
 def _asset_names() -> list[str]:
@@ -1201,11 +1245,28 @@ def _asset_names() -> list[str]:
 def _build_assets() -> None:
     """Собирается на импорте модуля (то есть в каждом воркере) — файлы в
     образе до рестарта неизменны, перепроверять их на запросе незачем."""
-    global _ASSETS
-    _ASSETS = static_cache.build_cache(STATIC_DIR, _asset_names())
+    global _ASSETS, _VERSIONS
+    site = static_cache.build_site(
+        STATIC_DIR, _asset_names(), origins=HTML_SITE_ORIGINS, public_origin=_public_origin()
+    )
+    _ASSETS, _VERSIONS = site.assets, site.versions
 
 
 _build_assets()
+
+
+def _static_cache_control(name: str, scope) -> str:
+    """immutable — только если ?v= совпадает с версией файла в этом процессе.
+
+    Чужая версия (страница из кэша браузера после деплоя, второй воркер ещё
+    на старом образе) — no-cache: иначе под новым URL на год застряли бы
+    старые байты.
+    """
+    query = parse_qs((scope.get("query_string") or b"").decode("latin-1"))
+    version = (query.get("v") or [None])[0]
+    if version and version == _VERSIONS.get(name):
+        return IMMUTABLE_CACHE_CONTROL
+    return ASSET_REVALIDATE_CACHE_CONTROL
 
 
 def _asset_response(
@@ -1290,14 +1351,26 @@ async def readyz() -> Response:
 
 
 # issue #190 §2.6: до этого оба URL отдавали 404 — сайт не просился в индекс.
-_PUBLIC_PAGES = ("/", "/stats", "/rent", "/about", "/bot", "/privacy", "/terms")
+# (путь, файл страницы, на странице данные рынка). /rent здесь нет: «Аренда»
+# стала режимом «Рынка» (/stats?mode=rent), а /rent — 301 туда.
+_PUBLIC_PAGES: tuple[tuple[str, str, bool], ...] = (
+    ("/", "index.html", True),
+    ("/stats", "stats.html", True),
+    ("/about", "about.html", False),
+    ("/bot", "bot.html", False),
+    ("/privacy", "privacy.html", False),
+    ("/terms", "terms.html", False),
+)
 
 
 def _site_base_url(request: Request) -> str:
-    base = bot.public_base_url()
-    if base:
-        return base
-    return str(request.base_url).rstrip("/")
+    """Адрес сайта для sitemap/robots — тот же, что в canonical страниц.
+
+    PUBLIC_BASE_URL, иначе адрес, захардкоженный в HTML (SITE_ORIGIN). Раньше
+    без PUBLIC_BASE_URL брался домен Space (SPACE_HOST), и sitemap объявлял
+    dex719-…hf.space, а canonical страниц — bagam.info.
+    """
+    return _public_origin() or SITE_ORIGIN
 
 
 @app.api_route("/robots.txt", methods=["GET", "HEAD"], include_in_schema=False)
@@ -1313,22 +1386,54 @@ async def robots_txt(request: Request) -> Response:
                     headers={"Cache-Control": "public, max-age=86400"})
 
 
+def _file_date(name: str) -> datetime | None:
+    try:
+        return datetime.fromtimestamp((STATIC_DIR / name).stat().st_mtime, tz=timezone.utc)
+    except OSError:
+        return None
+
+
+def _sitemap_lastmod(name: str, has_data: bool, data_at: datetime | None) -> str | None:
+    """Дата изменения страницы: mtime файла, у страниц с данными рынка — не
+    раньше последнего прохода сборщика. Раньше всегда стояло «сегодня» —
+    поисковик учится не верить такому lastmod."""
+    dates = [d for d in (_file_date(name), data_at if has_data else None) if d is not None]
+    return max(dates).date().isoformat() if dates else None
+
+
 @app.api_route("/sitemap.xml", methods=["GET", "HEAD"], include_in_schema=False)
-async def sitemap_xml(request: Request) -> Response:
+def sitemap_xml(request: Request) -> Response:
+    # def, не async: момент сбора читается из базы (через кэш свежести)
     base = _site_base_url(request)
-    today = datetime.now(timezone.utc).date().isoformat()
-    urls = "".join(
-        f"<url><loc>{base}{path}</loc><lastmod>{today}</lastmod>"
-        f"<changefreq>daily</changefreq></url>"
-        for path in _PUBLIC_PAGES
-    )
+    data_at = _freshness_cache.get_or_call(("observed", str(DB_PATH)), _data_observed_at)
+    urls = []
+    for path, name, has_data in _PUBLIC_PAGES:
+        lastmod = _sitemap_lastmod(name, has_data, data_at)
+        urls.append(
+            f"<url><loc>{base}{path}</loc>"
+            + (f"<lastmod>{lastmod}</lastmod>" if lastmod else "")
+            + f"<changefreq>{'daily' if has_data else 'monthly'}</changefreq></url>"
+        )
     body = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-        f"{urls}</urlset>"
+        f"{''.join(urls)}</urlset>"
     )
     return Response(body, media_type="application/xml",
                     headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.api_route("/rent", methods=["GET", "HEAD"], include_in_schema=False)
+async def rent_page(request: Request) -> Response:
+    """«Аренда» слилась с «Рынком»: 301 на /stats?mode=rent.
+
+    Остальные параметры переносятся (/rent?url=X → /stats?mode=rent&url=X),
+    свой mode у запроса не перебивает аренду.
+    """
+    params = [("mode", "rent")] + [
+        (key, value) for key, value in request.query_params.multi_items() if key != "mode"
+    ]
+    return RedirectResponse(f"/stats?{urlencode(params)}", status_code=301)
 
 
 @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
@@ -1361,20 +1466,24 @@ def _static_page(name: str):
     return page
 
 
-# Аренда, бот и документы — те же статичные страницы на общем design.css
-for _path, _name in (("/rent", "rent.html"), ("/bot", "bot.html"),
-                     ("/privacy", "privacy.html"), ("/terms", "terms.html")):
+# Бот и документы — те же статичные страницы на общем design.css
+for _path, _name in (("/bot", "bot.html"), ("/privacy", "privacy.html"), ("/terms", "terms.html")):
     app.add_api_route(_path, _static_page(_name), methods=["GET", "HEAD"], include_in_schema=False)
 
 
 class _CachedStatic(StaticFiles):
-    """Текст — из предсжатой памяти, бинарь — обычной отдачей файла."""
+    """Текст — из предсжатой памяти, бинарь — обычной отдачей файла.
+    Cache-Control у обоих — по версии в URL (_static_cache_control)."""
 
     async def get_response(self, path: str, scope):  # type: ignore[override]
-        name = path.lstrip("/")
+        # StaticFiles отдаёт путь в разделителях ОС (на Windows — «\»)
+        name = pathlib.PurePath(path).as_posix().lstrip("/")
+        cache_control = _static_cache_control(name, scope)
         if name in _ASSETS and scope.get("method") in ("GET", "HEAD"):
-            return _asset_response(Request(scope), name, cache_control="no-cache")
-        return await super().get_response(path, scope)
+            return _asset_response(Request(scope), name, cache_control=cache_control)
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = cache_control
+        return response
 
     def file_response(self, *args, **kwargs):  # type: ignore[override]
         response = super().file_response(*args, **kwargs)
@@ -1382,10 +1491,6 @@ class _CachedStatic(StaticFiles):
         media_type = _BINARY_MEDIA_TYPES.get(pathlib.Path(path).suffix.lower())
         if media_type:
             response.headers["Content-Type"] = media_type
-        if path.endswith(IMMUTABLE_SUFFIXES):
-            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-        else:
-            response.headers["Cache-Control"] = "no-cache"
         return response
 
 

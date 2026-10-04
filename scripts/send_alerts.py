@@ -38,9 +38,12 @@ def _send_deal_alerts(dry_run: bool, deals: list) -> None:
         return
 
     if dry_run:
+        from krisha.bot import mask_chat_id
+
         for chat_id, flt in subs.items():
             matched = [d for d in deals if match_filters(d, flt)]
-            print(f"--- chat {chat_id}: {len(matched)} лотов")
+            # Лог GitHub Actions публичный: полный номер чата подписчика в него не пишем
+            print(f"--- chat {mask_chat_id(chat_id)}: {len(matched)} лотов")
             if matched:
                 print(format_alert(matched[:5]))
         return
@@ -60,7 +63,7 @@ def _quiet_hours(now=None) -> bool:
 
 
 def _send_track_alerts(dry_run: bool, deal: str = "prodazha") -> None:
-    from krisha.bot import tg_call
+    from krisha.bot import mask_chat_id, tg_call
     from krisha.config import DB_PATH, RENT_DB_PATH
 
     db_path = RENT_DB_PATH if deal == "arenda" else DB_PATH
@@ -74,7 +77,7 @@ def _send_track_alerts(dry_run: bool, deal: str = "prodazha") -> None:
     delivered: set[int] = set()
     for chat_id, message in updates:
         if dry_run:
-            print(f"--- chat {chat_id}:\n{message}")
+            print(f"--- chat {mask_chat_id(chat_id)}:\n{message}")
             continue
         resp = tg_call("sendMessage", chat_id=chat_id, text=message,
                        parse_mode="HTML", disable_web_page_preview=True,
@@ -82,7 +85,7 @@ def _send_track_alerts(dry_run: bool, deal: str = "prodazha") -> None:
         if resp and resp.get("ok"):
             delivered.add(int(chat_id))
         else:
-            print(f"Не доставлено в chat {chat_id} — состояние не фиксируем, повторим позже")
+            print(f"Не доставлено в chat {mask_chat_id(chat_id)} — состояние не фиксируем, повторим позже")
     if delivered:
         check_tracked_updates(db_path=db_path, persist=True, only_chats=delivered, deal=deal)
 

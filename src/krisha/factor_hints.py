@@ -168,6 +168,60 @@ def _area_hint(listing: dict, s: dict) -> str | None:
     return f"Площадь {area:g} м² — один из главных факторов: цена растёт с метражом почти линейно.{stat}"
 
 
+def _years(n: int) -> str:
+    """1 год, 2 года, 5 лет, 11 лет, 21 год."""
+    if n % 10 == 1 and n % 100 != 11:
+        return f"{n} год"
+    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        return f"{n} года"
+    return f"{n} лет"
+
+
+def _known(value: Any) -> Any:
+    """Значение факта или None: NaN, пустая строка и MISSING_CAT — «не указано»."""
+    if value is None:
+        return None
+    if isinstance(value, float) and value != value:  # NaN
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or text.lower() in ("unknown", "nan", "none"):
+            return None
+        return text
+    return value
+
+
+def _fact(listing: dict, facts: dict, key: str) -> Any:
+    """Сначала сырое поле объявления, потом строка фич модели (там — класс
+    жилья и застройщик из справочника ЖК, признак новостройки)."""
+    value = _known(listing.get(key))
+    return value if value is not None else _known(facts.get(key))
+
+
+def _house_age(listing: dict, facts: dict) -> int | None:
+    from krisha.features import current_year
+
+    year = _fact(listing, facts, "year_built")
+    try:
+        return current_year() - int(year) if year is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_new(listing: dict, facts: dict) -> bool | None:
+    """Новостройка ли: признак модели, иначе категория krisha. None — неизвестно."""
+    flag = _known(facts.get("is_new_building"))
+    if flag is not None:
+        try:
+            return bool(int(flag))
+        except (TypeError, ValueError):
+            pass
+    category = _fact(listing, facts, "category")
+    if category is not None:
+        return category == "novostroiki"
+    return None
+
+
 def _age_hint(listing: dict, s: dict) -> str | None:
     from krisha.features import current_year
 
@@ -178,8 +232,140 @@ def _age_hint(listing: dict, s: dict) -> str | None:
     bucket = "new" if age < 5 else ("mid_age" if age < 25 else "old")
     label = {"new": "новостройки (до 5 лет)", "mid_age": "дома 5–25 лет", "old": "дома старше 25 лет"}[bucket]
     med = s.get(f"age_{bucket}")
-    stat = f" Медиана для сегмента «{label}»: {_fmt_k(med)} против {_fmt_k(s['city'])} по городу." if med else ""
-    return f"Дом {year} года (возраст {age} лет): свежий фонд ценится выше — современные планировки, коммуникации, паркинги.{stat}"
+    stat = ""
+    if med:
+        stat = f" Медиана для сегмента «{label}»: {_fmt_k(med)} против {_fmt_k(s['city'])} по городу"
+        # Медиана сегмента смешивает возраст с районом: старые дома стоят
+        # ближе к центру, новостройки — на окраинах. Без пояснения цифра
+        # спорит с текстом подсказки.
+        if bucket == "old" and med > s["city"]:
+            stat += " — старые дома чаще стоят ближе к центру"
+        elif bucket == "new" and med < s["city"]:
+            stat += " — новостройки чаще строят на окраинах"
+        stat += "."
+    if age <= 1:
+        return f"Дом {year} года — новый: свежий фонд ценится выше — современные планировки, коммуникации, паркинги.{stat}"
+    if bucket == "old":
+        return (
+            f"Дом {year} года (ему {_years(age)}): при прочих равных старый фонд дешевле — "
+            f"износ коммуникаций, старые планировки, редко есть паркинг.{stat}"
+        )
+    return f"Дом {year} года (ему {_years(age)}): свежий фонд ценится выше — современные планировки, коммуникации, паркинги.{stat}"
+
+
+def _housing_class_hint(listing: dict, facts: dict) -> str:
+    cls = _fact(listing, facts, "housing_class")
+    if cls is None:
+        # Раньше здесь было «один из самых сильных факторов цены в новостройках»
+        # — и под домом 1970 года это читалось как ошибка.
+        return (
+            "Класс жилья (комфорт, бизнес…) у этого дома не указан — так обычно у старых "
+            "домов и домов вне ЖК. В новых ЖК класс заметно влияет на цену за м²."
+        )
+    return f"Класс жилья «{cls}»: в ЖК класс (эконом, комфорт, бизнес, премиум) — один из сильных факторов цены за м²."
+
+
+def _developer_hint(listing: dict, facts: dict) -> str:
+    dev = _fact(listing, facts, "developer")
+    if dev is None:
+        return "Застройщик не указан — обычное дело для вторички. У новостроек репутация застройщика влияет на цену."
+    return f"Застройщик — {dev}: его репутация влияет на доверие покупателей и цену."
+
+
+def _total_floors_hint(listing: dict, facts: dict) -> str:
+    total = _fact(listing, facts, "total_floors")
+    try:
+        total = int(total) if total is not None else None
+    except (TypeError, ValueError):
+        total = None
+    if not total:
+        return "Этажность дома: модель связывает её с возрастом и типом дома."
+    age, new = _house_age(listing, facts), _is_new(listing, facts)
+    old = age is not None and age >= 25 and not new
+    fresh = bool(new) or (age is not None and age < 15)
+    where = f"{total}-этажный дом"
+    if total >= 10:
+        if old:
+            year = int(_fact(listing, facts, "year_built"))
+            return f"{where} {year} года: у старых многоэтажек цену тянут вниз износ лифтов и коммуникаций."
+        return f"{where}: высотки — чаще новые ЖК с лифтами и паркингом."
+    if total <= 5:
+        if fresh:
+            return f"{where}: малоэтажные новые дома — тихие, с небольшим числом соседей."
+        if old:
+            return f"{where}: малоэтажки этих лет — старый фонд, обычно без лифта и паркинга."
+        return f"{where}: малоэтажки в Алматы — чаще старый фонд, но бывают и новые клубные дома."
+    return f"{where}: средняя этажность бывает и у старого фонда, и у новых ЖК — модель смотрит на неё вместе с возрастом дома."
+
+
+def _new_building_hint(listing: dict, facts: dict) -> str:
+    new = _is_new(listing, facts)
+    if new is None:
+        return "Новостройка или вторичка: новостройки в среднем дороже за м², но часто без отделки."
+    if new:
+        return "Новостройка: в среднем дороже вторички за м², но часто без отделки."
+    return "Вторичка: за м² обычно дешевле новостроек, зато дом уже обжит и видно соседей."
+
+
+def _complex_hint(listing: dict, facts: dict) -> str:
+    if _fact(listing, facts, "complex_name") is None:
+        return "Дом не относится к жилому комплексу — обычное дело для старого фонда. У квартир в ЖК цену во многом задаёт сам комплекс."
+    return "Жилой комплекс: имя ЖК тянет за собой класс жилья, застройщика и инфраструктуру двора."
+
+
+def _building_type_hint(listing: dict, facts: dict) -> str:
+    kind = str(_fact(listing, facts, "building_type") or "").lower()
+    if "панел" in kind:
+        return "Панельный дом: панель ценится ниже монолита и кирпича — хуже шумо- и теплоизоляция."
+    if "монолит" in kind or "кирпич" in kind:
+        return "Монолит и кирпич ценятся выше панели — лучше шумоизоляция и долговечность."
+    return "Материал дома: монолит и кирпич ценятся выше панели — лучше шумоизоляция и долговечность."
+
+
+def _ceiling_hint(ceiling: Any) -> str | None:
+    if not ceiling:
+        return None
+    if ceiling >= 2.8:
+        return f"Потолки {ceiling:g} м — премиальный признак (от 2.8 м)."
+    if ceiling < 2.5:
+        return f"Потолки {ceiling:g} м: ниже 2.5 м — заметный минус."
+    return f"Потолки {ceiling:g} м — стандартная высота: премией считается от 2.8 м, минусом — ниже 2.5 м."
+
+
+def _security_hint(listing: dict, facts: dict) -> str:
+    count = _known(facts.get("security_count"))
+    try:
+        count = int(count) if count is not None else None
+    except (TypeError, ValueError):
+        count = None
+    if count == 0:
+        return "Охрана, домофон, видеонаблюдение в объявлении не указаны — покупатели ценят их наличие."
+    if count:
+        return f"Опций безопасности в объявлении: {count} (охрана, домофон, видеонаблюдение) — покупатели это ценят."
+    return "Охрана, домофон, видеонаблюдение — каждый пункт безопасности добавляет привлекательности."
+
+
+def _parking_hint(listing: dict, facts: dict) -> str:
+    parking = _fact(listing, facts, "parking")
+    if parking is None:
+        return "Паркинг в объявлении не указан, а в Алматы он в дефиците — квартиры с паркингом дороже."
+    return f"Паркинг: {str(parking).lower()} — в Алматы дефицит, заметная надбавка к цене."
+
+
+def _conditional_hints(listing: dict, facts: dict) -> dict[str, str | None]:
+    """Подсказки, текст которых зависит от фактов объявления: общий текст
+    («высотки чаще новостройки») под конкретным лотом мог ему противоречить."""
+    return {
+        "housing_class": _housing_class_hint(listing, facts),
+        "developer": _developer_hint(listing, facts),
+        "total_floors": _total_floors_hint(listing, facts),
+        "is_new_building": _new_building_hint(listing, facts),
+        "category": _new_building_hint(listing, facts),
+        "complex_name": _complex_hint(listing, facts),
+        "building_type": _building_type_hint(listing, facts),
+        "security_count": _security_hint(listing, facts),
+        "parking": _parking_hint(listing, facts),
+    }
 
 
 def _generic_hints(listing: dict, s: dict) -> dict[str, str | None]:
@@ -201,15 +387,11 @@ def _generic_hints(listing: dict, s: dict) -> dict[str, str | None]:
     return {
         "lat": geo_hint,
         "lon": geo_hint,
+        "ceiling": _ceiling_hint(ceiling),
         "rooms": f"{rooms}-комнатная: число комнат задаёт сегмент спроса — однушки самые ликвидные, многокомнатные продаются дольше." if rooms else None,
-        "ceiling": f"Потолки {ceiling:g} м: от 2.8 м считается премиальным признаком, ниже 2.5 м — заметный минус." if ceiling else None,
         "photos_count": f"{photos} фото в объявлении: косвенный сигнал — у качественных объявлений от собственников обычно больше фотографий." if photos is not None else None,
         "dist_center_km": f"До центра {dist_c:.1f} км: близость к центру — устойчивая надбавка к цене за м²." if dist_c is not None else None,
         "user_type": "Кто продаёт: у застройщиков и компаний цены обычно выше заявлены, у собственников больше пространство для торга.",
-        "building_type": "Материал дома: монолит и кирпич ценятся выше панели — лучше шумоизоляция и долговечность.",
-        "complex_name": "Жилой комплекс: имя ЖК тянет за собой класс жилья, застройщика и инфраструктуру двора.",
-        "housing_class": "Класс жилья (комфорт/бизнес/элит) — один из самых сильных факторов цены за м² в новостройках.",
-        "developer": "Репутация застройщика влияет на доверие покупателей и цену.",
         "walk_score": "Пешая доступность: сколько повседневных точек (школы, магазины, остановки) в радиусе пешком — выше балл, дороже м².",
         "district_ppsm": "Средний уровень цен в районе — модель опирается на него как на базовую «температуру» локации.",
         "micro_median_ppsm": "Средний уровень цен микрорайона — более точная «температура» локации, чем район.",
@@ -219,13 +401,10 @@ def _generic_hints(listing: dict, s: dict) -> dict[str, str | None]:
         "hex8_ppsm": "Медианная цена м² в квартале ~500 м вокруг дома — самая точная локальная «температура».",
         "knn_ppsm": "Медианная цена м² ближайших домов-соседей по карте.",
         "knn_n": "Сколько активных объявлений рядом — плотность локального предложения.",
-        "is_new_building": "Новостройка или вторичка: новостройки в среднем дороже за м², но без отделки.",
         "renovation": "Состояние ремонта напрямую конвертируется в цену: «евроремонт» против «черновой отделки» — разница в миллионах.",
         "furniture": "Мебель в придачу — небольшой, но реальный плюс к цене.",
-        "parking": "Паркинг — дефицит в Алматы, заметная надбавка.",
         "balcony": "Балкон/лоджия добавляют полезной площади и света.",
         "toilet": "Раздельный санузел традиционно ценится выше совмещённого.",
-        "security_count": "Охрана, домофон, видеонаблюдение — каждый пункт безопасности добавляет привлекательности.",
         "dist_metro_km": "Близость метро — редкий и сильный плюс для Алматы.",
         "dist_school_km": "Школа рядом — важно семьям, расширяет круг покупателей.",
         "dist_kindergarten_km": "Детсад в пешей доступности — плюс для семей с детьми.",
@@ -234,19 +413,28 @@ def _generic_hints(listing: dict, s: dict) -> dict[str, str | None]:
         "dist_bus_stop_km": "Остановка рядом — важно для районов без метро.",
         "dist_big_road_km": "Магистраль под окнами — шум и пыль, минус; но подъезд удобнее.",
         "dist_industrial_km": "Промзона рядом — экология и вид, заметный минус.",
-        "total_floors": "Этажность дома: высотки чаще новостройки с лифтами и паркингом, малоэтажки — старый фонд.",
         "year_built": None,  # обрабатывается _age_hint
     }
 
 
-def build_factor_hints(listing: dict, factors: list[dict]) -> list[dict]:
-    """Добавляет каждому фактору поле hint (или None)."""
+def build_factor_hints(
+    listing: dict, factors: list[dict], facts: dict[str, Any] | None = None
+) -> list[dict]:
+    """Добавляет каждому фактору поле hint (или None).
+
+    Ключи факторов — после слияния коллинеарных признаков
+    (predict.FACTOR_GROUPS): building_age, floor, district, lat…; исходные
+    имена признаков тоже понимаем — на случай вызова без слияния.
+    facts — строка фич модели: по ней подсказки подстраиваются под лот.
+    """
     s = market_stats()
     if not s:
         return factors
+    facts = facts or {}
     floor_keys = {"floor", "floor_ratio", "is_first_floor", "is_last_floor"}
     district_keys = {"district", "microdistrict"}
     generic = _generic_hints(listing, s)
+    conditional = _conditional_hints(listing, facts)
     for f in factors:
         feat = f["feature"]
         hint = None
@@ -254,10 +442,14 @@ def build_factor_hints(listing: dict, factors: list[dict]) -> list[dict]:
             hint = _floor_hint(listing, s)
         elif feat in district_keys:
             hint = _district_hint(listing, s)
+            if hint is None and feat == "district":
+                hint = generic.get("district_ppsm")
         elif feat == "area":
             hint = _area_hint(listing, s)
         elif feat in {"year_built", "building_age"}:
             hint = _age_hint(listing, s)
+        elif feat in conditional:
+            hint = conditional[feat]
         else:
             hint = generic.get(feat)
         f["hint"] = hint

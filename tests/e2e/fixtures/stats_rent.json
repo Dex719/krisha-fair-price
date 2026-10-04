@@ -1,0 +1,178 @@
+{
+ "total_listings": 10908,
+ "median_rent": 300000,
+ "median_ppsm": 5991,
+ "by_district": [
+  {
+   "district": "Бостандыкский",
+   "n": 2943,
+   "median_rent": 400000,
+   "median_ppsm": 7000,
+   "gross_yield_pct": 9.0
+  },
+  {
+   "district": "Медеуский",
+   "n": 1259,
+   "median_rent": 400000,
+   "median_ppsm": 6600,
+   "gross_yield_pct": 8.3
+  },
+  {
+   "district": "Алмалинский",
+   "n": 1563,
+   "median_rent": 350000,
+   "median_ppsm": 6500,
+   "gross_yield_pct": 9.3
+  },
+  {
+   "district": "Ауэзовский",
+   "n": 1518,
+   "median_rent": 270000,
+   "median_ppsm": 5714,
+   "gross_yield_pct": 9.4
+  },
+  {
+   "district": "Наурызбайский",
+   "n": 1075,
+   "median_rent": 230000,
+   "median_ppsm": 5000,
+   "gross_yield_pct": 9.1
+  },
+  {
+   "district": "Жетысуский",
+   "n": 513,
+   "median_rent": 220000,
+   "median_ppsm": 5000,
+   "gross_yield_pct": 9.6
+  },
+  {
+   "district": "Турксибский",
+   "n": 676,
+   "median_rent": 230000,
+   "median_ppsm": 4886,
+   "gross_yield_pct": 9.5
+  },
+  {
+   "district": "Алатауский",
+   "n": 1355,
+   "median_rent": 220000,
+   "median_ppsm": 4857,
+   "gross_yield_pct": 9.3
+  }
+ ],
+ "rent_hist": [
+  {
+   "label": "0–100 тыс",
+   "count": 139
+  },
+  {
+   "label": "100–150 тыс",
+   "count": 368
+  },
+  {
+   "label": "150–200 тыс",
+   "count": 936
+  },
+  {
+   "label": "200–250 тыс",
+   "count": 1607
+  },
+  {
+   "label": "250–300 тыс",
+   "count": 1990
+  },
+  {
+   "label": "300–400 тыс",
+   "count": 2859
+  },
+  {
+   "label": "400–500 тыс",
+   "count": 1140
+  },
+  {
+   "label": "500–700 тыс",
+   "count": 919
+  },
+  {
+   "label": "700–1000 тыс",
+   "count": 512
+  },
+  {
+   "label": "1000+ тыс",
+   "count": 438
+  }
+ ],
+ "by_rooms": [
+  {
+   "rooms": 1,
+   "n": 3944,
+   "median_rent": 220000
+  },
+  {
+   "rooms": 2,
+   "n": 4613,
+   "median_rent": 330000
+  },
+  {
+   "rooms": 3,
+   "n": 1916,
+   "median_rent": 450000
+  },
+  {
+   "rooms": 4,
+   "n": 364,
+   "median_rent": 850000
+  },
+  {
+   "rooms": 5,
+   "n": 71,
+   "median_rent": 1400000
+  }
+ ],
+ "trend": [
+  {
+   "week": "06.07",
+   "t": 0,
+   "median_ppsm": 5882,
+   "n": 10567
+  },
+  {
+   "week": "13.07",
+   "t": 1,
+   "median_ppsm": 6000,
+   "n": 9389
+  },
+  {
+   "week": "20.07",
+   "t": 2,
+   "median_ppsm": 5833,
+   "n": 10258
+  },
+  {
+   "week": "27.07",
+   "t": 3,
+   "median_ppsm": 5833,
+   "n": 13719
+  },
+  {
+   "week": "03.08",
+   "t": 4,
+   "median_ppsm": 5882,
+   "n": 13539
+  },
+  {
+   "week": "10.08",
+   "t": 5,
+   "median_ppsm": 5937,
+   "n": 13107
+  },
+  {
+   "week": "17.08",
+   "t": 6,
+   "median_ppsm": 6000,
+   "n": 8737
+  }
+ ],
+ "updated_at": "2026-08-17T15:29:16+00:00",
+ "source": "db"
+}

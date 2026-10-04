@@ -19,6 +19,8 @@ PREDICT_RESULT_KEYS = {
     "verdict",
     "diff_pct",
     "top_factors",
+    "factors_base",
+    "factors_other",
     "details",
     "complex_details",
     "location_details",

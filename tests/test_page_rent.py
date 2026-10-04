@@ -1,4 +1,7 @@
-"""Контракт страницы «Аренда» (/rent): рынок аренды на общем design.css."""
+"""Аренда — режим страницы «Рынок» (/stats?mode=rent); /rent — постоянный редирект туда.
+
+Общий контракт страницы — в test_market_redesign.py; здесь то, что касается именно аренды.
+"""
 
 import re
 from pathlib import Path
@@ -12,7 +15,7 @@ STATIC = ROOT / "static"
 
 
 def _static() -> str:
-    return (STATIC / "rent.html").read_text(encoding="utf-8")
+    return (STATIC / "stats.html").read_text(encoding="utf-8")
 
 
 def _get(path: str, **kwargs):
@@ -20,179 +23,90 @@ def _get(path: str, **kwargs):
         return client.get(path, **kwargs)
 
 
-def test_rent_route_serves_html_with_title_and_design_css():
-    resp = _get("/rent", headers={"accept-encoding": "identity"})
+def test_rent_route_redirects_to_market_rent_mode():
+    """«Аренда» слилась с «Рынком»: /rent — постоянный редирект на /stats?mode=rent."""
+    with TestClient(app) as client:
+        resp = client.get("/rent", follow_redirects=False)
+        head = client.head("/rent", follow_redirects=False)
 
-    assert resp.status_code == 200
-    assert resp.headers["content-type"].startswith("text/html")
-    title = re.search(r"<title>(.*?)</title>", resp.text, re.S)
-    assert title and "Аренда" in title.group(1)
-    assert '<meta name="description"' in resp.text
-    assert 'rel="canonical" href="https://bagam.info/rent"' in resp.text
-    assert "/static/design.css" in resp.text
-    assert "/api/stats/rent" in resp.text
+    assert resp.status_code == 301
+    assert resp.headers["location"] == "/stats?mode=rent"
+    assert head.status_code == 301
 
 
-def test_rent_page_has_single_h1_and_logical_headings():
-    html = _static()
+def test_rent_redirect_keeps_other_query_params():
+    with TestClient(app) as client:
+        resp = client.get(
+            "/rent?url=https://krisha.kz/a/show/1&mode=sale&utm=x", follow_redirects=False
+        )
 
-    assert len(re.findall(r"<h1[\s>]", html)) == 1
-    assert html.index("<h1") < html.index("<h2")
-    for heading in ("Районы Алматы", "Аренда по комнатам", "Купить, чтобы сдавать?", "Куда дальше"):
-        assert heading in html
-
-
-def test_rent_nav_marks_rent_as_current_page():
-    html = _static()
-
-    assert '<a class="on" href="#" aria-current="page">Аренда</a>' in html
-    # остальные пункты остаются обычными ссылками
-    assert '<a href="/">Оценка</a>' in html
-    assert '<a href="/stats">Рынок</a>' in html
-    assert '<a href="/about">О проекте</a>' in html
-    assert html.count('aria-current="page"') == 1
+    assert resp.status_code == 301
+    # свой mode у запроса аренду не перебивает, остальное переносится как было
+    assert resp.headers["location"] == (
+        "/stats?mode=rent&url=https%3A%2F%2Fkrisha.kz%2Fa%2Fshow%2F1&utm=x"
+    )
 
 
-def test_rent_page_is_self_hosted_without_external_fonts_or_cdns():
-    html = _static()
-
-    low = html.lower()
-    for banned in (
-        "fonts.googleapis.com",
-        "fonts.gstatic.com",
-        "cdnjs.cloudflare.com",
-        "cdn.jsdelivr.net",
-        "unpkg.com",
-        "chart.js",
-        "m3.css",
-    ):
-        assert banned not in low, banned
-    assert "FairPrice" not in html
-    assert "/static/fonts/onest-cyr.woff2" in html
-    assert "/static/fonts/unb-cyr.woff2" in html
+def test_rent_page_file_is_gone():
+    assert not (STATIC / "rent.html").exists()
 
 
-def test_sitemap_lists_rent_page():
+def test_sitemap_has_no_rent_page():
+    """/rent — редирект, в sitemap ему не место: аренда живёт на /stats."""
     resp = _get("/sitemap.xml")
 
     assert resp.status_code == 200
-    assert "/rent</loc>" in resp.text
+    assert "/rent</loc>" not in resp.text
+    assert "/stats</loc>" in resp.text
 
 
-def test_rent_numbers_come_from_api_not_from_markup():
-    """Цифр рынка в разметке нет: KPI, районы, гистограмма, динамика рисуются из /api/stats/rent."""
+def test_market_page_serves_both_modes():
+    """Режим выбирает скрипт страницы: сервер отдаёт один и тот же stats.html."""
+    with TestClient(app) as client:
+        sale = client.get("/stats")
+        rent = client.get("/stats?mode=rent")
+
+    assert sale.status_code == rent.status_code == 200
+    assert sale.text == rent.text
+    assert 'data-set="rent"' in rent.text and "/api/stats/rent" in rent.text
+
+
+def test_rent_mode_nav_marks_market_and_footer_link():
+    """В шапке подсвечен «Рынок» (один пункт на оба режима), в подвале есть «Рынок аренды»."""
+    html = _static()
+    menu = re.search(r'<div class="menu">(.*?)</div>', html).group(1)
+
+    assert '<a href="/stats" aria-current="page">Рынок</a>' in menu
+    assert menu.count('aria-current="page"') == 1 and "Аренда" not in menu
+    assert '<a class="flink" href="/stats?mode=rent">Рынок аренды</a>' in html
+    # aria-current в подвале переставляет общий site.js после смены режима
+    assert "B.markCurrent()" in html
+
+
+def test_rent_mode_texts():
     html = _static()
 
-    for field in (
-        "total_listings",
-        "median_rent",
-        "median_ppsm",
-        "by_district",
-        "rent_hist",
-        "by_rooms",
-        "trend",
-        "gross_yield_pct",
-        "updated_at",
-    ):
-        assert field in html, f"страница не читает поле {field}"
-    for fn in ("drawKpi", "drawDistricts", "drawRooms", "drawHist", "drawTrend"):
-        assert f"function {fn}(" in html
-    # KPI до ответа API — скелетоны с прочерком, а не выдуманные числа
-    kpi = html[html.index('class="knums"'):html.index('id="districts"')]
-    assert kpi.count('class="ph sk"') == 3
-    assert not re.search(r"\d[\d  ]{3,}\d", kpi), "в KPI-полосе не должно быть захардкоженных чисел"
+    assert '<span data-show="rent">Аренда по неделям</span>' in html
+    assert '<span data-show="rent">Сколько просят за аренду</span>' in html
+    assert "Данные об аренде временно недоступны" in html
+    assert "Аренда квартир в Алматы — цены по районам и комнатам │ baǵam" in html
+    # аренда в главных цифрах — за квартиру в месяц, не за метр
+    assert "₸/м² в мес" not in html and "Аренда за м² в месяц" not in html
 
 
-def test_rent_page_degrades_calmly_when_api_is_down():
-    html = _static()
-
-    assert "Данные аренды временно недоступны" in html
-    assert "function fail(" in html
-    assert 'data-r="err"' in html and "hidden" in html
-    # 503 и сетевая ошибка ведут в одну и ту же ветку
-    assert "if (!r.ok) throw" in html
-    assert ".then(apply, function(){ fail(); })" in html
-
-
-def test_rent_trend_needs_at_least_three_weeks():
+def test_rent_charts_need_data_and_stay_keyboard_friendly():
     html = _static()
 
     assert "tr.length < 3" in html
-    assert 'id="trend"' in html and 'data-r="trendsec" hidden' in html
+    assert 'id="trend"' in html and 'data-r="trendsec"' in html
+    # гистограмма — список с подписями, без кнопок; график — одна остановка Tab
+    assert '<ol class="hist"' in html
+    assert html.count('tabindex="0"') == 1
 
 
-def test_rent_charts_stay_interactive_after_redraw():
-    """Столбики и точки перерисовываются живыми данными, поэтому клик делегирован документу."""
+def test_rent_room_rows_use_data_thresholds():
+    """«Мало объявлений» решают данные: меньше 100 — «~», меньше 30 — строки нет, есть пояснение."""
     html = _static()
 
-    assert "e.target.closest('.' + cls)" in html
-    assert "tapToggle('hcol', e)" in html and "tapToggle('cband', e)" in html
-    assert "querySelectorAll('.hcol').forEach(c=>{" not in html
-    # золото — выше медианы, лайм — ниже
-    assert ".hcol.hi .hbar{background:var(--vio)}" in html
-    assert ".dfl.hi{background:var(--vio)}" in html and ".dfl.lo{background:var(--lime)}" in html
-
-
-def test_rent_yield_explainer_matches_api_formula():
-    html = _static()
-
-    assert "Купить, чтобы сдавать?" in html
-    assert "<b>12</b> × аренда в месяц" in html and "цена покупки" in html
-    assert "Если сдавать эту квартиру" in html
-    for omitted in ("Налогов", "простоя", "ремонта", "коммунальных"):
-        assert omitted in html
-
-
-def test_rent_cta_form_jumps_to_home_check_and_next_cards_link_site():
-    html = _static()
-
-    assert '<form class="inbar" data-jump' in html
-    assert "location.href='/#check=' + m[1]" in html
-    nxt = html[html.index('class="ncards"'):]
-    for href in ('href="/"', 'href="/stats"', 'href="/bot"', 'href="/about"'):
-        assert href in nxt, href
-
-
-def test_rent_page_colors_come_from_theme_tokens():
-    """Цвета берутся из токенов темы: в стилях страницы нет захардкоженных hex."""
-    html = _static()
-    page_css = html[html.index("/* ---- оболочка подстраницы ---- */"):html.index("</style><link rel=\"icon\"")]
-
-    assert not re.search(r"#[0-9a-fA-F]{3,8}\b", page_css)
-    assert "prefers-reduced-motion" in html and "html.lite" in html
-
-
-def test_rent_failure_state_reveals_empty_panels():
-    """При сбое API панели с [data-reveal] не остаются прозрачными: «Нет данных» видно и при html.anim."""
-    html = _static()
-    start = html.index("function fail(")
-    fail_body = html[start:html.index("function apply(", start)]
-
-    assert "reveal();" in fail_body
-    assert "#prices .shmeta" in fail_body
-
-
-def test_rent_mobile_menu_marks_current_page_by_path():
-    html = _static()
-
-    assert "location.pathname" in html
-    assert "location.href.split('#')[0]===a.dataset.href" not in html
-    assert "HOME_URL" not in html
-
-
-def test_rent_room_mix_colors_stay_visible_in_both_themes():
-    """Оттенки структуры предложения идут от токенов темы, а не от одного смешивания с панелью."""
-    html = _static()
-
-    assert "var(--mc' + Math.min(i, 4) + ')" in html
-    assert re.search(r"html\[data-theme=light\] \.two\{--mc1:color-mix\(in oklab,var\(--lime\) \d+%,var\(--ink\)\)", html)
-    assert "color-mix(in oklab,var(--lime) ' + mix" not in html
-
-
-def test_rent_districts_table_header_matches_row_cells():
-    html = _static()
-    head = html[html.index('class="dhd"'):html.index('data-r="districts"')]
-
-    assert 'role="presentation"' not in head
-    assert head.count('role="columnheader"') == 5 + 1  # номер, район, метр (на 2 колонки), квартира, объявлений, доходность
-    assert 'aria-colspan="2"' in head
+    assert "MIN_ROOMS = 30, THIN = 100" in html
+    assert "'«~» — меньше ' + THIN + ' объявлений, цифра ориентировочная.'" in html

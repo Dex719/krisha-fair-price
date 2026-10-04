@@ -66,13 +66,15 @@ def test_terms_has_single_h1_and_toc_matches_sections():
 def test_terms_shows_model_error_live_for_sale_and_rent():
     """Точность — живыми числами из /api/health: mape для продажи, rmape для аренды."""
     html = _terms()
+    site = (STATIC / "js" / "site.js").read_text(encoding="utf-8")
 
     assert 'data-l="mape"' in html
     assert 'data-l="rmape"' in html
-    # общий скрипт страницы действительно умеет заполнять оба хука
-    assert "model_error_pct" in html
-    assert "rent_model_error_pct" in html
-    assert "[data-l=rmape]" in html
+    # общий скрипт (site.js, подключён на странице) действительно умеет заполнять оба хука
+    assert '<script src="/static/js/site.js" defer' in html
+    assert "model_error_pct" in site
+    assert "rent_model_error_pct" in site
+    assert "put('rmape'" in site
 
 
 def test_terms_names_source_license_and_links_repo():
@@ -89,8 +91,8 @@ def test_terms_names_source_license_and_links_repo():
 def test_terms_has_edition_date():
     html = _terms()
 
-    assert "2 октября 2026" in html
-    assert 'datetime="2026-10-02"' in html
+    assert "4 октября 2026" in html
+    assert 'datetime="2026-10-04"' in html
 
 
 def test_terms_states_reference_nature_of_estimate():
@@ -136,40 +138,44 @@ def _bot_section() -> str:
     return m.group(0)
 
 
-def test_terms_bot_section_numbers_match_code():
-    """Числа в описании бота (лимиты, пороги) берутся из кода, а не из головы."""
-    from krisha.alerts import MAX_DEALS_PER_CHAT
-    from krisha.bot import CAPTION_LIMIT
-    from krisha.config import MAX_TRUSTED_DELIST_LAG_DAYS
-    from krisha.text_parse import MIN_TEXT_LEN
-    from krisha.tracking import MAX_TRACKED_PER_CHAT
-
+def test_terms_bot_section_is_short_and_points_to_the_bot_page():
+    """Инструкция к боту живёт на /bot; в условиях — суть в двух абзацах и ссылки."""
     section = _bot_section()
-    text_parse = (ROOT / "src" / "krisha" / "text_parse.py").read_text(encoding="utf-8")
+    text = re.sub(r"<[^>]+>", "", section)
 
-    assert f"не больше чем за {MAX_TRACKED_PER_CHAT} объявлениями" in section
-    assert f"Короче {MIN_TEXT_LEN} символов" in section
-    assert f"не больше {MAX_DEALS_PER_CHAT} объявлений" in section
-    assert f"ограничена {CAPTION_LIMIT} символами" in section
-    assert MAX_TRUSTED_DELIST_LAG_DAYS == 7, "порог снятия изменился — поправьте «семи дней» на странице"
-    assert "дольше семи дней" in section
-    # в Gemini уходит начало текста: «до 3000 символов» — это срез в text_parse
-    assert "[:3000]" in text_parse and "до 3000 символов" in section
+    assert len(text) < 1000, "раздел про бота снова разросся в копию инструкции"
+    assert 'href="/bot"' in section and 'href="/privacy#bot"' in section
+    assert 'class="cmds"' not in section and 'class="dsub"' not in section
+    # слежка — продажа и аренда, выгодные объявления — продажа (как в bot.TRACK_HELP и bot.ALERTS_HELP)
+    assert "следит за ценой по /track (продажа и аренда)" in text
+    assert "уведомления о выгодных объявлениях о продаже" in text
 
 
-def test_terms_bot_section_covers_every_command_of_the_bot():
-    """Раздел про бота называет все команды, которые бот обрабатывает."""
-    section = _bot_section()
-    bot = (ROOT / "src" / "krisha" / "bot.py").read_text(encoding="utf-8")
+def test_terms_limits_are_short_and_link_to_about():
+    m = re.search(r'<section class="ds" id="limits".*?</section>', _terms(), flags=re.S)
+    assert m
+    assert 'href="/about"' in m.group(0) and 'class="lrows"' not in m.group(0)
 
-    for cmd in ("/start", "/help", "/track", "/untrack", "/untrack all", "/alerts", "/alerts_on", "/alerts_off"):
-        assert cmd in section, f"раздел про бота не упоминает {cmd}"
-        assert cmd.split()[0] in bot, f"в боте нет {cmd}"
-    # оба режима оценки и ссылки на разделы страницы работают
-    for anchor in ("#reference", "#limits", "#availability", "#yield"):
-        assert f'href="{anchor}"' in section
-        assert f'id="{anchor[1:]}"' in _terms()
-    assert 'href="/privacy#bot"' in section
+
+def test_terms_name_kazakhstan_law_plainly():
+    html = _terms()
+    m = re.search(r'<section class="ds" id="law".*?</section>', html, flags=re.S)
+
+    assert m, "нет раздела о применимом праве"
+    assert "право Республики Казахстан" in m.group(0)
+    assert "в порядке, установленном законодательством Республики Казахстан" in m.group(0)
+    assert "применимое законодательство" not in html
+
+
+def test_terms_agree_with_about_and_privacy():
+    """Время ответа, лицензия и слежка за арендой описаны одинаково на всех документах."""
+    terms, about = _terms(), (STATIC / "about.html").read_text(encoding="utf-8")
+
+    for html in (terms, about):
+        assert "одна секунда" not in html
+        assert "до 30 секунд" in html
+        assert "Открытый код" not in html.split("<main", 1)[1].split("</main>", 1)[0]
+    assert "лицензия ELv2" in about and "Elastic License 2.0" in terms
 
 
 def test_terms_links_between_documents_and_footer():

@@ -77,12 +77,12 @@ def post_channel_digest(
     if dry_run:
         return text
 
-    from krisha.bot import tg_call
+    from krisha.bot import tg_call, tg_error_summary
 
     resp = tg_call("sendMessage", chat_id=channel, text=text,
                    parse_mode="HTML", disable_web_page_preview=True)
     if not (resp and resp.get("ok")):
-        logger.warning("channel: пост не отправился: %s", resp)
+        logger.warning("channel: пост не отправился: %s", tg_error_summary(resp))
         return None
     if persist:
         new_posted = (posted + [d["id"] for d in fresh])[-POSTED_KEEP:]

@@ -15,10 +15,14 @@ class PredictRequest(BaseModel):
 
 
 class Factor(BaseModel):
+    # Коллинеарные признаки приходят одним фактором (predict.FACTOR_GROUPS):
+    # building_age = год постройки + возраст, floor = все этажные, district =
+    # район + микрорайон, lat = координаты и т.д.
     feature: str
     impact: float  # вклад в log(price): >0 — повышает цену, <0 — понижает
     impact_pct: float | None = None  # тот же вклад как множитель цены, в %
-    impact_tenge: float | None = None  # оценка вклада в итоговую цену, ₸
+    # вклад в тенге относительно «типичной квартиры» (factors_base) — у аренды ₸/мес
+    impact_tenge: float | None = None
     hint: str | None = None  # подсказка со статистикой рынка (тултип на сайте)
 
 
@@ -100,6 +104,12 @@ class PredictResponse(BaseModel):
     verdict: str | None  # GOOD_DEAL / FAIR / OVERPRICED
     diff_pct: float | None
     top_factors: list[Factor]
+    # Точка отсчёта факторов: оценка «типичной квартиры» — базовое значение
+    # модели (средний ответ на обучении), в единицах цены ответа (₸, у аренды
+    # ₸/мес). factors_other — суммарный вклад факторов вне top_factors.
+    # factors_base + Σ top_factors[].impact_tenge + factors_other == fair_price.
+    factors_base: float | None = None
+    factors_other: float | None = None
     details: list[DetailItem] = Field(default_factory=list)          # характеристики объявления (этаж, год, ремонт...)
     complex_details: list[DetailItem] = Field(default_factory=list)  # этап 2: блок «О доме» из справочника ЖК
     location_details: list[DetailItem] = Field(default_factory=list) # этап 3: блок «Локация» (walk score, POI)
