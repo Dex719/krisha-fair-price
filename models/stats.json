@@ -1,354 +1,354 @@
 {
-  "total_listings": 41589,
+  "total_listings": 42830,
   "median_price": 42000000,
-  "median_ppsm": 745208,
+  "median_ppsm": 750000,
   "by_district": [
     {
       "district": "Медеуский",
-      "n": 4219,
-      "median_ppsm": 937500,
-      "median_price": 66000000
+      "n": 4173,
+      "median_ppsm": 934782,
+      "median_price": 65000000
     },
     {
       "district": "Бостандыкский",
-      "n": 9544,
-      "median_ppsm": 910714,
+      "n": 10060,
+      "median_ppsm": 916666,
       "median_price": 63500000
     },
     {
       "district": "Алмалинский",
-      "n": 5789,
-      "median_ppsm": 818181,
-      "median_price": 45500000
+      "n": 5885,
+      "median_ppsm": 831578,
+      "median_price": 45900000
     },
     {
       "district": "Ауэзовский",
-      "n": 6180,
-      "median_ppsm": 712818,
-      "median_price": 38500000
+      "n": 6815,
+      "median_ppsm": 714285,
+      "median_price": 39000000
     },
     {
       "district": "Наурызбайский",
-      "n": 4861,
-      "median_ppsm": 650054,
-      "median_price": 35500000
+      "n": 5090,
+      "median_ppsm": 648936,
+      "median_price": 34894444
     },
     {
       "district": "Жетысуский",
-      "n": 2385,
-      "median_ppsm": 632933,
-      "median_price": 32000000
+      "n": 2333,
+      "median_ppsm": 636363,
+      "median_price": 32415000
     },
     {
       "district": "Алатауский",
-      "n": 5202,
-      "median_ppsm": 622222,
-      "median_price": 33000000
+      "n": 5113,
+      "median_ppsm": 625000,
+      "median_price": 33136875
     },
     {
       "district": "Турксибский",
-      "n": 3376,
-      "median_ppsm": 600000,
+      "n": 3340,
+      "median_ppsm": 606060,
       "median_price": 31000000
     }
   ],
   "price_hist": [
     {
       "label": "0–20 млн",
-      "count": 1406
+      "count": 1518
     },
     {
       "label": "20–30 млн",
-      "count": 7814
+      "count": 8108
     },
     {
       "label": "30–40 млн",
-      "count": 9930
+      "count": 10047
     },
     {
       "label": "40–50 млн",
-      "count": 6735
+      "count": 6971
     },
     {
       "label": "50–60 млн",
-      "count": 4084
+      "count": 4298
     },
     {
       "label": "60–80 млн",
-      "count": 4765
+      "count": 4886
     },
     {
       "label": "80–100 млн",
-      "count": 2282
+      "count": 2332
     },
     {
       "label": "100–150 млн",
-      "count": 2567
+      "count": 2626
     },
     {
       "label": "150–250 млн",
-      "count": 1436
+      "count": 1459
     },
     {
       "label": "250+ млн",
-      "count": 570
+      "count": 585
     }
   ],
   "ppsm_hist": [
     {
-      "label": "418–456 тыс",
-      "count": 881,
-      "from_ppsm": 417966,
-      "to_ppsm": 456239
+      "label": "425–463 тыс",
+      "count": 960,
+      "from_ppsm": 424597,
+      "to_ppsm": 463210
     },
     {
-      "label": "456–495 тыс",
-      "count": 902,
-      "from_ppsm": 456239,
-      "to_ppsm": 494513
+      "label": "463–502 тыс",
+      "count": 1071,
+      "from_ppsm": 463210,
+      "to_ppsm": 501823
     },
     {
-      "label": "495–533 тыс",
-      "count": 1756,
-      "from_ppsm": 494513,
-      "to_ppsm": 532787
+      "label": "502–540 тыс",
+      "count": 1979,
+      "from_ppsm": 501823,
+      "to_ppsm": 540436
     },
     {
-      "label": "533–571 тыс",
-      "count": 2485,
-      "from_ppsm": 532787,
-      "to_ppsm": 571060
+      "label": "540–579 тыс",
+      "count": 2502,
+      "from_ppsm": 540436,
+      "to_ppsm": 579049
     },
     {
-      "label": "571–609 тыс",
-      "count": 2779,
-      "from_ppsm": 571060,
-      "to_ppsm": 609334
+      "label": "579–618 тыс",
+      "count": 3097,
+      "from_ppsm": 579049,
+      "to_ppsm": 617662
     },
     {
-      "label": "609–648 тыс",
-      "count": 3390,
-      "from_ppsm": 609334,
-      "to_ppsm": 647607
+      "label": "618–656 тыс",
+      "count": 3564,
+      "from_ppsm": 617662,
+      "to_ppsm": 656275
     },
     {
-      "label": "648–686 тыс",
-      "count": 3418,
-      "from_ppsm": 647607,
-      "to_ppsm": 685881
+      "label": "656–695 тыс",
+      "count": 3434,
+      "from_ppsm": 656275,
+      "to_ppsm": 694888
     },
     {
-      "label": "686–724 тыс",
-      "count": 3351,
-      "from_ppsm": 685881,
-      "to_ppsm": 724154
+      "label": "695–734 тыс",
+      "count": 3460,
+      "from_ppsm": 694888,
+      "to_ppsm": 733501
     },
     {
-      "label": "724–762 тыс",
-      "count": 3171,
-      "from_ppsm": 724154,
-      "to_ppsm": 762428
+      "label": "734–772 тыс",
+      "count": 3031,
+      "from_ppsm": 733501,
+      "to_ppsm": 772114
     },
     {
-      "label": "762–801 тыс",
-      "count": 2880,
-      "from_ppsm": 762428,
-      "to_ppsm": 800701
+      "label": "772–811 тыс",
+      "count": 2815,
+      "from_ppsm": 772114,
+      "to_ppsm": 810727
     },
     {
-      "label": "801–839 тыс",
-      "count": 2419,
-      "from_ppsm": 800701,
-      "to_ppsm": 838975
+      "label": "811–849 тыс",
+      "count": 2528,
+      "from_ppsm": 810727,
+      "to_ppsm": 849340
     },
     {
-      "label": "839–877 тыс",
-      "count": 2145,
-      "from_ppsm": 838975,
-      "to_ppsm": 877248
+      "label": "849–888 тыс",
+      "count": 2286,
+      "from_ppsm": 849340,
+      "to_ppsm": 887953
     },
     {
-      "label": "877–916 тыс",
-      "count": 1914,
-      "from_ppsm": 877248,
-      "to_ppsm": 915522
+      "label": "888–927 тыс",
+      "count": 1968,
+      "from_ppsm": 887953,
+      "to_ppsm": 926566
     },
     {
-      "label": "916–954 тыс",
-      "count": 1605,
-      "from_ppsm": 915522,
-      "to_ppsm": 953795
+      "label": "927–965 тыс",
+      "count": 1682,
+      "from_ppsm": 926566,
+      "to_ppsm": 965179
     },
     {
-      "label": "954–992 тыс",
-      "count": 1275,
-      "from_ppsm": 953795,
-      "to_ppsm": 992069
+      "label": "965–1004 тыс",
+      "count": 1505,
+      "from_ppsm": 965179,
+      "to_ppsm": 1003792
     },
     {
-      "label": "992–1030 тыс",
-      "count": 1246,
-      "from_ppsm": 992069,
-      "to_ppsm": 1030342
+      "label": "1004–1042 тыс",
+      "count": 950,
+      "from_ppsm": 1003792,
+      "to_ppsm": 1042405
     },
     {
-      "label": "1030–1069 тыс",
-      "count": 866,
-      "from_ppsm": 1030342,
-      "to_ppsm": 1068616
+      "label": "1042–1081 тыс",
+      "count": 867,
+      "from_ppsm": 1042405,
+      "to_ppsm": 1081018
     },
     {
-      "label": "1069–1107 тыс",
-      "count": 766,
-      "from_ppsm": 1068616,
-      "to_ppsm": 1106889
+      "label": "1081–1120 тыс",
+      "count": 721,
+      "from_ppsm": 1081018,
+      "to_ppsm": 1119631
     },
     {
-      "label": "1107–1145 тыс",
-      "count": 548,
-      "from_ppsm": 1106889,
-      "to_ppsm": 1145163
+      "label": "1120–1158 тыс",
+      "count": 605,
+      "from_ppsm": 1119631,
+      "to_ppsm": 1158244
     },
     {
-      "label": "1145–1183 тыс",
-      "count": 457,
-      "from_ppsm": 1145163,
-      "to_ppsm": 1183436
+      "label": "1158–1197 тыс",
+      "count": 452,
+      "from_ppsm": 1158244,
+      "to_ppsm": 1196857
     },
     {
-      "label": "1183–1222 тыс",
-      "count": 487,
-      "from_ppsm": 1183436,
-      "to_ppsm": 1221710
+      "label": "1197–1235 тыс",
+      "count": 496,
+      "from_ppsm": 1196857,
+      "to_ppsm": 1235470
     },
     {
-      "label": "1222–1260 тыс",
-      "count": 402,
-      "from_ppsm": 1221710,
-      "to_ppsm": 1259984
+      "label": "1235–1274 тыс",
+      "count": 388,
+      "from_ppsm": 1235470,
+      "to_ppsm": 1274084
     },
     {
-      "label": "1260–1298 тыс",
-      "count": 300,
-      "from_ppsm": 1259984,
-      "to_ppsm": 1298257
+      "label": "1274–1313 тыс",
+      "count": 295,
+      "from_ppsm": 1274084,
+      "to_ppsm": 1312697
     },
     {
-      "label": "1298–1337 тыс",
-      "count": 270,
-      "from_ppsm": 1298257,
-      "to_ppsm": 1336531
+      "label": "1313–1351 тыс",
+      "count": 274,
+      "from_ppsm": 1312697,
+      "to_ppsm": 1351310
     },
     {
-      "label": "1337–1375 тыс",
-      "count": 193,
-      "from_ppsm": 1336531,
-      "to_ppsm": 1374804
+      "label": "1351–1390 тыс",
+      "count": 224,
+      "from_ppsm": 1351310,
+      "to_ppsm": 1389923
     },
     {
-      "label": "1375–1413 тыс",
-      "count": 256,
-      "from_ppsm": 1374804,
-      "to_ppsm": 1413078
+      "label": "1390–1429 тыс",
+      "count": 219,
+      "from_ppsm": 1389923,
+      "to_ppsm": 1428536
     },
     {
-      "label": "1413–1451 тыс",
-      "count": 139,
-      "from_ppsm": 1413078,
-      "to_ppsm": 1451351
+      "label": "1429–1467 тыс",
+      "count": 146,
+      "from_ppsm": 1428536,
+      "to_ppsm": 1467149
     },
     {
-      "label": "1451–1490 тыс",
-      "count": 138,
-      "from_ppsm": 1451351,
-      "to_ppsm": 1489625
+      "label": "1467–1506 тыс",
+      "count": 174,
+      "from_ppsm": 1467149,
+      "to_ppsm": 1505762
     },
     {
-      "label": "1490–1528 тыс",
-      "count": 108,
-      "from_ppsm": 1489625,
-      "to_ppsm": 1527898
-    },
-    {
-      "label": "1528–1566 тыс",
-      "count": 130,
-      "from_ppsm": 1527898,
-      "to_ppsm": 1566172
-    },
-    {
-      "label": "1566–1604 тыс",
+      "label": "1506–1544 тыс",
       "count": 101,
-      "from_ppsm": 1566172,
-      "to_ppsm": 1604445
+      "from_ppsm": 1505762,
+      "to_ppsm": 1544375
     },
     {
-      "label": "1604–1643 тыс",
-      "count": 69,
-      "from_ppsm": 1604445,
-      "to_ppsm": 1642719
+      "label": "1544–1583 тыс",
+      "count": 116,
+      "from_ppsm": 1544375,
+      "to_ppsm": 1582988
     },
     {
-      "label": "1643–1681 тыс",
-      "count": 90,
-      "from_ppsm": 1642719,
-      "to_ppsm": 1680992
+      "label": "1583–1622 тыс",
+      "count": 96,
+      "from_ppsm": 1582988,
+      "to_ppsm": 1621601
     },
     {
-      "label": "1681–1719 тыс",
-      "count": 55,
-      "from_ppsm": 1680992,
-      "to_ppsm": 1719266
+      "label": "1622–1660 тыс",
+      "count": 83,
+      "from_ppsm": 1621601,
+      "to_ppsm": 1660214
     },
     {
-      "label": "1719–1758 тыс",
-      "count": 50,
-      "from_ppsm": 1719266,
-      "to_ppsm": 1757539
+      "label": "1660–1699 тыс",
+      "count": 68,
+      "from_ppsm": 1660214,
+      "to_ppsm": 1698827
     },
     {
-      "label": "1758–1796 тыс",
-      "count": 61,
-      "from_ppsm": 1757539,
-      "to_ppsm": 1795813
+      "label": "1699–1737 тыс",
+      "count": 56,
+      "from_ppsm": 1698827,
+      "to_ppsm": 1737440
     },
     {
-      "label": "1796–1834 тыс",
+      "label": "1737–1776 тыс",
+      "count": 56,
+      "from_ppsm": 1737440,
+      "to_ppsm": 1776053
+    },
+    {
+      "label": "1776–1815 тыс",
+      "count": 48,
+      "from_ppsm": 1776053,
+      "to_ppsm": 1814666
+    },
+    {
+      "label": "1815–1853 тыс",
       "count": 38,
-      "from_ppsm": 1795813,
-      "to_ppsm": 1834086
+      "from_ppsm": 1814666,
+      "to_ppsm": 1853279
     },
     {
-      "label": "1834+ тыс",
-      "count": 448,
-      "from_ppsm": 1834086,
-      "to_ppsm": 1872360
+      "label": "1853+ тыс",
+      "count": 475,
+      "from_ppsm": 1853279,
+      "to_ppsm": 1891892
     }
   ],
   "by_rooms": [
     {
       "rooms": 1,
-      "n": 9534,
+      "n": 10154,
       "median_price": 26500000
     },
     {
       "rooms": 2,
-      "n": 15555,
-      "median_price": 38500000
+      "n": 16244,
+      "median_price": 39136000
     },
     {
       "rooms": 3,
-      "n": 12728,
-      "median_price": 55800000
+      "n": 12668,
+      "median_price": 56000000
     },
     {
       "rooms": 4,
-      "n": 3248,
-      "median_price": 110000000
+      "n": 3249,
+      "median_price": 113000000
     },
     {
       "rooms": 5,
-      "n": 523,
-      "median_price": 200000000
+      "n": 514,
+      "median_price": 195000000
     },
     {
       "rooms": 6,
@@ -358,82 +358,82 @@
   ],
   "trend": [
     {
-      "week": "29.06",
-      "t": 0,
-      "median_ppsm": 672482,
-      "n": 9538
-    },
-    {
       "week": "06.07",
-      "t": 1,
+      "t": 0,
       "median_ppsm": 714285,
-      "n": 16095
+      "n": 16097
     },
     {
       "week": "13.07",
-      "t": 2,
-      "median_ppsm": 727500,
-      "n": 14687
+      "t": 1,
+      "median_ppsm": 727386,
+      "n": 14692
     },
     {
       "week": "20.07",
-      "t": 3,
-      "median_ppsm": 723880,
-      "n": 9941
+      "t": 2,
+      "median_ppsm": 723684,
+      "n": 9956
     },
     {
       "week": "27.07",
-      "t": 4,
-      "median_ppsm": 744680,
-      "n": 38815
+      "t": 3,
+      "median_ppsm": 744920,
+      "n": 38970
     },
     {
       "week": "03.08",
-      "t": 5,
-      "median_ppsm": 746268,
-      "n": 40133
+      "t": 4,
+      "median_ppsm": 746666,
+      "n": 40337
     },
     {
       "week": "10.08",
-      "t": 6,
+      "t": 5,
       "median_ppsm": 750000,
-      "n": 33543
+      "n": 33801
     },
     {
       "week": "17.08",
-      "t": 7,
+      "t": 6,
       "median_ppsm": 750000,
-      "n": 33759
+      "n": 34083
     },
     {
       "week": "24.08",
-      "t": 8,
-      "median_ppsm": 752212,
-      "n": 35455
+      "t": 7,
+      "median_ppsm": 753424,
+      "n": 35874
     },
     {
       "week": "31.08",
-      "t": 9,
-      "median_ppsm": 754545,
-      "n": 32994
+      "t": 8,
+      "median_ppsm": 756276,
+      "n": 33880
     },
     {
       "week": "07.09",
-      "t": 10,
-      "median_ppsm": 750000,
-      "n": 32177
+      "t": 9,
+      "median_ppsm": 754545,
+      "n": 34933
     },
     {
       "week": "14.09",
+      "t": 10,
+      "median_ppsm": 750000,
+      "n": 41003
+    },
+    {
+      "week": "21.09",
       "t": 11,
-      "median_ppsm": 746666,
-      "n": 37278
+      "median_ppsm": 750000,
+      "n": 52762
     }
   ],
   "by_category": {
-    "novostroiki": 301,
-    "vtorichka": 41288
+    "novostroiki": 340,
+    "vtorichka": 42490
   },
-  "updated_at": "2026-09-27T11:39:47.000265+00:00",
+  "updated_at": "2026-10-04T11:41:47.822143+00:00",
   "source": "db"
 }
