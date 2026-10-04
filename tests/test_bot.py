@@ -596,3 +596,29 @@ def test_format_reply_explains_reference_point_and_merged_age_label():
     assert "Возраст дома: -7.7% (-3.2 млн ₸)" in text
     assert "Расположение на карте" in text
     assert bot.FEATURE_RU["year_built"] == bot.FEATURE_RU["building_age"]
+
+
+JARGON = ("лот", "Лот", "алерт", "Алерт")
+
+
+def test_help_texts_speak_plain_russian():
+    """Пользователь видит «объявление» и «уведомление», а не «лот» и «алерт»."""
+    for text in (bot.HELP_TEXT, bot.ALERTS_HELP, bot.TRACK_HELP):
+        assert not any(w in text for w in JARGON), text
+
+
+def test_alerts_on_reply_speaks_plain_russian(monkeypatch):
+    import krisha.subscriptions as subs
+    sent = []
+    monkeypatch.setattr(bot, "tg_call", lambda m, **kw: sent.append(kw) or {"ok": True})
+    monkeypatch.setattr(subs, "set_subscription", lambda chat_id, flt: None)
+    bot._handle_alerts_command(42, "/alerts_on 2к до 45млн")
+    text = sent[-1]["text"]
+    assert "Пришлю новые выгодные объявления" in text
+    assert not any(w in text for w in JARGON), text
+
+
+def test_overpriced_verdict_matches_site_wording():
+    """На сайте вердикт называется «Дорого» — бот говорит так же."""
+    assert bot.VERDICT_RU["OVERPRICED"].startswith("🔴 Дорого")
+    assert not any("ереплат" in v for v in bot.VERDICT_RU.values())

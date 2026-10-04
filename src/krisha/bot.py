@@ -118,7 +118,7 @@ FEATURE_RU = {
 VERDICT_RU = {
     "GOOD_DEAL": "🟢 Выгодно — дешевле оценки",
     "FAIR": "🟡 Справедливая цена",
-    "OVERPRICED": "🔴 Переплата",
+    "OVERPRICED": "🔴 Дорого — дороже оценки",
 }
 
 HELP_TEXT = (
@@ -128,8 +128,8 @@ HELP_TEXT = (
     "диапазон и факторы.\n"
     "2) Нет ссылки? Вставь текст объявления — сделаю примерную оценку по описанию.\n"
     "3) <code>/track ссылка</code> — слежка за объявлением о продаже или аренде: "
-    "пришлю алерт, если цена изменится или объявление снимут.\n"
-    "4) <code>/alerts</code> — алерты о новых выгодных объявлениях с фильтрами; "
+    "напишу, если цена изменится или объявление снимут.\n"
+    "4) <code>/alerts</code> — уведомления о новых выгодных объявлениях с фильтрами; "
     "<code>/alerts_on 2к до 45млн бостандыкский</code> включает комнаты, бюджет и район.\n\n"
     "Веб-версия: https://bagam.info"
 )
@@ -566,13 +566,13 @@ def _handle_free_text(chat_id: int, text: str) -> None:
     parsed = result.get("parsed_fields") or {}
     known = ", ".join(_PARSED_RU[k] for k in _PARSED_RU if k in parsed)
     header = ("📝 <b>Оценка по тексту</b> — примерная: без фото, точного адреса "
-              f"и истории лота.\nРаспознал: {known}.\n\n")
+              f"и истории объявления.\nРаспознал: {known}.\n\n")
     tg_call("sendMessage", chat_id=chat_id, text=header + format_reply(result),
             parse_mode="HTML", disable_web_page_preview=True)
 
 
 ALERTS_HELP = (
-    "🔔 <b>Алерты на выгодные объявления</b>\n\n"
+    "🔔 <b>Уведомления о выгодных объявлениях</b>\n\n"
     "Раз в день после обновления базы я присылаю новые объявления, "
     "которые дешевле оценки модели.\n\n"
     "<code>/alerts_on</code> — подписаться на все выгодные\n"
@@ -599,7 +599,7 @@ def _handle_alerts_command(chat_id: int, text: str) -> None:
         set_subscription(chat_id, flt)
         tg_call("sendMessage", chat_id=chat_id, parse_mode="HTML",
                 text=f"✅ Подписал: <b>{describe_filters(flt)}</b>.\n"
-                     "Пришлю новые выгодные лоты после ближайшего обновления базы "
+                     "Пришлю новые выгодные объявления после ближайшего обновления базы "
                      "(раз в день, обычно в первой половине дня). Отписаться: /alerts_off")
     elif cmd == "/alerts_off":
         removed = remove_subscription(chat_id)
@@ -613,10 +613,10 @@ def _handle_alerts_command(chat_id: int, text: str) -> None:
 
 TRACK_HELP = (
     "👀 <b>Слежка за объявлениями</b>\n\n"
-    "<code>/track https://krisha.kz/a/show/…</code> — следить за лотом: "
-    "после каждого обновления базы пришлю алерт, если цена изменилась "
+    "<code>/track https://krisha.kz/a/show/…</code> — следить за объявлением: "
+    "после каждого обновления базы напишу, если цена изменилась "
     "или объявление сняли с продажи.\n"
-    "<code>/track</code> — список лотов в слежке\n"
+    "<code>/track</code> — список объявлений в слежке\n"
     "<code>/untrack https://krisha.kz/a/show/…</code> — перестать следить\n"
     "<code>/untrack all</code> — очистить список\n\n"
     "Продажу проверяю после утреннего обновления базы, аренду — после вечернего."
@@ -733,7 +733,7 @@ def _handle_track_command(chat_id: int, text: str) -> None:
             return
         removed = remove_tracked(chat_id, listing_id)
         tg_call("sendMessage", chat_id=chat_id,
-                text="Убрал из слежки 👌" if removed else "Этого лота и не было в слежке 🙂")
+                text="Убрал из слежки 👌" if removed else "Этого объявления и не было в слежке 🙂")
         return
 
     if not match:
@@ -756,11 +756,11 @@ def _handle_track_command(chat_id: int, text: str) -> None:
     ok, reason = add_tracked(chat_id, listing_id, price, title, deal=deal)
     if not ok and reason == "limit":
         tg_call("sendMessage", chat_id=chat_id,
-                text=f"Лимит: не больше {MAX_TRACKED_PER_CHAT} лотов в слежке. "
+                text=f"Лимит: не больше {MAX_TRACKED_PER_CHAT} объявлений в слежке. "
                      "Убери что-нибудь: /untrack <ссылка>")
         return
     if not ok:
-        tg_call("sendMessage", chat_id=chat_id, text="Уже слежу за этим лотом 👌")
+        tg_call("sendMessage", chat_id=chat_id, text="Уже слежу за этим объявлением 👌")
         return
 
     name = html.escape(title or f"Объявление {listing_id}")
@@ -768,8 +768,8 @@ def _handle_track_command(chat_id: int, text: str) -> None:
     what = "Текущая аренда" if rent else "Текущая цена"
     price_txt = f" {what}: <b>{fmt_tenge(price, rent)}</b>." if price else ""
     when = ("Проверяю раз в день, после вечернего обновления базы аренды; "
-            "пришлю алерт, если аренда изменится или объявление снимут. ") if rent else (
-            "Пришлю алерт при изменении цены или снятии с продажи. ")
+            "напишу, если аренда изменится или объявление снимут. ") if rent else (
+            "Напишу, если цена изменится или объявление снимут с продажи. ")
     tg_call("sendMessage", chat_id=chat_id, parse_mode="HTML",
             text=f"👀 Слежу за «{name}».{price_txt}\n{when}"
                  "Список: /track, отписка: /untrack")

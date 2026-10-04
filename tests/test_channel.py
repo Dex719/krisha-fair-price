@@ -21,8 +21,9 @@ def _no_persist(monkeypatch, tmp_path, posted=None):
 
 def test_format_digest():
     text = channel.format_digest(DEALS[:2])
-    assert "Топ-2 выгодных лотов дня" in text
+    assert "Топ-2 выгодных объявлений дня" in text
     assert "Лот 1" in text and "-21.0%" in text and "Бостандыкский" in text
+    assert "Проверяйте объявление перед сделкой" in text
 
 
 def test_post_digest_skips_posted_and_persists(monkeypatch, tmp_path):

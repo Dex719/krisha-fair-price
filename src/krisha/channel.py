@@ -39,7 +39,7 @@ def load_posted(path=None) -> list[int]:
 
 def format_digest(deals: list[dict[str, Any]]) -> str:
     """HTML-пост для канала."""
-    lines = [f"🔥 <b>Топ-{len(deals)} выгодных лотов дня</b>", ""]
+    lines = [f"🔥 <b>Топ-{len(deals)} выгодных объявлений дня</b>", ""]
     for i, d in enumerate(deals, 1):
         title = html.escape(d.get("title") or f"{d.get('rooms', '?')}-комн, {d.get('area', '?')} м²")
         district = DISTRICT_RU.get(d.get("district") or "", "")
@@ -50,7 +50,7 @@ def format_digest(deals: list[dict[str, Any]]) -> str:
             detail += f" · {district}"
         lines.append(detail)
         lines.append("")
-    lines.append("🤖 Оценка — модель krisha-fair-price. Проверяйте лот перед сделкой.")
+    lines.append("🤖 Оценка — модель krisha-fair-price. Проверяйте объявление перед сделкой.")
     return "\n".join(lines)
 
 

@@ -26,6 +26,15 @@ _MONTHS_RU = [
 ]
 
 
+def _listings_word(n: int) -> str:
+    """«объявление / объявления / объявлений» для числа n."""
+    if n % 10 == 1 and n % 100 != 11:
+        return "объявление"
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return "объявления"
+    return "объявлений"
+
+
 def _month_delta_pct(trend: list[dict]) -> float | None:
     """Изменение медианы ₸/м² за ~месяц: последняя неделя vs 4 недели назад."""
     if len(trend) < 5:
@@ -60,7 +69,8 @@ def build_monthly_report(stats: dict | None = None) -> str:
         lines += ["", "<b>₸/м² по районам:</b>"]
         for d in districts:
             lines.append(
-                f"• {d['district']}: {d['median_ppsm'] / 1e3:.0f} тыс ₸ ({d['n']} лотов)"
+                f"• {d['district']}: {d['median_ppsm'] / 1e3:.0f} тыс ₸ "
+                f"({d['n']} {_listings_word(d['n'])})"
             )
 
     rooms = stats.get("by_rooms") or []
