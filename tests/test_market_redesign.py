@@ -211,7 +211,8 @@ def test_page_colors_come_from_theme_tokens():
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b", css)
     # светлая тема: заливки графиков темнее, чтобы держать 3:1 к дорожке и панели
     assert "html[data-theme=light]{--c-lo:" in css
-    assert "prefers-reduced-motion" in (STATIC / "design.css").read_text(encoding="utf-8")
+    # статичный режим — html.lite (слабое устройство, экономия трафика), не «меньше движения»
+    assert "html.lite" in (STATIC / "design.css").read_text(encoding="utf-8")
 
 
 def test_single_h1_and_logical_headings():

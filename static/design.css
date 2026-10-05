@@ -639,12 +639,6 @@ html.lite *{box-shadow:none!important}
 html.anim [data-rv]{transition:opacity .6s cubic-bezier(.16,1,.3,1) calc(var(--rvi,0)*60ms),transform .6s cubic-bezier(.16,1,.3,1) calc(var(--rvi,0)*60ms)}
 html.anim [data-rv=""]{opacity:0;transform:translateY(16px)}
 
-/* ---- «меньше движения» в системе: без анимаций, переходов и плавной прокрутки ---- */
-@media (prefers-reduced-motion:reduce){
- html{scroll-behavior:auto}
- *,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0s!important;scroll-behavior:auto!important}
- ::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}
- [data-rv]{opacity:1!important;transform:none!important}
-}
-@media (prefers-reduced-motion:reduce){@view-transition{navigation:none}}
+/* ---- «меньше движения» в системе анимации не выключает (владелец просил, см. site.js:
+   still). Статичен только html.lite — его правила стоят рядом с самими анимациями ---- */
 @media print{[data-rv]{opacity:1!important;transform:none!important}.progress,.offbar,.mmenu{display:none!important}}
