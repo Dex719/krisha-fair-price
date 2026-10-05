@@ -19,8 +19,10 @@ dist
 .ruff_cache
 catboost_info
 
-# Train/доки/QA — не нужны в runtime-образе
+# Train/доки/QA/инфраструктура — не нужны в runtime-образе
 docs
+assets
+infra
 notebooks
 reports
 tests

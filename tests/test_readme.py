@@ -24,8 +24,8 @@ def test_readme_has_no_hf_front_matter_and_uses_vector_logo():
     assert not text.startswith("---")
     assert "title: baǵam" not in text
     assert "sdk: docker" not in text
-    assert 'srcset="docs/logo-dark.svg"' in text
-    assert 'src="docs/logo-light.svg"' in text
+    assert 'srcset="assets/logo-dark.svg"' in text
+    assert 'src="assets/logo-light.svg"' in text
 
 
 def test_readme_documents_linux_lockfiles_and_local_dev_install():

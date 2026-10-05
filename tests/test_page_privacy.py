@@ -380,7 +380,7 @@ def test_cross_border_section_names_the_real_services_and_localization_risk():
         assert service in transfer, f"не названа зарубежная платформа: {service}"
     assert "Статья 12" in transfer and "на территории Республики Казахстан" in transfer
     # bagam.info идёт через Cloudflare Worker, а webhook бота — мимо него, на адрес Space
-    worker = (ROOT / "docs" / "domain-worker.js").read_text(encoding="utf-8")
+    worker = (ROOT / "infra" / "domain-worker.js").read_text(encoding="utf-8")
     assert "Cloudflare Worker" in worker and "bot.webhook_base_url" in worker
     assert "SPACE_HOST" in inspect.getsource(bot.webhook_base_url)
     assert "Сообщения боту идут мимо Cloudflare" in transfer

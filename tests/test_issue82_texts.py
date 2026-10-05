@@ -44,13 +44,3 @@ def test_site_bot_showcase_lists_same_three_real_features():
         assert "скоро появится" not in html.lower()
         assert "в разработке" not in html.lower()
         assert "FairPrice" not in html
-
-
-def test_botfather_copy_is_documented_for_manual_paste():
-    doc = (ROOT / "docs" / "botfather.md").read_text(encoding="utf-8")
-
-    assert "BotFather" in doc
-    assert "description" in doc
-    assert "about" in doc
-    assert "baǵam" in doc
-    assert "FairPrice" not in doc

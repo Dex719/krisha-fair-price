@@ -646,7 +646,7 @@ def _client_ip(request: Request) -> str:
     заголовка сами. Правый элемент дописывает доверенный прокси HF/Railway —
     на него клиент влиять не может.
 
-    Запрос через свой домен (Cloudflare Worker, docs/domain-worker.js)
+    Запрос через свой домен (Cloudflare Worker, infra/domain-worker.js)
     приходит с IP Cloudflare — правый элемент XFF общий для всех посетителей
     домена. Воркер кладёт настоящий IP в X-Bagam-Client-IP вместе с ключом
     PROXY_KEY; без совпадения ключа заголовок игнорируется.

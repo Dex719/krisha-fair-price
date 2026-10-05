@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
-  <img src="docs/logo-light.svg" alt="baǵam" width="440" />
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+  <img src="assets/logo-light.svg" alt="baǵam" width="440" />
 </picture>
 
 **baǵam — справедливая цена квартиры в Алматы: вставьте ссылку на объявление и проверьте, цена выгодная, рыночная или завышенная**
@@ -16,7 +16,7 @@
 
 **[🚀 Сайт](https://bagam.info)** · **[📊 Рынок Алматы](https://bagam.info/stats)** · **[ℹ️ О проекте](https://bagam.info/about)** · **[🤖 Telegram-бот](https://t.me/fairprice_kzbot)** · **[🧵 Threads](https://www.threads.net/@bagam.kz)**
 
-<img src="docs/screenshot-light.png" alt="Вердикт по объявлению" width="800" />
+<img src="assets/screenshot-light.png" alt="Вердикт по объявлению" width="800" />
 
 </div>
 
@@ -211,6 +211,6 @@ E2e-тесты не входят в `make test` (нужен Chromium): `playwrig
 
 <div align="center">
 
-<img src="docs/screenshot-dark.png" alt="Дашборд рынка Алматы, тёмная тема" width="800" />
+<img src="assets/screenshot-dark.png" alt="Дашборд рынка Алматы, тёмная тема" width="800" />
 
 </div>
