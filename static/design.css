@@ -115,7 +115,7 @@ h1{font-family:Unbounded,UnboundedFB,sans-serif;font-weight:700;font-size:clamp(
 .inbar:focus-within{border-color:color-mix(in srgb,var(--lime) 55%,transparent);box-shadow:var(--sh1),0 0 0 4px var(--limesoft)}
 /* в светлой теме полупрозрачный лайм на белом поле — 1,7:1; рамка фокуса должна держать ≥3:1 */
 html[data-theme=light] .inbar:focus-within{border-color:var(--limeink)}
-.inbar input{flex:1;background:transparent;border:0;outline:0;color:var(--ink);font:400 15px Onest,OnestFB,sans-serif;min-width:0;text-overflow:ellipsis}
+.inbar input{flex:1;background:transparent;border:0;outline:0;color:var(--ink);font:400 16px Onest,OnestFB,sans-serif;min-width:0;text-overflow:ellipsis}
 .inbar input::placeholder{color:var(--dim)}
 .gobtn{background:var(--lime);color:var(--onl);border:0;border-radius:var(--rpill);font:600 15px Onest,OnestFB,sans-serif;padding:16px 28px;cursor:pointer;white-space:nowrap;box-shadow:inset 0 1px 0 rgba(255,255,255,.28);transition:background-color .2s,scale .12s ease}
 .gobtn:hover{background:color-mix(in oklab,var(--lime) 86%,#fff)}
@@ -307,7 +307,7 @@ a.srclink:hover{color:var(--limeink);border-color:var(--limeink)}
 .tgt svg{width:15px;height:9px;flex:none}
 .tgin{display:flex;align-items:center;gap:10px;padding:9px 12px 16px;background:rgba(14,22,33,.96)}
 .tgin svg{width:21px;height:21px;color:#7B93A8;flex:none}
-.tgfl{flex:1;font-size:15px;color:#61798D}
+.tgfl{flex:1;font-size:15px;color:#7B93A8}
 @media(max-width:900px){.iph{width:300px;border-radius:42px}}
 @media(max-width:760px){.iph{margin-top:28px;width:100%;max-width:330px}.tgch{padding:12px 12px 10px}.tgb{max-width:88%;font-size:14px}.tgb .mono{font-size:var(--fs-cap)}}
 .hrow{display:flex;align-items:center;gap:16px}
@@ -400,12 +400,17 @@ html[data-live=off] .flive{display:none}
 .rwarn>div+div{margin-left:34px;padding-top:10px;border-top:1px solid color-mix(in srgb,var(--bad) 25%,var(--line))}
 .rwarn b{display:block;font-weight:600;font-size:var(--fs-md);line-height:1.35;color:var(--ink)}
 .rwarn i{display:block;margin-top:5px;font-style:normal;font-size:var(--fs-sm);line-height:1.55;color:var(--dim)}
+/* средний риск — янтарная плашка «проверьте»: красный оставлен настоящему риску, иначе под зелёным «Выгодно» он читается как противоречие */
+.rwarn.soft{border-color:var(--goldbd);background:var(--goldbg)}
+.rwarn.soft svg{color:var(--warn)}
+.rwarn.soft>div+div{border-top-color:var(--goldbd)}
 /* история цены и похожие объявления */
 .rextra{padding:24px 36px;border-top:1px solid var(--line)}
 .rxttl{font-size:17px;font-weight:600;letter-spacing:-.01em;color:var(--ink);margin-bottom:4px}
 .rxr{display:flex;align-items:baseline;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px;color:var(--ink);text-decoration:none;font-variant-numeric:tabular-nums}
 .rxr:last-child{border-bottom:0}
 .rxr .rxd{flex:none;font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font-size:var(--fs-cap);color:var(--dim);min-width:76px}
+.rxr .rxd small{font-size:inherit;color:var(--dim);opacity:.75}
 .rxr .rxn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rxr .rxv{flex:none;font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font-size:13px;color:var(--ink)}
 .rxr .rxv.dn{color:var(--good)}
@@ -431,6 +436,13 @@ a.rxr:hover .rxv{color:var(--limeink)}
 .demolink:hover{color:var(--limeink);border-color:var(--limeink)}
 .demos{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;margin-top:14px;font-size:var(--fs-sm);color:var(--dim)}
 .demos .demolink{margin-top:0}
+/* телефон: вопрос своей строкой, примеры — двумя чипами с нормальной целью касания, а не подчёркиваниями вразнобой */
+@media(max-width:640px){
+ .demos{gap:10px 8px;align-items:center}
+ .demos>span{flex:1 1 100%}
+ .demos .demolink{padding:9px 14px;border:1px solid var(--line);border-radius:var(--rpill);background:var(--panel);color:var(--ink)}
+ .demos .demolink::after{display:none}
+}
 @media (max-width:760px){
  .rwarn{padding:16px 18px;margin:6px 6px 0}
  .rwarn>div+div{margin-left:0;flex-basis:100%}

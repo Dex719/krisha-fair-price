@@ -37,6 +37,10 @@ reports/shap_summary_rent.png
 
 # reports/*.png — SHAP-график коммитим, он нужен README
 
+# корневые базы от запусков не из корня проекта и локальные видео-проекты
+/*.db
+videos/
+
 # но папки сохраняем
 !data/.gitkeep
 !models/.gitkeep

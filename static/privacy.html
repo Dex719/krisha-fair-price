@@ -9,13 +9,13 @@
 (function(d,w){var n=navigator,c=n.connection||{},m=function(q){return !!(w.matchMedia&&w.matchMedia(q).matches)},t;
 try{t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme')}catch(e){}
 d.setAttribute('data-theme',t==='light'||t==='dark'?t:m('(prefers-color-scheme: light)')?'light':'dark');
-var lite=!!c.saveData||/(^|-)(slow-2g|2g)$/.test(c.effectiveType||'')||(n.deviceMemory&&n.deviceMemory<=2)||(n.hardwareConcurrency&&n.hardwareConcurrency<=4&&n.deviceMemory&&n.deviceMemory<=4);
+var lite=!!c.saveData||/(^|-)(slow-2g|2g)$/.test(c.effectiveType||'')||(n.deviceMemory&&n.deviceMemory<=2);
 d.classList.add('js',lite?'lite':'anim');if(m('(prefers-reduced-motion: reduce)'))d.classList.add('rm');
 w.bagam={q:[],ready:function(f){this.q.push(f)}};
 })(document.documentElement,window);
 </script>
 <title>Политика конфиденциальности │ baǵam</title>
-<meta name="description" content="Какие данные обрабатывают сайт и Telegram-бот baǵam, зачем, где они хранятся и как их удалить.">
+<meta name="description" content="Какие данные обрабатывают сайт и Telegram-бот baǵam, зачем, где они хранятся и как их удалить: счётчики посещаемости, cookie, права пользователя и контакты оператора.">
 <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/unb-lat.woff2">
 <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/unb-gacute.woff2">
 <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/onest-cyr.woff2">
@@ -195,14 +195,16 @@ code{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font
  .ds{break-inside:avoid-page}
 }
 </style>
+<link rel="icon" href="/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="manifest" href="/static/site.webmanifest">
 <link rel="canonical" href="https://bagam.info/privacy">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="baǵam">
 <meta property="og:url" content="https://bagam.info/privacy">
 <meta property="og:title" content="Политика конфиденциальности │ baǵam">
-<meta property="og:description" content="Какие данные обрабатывают сайт и Telegram-бот baǵam, зачем, где они хранятся и как их удалить.">
+<meta property="og:description" content="Какие данные обрабатывают сайт и Telegram-бот baǵam, зачем, где они хранятся и как их удалить: счётчики посещаемости, cookie, права пользователя и контакты оператора.">
 <meta property="og:image" content="https://bagam.info/static/img/og.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -234,7 +236,7 @@ code{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font
 </div>
 <main id="main">
 <section class="phero"><div class="wrap">
-<h1>Политика<br>конфиден&shy;циальности</h1>
+<h1>Политика <br>конфиден&shy;циальности</h1>
 <div class="phrow">
  <p class="plede">Какие данные обрабатывают сайт и Telegram-бот baǵam, зачем, где они хранятся и как их удалить. Каждое утверждение можно сверить с исходным кодом проекта.</p>
 </div>
@@ -247,14 +249,14 @@ code{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font
   <ul class="pcheck">
    <li><span class="pci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>Сайт работает без регистрации. Ссылка на объявление не сохраняется: из неё берётся только публичный номер объявления.</li>
    <li><span class="pci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>Номер вашего чата бот хранит, только пока вы следите за ценой объявлений или подписаны на выгодные объявления, — с вашего согласия и в зашифрованном виде.</li>
-   <li><span class="pci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>Сервис работает на зарубежных платформах: Hugging Face, Cloudflare, GitHub, Telegram и Google. Что и куда уходит — в разделе 07.</li>
+   <li><span class="pci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>Сервис работает на зарубежных платформах: Hugging Face, Cloudflare, GitHub, Telegram, Google и Яндекс. Что и куда уходит — в разделе 07.</li>
    <li><span class="pci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>Отписаться и удалить данные можно командой в боте или сообщением оператору.</li>
   </ul>
  </div>
  <div class="psr">
-  <div class="pkpi"><b>0</b><span><strong>cookie.</strong> Код сайта не создаёт и не читает cookie.</span></div>
-  <div class="pkpi"><b>0</b><span><strong>сторонних трекеров.</strong> Ни аналитики, ни рекламы, ни пикселей.</span></div>
-  <div class="pkpi"><b>60<small>дней</small></b><span><strong>срок счётчиков.</strong> Столько хранятся счётчики визитов и короткие хэши пользователей бота.</span></div>
+  <div class="pkpi"><b>2</b><span><strong>счётчика посещаемости.</strong> Яндекс Метрика и Google Analytics: статистика визитов, без имени и контактов.</span></div>
+  <div class="pkpi"><b>0</b><span><strong>рекламы.</strong> Ни рекламных сетей, ни пикселей, ни продажи данных.</span></div>
+  <div class="pkpi"><b>60<small>дней</small></b><span><strong>срок наших счётчиков нагрузки.</strong> Столько хранятся свои обезличенные счётчики визитов и короткие хэши пользователей бота.</span></div>
  </div>
 </div>
 
@@ -287,13 +289,15 @@ code{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font
 <section class="ds" id="basis">
 <h2 class="dh"><span class="dn" aria-hidden="true">02</span>Основания и цели</h2>
 <p class="dp">Сайтом можно пользоваться, ничего не сообщая о себе: регистрации нет.</p>
+<p class="dp">Счётчики посещаемости на сайте — Яндекс Метрика и Google Analytics — включены сразу: отдельного согласия на них сайт не спрашивает. Отказаться от них можно в любой момент — как, сказано в разделе 08.</p>
 <p class="dp">Бот обрабатывает ваши данные — прежде всего номер чата в Telegram — <b>с вашего согласия</b>. Согласие вы даёте действием: пишете боту, включаете слежку <code>/track</code> или подписку на выгодные объявления <code>/alerts_on</code>. Отозвать его можно в любой момент — как, сказано в разделе 08.</p>
 <p class="dp">Цели обработки:</p>
 <ul class="dlist">
  <li>ответить на ваш запрос — посчитать оценку по ссылке или тексту объявления;</li>
  <li>присылать то, на что вы подписались: изменения цены в слежке и выгодные объявления;</li>
  <li>защищать сервис от перегрузки — ограничивать число запросов с одного адреса;</li>
- <li>понимать нагрузку по обезличенным счётчикам визитов и сообщений.</li>
+ <li>понимать нагрузку по обезличенным счётчикам визитов и сообщений;</li>
+ <li>понимать, как пользуются сайтом — какие страницы открывают, где оценка не получается и что мешает, — по отчётам счётчиков посещаемости.</li>
 </ul>
 </section>
 
@@ -303,6 +307,7 @@ code{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font
  <div class="drow"><h3>Ссылка на объявление</h3><div>
   <p>Браузер отправляет ссылку на наш сервер в теле запроса. Сервер берёт из неё номер объявления, сам загружает публичную страницу с krisha.kz и считает оценку. Ваш адрес krisha.kz не видит.</p>
   <p>Сама ссылка не сохраняется. Готовая оценка около 10 минут лежит в памяти сервера под номером объявления, без привязки к вам. В базе сервиса остаются публичная карточка объявления и запись об оценке: время, цены и вердикт.</p>
+  <p class="sub">Это про наш сервер. Счётчики посещаемости видят адрес страницы, а в нём бывает номер объявления (<code>/#check=…</code>, <code>/?url=…</code>), и Вебвизор записывает ввод в поле ссылки — подробнее ниже.</p>
  </div></div>
  <div class="drow"><h3>IP-адрес</h3><div>
   <p>Чтобы одна машина не заваливала сервис, сервер считает запросы с каждого адреса: по умолчанию не больше 15 оценок в минуту. Счётчик живёт в памяти и пропадает при перезапуске.</p>
@@ -310,8 +315,14 @@ code{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font
  <div class="drow"><h3>Технический журнал</h3><div>
   <p>Как у любого веб-сервера: путь запроса, код ответа, адрес соединения и ошибки. Журнал живёт до перезапуска контейнера. Если оценка завершилась ошибкой, в него может попасть номер объявления.</p>
  </div></div>
- <div class="drow"><h3>Счётчики</h3><div>
-  <p>Сколько раз открыли страницы и сколько оценок посчитано, по дням и часам. Ни IP, ни идентификатора посетителя в счётчике нет. Раз в неделю автору приходит сводка из этих чисел.</p>
+ <div class="drow"><h3>Наши счётчики нагрузки</h3><div>
+  <p>Сколько раз открыли страницы и сколько оценок посчитано, по дням и часам. Ни IP, ни идентификатора посетителя в этих счётчиках нет. Раз в неделю автору приходит сводка из этих чисел.</p>
+ </div></div>
+ <div class="drow"><h3>Яндекс Метрика и Google Analytics</h3><div>
+  <p>Счётчики посещаемости. Они получают адрес страницы и откуда вы на неё пришли, браузер, устройство и размер экрана, примерный регион по IP-адресу, время на странице, клики, прокрутку и переходы по внешним ссылкам, а также события на сайте: посчитана ли оценка — с вердиктом (выгодно, в рынке, дорого), продажа это или аренда и со своей ли ссылки или с примера; ошибки оценки; нажатия «Показать на примере» и «Поделиться»; переключение продажи и аренды на «Рынке»; переход в бота.</p>
+  <p>Чтобы отличать повторные визиты, счётчики ставят в браузер свои cookie (у Метрики — <code>_ym_uid</code>, <code>_ym_d</code> и другие с приставкой <code>_ym</code>, у Google — <code>_ga</code> и <code>_ga_…</code>) и пишут служебные записи в <code>localStorage</code>. Вебвизор Метрики записывает, как двигается указатель, куда вы нажимаете и что вводите в поле ссылки, — чтобы видеть, где сайт неудобен. Поэтому ссылка на объявление может попасть в отчёты Метрики.</p>
+  <p>Google Analytics работает без рекламных функций: без сигналов Google и рекламной персонализации. Внутри Telegram (мини-приложение бота) счётчиков нет вовсе.</p>
+  <p class="sub">Автор видит отчёты счётчиков; имени, телефона и контактов в них нет. Отказаться — раздел 08.</p>
  </div></div>
  <div class="drow"><h3>Память браузера</h3><div>
   <p>Сайт записывает в <code>localStorage</code> два ключа: <code>bagam-theme</code> с выбранной темой (пока вы её не выбрали, ничего не пишется) и <code>bagam-stats</code> с копией публичных цифр рынка, чтобы страница открывалась быстрее. Прежний ключ <code>kfp-theme</code> от старой версии сайта переносится в <code>bagam-theme</code> и удаляется.</p>
@@ -354,11 +365,11 @@ code{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font
 
 <section class="ds" id="none">
 <h2 class="dh"><span class="dn" aria-hidden="true">05</span>Чего мы не собираем</h2>
-<p class="dp">Список проверяет тест в репозитории: появятся на страницах cookie или внешний скрипт — он упадёт.</p>
+<p class="dp">Список проверяет тест в репозитории: появятся на страницах свои cookie, новые внешние скрипты или запросы разрешений — он упадёт.</p>
 <ul class="dlist no">
- <li><b>Cookie.</b> Сайт их не создаёт и не читает.</li>
- <li><b>Стороннюю аналитику и рекламу.</b> Нет счётчиков, пикселей, рекламных сетей и виджетов соцсетей. Единственный внешний скрипт — <code>telegram-web-app.js</code>, и только внутри Telegram.</li>
- <li><b>Внешние шрифты и CDN.</b> Шрифты, стили, скрипты и картинки отдаёт сам сайт.</li>
+ <li><b>Рекламу.</b> Нет рекламных сетей, пикселей ретаргетинга и виджетов соцсетей. Внешние скрипты — только счётчики посещаемости из раздела 03 и <code>telegram-web-app.js</code> внутри Telegram.</li>
+ <li><b>Свои cookie.</b> Код сайта cookie не создаёт и не читает: их ставят только счётчики посещаемости.</li>
+ <li><b>Внешние шрифты и CDN.</b> Шрифты, стили, картинки и скрипты сайта отдаёт сам сайт.</li>
  <li><b>Аккаунты и пароли.</b> E-mail, телефон и платёжные данные никто не спрашивает.</li>
  <li><b>Геолокацию, камеру, микрофон и контакты.</b> Сайт этих разрешений не запрашивает.</li>
  <li><b>Ваши сообщения боту.</b> Их текст не сохраняется. Единственное место, куда он уходит, — Gemini, когда вы присылаете текст объявления без ссылки.</li>
@@ -373,10 +384,11 @@ code{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font
 <tbody>
 <tr><th scope="row">Номер объявления, его публичная карточка и результат оценки</th><td data-label="Зачем">Оценка по ссылке</td><td data-label="Где хранятся">Память сервера (кэш) и база сервиса в контейнере</td><td class="t" data-label="Сколько">Кэш около 10 минут; база до пересборки контейнера, обычно раз в сутки</td></tr>
 <tr><th scope="row">IP-адрес</th><td data-label="Зачем">Ограничение частоты запросов</td><td data-label="Где хранятся">Память процесса и технический журнал</td><td class="t" data-label="Сколько">До перезапуска контейнера</td></tr>
-<tr><th scope="row">Счётчики визитов, оценок и сообщений боту</th><td data-label="Зачем">Понимать нагрузку, недельная сводка автору</td><td data-label="Где хранятся">Приватный репозиторий на GitHub, без IP и номеров чатов</td><td class="t" data-label="Сколько">60 дней</td></tr>
+<tr><th scope="row">Наши счётчики визитов, оценок и сообщений боту</th><td data-label="Зачем">Понимать нагрузку, недельная сводка автору</td><td data-label="Где хранятся">Приватный репозиторий на GitHub, без IP и номеров чатов</td><td class="t" data-label="Сколько">60 дней</td></tr>
 <tr><th scope="row">Хэш номера чата</th><td data-label="Зачем">Число уникальных пользователей бота</td><td data-label="Где хранятся">Там же</td><td class="t" data-label="Сколько">60 дней</td></tr>
 <tr><th scope="row">Номер чата и фильтры подписки</th><td data-label="Зачем">Рассылка выгодных объявлений</td><td data-label="Где хранятся">Зашифрованный файл в приватном репозитории, копия в контейнере</td><td class="t" data-label="Сколько">Пока вы не отправите <code>/alerts_off</code></td></tr>
 <tr><th scope="row">Номер чата и объявления в слежке</th><td data-label="Зачем">Уведомления об изменении цены и о снятии</td><td data-label="Где хранятся">Там же</td><td class="t" data-label="Сколько">До <code>/untrack</code> или до снятия объявления</td></tr>
+<tr><th scope="row">Cookie и записи счётчиков посещаемости</th><td data-label="Зачем">Статистика визитов и удобства сайта</td><td data-label="Где хранятся">Ваш браузер; отчёты — у Яндекса и Google</td><td class="t" data-label="Сколько">Cookie Метрики — до года, Google Analytics — до двух лет; отчёты — по правилам сервисов</td></tr>
 <tr><th scope="row">Тема и копия цифр рынка</th><td data-label="Зачем">Оформление и быстрая загрузка</td><td data-label="Где хранятся"><code>localStorage</code> вашего браузера</td><td class="t" data-label="Сколько">Пока вы не очистите данные сайта</td></tr>
 <tr><th scope="row">Журнал оценок<span>необязательный, по умолчанию выключен</span></th><td data-label="Зачем">Проверять качество модели на судьбе объявлений</td><td data-label="Где хранятся">Приватный репозиторий: время, номер объявления, цены и вердикт, без данных о человеке</td><td class="t" data-label="Сколько">Последние 20&nbsp;000 записей</td></tr>
 </tbody></table></div>
@@ -392,6 +404,7 @@ code{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font
  </div></div>
  <div class="drow"><h3>Cloudflare</h3><div>
   <p>Через сеть Cloudflare работает домен bagam.info: IP-адрес, адрес страницы и заголовки браузера проходят через неё к хостингу. Сообщения боту идут мимо Cloudflare.</p>
+  <p>Если для домена включена Cloudflare Web Analytics, она дополнительно считает посещения страниц — без cookie и без идентификатора посетителя.</p>
   <p class="sub"><a href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noopener">Политика конфиденциальности Cloudflare</a></p>
  </div></div>
  <div class="drow"><h3>GitHub</h3><div>
@@ -403,15 +416,21 @@ code{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font
   <p>Вся переписка с ботом идёт через серверы Telegram и подчиняется его правилам.</p>
   <p class="sub"><a href="https://telegram.org/privacy" target="_blank" rel="noopener">Политика конфиденциальности Telegram</a></p>
  </div></div>
- <div class="drow"><h3>Google (Gemini)</h3><div>
-  <p>Только если подключён ключ: текст объявления, вставленный боту без ссылки (до 3000 символов), а также публичные фото и описания объявлений с krisha.kz — чтобы оценить ремонт и разобрать текст.</p>
+ <div class="drow"><h3>Яндекс (Метрика)</h3><div>
+  <p>Счётчик посещаемости сайта: данные о визитах и записи Вебвизора уходят на серверы Яндекса. Сообщения боту туда не попадают.</p>
+  <p class="sub"><a href="https://yandex.ru/legal/confidential/ru/" target="_blank" rel="noopener">Политика конфиденциальности Яндекса</a> · <a href="https://yandex.ru/legal/metrica_termsofuse/ru/" target="_blank" rel="noopener">Условия Метрики</a></p>
+ </div></div>
+ <div class="drow"><h3>Google (Gemini и Analytics)</h3><div>
+  <p>Google Analytics — счётчик посещаемости сайта: данные о визитах уходят на серверы Google. Сообщения боту туда не попадают.</p>
+  <p>Gemini — только если подключён ключ: текст объявления, вставленный боту без ссылки (до 3000 символов), а также публичные фото и описания объявлений с krisha.kz — чтобы оценить ремонт и разобрать текст.</p>
   <p class="sub"><a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Политика конфиденциальности Google</a></p>
  </div></div>
 </div>
-<p class="dnote">krisha.kz получает запросы от нашего сервера, а не от вашего браузера, и вашего адреса не видит. Данные мы не продаём и не передаём рекламным и аналитическим сервисам: таких интеграций в коде нет.</p>
+<p class="dnote">krisha.kz получает запросы от нашего сервера, а не от вашего браузера, и вашего адреса не видит. Данные мы не продаём и не передаём рекламным сервисам. В аналитические — Яндекс Метрику и Google Analytics — уходят только данные о визитах на сайт; данные бота туда не попадают.</p>
 <div class="note">
  <p><b>Про локализацию — прямо.</b> Статья 12 Закона № 94-V требует хранить персональные данные в базе на территории Республики Казахстан. Хранилища в Казахстане у сервиса сейчас нет: номера чатов подписчиков лежат в зашифрованном виде на GitHub и в контейнере на Hugging Face.</p>
  <p>Пользуясь ботом, вы соглашаетесь на такую передачу. Если не согласны — не включайте слежку и подписку на выгодные объявления: без них номер чата не сохраняется, остаётся только обезличенный хэш для счётчика.</p>
+ <p>Данные счётчиков посещаемости сайта тоже хранятся за пределами Казахстана — на серверах Яндекса и Google. Если вы с этим не согласны, отключите счётчики, как сказано в разделе 08.</p>
 </div>
 <details class="tech">
 <summary>Как это устроено технически</summary>
@@ -446,7 +465,10 @@ code{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font
  </div></div>
  <div class="drow"><h3>Удалить и отозвать согласие</h3><div>
   <p><code>/alerts_off</code> удаляет подписку, <code>/untrack all</code> — всю слежку. Блокировки бота мало: подписка и слежка остаются в файле, пока вы не отправите эти команды.</p>
-  <p class="sub">Счётчики и хэши удаляются сами через 60 дней. Тему и копию цифр в браузере стирает очистка данных сайта.</p>
+  <p class="sub">Счётчики и хэши удаляются сами через 60 дней. Тему, копию цифр и cookie счётчиков в браузере стирает очистка данных сайта.</p>
+ </div></div>
+ <div class="drow"><h3>Отказаться от счётчиков посещаемости</h3><div>
+  <p>Отключают счётчики блокировщик трекеров в браузере, <a href="https://yandex.ru/support/metrica/ru/general/opt-out.html" target="_blank" rel="noopener">блокировщик Метрики</a> и <a href="https://tools.google.com/dlpage/gaoptout" target="_blank" rel="noopener">расширение Google Analytics Opt-out</a> — сайт работает и без счётчиков. Запрет cookie визиты не останавливает: он лишь мешает счётчикам узнавать вас при повторном заходе.</p>
  </div></div>
  <div class="drow"><h3>Всё остальное</h3><div>
   <p>Чтобы удалить то, чего нет в командах, в том числе старые версии файлов в истории репозитория, напишите оператору в Telegram с того же аккаунта: в личном чате номер чата совпадает с номером пользователя, по нему запись и находится. Ответим в сроки, установленные законодательством Республики Казахстан.</p>
@@ -467,6 +489,7 @@ code{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font
  <div class="cmd"><a class="k" href="https://github.com/Dex719/krisha-fair-price/blob/main/src/krisha/tracking.py" target="_blank" rel="noopener">tracking.py</a><p>Что хранится при слежке и потолок в 10 объявлений на чат.</p></div>
  <div class="cmd"><a class="k" href="https://github.com/Dex719/krisha-fair-price/blob/main/scripts/send_alerts.py" target="_blank" rel="noopener">send_alerts.py</a><p>Рассылка из GitHub Actions и то, что она пишет в журнал.</p></div>
  <div class="cmd"><a class="k" href="https://github.com/Dex719/krisha-fair-price/blob/main/src/krisha/api/app.py" target="_blank" rel="noopener">api/app.py</a><p>Лимит запросов по IP, заголовки безопасности, отдача страниц.</p></div>
+ <div class="cmd"><a class="k" href="https://github.com/Dex719/krisha-fair-price/blob/main/static/js/analytics.js" target="_blank" rel="noopener">analytics.js</a><p>Счётчики посещаемости и события, которые им передаются.</p></div>
  <div class="cmd"><a class="k" href="https://github.com/Dex719/krisha-fair-price/blob/main/src/krisha/prediction_log.py" target="_blank" rel="noopener">prediction_log.py</a><p>Необязательный журнал оценок и его потолок в 20&nbsp;000 записей.</p></div>
  <div class="cmd"><a class="k" href="https://github.com/Dex719/krisha-fair-price/blob/main/tests/test_state_encryption.py" target="_blank" rel="noopener">test_state_encryption.py</a><p>Тест: файл с номерами чатов не читается без ключа.</p></div>
 </div></div>
@@ -475,7 +498,7 @@ code{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font
  <div><h3>Вопрос или просьба удалить данные</h3><p>Пишите оператору в Telegram.</p></div>
  <a class="gobtn" href="https://t.me/Hopepe1" target="_blank" rel="noopener">Написать @Hopepe1 <i>→</i></a>
 </div>
-<p class="edition">Редакция от <b><time datetime="2026-10-04">4 октября 2026</time></b></p>
+<p class="edition">Редакция от <b><time datetime="2026-10-05">5 октября 2026</time></b></p>
 </section>
 
 </div>

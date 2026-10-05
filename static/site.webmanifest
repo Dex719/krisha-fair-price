@@ -1,0 +1,25 @@
+{
+ "name": "baǵam — справедливая цена квартир в Алматы",
+ "short_name": "baǵam",
+ "description": "Вставьте ссылку на объявление с krisha.kz — покажем справедливую цену и почему она такая.",
+ "lang": "ru",
+ "start_url": "/",
+ "scope": "/",
+ "display": "standalone",
+ "background_color": "#0A100C",
+ "theme_color": "#0A100C",
+ "icons": [
+  {
+   "src": "/static/favicon.svg",
+   "sizes": "any",
+   "type": "image/svg+xml",
+   "purpose": "any"
+  },
+  {
+   "src": "/static/apple-touch-icon.png",
+   "sizes": "180x180",
+   "type": "image/png",
+   "purpose": "any"
+  }
+ ]
+}

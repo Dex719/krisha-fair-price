@@ -138,7 +138,7 @@ def _floor_hint(listing: dict, s: dict) -> str | None:
             " а в сейсмоопасном Алматы верхние этажи ощутимо качает при толчках —"
             " это сужает круг покупателей."
         )
-    return f"{where} — средние этажи самые ликвидные: нет минусов первого и последнего, дисконта не требуется."
+    return f"{where} — средние этажи самые ликвидные: их берут охотнее всего, без минусов первого и последнего."
 
 
 def _district_hint(listing: dict, s: dict) -> str | None:
@@ -148,24 +148,40 @@ def _district_hint(listing: dict, s: dict) -> str | None:
     info = (s.get("district") or {}).get(d)
     if not d or not info or not info[0]:
         return None
-    med, n = info
+    med = info[0]
     pct = _pct(med, s["city"])
-    direction = "выше" if pct > 0 else "ниже"
-    return (
-        f"Медиана по району {DISTRICT_RU.get(d, d)}: {_fmt_k(med)} — "
-        f"на {abs(pct)}% {direction} средней по Алматы ({_fmt_k(s['city'])}, {n} квартир в выборке)."
-    )
+    name = DISTRICT_RU.get(d, d)
+    cmp = f"{_fmt_k(med)} против {_fmt_k(s['city'])} в среднем по городу"
+    if abs(pct) < 1:
+        return f"{name} район: метр здесь стоит примерно как в среднем по городу ({cmp})."
+    word = "дороже" if pct > 0 else "дешевле"
+    return f"{name} район: метр здесь примерно на {abs(pct)}% {word}, чем в среднем по городу ({cmp})."
 
 
-def _area_hint(listing: dict, s: dict) -> str | None:
+def _area_hint(listing: dict, s: dict, impact: float | None = None) -> str | None:
+    """Площадь — про квартиру целиком: больше типичной — дороже целиком, хотя
+    метр в больших квартирах обычно дешевле (и наоборот). Направление берём из
+    знака вклада фактора, без него — по размеру."""
     area = listing.get("area")
     if not area:
         return None
     bucket = "small" if area < 40 else ("mid" if area < 70 else "big")
-    label = {"small": "до 40 м²", "mid": "40–70 м²", "big": "от 70 м²"}[bucket]
     med = s.get(f"area_{bucket}")
-    stat = f" Медиана в сегменте {label}: {_fmt_k(med)} (компактные квартиры дороже за м², большие — дешевле, но дороже целиком)." if med else ""
-    return f"Площадь {area:g} м² — один из главных факторов: цена растёт с метражом почти линейно.{stat}"
+    area_s = f"{area:g}".replace(".", ",")
+    cmp = f" ({_fmt_k(med)} против {_fmt_k(s['city'])} в среднем по городу)" if med and s.get("city") else ""
+    bigger = impact > 0 if impact else bucket == "big"
+    if bucket == "big" and bigger:
+        tail = f", хотя метр в больших квартирах обычно дешевле{cmp}"
+    elif bucket == "small" and not bigger:
+        tail = f", хотя метр в небольших квартирах обычно дороже{cmp}"
+    else:
+        tail = f"; метр в квартирах такого размера стоит в среднем {_fmt_k(med)}" if med else ""
+    if not impact and bucket == "mid":
+        return f"Площадь {area_s} м²: обычный размер для Алматы, цена растёт вместе с метражом{tail}."
+    return (
+        f"Площадь {area_s} м²: квартира {'больше' if bigger else 'меньше'} типичной, "
+        f"поэтому целиком стоит {'дороже' if bigger else 'дешевле'}{tail}."
+    )
 
 
 def _years(n: int) -> str:
@@ -230,11 +246,11 @@ def _age_hint(listing: dict, s: dict) -> str | None:
         return None
     age = current_year() - int(year)
     bucket = "new" if age < 5 else ("mid_age" if age < 25 else "old")
-    label = {"new": "новостройки (до 5 лет)", "mid_age": "дома 5–25 лет", "old": "дома старше 25 лет"}[bucket]
+    label = {"new": "до 5 лет", "mid_age": "5–25 лет", "old": "старше 25 лет"}[bucket]
     med = s.get(f"age_{bucket}")
     stat = ""
     if med:
-        stat = f" Медиана для сегмента «{label}»: {_fmt_k(med)} против {_fmt_k(s['city'])} по городу"
+        stat = f" В домах возрастом {label} метр стоит в среднем {_fmt_k(med)} против {_fmt_k(s['city'])} по городу"
         # Медиана сегмента смешивает возраст с районом: старые дома стоят
         # ближе к центру, новостройки — на окраинах. Без пояснения цифра
         # спорит с текстом подсказки.
@@ -262,7 +278,7 @@ def _housing_class_hint(listing: dict, facts: dict) -> str:
             "Класс жилья (комфорт, бизнес…) у этого дома не указан — так обычно у старых "
             "домов и домов вне ЖК. В новых ЖК класс заметно влияет на цену за м²."
         )
-    return f"Класс жилья «{cls}»: в ЖК класс (эконом, комфорт, бизнес, премиум) — один из сильных факторов цены за м²."
+    return f"Класс жилья «{cls}»: чем выше класс ЖК, от эконома к премиуму, тем дороже метр."
 
 
 def _developer_hint(listing: dict, facts: dict) -> str:
@@ -279,7 +295,7 @@ def _total_floors_hint(listing: dict, facts: dict) -> str:
     except (TypeError, ValueError):
         total = None
     if not total:
-        return "Этажность дома: модель связывает её с возрастом и типом дома."
+        return "Этажность дома подсказывает его тип и возраст: высотки чаще новые ЖК, малоэтажки — старый фонд."
     age, new = _house_age(listing, facts), _is_new(listing, facts)
     old = age is not None and age >= 25 and not new
     fresh = bool(new) or (age is not None and age < 15)
@@ -295,7 +311,7 @@ def _total_floors_hint(listing: dict, facts: dict) -> str:
         if old:
             return f"{where}: малоэтажки этих лет — старый фонд, обычно без лифта и паркинга."
         return f"{where}: малоэтажки в Алматы — чаще старый фонд, но бывают и новые клубные дома."
-    return f"{where}: средняя этажность бывает и у старого фонда, и у новых ЖК — модель смотрит на неё вместе с возрастом дома."
+    return f"{where}: такая этажность бывает и у старого фонда, и у новых ЖК — важнее возраст и тип дома."
 
 
 def _new_building_hint(listing: dict, facts: dict) -> str:
@@ -352,6 +368,22 @@ def _parking_hint(listing: dict, facts: dict) -> str:
     return f"Паркинг: {str(parking).lower()} — в Алматы дефицит, заметная надбавка к цене."
 
 
+def _renovation_hint(listing: dict, facts: dict) -> str:
+    """Ремонт — по состоянию этой квартиры, а не абстрактно «евроремонт против черновой»."""
+    state = _fact(listing, facts, "renovation")
+    text = str(state or "").lower()
+    if "чернов" in text or "без отделки" in text or "предчистов" in text:
+        return "Черновая отделка: ремонт ещё предстоит, поэтому такие квартиры дешевле готовых — обычно на миллионы."
+    if "требует" in text or "нужен ремонт" in text:
+        return "Требует ремонта: покупатель закладывает его стоимость в торг, поэтому цена ниже готовых квартир."
+    if "евро" in text or "дизайн" in text or "свеж" in text or "новый ремонт" in text:
+        return f"Ремонт «{state}»: готовая к заселению квартира стоит дороже, чем с черновой отделкой, обычно на миллионы."
+    # цитируем значение, только если оно про состояние; в поле бывает и «свободная планировка»
+    if state is not None and any(w in text for w in ("ремонт", "отделк", "хорош", "средн", "косметич", "отличн", "нормальн")):
+        return f"Состояние «{state}»: ремонт напрямую отражается в цене — от черновой отделки до евроремонта разница в миллионы."
+    return "Состояние ремонта напрямую отражается в цене: от черновой отделки до евроремонта разница в миллионы."
+
+
 def _conditional_hints(listing: dict, facts: dict) -> dict[str, str | None]:
     """Подсказки, текст которых зависит от фактов объявления: общий текст
     («высотки чаще новостройки») под конкретным лотом мог ему противоречить."""
@@ -365,6 +397,7 @@ def _conditional_hints(listing: dict, facts: dict) -> dict[str, str | None]:
         "building_type": _building_type_hint(listing, facts),
         "security_count": _security_hint(listing, facts),
         "parking": _parking_hint(listing, facts),
+        "renovation": _renovation_hint(listing, facts),
     }
 
 
@@ -380,32 +413,33 @@ def _generic_hints(listing: dict, s: dict) -> dict[str, str | None]:
         from krisha.features import haversine_km
 
         dist_c = haversine_km(lat, lon, *ALMATY_CENTER)
+    dist_s = f"{dist_c:.1f}".replace(".", ",") if dist_c is not None else None
     geo_hint = (
-        f"Координаты дома: модель учит цену «по карте». До центра ~{dist_c:.1f} км." if dist_c is not None
-        else "Координаты дома: модель учит цену «по карте» — соседние дома задают уровень."
+        f"Расположение на карте: цену во многом задают соседние дома. До центра около {dist_s} км."
+        if dist_s is not None
+        else "Расположение на карте: цену во многом задают соседние дома."
     )
     return {
         "lat": geo_hint,
         "lon": geo_hint,
         "ceiling": _ceiling_hint(ceiling),
-        "rooms": f"{rooms}-комнатная: число комнат задаёт сегмент спроса — однушки самые ликвидные, многокомнатные продаются дольше." if rooms else None,
-        "photos_count": f"{photos} фото в объявлении: косвенный сигнал — у качественных объявлений от собственников обычно больше фотографий." if photos is not None else None,
-        "dist_center_km": f"До центра {dist_c:.1f} км: близость к центру — устойчивая надбавка к цене за м²." if dist_c is not None else None,
-        "user_type": "Кто продаёт: у застройщиков и компаний цены обычно выше заявлены, у собственников больше пространство для торга.",
-        "walk_score": "Пешая доступность: сколько повседневных точек (школы, магазины, остановки) в радиусе пешком — выше балл, дороже м².",
-        "district_ppsm": "Средний уровень цен в районе — модель опирается на него как на базовую «температуру» локации.",
-        "micro_median_ppsm": "Средний уровень цен микрорайона — более точная «температура» локации, чем район.",
-        "microdistrict_ppsm": "Средний уровень цен микрорайона — более точная «температура» локации, чем район.",
-        "district_median_ppsm": "Средний уровень цен в районе — базовая «температура» локации для модели.",
-        "hex7_ppsm": "Медианная цена м² в гексагоне ~2 км вокруг дома — «температура» округи точнее района.",
-        "hex8_ppsm": "Медианная цена м² в квартале ~500 м вокруг дома — самая точная локальная «температура».",
-        "knn_ppsm": "Медианная цена м² ближайших домов-соседей по карте.",
-        "knn_n": "Сколько активных объявлений рядом — плотность локального предложения.",
-        "renovation": "Состояние ремонта напрямую конвертируется в цену: «евроремонт» против «черновой отделки» — разница в миллионах.",
-        "furniture": "Мебель в придачу — небольшой, но реальный плюс к цене.",
-        "balcony": "Балкон/лоджия добавляют полезной площади и света.",
-        "toilet": "Раздельный санузел традиционно ценится выше совмещённого.",
-        "dist_metro_km": "Близость метро — редкий и сильный плюс для Алматы.",
+        "rooms": f"{rooms}-комнатная: однушки и двушки покупают быстрее всего, многокомнатные ищут покупателя дольше." if rooms else None,
+        "photos_count": f"{photos} фото в объявлении — косвенный признак: у подробных объявлений от собственников фотографий обычно больше." if photos is not None else None,
+        "dist_center_km": f"До центра {dist_s} км: чем ближе к центру, тем дороже метр." if dist_s is not None else None,
+        "user_type": "Кто продаёт: застройщики и компании обычно выставляют цену выше, у собственников больше простора для торга.",
+        "walk_score": "Пешая доступность: школы, магазины и остановки в нескольких минутах ходьбы — чем их больше, тем дороже метр.",
+        "district_ppsm": "Уровень цен в районе: отправная точка оценки — сколько обычно просят за метр по соседству.",
+        "micro_median_ppsm": "Уровень цен в микрорайоне: сколько просят за метр на ближайших улицах — точнее, чем по району в целом.",
+        "microdistrict_ppsm": "Уровень цен в микрорайоне: сколько просят за метр на ближайших улицах — точнее, чем по району в целом.",
+        "district_median_ppsm": "Уровень цен в районе: отправная точка оценки — сколько обычно просят за метр по соседству.",
+        "hex7_ppsm": "Цены в округе: сколько в среднем просят за метр в домах в радиусе около 2 км. Дороже округа — дороже и квартира.",
+        "hex8_ppsm": "Цены в квартале: сколько просят за метр в домах в радиусе около 500 м — самое близкое сравнение с соседями.",
+        "knn_ppsm": "Цена метра у ближайших домов-соседей.",
+        "knn_n": "Сколько квартир продаётся рядом: чем больше предложение по соседству, тем труднее держать высокую цену.",
+        "furniture": "Мебель остаётся покупателю: небольшой, но реальный плюс к цене.",
+        "balcony": "Балкон или лоджия: больше полезной площади и света.",
+        "toilet": "Раздельный санузел обычно ценится выше совмещённого.",
+        "dist_metro_km": "Метро рядом: для Алматы редкий и сильный плюс.",
         "dist_school_km": "Школа рядом — важно семьям, расширяет круг покупателей.",
         "dist_kindergarten_km": "Детсад в пешей доступности — плюс для семей с детьми.",
         "dist_park_km": "Парк рядом — экология и прогулки, устойчивый плюс.",
@@ -445,7 +479,10 @@ def build_factor_hints(
             if hint is None and feat == "district":
                 hint = generic.get("district_ppsm")
         elif feat == "area":
-            hint = _area_hint(listing, s)
+            impact = f.get("impact_tenge")
+            if impact is None:
+                impact = f.get("impact")
+            hint = _area_hint(listing, s, impact if isinstance(impact, (int, float)) else None)
         elif feat in {"year_built", "building_age"}:
             hint = _age_hint(listing, s)
         elif feat in conditional:
