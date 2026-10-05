@@ -10,7 +10,8 @@ def test_readme_header_is_rebranded_to_bagam():
 
     assert 'alt="baǵam"' in text
     assert "**baǵam — справедливая цена квартиры в Алматы" in text
-    assert "https://dex719-krisha-fair-price.hf.space" in text
+    # сайт живёт на своём домене (Space — только хостинг за Cloudflare Worker)
+    assert "(https://bagam.info)" in text
     assert "FairPrice —" not in text
     assert 'alt="FairPrice"' not in text
 
