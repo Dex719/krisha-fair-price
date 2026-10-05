@@ -25,7 +25,7 @@ DEFAULT_TIMEOUT_S = 30.0
 PAGE_MARKERS = {
     "/": ('class="logo"', "baǵam", 'id="lotUrl"', "data-check", "/api/predict"),
     "/stats": ('class="logo"', "baǵam", 'data-meta="districts"', "/api/stats"),
-    "/about": ('class="logo"', "baǵam", "О проекте", "Как считает модель"),
+    "/about": ('class="logo"', "baǵam", "О проекте", 'data-l="mape"'),
 }
 
 

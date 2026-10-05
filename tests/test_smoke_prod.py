@@ -49,7 +49,7 @@ def _ok_client():
         {
             "/": FakeResponse(text=page),
             "/stats": FakeResponse(text='<a class="logo">baǵam</a><div data-meta="districts"></div>/api/stats'),
-            "/about": FakeResponse(text='<a class="logo">baǵam</a>О проекте Как считает модель'),
+            "/about": FakeResponse(text='<a class="logo">baǵam</a>О проекте <b data-l="mape">7,0%</b>'),
             "/api/health": FakeResponse(
                 json_data={
                     "status": "ok",
