@@ -110,7 +110,7 @@ def test_home_predict_fair_renders_full_report(hermetic_page, mock_api, hermetic
     expect(page.locator("#rBand")).to_contain_text("такие квартиры обычно стоят 40,5–52,4 млн")
     expect(page.locator("#rRange")).to_contain_text("40,5–52,4 млн")
     # Две метки на шкале: цена в объявлении и оценка.
-    expect(page.locator(".rmk.ask span")).to_have_text("в объявлении · 47,0 млн")
+    expect(page.locator(".rmk.ask span")).to_have_text("в объявлении · 47 млн")
     expect(page.locator(".rmk.fair span")).to_have_text("оценка · 46,2 млн")
     # Факторы: 5 штук, русские подписи, направление словом.
     factors = page.locator("#fxList .fx")
@@ -118,7 +118,7 @@ def test_home_predict_fair_renders_full_report(hermetic_page, mock_api, hermetic
     expect(factors.first).to_have_class("fx pos")
     expect(factors.first.locator(".fxn")).to_contain_text("Площадь")
     expect(factors.first.locator(".fxd")).to_contain_text("повышает")
-    expect(factors.first.locator(".fxv")).to_have_text("+10,0 млн")
+    expect(factors.first.locator(".fxv")).to_have_text("+10 млн")
     # История цены: две точки, продавец снизил цену.
     expect(page.locator("#rHist")).to_be_visible()
     expect(page.locator("#rHist")).to_contain_text("продавец снизил цену")
