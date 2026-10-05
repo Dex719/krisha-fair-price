@@ -1,42 +1,28 @@
-/* Счётчики посещаемости: Яндекс Метрика и Google Analytics 4.
-   Сервер дописывает этот скрипт в <head>, только если в окружении заданы номера счётчиков
-   (src/krisha/api/site_analytics.py), — номера приходят в data-ym и data-ga. Без них скрипт
+/* Счётчик посещаемости: Google Analytics 4.
+   Сервер дописывает этот скрипт в <head>, только если в окружении задан поток GA4
+   (src/krisha/api/site_analytics.py), — идентификатор приходит в data-ga. Без него скрипт
    ничего не делает.
-   Очереди ym() и gtag() создаются сразу, а сами библиотеки грузятся после load, когда браузер
-   простаивает: первая отрисовка и LCP за счётчики не платят. События до загрузки ждут в очереди.
-   window.bagamTrack(имя, параметры) — цель Метрики (reachGoal) и событие GA4 с тем же именем;
-   страницы зовут его через bagam.track из site.js. Список целей — в README, раздел «Аналитика». */
+   Очередь gtag() создаётся сразу, а сама библиотека грузится после load, когда браузер
+   простаивает: первая отрисовка и LCP за счётчик не платят. События до загрузки ждут в очереди.
+   window.bagamTrack(имя, параметры) — событие GA4; страницы зовут его через bagam.track из
+   site.js. Список событий — в README, раздел «Аналитика». */
 (function (w, d) {
   var me = d.currentScript;
-  var ym = me ? +me.getAttribute('data-ym') || 0 : 0;
   var ga = me ? me.getAttribute('data-ga') || '' : '';
-  if (!ym && !ga) return;
-  /* Mini App в Telegram: в адресе страницы #tgWebAppData с профилем (id, имя, @username), а Метрика
-     шлёт адрес целиком, вместе с хешем, и Вебвизор пишет его же. Политика обещает, что данные
-     профиля Telegram никуда не уходят, — внутри Mini App счётчиков нет вовсе. */
+  if (!ga) return;
+  /* Mini App в Telegram: в адресе страницы #tgWebAppData с профилем (id, имя, @username).
+     Политика обещает, что данные профиля Telegram никуда не уходят, — внутри Mini App счётчика
+     нет вовсе. */
   if (/tgWebApp/i.test(location.search + location.hash) || w.TelegramWebviewProxy) return;
 
-  var libs = [];
-  if (ym) {
-    w.ym = w.ym || function () { (w.ym.a = w.ym.a || []).push(arguments); };
-    w.ym.l = +new Date();
-    w.ym(ym, 'init', { clickmap: true, trackLinks: true, accurateTrackBounce: true, webvisor: true });
-    libs.push('https://mc.yandex.ru/metrika/tag.js');
-  }
-  if (ga) {
-    w.dataLayer = w.dataLayer || [];
-    w.gtag = w.gtag || function () { w.dataLayer.push(arguments); };
-    w.gtag('js', new Date());
-    /* без рекламных функций Google: политика обещает «0 рекламы» */
-    w.gtag('config', ga, { allow_google_signals: false, allow_ad_personalization_signals: false });
-    libs.push('https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(ga));
-  }
+  w.dataLayer = w.dataLayer || [];
+  w.gtag = w.gtag || function () { w.dataLayer.push(arguments); };
+  w.gtag('js', new Date());
+  /* без рекламных функций Google: политика обещает «0 рекламы» */
+  w.gtag('config', ga, { allow_google_signals: false, allow_ad_personalization_signals: false });
 
   w.bagamTrack = function (name, params) {
-    try {
-      if (ym) w.ym(ym, 'reachGoal', name, params || {});
-      if (ga) w.gtag('event', name, params || {});
-    } catch (e) {}
+    try { w.gtag('event', name, params || {}); } catch (e) {}
   };
 
   /* переход в Telegram-бота — главная конверсия сайта: ссылки на него есть на каждой странице */
@@ -46,13 +32,10 @@
   }, true);
 
   function load() {
-    libs.forEach(function (src) {
-      var s = d.createElement('script');
-      s.async = true;
-      s.src = src;
-      d.head.appendChild(s);
-    });
-    libs = [];
+    var s = d.createElement('script');
+    s.async = true;
+    s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(ga);
+    d.head.appendChild(s);
   }
   function later() {
     if (w.requestIdleCallback) w.requestIdleCallback(load, { timeout: 3000 });
