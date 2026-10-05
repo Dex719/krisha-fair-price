@@ -123,6 +123,8 @@ def live_values(stats: Mapping | None, health: Mapping | None) -> dict[str, str]
     mape = _num(h.get("model_error_pct"))
     if mape is not None:
         out["mape"] = pct(mape)
+        # «для квартиры за 40 млн ₸ это около ±N млн ₸» на «О проекте» (там же — скрипт)
+        out["x40"] = fmt(mape * 0.4, 1)
     ci = h.get("model_error_ci_pct")
     if isinstance(ci, (list, tuple)) and len(ci) == 2 and all(_num(v) is not None for v in ci):
         out["mapeci"] = ", 95% ДИ " + fmt(ci[0]) + "–" + pct(ci[1])
@@ -235,6 +237,8 @@ def _json_ld(data: Mapping) -> str:
 
 
 _TAG_RE = re.compile(r"<[^>]+>")
+# границы блоков — пробел, иначе абзацы ответа слипаются: «…не восстановить.Текст…»
+_BLOCK_TAG_RE = re.compile(r"</?(?:p|br|li|ul|ol|div|tr|td|th|h[1-6])\b[^>]*>", flags=re.I)
 _QA_RE = re.compile(
     r'<div class="qa"><button class="q"[^>]*>(?P<q>.*?)<span class="qi"></span></button>'
     r'<div class="a"[^>]*>(?P<a>.*?)</div></div>',
@@ -244,7 +248,8 @@ _QA_RE = re.compile(
 
 def _text(fragment: str) -> str:
     """Видимый текст фрагмента разметки: без тегов, сущности раскрыты, пробелы схлопнуты."""
-    return re.sub(r"\s+", " ", html.unescape(_TAG_RE.sub("", fragment))).strip()
+    text = _TAG_RE.sub("", _BLOCK_TAG_RE.sub(" ", fragment))
+    return re.sub(r"\s+", " ", html.unescape(text)).strip()
 
 
 def faq_items(page: str) -> list[tuple[str, str]]:
@@ -308,6 +313,8 @@ def rent_variant(page: str) -> str:
     page = _set_attr_content(page, "name", "description", RENT_DESCRIPTION)
     page = _set_attr_content(page, "property", "og:title", RENT_TITLE)
     page = _set_attr_content(page, "property", "og:description", RENT_OG_DESCRIPTION)
+    # без JS режим выбирает CSS по html[data-mode]: иначе краулер видит тексты продажи
+    page = re.sub(r"<html\b(?![^>]*\sdata-mode=)", '<html data-mode="rent"', page, count=1)
     page = re.sub(r'(<link rel="canonical" href="[^"?]*/stats)(")', r"\1?mode=rent\2", page, count=1)
     return re.sub(r'(<meta property="og:url" content="[^"?]*/stats)(")', r"\1?mode=rent\2", page, count=1)
 
@@ -398,7 +405,7 @@ def market_noscript(sale: Mapping | None, rent: Mapping | None, *, rent_first: b
     if not body:
         return None
     return (
-        '<noscript><div class="rnote nsdata">'
+        '<noscript><div class="nsdata">'
         "<p>Графики и переключатель на этой странице работают на JavaScript. Главные цифры — ниже.</p>"
         f"{body}<p>Цены — по объявлениям, а не по сделкам.</p></div></noscript>"
     )

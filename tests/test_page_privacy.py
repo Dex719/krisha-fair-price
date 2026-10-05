@@ -164,13 +164,51 @@ def test_counters_are_exactly_the_two_named_in_the_policy():
         assert not re.search(r"<script[^>]+analytics\.js", html), f"{name}: счётчики подключает сервер, а не разметка"
         for host in ("mc.yandex.ru", "googletagmanager.com", "google-analytics.com"):
             assert host not in html, f"{name}: {host}"
-    # в политике — какие события уходят в счётчики, и как от них отказаться
+    # к analytics.js — те же проверки, что к страницам: ни своих cookie, ни новых ключей памяти
+    assert "sessionStorage" not in script and "indexedDB" not in script and "localStorage" not in script
+    # в политике — как от счётчиков отказаться
     page = _page()
     rights = _section(page, "rights")
     assert "Отказаться от счётчиков посещаемости" in rights
     assert "tools.google.com/dlpage/gaoptout" in rights and "metrica/ru/general/opt-out" in rights
-    for event in ("check_ok", "bot_click", "share"):
-        assert event in script or event in _site_pages()["index.html"], event
+
+
+def test_csp_admits_only_the_services_named_in_the_policy():
+    """Внешние адреса в CSP при всех включённых счётчиках — только сервисы из политики:
+    третий счётчик или новый CDN без правки политики этот тест не пропустит."""
+    from krisha.api import site_analytics
+    from krisha.api.app import CSP
+
+    cfg = site_analytics.Config(ym="12345678", ga="G-TEST1234")
+    csp = site_analytics.extend_csp(CSP, site_analytics.csp_sources(cfg))
+    hosts = {h.split("://", 1)[1] for h in re.findall(r"(?:https|wss)://[^\s;]+", csp)}
+    allowed = re.compile(
+        r"(\*\.)?(kcdn\.online|basemaps\.cartocdn\.com|cdn\.jsdelivr\.net|telegram\.org|huggingface\.co"
+        r"|static\.cloudflareinsights\.com|cloudflareinsights\.com"  # Cloudflare Web Analytics, раздел 07
+        r"|mc\.yandex\.[a-z.]+|mc\.webvisor\.(com|org)|yastatic\.net"  # Яндекс Метрика
+        r"|(metrika|metrica|metr|analytics)\.(yandex|ya)(\.[a-z.]+)?"
+        r"|www\.googletagmanager\.com|google-analytics\.com|analytics\.google\.com|google\.com)$"  # GA4
+    )
+    assert {h for h in hosts if not allowed.fullmatch(h)} == set()
+    page = _page()
+    assert "Cloudflare Web Analytics" in _section(page, "transfer")
+    assert "без рекламных функций" in _section(page, "site")
+
+
+def test_events_sent_to_counters_are_documented():
+    """Все цели счётчиков — в README («Аналитика»), а их смысл — в политике (раздел 03)."""
+    pages = _site_pages()
+    sent = set(re.findall(r"\btrack\('([a-z_]+)'", pages["index.html"] + pages["stats.html"]))
+    sent |= set(re.findall(r"bagamTrack\('([a-z_]+)'", (STATIC / "js" / "analytics.js").read_text(encoding="utf-8")))
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert sent == {"check_ok", "check_error", "check_bad_link", "demo", "share", "bot_click", "market_mode"}
+    for event in sent:
+        assert f"| `{event}` |" in readme, event
+    site = _section(_page(), "site")
+    for words in ("вердикт", "ошибки оценки", "Показать на примере", "Поделиться", "переход в бота",
+                  "переключение продажи и аренды"):
+        assert words in site, words
 
 
 def test_localstorage_keys_on_every_page_are_documented():

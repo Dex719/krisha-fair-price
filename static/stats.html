@@ -59,6 +59,13 @@ html[data-mode=sale] .mswitch [data-set=sale],html[data-mode=rent] .mswitch [dat
 .rnote .rtx>span{color:var(--dim)}
 .rnote button{appearance:none;background:none;border:1px solid var(--line);border-radius:var(--r1);padding:7px 13px;font:500 13.5px Onest,OnestFB,sans-serif;color:var(--ink);cursor:pointer;transition:border-color .2s}
 .rnote button:hover{border-color:var(--limeink)}
+/* сводка рынка без JS: сервер кладёт её в <noscript> (src/krisha/api/live_pages.py) */
+.nsdata{margin:0 0 24px;padding:16px 20px;border:1px solid var(--line);border-radius:var(--r2);background:var(--panel);font-size:15px;line-height:1.5;color:var(--ink)}
+.nsdata p{margin:0 0 12px}
+.nsdata table{width:100%;border-collapse:collapse;margin:4px 0 18px}
+.nsdata caption{text-align:left;font-weight:600;padding-bottom:6px}
+.nsdata th,.nsdata td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);font-weight:400}
+.nsdata thead th{color:var(--dim)}
 #main[data-state=error] .knums,#main[data-state=error] .dsec,html:not(.js) .knums,html:not(.js) .dsec,html:not(.js) .mswitch,html:not(.js) .pupd{display:none}
 .empty{grid-column:1/-1;padding:26px 0;text-align:center;font-size:15px;color:var(--dim);list-style:none}
 .note{font-size:14.5px;line-height:1.6;color:var(--dim);margin-top:18px;max-width:88ch;text-wrap:pretty}

@@ -16,6 +16,10 @@ os.environ.setdefault("USAGE_FLUSH_SYNC", "1")
 # Прогрев сессии krisha при старте приложения ходит в сеть — в тестах выключен
 # (герметичный e2e-сервер наследует это окружение).
 os.environ.setdefault("KRISHA_SESSION_WARMUP", "0")
+# Живые цифры в разметке страниц (api/live_pages) при старте берутся из базы и
+# модели на диске — в тестах разметка как в файлах; снимок подкладывают сами
+# тесты, которым он нужен (test_seo_live_pages).
+os.environ.setdefault("KRISHA_LIVE_PAGES", "0")
 
 
 def pytest_runtest_setup(item):

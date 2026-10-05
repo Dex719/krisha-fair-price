@@ -76,9 +76,11 @@ def test_market_page_serves_both_modes():
     assert "<title>Аренда квартир в Алматы — цены по районам и комнатам │ baǵam</title>" in rent.text
     # заголовок — тот же, что ставит скрипт страницы при переключении режима
     assert "Аренда квартир в Алматы — цены по районам и комнатам │ baǵam" in _static()
-    # остальная страница — та же
+    # остальная страница — та же (у аренды ещё html[data-mode=rent] — для краулеров без JS)
+    assert '<html data-mode="rent" lang="ru">' in rent.text
+
     def body(html: str) -> str:
-        return re.sub(r"<head>.*?</head>|<noscript>.*?</noscript>", "", html, flags=re.S)
+        return re.sub(r"<html[^>]*>|<head>.*?</head>|<noscript>.*?</noscript>", "", html, flags=re.S)
 
     assert body(sale.text) == body(rent.text)
 

@@ -1255,8 +1255,8 @@ _VERSIONS: dict[str, str] = {}
 # HTML после build_site (версии ссылок, адрес сайта) — основа, на которую
 # _render_pages кладёт живые цифры, JSON-LD и счётчики.
 _BASE_HTML: dict[str, str] = {}
-# Ключи _ASSETS, которых нет среди файлов static/: по /static/... их не
-# запросить (там нет «?» и ведущего «/»), отдают их свои маршруты.
+# Ключи _ASSETS, которых нет среди файлов static/: отдают их свои маршруты,
+# /static/... их не отдаёт (_CachedStatic отвечает 404 на «?» в имени).
 STATS_RENT_ASSET = "stats.html?mode=rent"
 LLMS_ASSET = "/llms.txt"
 ANALYTICS_JS = "js/analytics.js"
@@ -1362,8 +1362,11 @@ def _cached_json(cache: TTLCache, key: str, producer) -> dict | None:
 
 
 def _live_snapshot() -> _LiveSnapshot:
-    """Те же данные, что отдают /api/stats, /api/stats/rent и /api/health (без похода в Telegram)."""
-    stats = _cached_json(_stats_cache, "stats", _stats_asset) if DB_PATH.exists() else None
+    """Те же данные, что отдают /api/stats, /api/stats/rent и /api/health (без похода в Telegram).
+
+    Продажа — и без базы: get_stats() тогда отдаёт снимок models/stats.json, как и /api/stats.
+    """
+    stats = _cached_json(_stats_cache, "stats", _stats_asset)
     rent = _cached_json(_rent_stats_cache, "rent", _rent_stats_asset) if RENT_DB_PATH.exists() else None
     health = {
         "model_error_pct": _model_error_pct(),
@@ -1381,9 +1384,12 @@ def _refresh_live_pages() -> None:
 
     Процесс перезапускается после каждого сбора данных и переобучения, так
     что снимок в разметке не старше суток. Fail-soft: без данных страницы
-    остаются такими, как лежат в файлах.
+    остаются такими, как лежат в файлах. KRISHA_LIVE_PAGES=0 — выключить
+    (тесты и герметичный e2e: разметка как в файлах, без чисел из базы).
     """
     global _LIVE
+    if os.environ.get("KRISHA_LIVE_PAGES", "1") == "0":
+        return
     try:
         _LIVE = _live_snapshot()
         _render_pages(_LIVE)
@@ -1659,8 +1665,10 @@ class _CachedStatic(StaticFiles):
         # StaticFiles отдаёт путь в разделителях ОС (на Windows — «\»)
         name = pathlib.PurePath(path).as_posix().lstrip("/")
         # страницы живут по своим адресам (/about), копия /static/about.html —
-        # дубль для поисковика, к тому же без живых цифр и счётчиков
-        if name.lower().endswith(".html"):
+        # дубль для поисковика, к тому же без живых цифр и счётчиков. «?» в
+        # имени — это %3F в адресе: служебные ключи вроде stats.html?mode=rent
+        # отдают только свои маршруты.
+        if name.lower().endswith(".html") or "?" in name:
             raise HTTPException(status_code=404)
         cache_control = _static_cache_control(name, scope)
         if name in _ASSETS and scope.get("method") in ("GET", "HEAD"):

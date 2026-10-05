@@ -41,22 +41,22 @@ function isCacheablePath(pathname) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.hostname !== CANONICAL_HOST || url.protocol !== "https:") {
-      // www.bagam.info, прочие алиасы и http → один адрес для поисковиков, одним
-      // редиректом. Раньше http://www.bagam.info/x уходил на http://bagam.info/x,
-      // а там отвечал 200 — сайт целиком жил и по http.
-      url.hostname = CANONICAL_HOST;
-      url.protocol = "https:";
-      url.port = "";
-      return Response.redirect(url.toString(), 301);
-    }
-    // /about/ → /about одним 301 (приложение делает то же само, но так адрес
-    // со слэшем не доходит до Space вовсе). Только страницы: GET/HEAD, не API.
+    // Один адрес для поисковиков — одним 301: www и прочие алиасы → bagam.info,
+    // http → https (раньше http://www.bagam.info/x уходил на http://bagam.info/x
+    // и там отвечал 200 — сайт целиком жил и по http), /about/ → /about
+    // (приложение делает то же само, но так слэш не доходит до Space вовсе;
+    // только страницы: GET/HEAD, не API).
+    const target = new URL(url);
+    target.hostname = CANONICAL_HOST;
+    target.protocol = "https:";
+    target.port = "";
     const isRead = request.method === "GET" || request.method === "HEAD";
-    if (isRead && url.pathname.length > 1 && url.pathname.endsWith("/") &&
-        !/^\/(static|api|tg)\//.test(url.pathname)) {
-      url.pathname = url.pathname.replace(/\/+$/, "") || "/";
-      return Response.redirect(url.toString(), 301);
+    if (isRead && target.pathname.length > 1 && target.pathname.endsWith("/") &&
+        !/^\/(static|api|tg)\//.test(target.pathname)) {
+      target.pathname = target.pathname.replace(/\/+$/, "") || "/";
+    }
+    if (target.href !== url.href) {
+      return Response.redirect(target.href, 301);
     }
 
     const headers = new Headers(request.headers);
@@ -75,6 +75,8 @@ export default {
     // а первый байт из Space идёт ~1,5 с: держим их в кэше Cloudflare две
     // минуты, чтобы повторные заходы и соседи по региону не ждали Space.
     // /api/*, /tg/* и всё с телом запроса — только из origin.
+    // Свой счётчик визитов сайта (usage, недельная сводка) считается на origin,
+    // поэтому с кэшем он видит только промахи — визиты смотреть в Метрике.
     const cacheable = !hasBody && isCacheablePath(url.pathname);
     const response = await fetch(ORIGIN + url.pathname + url.search, {
       method: request.method,

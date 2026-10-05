@@ -11,6 +11,10 @@
   var ym = me ? +me.getAttribute('data-ym') || 0 : 0;
   var ga = me ? me.getAttribute('data-ga') || '' : '';
   if (!ym && !ga) return;
+  /* Mini App в Telegram: в адресе страницы #tgWebAppData с профилем (id, имя, @username), а Метрика
+     шлёт адрес целиком, вместе с хешем, и Вебвизор пишет его же. Политика обещает, что данные
+     профиля Telegram никуда не уходят, — внутри Mini App счётчиков нет вовсе. */
+  if (/tgWebApp/i.test(location.search + location.hash) || w.TelegramWebviewProxy) return;
 
   var libs = [];
   if (ym) {
@@ -23,7 +27,8 @@
     w.dataLayer = w.dataLayer || [];
     w.gtag = w.gtag || function () { w.dataLayer.push(arguments); };
     w.gtag('js', new Date());
-    w.gtag('config', ga);
+    /* без рекламных функций Google: политика обещает «0 рекламы» */
+    w.gtag('config', ga, { allow_google_signals: false, allow_ad_personalization_signals: false });
     libs.push('https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(ga));
   }
 

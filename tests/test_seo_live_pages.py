@@ -121,14 +121,31 @@ def test_without_snapshot_pages_stay_as_files():
 
 
 def test_index_has_valid_site_json_ld():
+    """WebSite + Organization. WebApplication без рейтинга Google считает ошибкой
+    («Программные приложения» в Search Console), а рейтинг выдумывать нельзя."""
     html = TestClient(app).get("/", headers=RAW).text
     graph = _ld(html)[0]["@graph"]
     types = {node["@type"] for node in graph}
 
-    assert types == {"WebSite", "Organization", "WebApplication"}
-    app_node = next(n for n in graph if n["@type"] == "WebApplication")
-    assert app_node["isAccessibleForFree"] is True and app_node["offers"]["price"] == "0"
+    assert types == {"WebSite", "Organization"}
+    site = next(n for n in graph if n["@type"] == "WebSite")
+    assert "Алматы" in site["description"] and "krisha.kz" in site["description"]
     assert all(n["url"] == "https://bagam.info/" for n in graph)
+
+
+def test_about_x40_follows_live_mape(live):
+    about = live.get("/about", headers=RAW).text
+    # 7,0% × 40 млн ₸ = 2,8 млн ₸ — рядом с ошибкой модели, а не «3,0» от прошлых 7,6%
+    assert '±<span data-l="x40" data-x40>2,8</span>' in about
+
+
+def test_faq_answers_keep_paragraph_boundaries(live):
+    html = live.get("/bot", headers=RAW).text
+    faq = next(b for b in _ld(html) if b.get("@type") == "FAQPage")
+    for item in faq["mainEntity"]:
+        assert not re.search(r"[а-я][.!?][А-Я]", item["acceptedAnswer"]["text"]), item
+
+    assert live_pages._text("<p>Раз.</p><p>Два <b>7,0%</b>.</p>") == "Раз. Два 7,0%."
 
 
 @pytest.mark.parametrize("path", ["/about", "/bot"])
@@ -152,6 +169,9 @@ def test_rent_mode_has_own_title_canonical_and_sitemap_entry(live):
 
     assert '<link rel="canonical" href="https://bagam.info/stats?mode=rent">' in rent
     assert "<title>Аренда квартир в Алматы" in rent and "<title>Цены на квартиры в Алматы" in sale
+    # без JS режим выбирает CSS по html[data-mode]: краулер видит тексты аренды
+    assert '<html data-mode="rent" lang="ru">' in rent and "data-mode=" not in sale.split(">", 2)[1]
+    assert '<div class="nsdata">' in rent and 'class="rnote nsdata"' not in rent
     assert "<loc>https://bagam.info/stats?mode=rent</loc>" in sitemap
     # без JS — сводка рынка: аренда первой на её адресе, продажа — на своём
     assert "Аренда квартир в Алматы на 05.10.2026" in rent or "Аренда квартир в Алматы на 04.10.2026" in rent
@@ -207,6 +227,8 @@ def test_static_html_copies_are_404_and_favicon_ico_exists():
     client = TestClient(app)
 
     assert client.get("/static/about.html", headers=RAW).status_code == 404
+    # служебный ключ варианта аренды через %3F — тоже не копия страницы
+    assert client.get("/static/stats.html%3Fmode=rent", headers=RAW).status_code == 404
     assert client.get("/static/design.css").status_code == 200
     ico = client.get("/favicon.ico")
     assert ico.status_code == 200 and ico.headers["content-type"] == "image/x-icon"
@@ -249,10 +271,38 @@ def test_counters_and_verification_come_from_env(monkeypatch):
     assert "verification" not in about, "коды подтверждения — только на главной"
     csp = home.headers["content-security-policy"]
     for source in ("https://mc.yandex.ru", "wss://mc.yandex.ru", "https://www.googletagmanager.com",
-                   "https://*.google-analytics.com", "https://metrika.yandex.ru"):
+                   "https://*.google-analytics.com", "https://metrika.yandex.ru", "https://metrica.yandex.ru"):
         assert source in csp, source
     script_src = next(d for d in csp.split("; ") if d.startswith("script-src "))
     assert "'self'" in script_src and "https://mc.yandex.ru" in script_src
+
+
+def test_counters_stay_off_inside_telegram_and_without_ads():
+    """Mini App: в хеше адреса #tgWebAppData с профилем Telegram, а Метрика шлёт адрес
+    целиком — внутри Telegram счётчики не стартуют. GA4 — без рекламных функций."""
+    script = (STATIC / "js" / "analytics.js").read_text(encoding="utf-8")
+    guard = script.index("/tgWebApp/i.test(")
+
+    assert guard < script.index("'init'") and guard < script.index("gtag('config'")
+    assert "TelegramWebviewProxy" in script[guard - 200:guard + 200]
+    assert "allow_google_signals: false" in script and "allow_ad_personalization_signals: false" in script
+
+
+def test_refresh_live_pages_is_switched_by_env(monkeypatch):
+    snap = app_module._LiveSnapshot(STATS, RENT, live_pages.live_values(STATS, HEALTH))
+    monkeypatch.setattr(app_module, "_live_snapshot", lambda: snap)
+    try:
+        monkeypatch.setenv("KRISHA_LIVE_PAGES", "0")
+        app_module._refresh_live_pages()
+        assert app_module._LIVE is None
+
+        monkeypatch.setenv("KRISHA_LIVE_PAGES", "1")
+        app_module._refresh_live_pages()
+        assert app_module._LIVE is snap
+        assert f"44{NB}026" in app_module._ASSETS["index.html"].raw.decode("utf-8")
+    finally:
+        app_module._LIVE = None
+        app_module._render_pages(None)
 
 
 def test_garbage_in_env_is_ignored():

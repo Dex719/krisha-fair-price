@@ -85,7 +85,7 @@ _YM_WSS = tuple(f"wss://{h}" for h in _YM_HOSTS)
 _YM_FRAME_ANCESTORS = tuple(f"https://{h}" for h in (
     "metrika.yandex.ru", "metrika.yandex.kz", "metrika.yandex.by", "metrika.yandex.uz",
     "metrika.yandex.com", "metrika.yandex.com.tr", "metrika.yandex", "metrika.ya.ru",
-    "metrica.yandex", "metrica.yandex.kz", "metrica.yandex.by", "metrica.yandex.com",
+    "metrica.yandex", "metrica.yandex.ru", "metrica.yandex.kz", "metrica.yandex.by", "metrica.yandex.com",
     "metrica.yandex.com.tr", "metrica.ya.ru", "metr.yandex.ru", "metr.yandex.kz", "metr.yandex.by",
     "metr.yandex.com", "metr.yandex.com.tr", "analytics.yandex.ru", "analytics.yandex.kz",
     "analytics.yandex.by", "analytics.yandex.com", "analytics.yandex.com.tr",
