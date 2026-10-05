@@ -11,7 +11,7 @@
 - PUBLIC_BASE_URL — публичный адрес сайта (свой домен) для ссылок и sitemap
 - TG_API_BASE — базовый адрес Bot API (по умолчанию https://api.telegram.org).
   Нужен, когда хостинг не пускает исходящие запросы к Telegram напрямую:
-  ставим прокси (см. docs/tg-proxy-worker.js) и указываем его адрес здесь.
+  ставим прокси (см. infra/tg-proxy-worker.js) и указываем его адрес здесь.
 """
 
 import hashlib

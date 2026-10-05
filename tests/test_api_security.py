@@ -70,7 +70,7 @@ def test_client_ip_two_hops_picks_second_from_right(monkeypatch):
 
 
 def _request_via_domain_proxy(key: str | None, ip: str = "203.0.113.77"):
-    """Запрос, как его шлёт Cloudflare Worker домена (docs/domain-worker.js):
+    """Запрос, как его шлёт Cloudflare Worker домена (infra/domain-worker.js):
     правый XFF — общий IP Cloudflare, настоящий — в X-Bagam-Client-IP."""
     request = _request_with_xff("203.0.113.77, 104.16.0.1")
     extra = [(b"x-bagam-client-ip", ip.encode())]
