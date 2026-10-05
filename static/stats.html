@@ -245,6 +245,7 @@ html.anim .chart[data-rv=""] .csvg{clip-path:inset(-12px 100% -12px -12px)}
  .rnote button{grid-column:2;justify-self:start}
 }
 </style>
+<link rel="icon" href="/favicon.ico" sizes="32x32">
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <link rel="manifest" href="/static/site.webmanifest">
@@ -364,7 +365,7 @@ html.anim .chart[data-rv=""] .csvg{clip-path:inset(-12px 100% -12px -12px)}
 </div>
 </div></section>
 <section class="cta" id="check"><div class="wrap">
-<h2>Сравните объявление<br>с <em>рынком</em></h2>
+<h2>Сравните объявление <br>с <em>рынком</em></h2>
 <form class="inbar" data-jump novalidate><label class="vh" for="lotUrlM">Ссылка на объявление с krisha.kz</label><input id="lotUrlM" name="url" type="url" inputmode="url" autocomplete="url" enterkeyhint="go" spellcheck="false" placeholder="krisha.kz/a/show/1012607661"><button class="pastebtn" type="button" data-paste aria-label="Вставить ссылку из буфера" title="Вставить из буфера"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1.6" stroke="currentColor" stroke-width="1.8"/><path d="M8 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="pbl">Вставить</span></button><button class="gobtn" type="submit">Проверить <i>→</i></button></form><p class="inerr" data-err role="alert"></p>
 <p class="sub">ссылка на объявление о продаже или об аренде</p>
 </div></section>
@@ -855,6 +856,7 @@ html.anim .chart[data-rv=""] .csvg{clip-path:inset(-12px 100% -12px -12px)}
         } catch (e){}
         B.markCurrent();
         render();
+        if (B.track) B.track('market_mode', {mode: m});
       }
       if (scroll) B.glide(0, 500);
     }

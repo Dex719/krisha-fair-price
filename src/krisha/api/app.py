@@ -7,6 +7,7 @@ try:
     import fcntl
 except ImportError:  # Windows: README обещает локальную разработку, там один процесс
     fcntl = None
+import dataclasses
 import functools
 import hmac
 import ipaddress
@@ -34,7 +35,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import MutableHeaders
 
 from krisha import __version__, bot, db_release, predict_gate, usage
-from krisha.api import metrics, static_cache
+from krisha.api import live_pages, metrics, site_analytics, static_cache
 from krisha.api.cache import TTLCache
 from krisha.api.schemas import (
     DemoResponse,
@@ -72,6 +73,12 @@ async def _lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="FairPrice", version=__version__, lifespan=_lifespan)
+# Адрес со слэшем на конце (/about/) Starlette сам переводил на адрес без него —
+# 307 с абсолютным http://<хост Space>/about: за прокси Space приложение видит
+# http, воркер Cloudflare переписывал только https-адреса Space, и посетитель
+# bagam.info/about/ уезжал на зеркало. Теперь это 301 с относительным адресом
+# в обработчике 404 (not_found ниже) — он не зависит ни от схемы, ни от хоста.
+app.router.redirect_slashes = False
 
 STATIC_DIR = ROOT_DIR / "static"
 
@@ -97,6 +104,17 @@ CSP = (
     "https://telegram.org https://*.telegram.org; "
     "object-src 'none'"
 )
+# Счётчики посещаемости (site_analytics): их адреса дописываются в CSP, только
+# когда номера счётчиков заданы в окружении, — иначе политика ровно CSP выше.
+# Оба значения пересобирает _build_assets: тесты меняют окружение и пересобирают.
+_ANALYTICS = site_analytics.Config()
+_ACTIVE_CSP = CSP
+# Возможности браузера, которые сайту не нужны. Буфер обмена (кнопка «Вставить»)
+# здесь не упомянут: он остаётся по умолчанию — только после нажатия.
+PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+# Служебные адреса: поисковику в индексе они не нужны, даже если ссылка на них
+# где-то найдётся (robots.txt запрещает обход, но не индекс по внешней ссылке).
+_NOINDEX_PREFIXES = ("/api/", "/tg/", "/docs", "/redoc", "/openapi.json", "/livez", "/readyz")
 
 
 # Лимит тела запроса: наш самый большой вход — короткий JSON с URL,
@@ -115,9 +133,10 @@ DATA_STALE_AFTER_HOURS = 30.0
 def _apply_security_headers(response):
     """Навешивает security-заголовки на любой ответ — и обычный, и ранний
     413/400 из проверки размера тела (см. _security_headers ниже)."""
-    response.headers.setdefault("Content-Security-Policy", CSP)
+    response.headers.setdefault("Content-Security-Policy", _ACTIVE_CSP)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", PERMISSIONS_POLICY)
     return response
 
 
@@ -204,6 +223,7 @@ _BINARY_MEDIA_TYPES = {
     ".jpeg": "image/jpeg",
     ".woff2": "font/woff2",
     ".woff": "font/woff",
+    ".ico": "image/x-icon",
 }
 
 
@@ -281,6 +301,8 @@ async def _security_headers(request: Request, call_next):
     request.state.request_id = request_id
     response = await call_next(request)
     response.headers.setdefault("X-Request-ID", request_id)
+    if request.url.path.startswith(_NOINDEX_PREFIXES):
+        response.headers.setdefault("X-Robots-Tag", "noindex")
     # Одно измерение на запрос: словарь + кольцевой буфер (см. api/metrics).
     # Отдельной мидлварью это стоило бы ещё одного слоя ASGI на каждый запрос.
     metrics.observe(_route_label(request), response.status_code, (time.perf_counter() - started) * 1000)
@@ -1052,6 +1074,7 @@ def _startup() -> None:
     with _startup_lock():
         _prepare_data()
     _warmup_runtime_caches()
+    _refresh_live_pages()
     _start_session_warmup()
     _start_webhook_setup()
 
@@ -1229,6 +1252,26 @@ SITE_ORIGIN = "https://bagam.info"
 HTML_SITE_ORIGINS = (SITE_ORIGIN, "https://dex719-krisha-fair-price.hf.space")
 _ASSETS: dict[str, static_cache.Asset] = {}
 _VERSIONS: dict[str, str] = {}
+# HTML после build_site (версии ссылок, адрес сайта) — основа, на которую
+# _render_pages кладёт живые цифры, JSON-LD и счётчики.
+_BASE_HTML: dict[str, str] = {}
+# Ключи _ASSETS, которых нет среди файлов static/: по /static/... их не
+# запросить (там нет «?» и ведущего «/»), отдают их свои маршруты.
+STATS_RENT_ASSET = "stats.html?mode=rent"
+LLMS_ASSET = "/llms.txt"
+ANALYTICS_JS = "js/analytics.js"
+
+
+@dataclasses.dataclass(frozen=True)
+class _LiveSnapshot:
+    """Данные для разметки страниц: ответы /api/stats и /api/stats/rent и тексты [data-l]."""
+
+    stats: dict | None
+    rent: dict | None
+    values: dict[str, str]
+
+
+_LIVE: _LiveSnapshot | None = None
 
 
 def _public_origin() -> str | None:
@@ -1249,14 +1292,104 @@ def _asset_names() -> list[str]:
 def _build_assets() -> None:
     """Собирается на импорте модуля (то есть в каждом воркере) — файлы в
     образе до рестарта неизменны, перепроверять их на запросе незачем."""
-    global _ASSETS, _VERSIONS
+    global _ASSETS, _VERSIONS, _BASE_HTML, _ANALYTICS, _ACTIVE_CSP
     site = static_cache.build_site(
         STATIC_DIR, _asset_names(), origins=HTML_SITE_ORIGINS, public_origin=_public_origin()
     )
+    _ANALYTICS = site_analytics.from_env()
+    _ACTIVE_CSP = site_analytics.extend_csp(CSP, site_analytics.csp_sources(_ANALYTICS))
+    _BASE_HTML = {
+        name: asset.raw.decode("utf-8") for name, asset in site.assets.items() if name.endswith(".html")
+    }
     _ASSETS, _VERSIONS = site.assets, site.versions
+    _render_pages(_LIVE)
 
 
-_build_assets()
+def _html_asset(text: str) -> static_cache.Asset:
+    return static_cache.asset_from_bytes(text.encode("utf-8"), "text/html; charset=utf-8")
+
+
+def _render_pages(live: _LiveSnapshot | None) -> None:
+    """Страницы из _BASE_HTML + живые цифры, JSON-LD и счётчики → _ASSETS.
+
+    Без снимка (на импорте, до прогрева) — только то, что не зависит от
+    данных: FAQ-разметка, счётчики, коды подтверждения. См. live_pages.
+    """
+    global _ASSETS
+    values = live.values if live else {}
+    total = (live.stats or {}).get("total_listings") if live else None
+    total = int(total) if isinstance(total, (int, float)) and not isinstance(total, bool) else None
+    version = _VERSIONS.get(ANALYTICS_JS)
+    counters = site_analytics.head_snippet(
+        _ANALYTICS, f"/static/{ANALYTICS_JS}" + (f"?v={version}" if version else "")
+    )
+    rendered: dict[str, str] = {}
+    for name, page in _BASE_HTML.items():
+        if values:
+            page = live_pages.fill_live(page, values, total)
+        if name == "index.html":
+            if live:
+                page = live_pages.district_bars(page, live.stats)
+            page = live_pages.inject_head(page, site_analytics.verification_meta(_ANALYTICS))
+        faq = live_pages.faq_json_ld(page)
+        if faq:
+            page = live_pages.inject_head(page, faq)
+        page = live_pages.inject_head(page, counters)
+        if name == "stats.html":
+            stats, rent = (live.stats, live.rent) if live else (None, None)
+            rendered[STATS_RENT_ASSET] = live_pages.rent_variant(
+                live_pages.with_market_noscript(page, live_pages.market_noscript(stats, rent, rent_first=True))
+            )
+            page = live_pages.with_market_noscript(page, live_pages.market_noscript(stats, rent))
+        rendered[name] = page
+    assets = dict(_ASSETS)
+    assets.update({name: _html_asset(page) for name, page in rendered.items()})
+    llms = live_pages.llms_txt(
+        _site_base_url(), values, live.stats if live else None, live.rent if live else None
+    )
+    assets[LLMS_ASSET] = static_cache.asset_from_bytes(llms.encode("utf-8"), "text/plain; charset=utf-8")
+    # одно присваивание: параллельный запрос видит либо старый набор, либо новый
+    _ASSETS = assets
+
+
+def _cached_json(cache: TTLCache, key: str, producer) -> dict | None:
+    try:
+        data = json.loads(cache.get_or_call(key, producer).raw)
+    except Exception:  # noqa: BLE001 — нет базы или данных: страница обойдётся без них
+        logger.warning("live pages: %s недоступна", key, exc_info=True)
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _live_snapshot() -> _LiveSnapshot:
+    """Те же данные, что отдают /api/stats, /api/stats/rent и /api/health (без похода в Telegram)."""
+    stats = _cached_json(_stats_cache, "stats", _stats_asset) if DB_PATH.exists() else None
+    rent = _cached_json(_rent_stats_cache, "rent", _rent_stats_asset) if RENT_DB_PATH.exists() else None
+    health = {
+        "model_error_pct": _model_error_pct(),
+        "model_median_error_pct": _model_metric_pct("mdape"),
+        "model_error_ci_pct": _model_error_ci_pct(),
+        "model_r2": _model_r2(),
+        "model_mae": _model_mae(),
+        "rent_model_error_pct": _rent_model_error_pct(),
+    }
+    return _LiveSnapshot(stats=stats, rent=rent, values=live_pages.live_values(stats, health))
+
+
+def _refresh_live_pages() -> None:
+    """Живые цифры в разметку страниц — после прогрева кэшей статистики.
+
+    Процесс перезапускается после каждого сбора данных и переобучения, так
+    что снимок в разметке не старше суток. Fail-soft: без данных страницы
+    остаются такими, как лежат в файлах.
+    """
+    global _LIVE
+    try:
+        _LIVE = _live_snapshot()
+        _render_pages(_LIVE)
+        logger.info("live pages: в разметке %d живых значений", len(_LIVE.values))
+    except Exception:  # noqa: BLE001 — сайт без снимка лучше, чем сайт, который не стартовал
+        logger.warning("live pages: снимок не собран", exc_info=True)
 
 
 def _static_cache_control(name: str, scope) -> str:
@@ -1304,7 +1437,16 @@ def _asset_response(
 
 @app.exception_handler(404)
 async def not_found(request: Request, exc):
-    """Браузеру — оформленная страница, любому клиенту API — обычный JSON."""
+    """Браузеру — оформленная страница, любому клиенту API — обычный JSON.
+
+    Адрес страницы со слэшем на конце (/about/) — 301 на адрес без него
+    (redirect_slashes выключен, см. начало модуля).
+    """
+    path = request.url.path
+    if path != "/" and path.endswith("/") and path.rstrip("/") in _PAGE_PATHS:
+        query = request.url.query
+        target = path.rstrip("/") + (f"?{query}" if query else "")
+        return _apply_security_headers(RedirectResponse(target, status_code=301))
     wants_html = "text/html" in request.headers.get("accept", "")
     if wants_html and not request.url.path.startswith("/api/"):
         try:
@@ -1356,18 +1498,22 @@ async def readyz() -> Response:
 
 # issue #190 §2.6: до этого оба URL отдавали 404 — сайт не просился в индекс.
 # (путь, файл страницы, на странице данные рынка). /rent здесь нет: «Аренда»
-# стала режимом «Рынка» (/stats?mode=rent), а /rent — 301 туда.
+# стала режимом «Рынка», а /rent — 301 туда. У режима аренды свой адрес в
+# sitemap — /stats?mode=rent: свои title и canonical (live_pages.rent_variant).
 _PUBLIC_PAGES: tuple[tuple[str, str, bool], ...] = (
     ("/", "index.html", True),
     ("/stats", "stats.html", True),
+    ("/stats?mode=rent", "stats.html", True),
     ("/about", "about.html", False),
     ("/bot", "bot.html", False),
     ("/privacy", "privacy.html", False),
     ("/terms", "terms.html", False),
 )
+# Адреса HTML-страниц: им со слэшем на конце — 301 на адрес без него.
+_PAGE_PATHS = frozenset(p for p, _, _ in _PUBLIC_PAGES if "?" not in p) | {"/rent"}
 
 
-def _site_base_url(request: Request) -> str:
+def _site_base_url(request: Request | None = None) -> str:
     """Адрес сайта для sitemap/robots — тот же, что в canonical страниц.
 
     PUBLIC_BASE_URL, иначе адрес, захардкоженный в HTML (SITE_ORIGIN). Раньше
@@ -1379,11 +1525,24 @@ def _site_base_url(request: Request) -> str:
 
 @app.api_route("/robots.txt", methods=["GET", "HEAD"], include_in_schema=False)
 async def robots_txt(request: Request) -> Response:
+    # /api/stats (с /api/stats/rent) и /api/health открыты: из них скрипт рисует
+    # цифры «Рынка» и точность модели, и поисковик, который исполняет JS, без
+    # них видел пустые таблицы. В индекс JSON не попадёт: X-Robots-Tag: noindex.
+    # Самое длинное совпадение побеждает и у Google, и у Яндекса, поэтому Allow
+    # пересиливает Disallow: /api/ при любом порядке строк.
+    # Clean-param — только для Яндекса: метки рекламы и рассылок не плодят дубли.
     body = (
         "User-agent: *\n"
         "Allow: /\n"
+        "Allow: /api/stats\n"
+        "Allow: /api/health\n"
         "Disallow: /api/\n"
         "Disallow: /tg/\n"
+        "Disallow: /docs\n"
+        "Disallow: /redoc\n"
+        "Disallow: /openapi.json\n"
+        "Clean-param: utm_source&utm_medium&utm_campaign&utm_content&utm_term&yclid&gclid&fbclid\n"
+        "\n"
         f"Sitemap: {_site_base_url(request)}/sitemap.xml\n"
     )
     return Response(body, media_type="text/plain; charset=utf-8",
@@ -1451,7 +1610,24 @@ async def index(request: Request) -> Response:
 async def stats_page(request: Request) -> Response:
     if request.method == "GET":
         usage.record_event("site")
-    return _asset_response(request, "stats.html")
+    # ?mode=rent — та же страница со своими title и canonical (live_pages.rent_variant)
+    rent = request.query_params.get("mode") == "rent" and STATS_RENT_ASSET in _ASSETS
+    return _asset_response(request, STATS_RENT_ASSET if rent else "stats.html")
+
+
+@app.api_route("/llms.txt", methods=["GET", "HEAD"], include_in_schema=False)
+async def llms_txt(request: Request) -> Response:
+    """Справка о сервисе для нейросетей (llmstxt.org): что это, главные цифры, страницы."""
+    return _asset_response(request, LLMS_ASSET, cache_control="public, max-age=3600")
+
+
+@app.api_route("/favicon.ico", methods=["GET", "HEAD"], include_in_schema=False)
+async def favicon_ico() -> Response:
+    """Браузеры и Яндекс просят /favicon.ico сами, даже при SVG-иконке в <head>."""
+    return FileResponse(
+        STATIC_DIR / "favicon.ico", media_type="image/x-icon",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @app.api_route("/about", methods=["GET", "HEAD"], include_in_schema=False)
@@ -1482,6 +1658,10 @@ class _CachedStatic(StaticFiles):
     async def get_response(self, path: str, scope):  # type: ignore[override]
         # StaticFiles отдаёт путь в разделителях ОС (на Windows — «\»)
         name = pathlib.PurePath(path).as_posix().lstrip("/")
+        # страницы живут по своим адресам (/about), копия /static/about.html —
+        # дубль для поисковика, к тому же без живых цифр и счётчиков
+        if name.lower().endswith(".html"):
+            raise HTTPException(status_code=404)
         cache_control = _static_cache_control(name, scope)
         if name in _ASSETS and scope.get("method") in ("GET", "HEAD"):
             return _asset_response(Request(scope), name, cache_control=cache_control)
@@ -1497,6 +1677,8 @@ class _CachedStatic(StaticFiles):
             response.headers["Content-Type"] = media_type
         return response
 
+
+_build_assets()
 
 if STATIC_DIR.exists():
     app.mount("/static", _CachedStatic(directory=STATIC_DIR), name="static")

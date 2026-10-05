@@ -16,6 +16,7 @@ import os
 import re
 import time
 
+import pytest
 from fastapi.testclient import TestClient
 
 from krisha.api import app as app_module
@@ -30,6 +31,15 @@ _VERSION_RE = re.compile(rb"\?v=[0-9a-f]{%d}" % static_cache.VERSION_LEN)
 
 def _client() -> TestClient:
     return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _pages_as_files():
+    """Сравнение с файлом на диске — без живого снимка данных (live_pages), как
+    сразу после импорта: снимок кладут в разметку тесты, поднимающие приложение."""
+    app_module._render_pages(None)
+    yield
+    app_module._render_pages(app_module._LIVE)
 
 
 def _disk(name: str) -> bytes:

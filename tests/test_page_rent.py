@@ -58,17 +58,29 @@ def test_sitemap_has_no_rent_page():
     assert resp.status_code == 200
     assert "/rent</loc>" not in resp.text
     assert "/stats</loc>" in resp.text
+    assert "/stats?mode=rent</loc>" in resp.text
 
 
 def test_market_page_serves_both_modes():
-    """Режим выбирает скрипт страницы: сервер отдаёт один и тот же stats.html."""
+    """Режим выбирает скрипт страницы, а у аренды свои title, description и
+    canonical: иначе поисковик не покажет её отдельно (live_pages.rent_variant)."""
     with TestClient(app) as client:
         sale = client.get("/stats")
         rent = client.get("/stats?mode=rent")
 
     assert sale.status_code == rent.status_code == 200
-    assert sale.text == rent.text
     assert 'data-set="rent"' in rent.text and "/api/stats/rent" in rent.text
+    assert '<link rel="canonical" href="https://bagam.info/stats">' in sale.text
+    assert '<link rel="canonical" href="https://bagam.info/stats?mode=rent">' in rent.text
+    assert '<meta property="og:url" content="https://bagam.info/stats?mode=rent">' in rent.text
+    assert "<title>Аренда квартир в Алматы — цены по районам и комнатам │ baǵam</title>" in rent.text
+    # заголовок — тот же, что ставит скрипт страницы при переключении режима
+    assert "Аренда квартир в Алматы — цены по районам и комнатам │ baǵam" in _static()
+    # остальная страница — та же
+    def body(html: str) -> str:
+        return re.sub(r"<head>.*?</head>|<noscript>.*?</noscript>", "", html, flags=re.S)
+
+    assert body(sale.text) == body(rent.text)
 
 
 def test_rent_mode_nav_marks_market_and_footer_link():

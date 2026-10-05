@@ -21,12 +21,19 @@
 // 5. В переменные Space: PUBLIC_BASE_URL=https://bagam.info — на этот адрес
 //    смотрят sitemap/robots и кнопка «Открыть приложение» в боте. Webhook бота
 //    остаётся на адресе Space (bot.webhook_base_url) и от Cloudflare не зависит.
+// 6. SSL/TLS → Edge Certificates → Always Use HTTPS = On, затем HSTS. Воркер и
+//    сам переводит http на https (ниже), но правило Cloudflare срабатывает
+//    раньше воркера.
 
 const ORIGIN = "https://dex719-krisha-fair-price.hf.space";
 const CANONICAL_HOST = "bagam.info";
+// Адрес Space в Location: любая схема, необязательный порт, дальше — путь
+const SPACE_LOCATION = /^https?:\/\/dex719-krisha-fair-price\.hf\.space(?::\d+)?(\/.*)?$/i;
 
 // Что можно отдавать из кэша Cloudflare: html-страницы сайта и статика с версией в URL.
-const PAGE_PATHS = new Set(["/", "/stats", "/about", "/bot", "/privacy", "/terms", "/robots.txt", "/sitemap.xml"]);
+const PAGE_PATHS = new Set([
+  "/", "/stats", "/about", "/bot", "/privacy", "/terms", "/robots.txt", "/sitemap.xml", "/llms.txt", "/favicon.ico",
+]);
 function isCacheablePath(pathname) {
   return PAGE_PATHS.has(pathname) || pathname.startsWith("/static/");
 }
@@ -34,9 +41,21 @@ function isCacheablePath(pathname) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.hostname !== CANONICAL_HOST) {
-      // www.bagam.info и прочие алиасы → один адрес для поисковиков
+    if (url.hostname !== CANONICAL_HOST || url.protocol !== "https:") {
+      // www.bagam.info, прочие алиасы и http → один адрес для поисковиков, одним
+      // редиректом. Раньше http://www.bagam.info/x уходил на http://bagam.info/x,
+      // а там отвечал 200 — сайт целиком жил и по http.
       url.hostname = CANONICAL_HOST;
+      url.protocol = "https:";
+      url.port = "";
+      return Response.redirect(url.toString(), 301);
+    }
+    // /about/ → /about одним 301 (приложение делает то же само, но так адрес
+    // со слэшем не доходит до Space вовсе). Только страницы: GET/HEAD, не API.
+    const isRead = request.method === "GET" || request.method === "HEAD";
+    if (isRead && url.pathname.length > 1 && url.pathname.endsWith("/") &&
+        !/^\/(static|api|tg)\//.test(url.pathname)) {
+      url.pathname = url.pathname.replace(/\/+$/, "") || "/";
       return Response.redirect(url.toString(), 301);
     }
 
@@ -70,10 +89,18 @@ export default {
     // поисковик склеил бы домен со страницей Space и не индексировал bagam.info.
     // Канонический адрес задаёт <link rel="canonical"> в самих страницах.
     out.headers.delete("link");
-    // Редирект приложения на адрес Space → тот же путь на домене
+    // Внутренние заголовки прокси HF: наружу им незачем
+    out.headers.delete("x-proxied-host");
+    out.headers.delete("x-proxied-path");
+    out.headers.delete("x-proxied-replica");
+    // Редирект приложения на адрес Space → тот же путь на домене. За прокси HF
+    // приложение видит http, поэтому адрес Space в Location бывает и http://, и
+    // с портом; раньше переписывался только https:// — и посетитель
+    // bagam.info/about/ уезжал на http://…hf.space/about.
     const location = response.headers.get("location");
-    if (location && location.startsWith(ORIGIN)) {
-      out.headers.set("location", `https://${CANONICAL_HOST}${location.slice(ORIGIN.length)}`);
+    const m = location && location.match(SPACE_LOCATION);
+    if (m) {
+      out.headers.set("location", `https://${CANONICAL_HOST}${m[1] || "/"}`);
     }
     return out;
   },

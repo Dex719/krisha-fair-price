@@ -1,8 +1,8 @@
 """Страница /privacy: политика конфиденциальности сайта и Telegram-бота.
 
 Политика — это набор утверждений о коде, поэтому часть тестов сверяет её с кодом:
-сроки, лимиты и команды берутся из самих модулей, а «нет cookie и сторонних
-скриптов» проверяется по всем страницам сайта. Изменили код или страницы так, что
+сроки, лимиты и команды берутся из самих модулей, а «свои cookie не ставим,
+внешние скрипты — только счётчики посещаемости» проверяется по всем страницам сайта. Изменили код или страницы так, что
 политика устарела, — тест упадёт и подскажет, что поправить в static/privacy.html.
 """
 
@@ -95,6 +95,11 @@ def test_privacy_names_the_real_data_flows():
         "cookie",
         "номер чата",
         "приватн",
+        "Яндекс Метрика",
+        "Google Analytics",
+        "Вебвизор",
+        "_ym_uid",
+        "_ga",
     ):
         assert needle in html, f"в политике не упомянуто: {needle}"
 
@@ -102,8 +107,8 @@ def test_privacy_names_the_real_data_flows():
 def test_privacy_has_edition_date_and_contacts():
     html = _page()
 
-    assert "Редакция от" in html and "4 октября 2026" in html
-    assert 'datetime="2026-10-04"' in html
+    assert "Редакция от" in html and "5 октября 2026" in html
+    assert 'datetime="2026-10-05"' in html
     assert 'href="https://t.me/Hopepe1"' in html
     assert 'href="https://t.me/fairprice_kzbot"' in html
     assert 'href="https://github.com/Dex719/krisha-fair-price"' in html
@@ -130,7 +135,9 @@ def test_privacy_has_no_external_cdns_or_trackers():
 
 
 def test_site_pages_match_the_no_cookies_no_trackers_claims():
-    """Раздел «Чего мы не собираем» держится на этих проверках."""
+    """Раздел «Чего мы не собираем» держится на этих проверках: свои cookie не
+    ставим, внешние скрипты — только Telegram Mini App и счётчики посещаемости,
+    а счётчики подключает один файл, analytics.js."""
     for name, html in _site_pages().items():
         assert "document.cookie" not in html, f"{name}: cookie из браузера"
         assert "sessionStorage" not in html and "indexedDB" not in html, name
@@ -143,6 +150,27 @@ def test_site_pages_match_the_no_cookies_no_trackers_claims():
         loaded = set(re.findall(r"\.src\s*=\s*'(https?://[^']+)'", html))
         assert loaded <= {"https://telegram.org/js/telegram-web-app.js"}, (name, loaded)
     assert "set_cookie" not in _src("api", "app.py")
+
+
+def test_counters_are_exactly_the_two_named_in_the_policy():
+    """Счётчики посещаемости: ровно Метрика и GA4, грузит их только analytics.js,
+    а без номеров в окружении сервер его даже не подключает."""
+    script = (STATIC / "js" / "analytics.js").read_text(encoding="utf-8")
+    hosts = set(re.findall(r"https://([a-z0-9.-]+)/", script))
+    assert hosts == {"mc.yandex.ru", "www.googletagmanager.com"}, hosts
+    assert "document.cookie" not in script and "sendBeacon" not in script
+    # страницы сами внешних счётчиков не грузят: только через analytics.js
+    for name, html in _site_pages().items():
+        assert not re.search(r"<script[^>]+analytics\.js", html), f"{name}: счётчики подключает сервер, а не разметка"
+        for host in ("mc.yandex.ru", "googletagmanager.com", "google-analytics.com"):
+            assert host not in html, f"{name}: {host}"
+    # в политике — какие события уходят в счётчики, и как от них отказаться
+    page = _page()
+    rights = _section(page, "rights")
+    assert "Отказаться от счётчиков посещаемости" in rights
+    assert "tools.google.com/dlpage/gaoptout" in rights and "metrica/ru/general/opt-out" in rights
+    for event in ("check_ok", "bot_click", "share"):
+        assert event in script or event in _site_pages()["index.html"], event
 
 
 def test_localstorage_keys_on_every_page_are_documented():
@@ -313,7 +341,7 @@ def test_cross_border_section_names_the_real_services_and_localization_risk():
     page = _page()
     transfer = _section(page, "transfer")
 
-    for service in ("Hugging Face", "Cloudflare", "GitHub", "Telegram", "Google"):
+    for service in ("Hugging Face", "Cloudflare", "GitHub", "Telegram", "Google", "Яндекс", "Google Analytics"):
         assert service in transfer, f"не названа зарубежная платформа: {service}"
     assert "Статья 12" in transfer and "на территории Республики Казахстан" in transfer
     # bagam.info идёт через Cloudflare Worker, а webhook бота — мимо него, на адрес Space

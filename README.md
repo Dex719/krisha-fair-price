@@ -14,7 +14,7 @@
 ![version](https://img.shields.io/badge/version-0.5.0-blue)
 ![license](https://img.shields.io/badge/license-ELv2-lightgrey)
 
-**[🚀 Сайт](https://dex719-krisha-fair-price.hf.space)** · **[📊 Рынок Алматы](https://dex719-krisha-fair-price.hf.space/stats)** · **[ℹ️ О проекте](https://dex719-krisha-fair-price.hf.space/about)** · **[🤖 Telegram-бот](https://t.me/fairprice_kzbot)** · **[🧵 Threads](https://www.threads.net/@bagam.kz)**
+**[🚀 Сайт](https://bagam.info)** · **[📊 Рынок Алматы](https://bagam.info/stats)** · **[ℹ️ О проекте](https://bagam.info/about)** · **[🤖 Telegram-бот](https://t.me/fairprice_kzbot)** · **[🧵 Threads](https://www.threads.net/@bagam.kz)**
 
 <img src="docs/screenshot-light.png" alt="Вердикт по объявлению" width="800" />
 
@@ -103,6 +103,31 @@
 - **Еженедельный ретрейн с гейтом качества**: новая модель заезжает, только если не хуже старой на свежем тесте; гарды временно́й валидности пишутся в мету.
 - **Деплой только после зелёного CI**, а смоук ждёт, пока прод поднимется именно на выкаченной ревизии (`/api/health` → `revision`), — «зелёный деплой при лежащем проде» невозможен.
 - **Keepalive + health-check** каждые 6 часов: живость, свежесть данных, webhook бота; при деградации — алерт в Telegram.
+
+## 📊 Аналитика и поисковики
+
+Счётчики посещаемости и коды подтверждения прав задаются переменными Space — в разметке их нет, и без переменных сайт работает без счётчиков (CSP тогда без внешних адресов):
+
+| Переменная | Что это |
+|---|---|
+| `YANDEX_METRIKA_ID` | номер счётчика Яндекс Метрики (цифры); Вебвизор и карта кликов включены |
+| `GA4_MEASUREMENT_ID` | поток Google Analytics 4, `G-…` |
+| `YANDEX_VERIFICATION` | код из Яндекс Вебмастера (`<meta name="yandex-verification">` на главной) |
+| `GOOGLE_SITE_VERIFICATION` | код из Google Search Console (`<meta name="google-site-verification">`) |
+
+Права в Вебмастере и Search Console проще подтвердить TXT-записью в DNS Cloudflare — тогда последние две переменные не нужны. Цели Метрики — тип «JavaScript-событие», идентификаторы те же, что события GA4 (`static/js/analytics.js`):
+
+| Цель | Когда |
+|---|---|
+| `check_ok` | оценка посчитана (`deal`, `verdict`, `source`: `link` или `demo`) |
+| `check_error` | оценка не получилась (`kind`: `input`, `timeout`, `network`, `server`) |
+| `check_bad_link` | в поле вставили не ссылку на объявление krisha.kz |
+| `demo` | «Показать на примере» |
+| `share` | «Поделиться отчётом» |
+| `bot_click` | переход в Telegram-бота с любой страницы (`place` — адрес страницы) |
+| `market_mode` | переключение «Продажа / Аренда» на «Рынке» |
+
+Для поисковиков и нейросетей сервер при старте кладёт в разметку живые цифры (объявлений в базе, медианы, ошибка модели), FAQPage из блоков «Частые вопросы» и сводку рынка в `<noscript>` на «Рынке» (`src/krisha/api/live_pages.py`); `/llms.txt` — справка о сервисе. У аренды свой адрес в sitemap — `/stats?mode=rent` со своими title и canonical.
 
 ## 🛠 Стек
 

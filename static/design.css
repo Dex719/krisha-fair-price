@@ -115,7 +115,7 @@ h1{font-family:Unbounded,UnboundedFB,sans-serif;font-weight:700;font-size:clamp(
 .inbar:focus-within{border-color:color-mix(in srgb,var(--lime) 55%,transparent);box-shadow:var(--sh1),0 0 0 4px var(--limesoft)}
 /* в светлой теме полупрозрачный лайм на белом поле — 1,7:1; рамка фокуса должна держать ≥3:1 */
 html[data-theme=light] .inbar:focus-within{border-color:var(--limeink)}
-.inbar input{flex:1;background:transparent;border:0;outline:0;color:var(--ink);font:400 15px Onest,OnestFB,sans-serif;min-width:0;text-overflow:ellipsis}
+.inbar input{flex:1;background:transparent;border:0;outline:0;color:var(--ink);font:400 16px Onest,OnestFB,sans-serif;min-width:0;text-overflow:ellipsis}
 .inbar input::placeholder{color:var(--dim)}
 .gobtn{background:var(--lime);color:var(--onl);border:0;border-radius:var(--rpill);font:600 15px Onest,OnestFB,sans-serif;padding:16px 28px;cursor:pointer;white-space:nowrap;box-shadow:inset 0 1px 0 rgba(255,255,255,.28);transition:background-color .2s,scale .12s ease}
 .gobtn:hover{background:color-mix(in oklab,var(--lime) 86%,#fff)}

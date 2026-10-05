@@ -32,7 +32,7 @@ def test_home_uses_bagam_meta_design_css_and_local_favicon():
     html = _static("index.html")
 
     assert (
-        "<title>Справедливая цена покупки и аренды квартир в Алматы │ baǵam</title>"
+        "<title>Оценка квартиры в Алматы: справедливая цена продажи и аренды │ baǵam</title>"
         in html
     )
     assert '<meta name="description"' in html

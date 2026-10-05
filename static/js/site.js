@@ -274,6 +274,10 @@
     });
   }
   B.put = put;
+  /* цель счётчиков посещаемости (static/js/analytics.js); без счётчиков — ничего не делает */
+  B.track = function (name, params) {
+    if (typeof w.bagamTrack === 'function') w.bagamTrack(name, params);
+  };
   function almatyDate(iso) {
     var t = Date.parse(iso);
     if (isNaN(t)) return null;
