@@ -239,7 +239,7 @@ def test_static_html_copies_are_404_and_favicon_ico_exists():
 
 
 def test_no_counters_without_env(monkeypatch):
-    for name in (site_analytics.YM_ENV, site_analytics.GA_ENV,
+    for name in ("YANDEX_METRIKA_ID", site_analytics.GA_ENV,
                  site_analytics.YANDEX_VERIFICATION_ENV, site_analytics.GOOGLE_VERIFICATION_ENV):
         monkeypatch.delenv(name, raising=False)
     app_module._build_assets()
@@ -250,7 +250,8 @@ def test_no_counters_without_env(monkeypatch):
 
 
 def test_counters_and_verification_come_from_env(monkeypatch):
-    monkeypatch.setenv(site_analytics.YM_ENV, "98765432")
+    # номер Метрики — от прежней версии: больше не читается и в разметку не попадает
+    monkeypatch.setenv("YANDEX_METRIKA_ID", "98765432")
     monkeypatch.setenv(site_analytics.GA_ENV, "G-ABC123XYZ")
     monkeypatch.setenv(site_analytics.YANDEX_VERIFICATION_ENV, "a1b2c3d4e5f6a7b8")
     monkeypatch.setenv(site_analytics.GOOGLE_VERIFICATION_ENV, "Zx_9-verify-token")
@@ -263,27 +264,28 @@ def test_counters_and_verification_come_from_env(monkeypatch):
         monkeypatch.undo()
         app_module._build_assets()
 
-    tag = re.search(r'<script src="/static/js/analytics\.js\?v=[0-9a-f]+" defer data-ym="98765432" data-ga="G-ABC123XYZ"></script>', home.text)
+    tag = re.search(r'<script src="/static/js/analytics\.js\?v=[0-9a-f]+" defer data-ga="G-ABC123XYZ"></script>', home.text)
     assert tag and tag.start() < home.text.index("</head>")
-    assert 'data-ym="98765432"' in about
+    assert 'data-ga="G-ABC123XYZ"' in about and "data-ym" not in home.text
     assert '<meta name="yandex-verification" content="a1b2c3d4e5f6a7b8">' in home.text
     assert '<meta name="google-site-verification" content="Zx_9-verify-token">' in home.text
     assert "verification" not in about, "коды подтверждения — только на главной"
     csp = home.headers["content-security-policy"]
-    for source in ("https://mc.yandex.ru", "wss://mc.yandex.ru", "https://www.googletagmanager.com",
-                   "https://*.google-analytics.com", "https://metrika.yandex.ru", "https://metrica.yandex.ru"):
+    for source in ("https://www.googletagmanager.com", "https://*.google-analytics.com",
+                   "https://*.analytics.google.com"):
         assert source in csp, source
+    assert "yandex" not in csp
     script_src = next(d for d in csp.split("; ") if d.startswith("script-src "))
-    assert "'self'" in script_src and "https://mc.yandex.ru" in script_src
+    assert "'self'" in script_src and "https://www.googletagmanager.com" in script_src
 
 
 def test_counters_stay_off_inside_telegram_and_without_ads():
-    """Mini App: в хеше адреса #tgWebAppData с профилем Telegram, а Метрика шлёт адрес
-    целиком — внутри Telegram счётчики не стартуют. GA4 — без рекламных функций."""
+    """Mini App: в хеше адреса #tgWebAppData с профилем Telegram — внутри Telegram
+    счётчик не стартует. GA4 — без рекламных функций."""
     script = (STATIC / "js" / "analytics.js").read_text(encoding="utf-8")
     guard = script.index("/tgWebApp/i.test(")
 
-    assert guard < script.index("'init'") and guard < script.index("gtag('config'")
+    assert guard < script.index("gtag('config'")
     assert "TelegramWebviewProxy" in script[guard - 200:guard + 200]
     assert "allow_google_signals: false" in script and "allow_ad_personalization_signals: false" in script
 
@@ -307,8 +309,7 @@ def test_refresh_live_pages_is_switched_by_env(monkeypatch):
 
 def test_garbage_in_env_is_ignored():
     cfg = site_analytics.from_env({
-        site_analytics.YM_ENV: '123"><script>',
-        site_analytics.GA_ENV: "UA-1234-1",
+        site_analytics.GA_ENV: 'UA-1234-1"><script>',
         site_analytics.YANDEX_VERIFICATION_ENV: "short",
     })
     assert cfg == site_analytics.Config()

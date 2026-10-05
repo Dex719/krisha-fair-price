@@ -95,10 +95,7 @@ def test_privacy_names_the_real_data_flows():
         "cookie",
         "номер чата",
         "приватн",
-        "Яндекс Метрика",
         "Google Analytics",
-        "Вебвизор",
-        "_ym_uid",
         "_ga",
     ):
         assert needle in html, f"в политике не упомянуто: {needle}"
@@ -107,8 +104,8 @@ def test_privacy_names_the_real_data_flows():
 def test_privacy_has_edition_date_and_contacts():
     html = _page()
 
-    assert "Редакция от" in html and "5 октября 2026" in html
-    assert 'datetime="2026-10-05"' in html
+    assert "Редакция от" in html and "6 октября 2026" in html
+    assert 'datetime="2026-10-06"' in html
     assert 'href="https://t.me/Hopepe1"' in html
     assert 'href="https://t.me/fairprice_kzbot"' in html
     assert 'href="https://github.com/Dex719/krisha-fair-price"' in html
@@ -153,11 +150,13 @@ def test_site_pages_match_the_no_cookies_no_trackers_claims():
 
 
 def test_counters_are_exactly_the_two_named_in_the_policy():
-    """Счётчики посещаемости: ровно Метрика и GA4, грузит их только analytics.js,
-    а без номеров в окружении сервер его даже не подключает."""
+    """Счётчик посещаемости: ровно GA4, грузит его только analytics.js, а без
+    идентификатора в окружении сервер его даже не подключает. Метрики нет и в политике."""
     script = (STATIC / "js" / "analytics.js").read_text(encoding="utf-8")
     hosts = set(re.findall(r"https://([a-z0-9.-]+)/", script))
-    assert hosts == {"mc.yandex.ru", "www.googletagmanager.com"}, hosts
+    assert hosts == {"www.googletagmanager.com"}, hosts
+    for word in ("Метрик", "Яндекс", "Вебвизор", "_ym"):
+        assert word not in _page(), f"в политике осталось: {word}"
     assert "document.cookie" not in script and "sendBeacon" not in script
     # страницы сами внешних счётчиков не грузят: только через analytics.js
     for name, html in _site_pages().items():
@@ -169,8 +168,8 @@ def test_counters_are_exactly_the_two_named_in_the_policy():
     # в политике — как от счётчиков отказаться
     page = _page()
     rights = _section(page, "rights")
-    assert "Отказаться от счётчиков посещаемости" in rights
-    assert "tools.google.com/dlpage/gaoptout" in rights and "metrica/ru/general/opt-out" in rights
+    assert "Отказаться от счётчика посещаемости" in rights
+    assert "tools.google.com/dlpage/gaoptout" in rights
 
 
 def test_csp_admits_only_the_services_named_in_the_policy():
@@ -179,14 +178,12 @@ def test_csp_admits_only_the_services_named_in_the_policy():
     from krisha.api import site_analytics
     from krisha.api.app import CSP
 
-    cfg = site_analytics.Config(ym="12345678", ga="G-TEST1234")
+    cfg = site_analytics.Config(ga="G-TEST1234")
     csp = site_analytics.extend_csp(CSP, site_analytics.csp_sources(cfg))
     hosts = {h.split("://", 1)[1] for h in re.findall(r"(?:https|wss)://[^\s;]+", csp)}
     allowed = re.compile(
         r"(\*\.)?(kcdn\.online|basemaps\.cartocdn\.com|cdn\.jsdelivr\.net|telegram\.org|huggingface\.co"
         r"|static\.cloudflareinsights\.com|cloudflareinsights\.com"  # Cloudflare Web Analytics, раздел 07
-        r"|mc\.yandex\.[a-z.]+|mc\.webvisor\.(com|org)|yastatic\.net"  # Яндекс Метрика
-        r"|(metrika|metrica|metr|analytics)\.(yandex|ya)(\.[a-z.]+)?"
         r"|www\.googletagmanager\.com|google-analytics\.com|analytics\.google\.com|google\.com)$"  # GA4
     )
     assert {h for h in hosts if not allowed.fullmatch(h)} == set()
@@ -379,7 +376,7 @@ def test_cross_border_section_names_the_real_services_and_localization_risk():
     page = _page()
     transfer = _section(page, "transfer")
 
-    for service in ("Hugging Face", "Cloudflare", "GitHub", "Telegram", "Google", "Яндекс", "Google Analytics"):
+    for service in ("Hugging Face", "Cloudflare", "GitHub", "Telegram", "Google", "Google Analytics"):
         assert service in transfer, f"не названа зарубежная платформа: {service}"
     assert "Статья 12" in transfer and "на территории Республики Казахстан" in transfer
     # bagam.info идёт через Cloudflare Worker, а webhook бота — мимо него, на адрес Space
