@@ -56,7 +56,7 @@ from krisha.config import (
     feature_forecast,
 )
 from krisha.db import data_observed_at, get_conn, remember_update_id
-from krisha.predict import InvalidListingUrl, ListingNotFound
+from krisha.predict import InvalidListingUrl, ListingNotFound, ListingOutsideAlmaty
 from krisha.predict_gate import PredictBusy
 from krisha.scraping.client import ChallengeBlocked, SourceUnavailable
 from krisha.stats import compute_rent_stats, get_stats, heatmap_points
@@ -769,6 +769,10 @@ async def predict(req: PredictRequest, request: Request) -> PredictResponse:
     except InvalidListingUrl as exc:
         # 422 — пользовательская валидация URL, текст безопасен и полезен
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ListingOutsideAlmaty as exc:
+        # Объявление не из Алматы — тоже ошибка ввода: 422 с текстом, который
+        # фронт показывает как есть. Ветка выше ValueError — это его подкласс.
+        raise HTTPException(status_code=422, detail=str(exc)) from None
     except ValueError:
         # Любой ДРУГОЙ ValueError — внутренний сбой, а не ошибка ввода.
         # Например json.JSONDecodeError (подкласс ValueError) на битом

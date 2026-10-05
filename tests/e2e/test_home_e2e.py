@@ -488,24 +488,42 @@ def test_home_hash_deeplink_runs_report(hermetic_page, mock_api, hermetic_server
     expect(page.locator(".vbig")).to_have_text("В рынке")
 
 
-def test_home_share_report_copies_text(hermetic_page, mock_api, hermetic_server, predict_fair):
-    """«Поделиться отчётом» без navigator.share кладёт текст отчёта в буфер."""
+def test_home_share_button_says_soon(hermetic_page, mock_api, hermetic_server, predict_fair):
+    """«Поделиться» ещё в работе: нажимается, отвечает «Уже делаем» и возвращает подпись."""
     page = hermetic_page
-    page.context.grant_permissions(["clipboard-read", "clipboard-write"])
-    page.add_init_script("delete Navigator.prototype.share;")
     mock_api(predict=predict_fair)
     page.goto(hermetic_server + "/")
     wait_ready(page)
     submit(page)
     expect(page.locator(".vbig")).to_have_text("В рынке")
+    share = page.locator(".rshare")
+    expect(share).to_be_enabled()
+    expect(share.locator(".soon")).to_have_text("скоро")
 
-    page.click(".rshare")
+    share.click()
 
-    expect(page.locator(".rshare")).to_have_text("Скопировано")
-    expect(page.locator("#checkStatus")).to_have_text("Отчёт скопирован")
-    text = page.evaluate("navigator.clipboard.readText()")
-    assert "Справедливая оценка: 46\u00a0190\u00a0000 ₸" in text
-    assert LOT_URL in text
+    expect(share.locator("span")).to_have_text("Уже делаем")
+    expect(page.locator("#checkStatus")).to_have_text("Поделиться отчётом можно будет в ближайшем обновлении")
+    expect(share.locator("span")).to_have_text("Поделиться отчётом", timeout=5000)
+
+
+def test_home_other_city_shows_server_reason(hermetic_page, mock_api, hermetic_server):
+    """Объявление не из Алматы: сервер отвечает 422 с причиной — её и видит человек."""
+    page = hermetic_page
+    mock_api()
+    detail = "Оцениваем только квартиры в Алматы, а это объявление из другого города"
+    page.route("**/api/predict", lambda r: r.fulfill(
+        status=422, body=json.dumps({"detail": detail}), content_type="application/json"))
+    page.goto(hermetic_server + "/")
+    wait_ready(page)
+
+    submit(page, "https://krisha.kz/a/show/1013224169")
+
+    err = page.locator("#rErr")
+    expect(err).to_contain_text(detail)
+    expect(err).to_contain_text("Модели учились на объявлениях Алматы")
+    expect(err).not_to_contain_text("проверьте ссылку")
+    expect(err.locator("[data-retry]")).to_be_hidden()
 
 
 def test_home_theme_toggle_persists_in_local_storage(hermetic_page, mock_api, hermetic_server):

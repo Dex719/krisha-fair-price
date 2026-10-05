@@ -8,8 +8,8 @@
 
    Наружу — window.bagam:
      ready(fn)              fn(bagam) после инициализации (до неё — в очередь, после — сразу)
-     boot(fn)               fn после загрузки GSAP (только на data-gsap-страницах); при «меньше
-                            движения», слабом устройстве или медленной сети — сразу и без GSAP
+     boot(fn)               fn после загрузки GSAP (только на data-gsap-страницах); на слабом
+                            устройстве, при экономии трафика или медленной сети — сразу и без GSAP
      put(key, text)         текст во все [data-l=key]; бегущий счётчик подхватит его в конце
      live                   Promise<{stats, health}> — ответы /api/stats и /api/health (null — не пришёл).
                             <html data-live="off"> (страница 404): в API не ходим, live сразу {null, null},
@@ -20,7 +20,7 @@
      pct(n, digits=1)       процент: 7,3%
      plural(n, [1,2,5])     склонение: plural(3, ['объявление','объявления','объявлений']) → 'объявления'
      esc(s)                 экранирование для innerHTML
-     glide(y|fn, ms, done)  плавная прокрутка своими кадрами (при «меньше движения» — прыжок)
+     glide(y|fn, ms, done)  плавная прокрутка своими кадрами — всегда, в любом режиме
      reveal(selector)       мягкое появление блоков ниже первого экрана (IntersectionObserver + CSS)
      countUp(el)            счётчик от нуля до текущего текста элемента (сам запускается для [data-count])
      markCurrent()          пересчитать aria-current в шапке, меню и подвале (после history.replaceState)
@@ -47,10 +47,13 @@
   }
   function later(fn) { if (w.requestIdleCallback) w.requestIdleCallback(fn, { timeout: 1200 }); else setTimeout(fn, 80); }
 
-  var RM = mq('(prefers-reduced-motion: reduce)').matches;
-  B.rm = RM;
+  /* «Меньше движения» в системе анимации НЕ выключает: у владельца в Windows анимации выключены,
+     и сайт без входов, счётчиков и плавной прокрутки выглядел мёртвым — он прямо просил их
+     вернуть (2026-10-02, снова 2026-10-06). Статичен только лёгкий режим: слабое устройство,
+     экономия трафика, медленная сеть. B.rm — для тонкой настройки, если понадобится. */
+  B.rm = mq('(prefers-reduced-motion: reduce)').matches;
   B.lite = root.classList.contains('lite');
-  function still() { return RM || B.lite; }
+  function still() { return B.lite; }
 
   /* ------------------------------------------------------------ форматирование */
   function isNum(x) { return typeof x === 'number' && isFinite(x); }
@@ -430,7 +433,9 @@
 
   /* ------------------------------------------------------------ прокрутка */
   /* Своими кадрами: время от первого кадра, цель пересчитывается на каждом кадре (над ней может
-     что-то схлопнуться). Колесо или касание останавливают. «Меньше движения» — сразу прыжок. */
+     что-то схлопнуться). Колесо или касание останавливают. Едет одинаково везде — и при «меньше
+     движения» в системе, и в лёгком режиме: прокрутку просит сам человек кнопкой или ссылкой, а
+     прыжок на тысячи пикселей теряет место на странице (владелец просил плавно, 2026-10-02). */
   function jump(y) {
     var prev = root.style.scrollBehavior;
     root.style.scrollBehavior = 'auto';
@@ -440,7 +445,7 @@
   function glide(target, dur, done) {
     var fn = typeof target === 'function' ? target : function () { return +target || 0; };
     var from = w.pageYOffset || root.scrollTop;
-    if (still() || Math.abs(fn() - from) < 2) { jump(fn()); if (done) done(); return; }
+    if (Math.abs(fn() - from) < 2) { jump(fn()); if (done) done(); return; }
     var prev = root.style.scrollBehavior;
     root.style.scrollBehavior = 'auto';
     var t0 = 0, stopped = false;

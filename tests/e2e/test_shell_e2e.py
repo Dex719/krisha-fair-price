@@ -78,7 +78,9 @@ def test_subpages_do_not_load_gsap_and_show_everything(hermetic_page, mock_api, 
     assert errors == []
 
 
-def test_reduced_motion_skips_gsap_and_counts(hermetic_page, mock_api, hermetic_server):
+def test_reduced_motion_keeps_animations(hermetic_page, mock_api, hermetic_server):
+    """«Меньше движения» в системе анимации не выключает: у владельца в Windows анимации
+    выключены, и без них сайт выглядел мёртвым. GSAP грузится, счётчик бежит до свежего значения."""
     page = hermetic_page
     page.emulate_media(reduced_motion="reduce")
     mock_api()
@@ -86,11 +88,67 @@ def test_reduced_motion_skips_gsap_and_counts(hermetic_page, mock_api, hermetic_
     page.on("request", lambda r: loaded.append(r.url) if "gsap" in r.url.lower() else None)
     page.goto(hermetic_server + "/", wait_until="load")
     _ready(page)
+    page.wait_for_function("() => !!window.gsap", timeout=10000)
+    assert loaded, "GSAP должен грузиться и при «меньше движения»"
+    assert page.evaluate("[bagam.rm, bagam.lite]") == [True, False]
+    page.locator(".mets").scroll_into_view_if_needed()
+    page.wait_for_timeout(1800)
+    assert set(page.locator(".met [data-l=mape]").all_text_contents()) == {"7,6%"}
+
+
+def test_reduced_motion_keeps_reveal_on_subpages(hermetic_page, mock_api, hermetic_server):
+    page = hermetic_page
+    page.emulate_media(reduced_motion="reduce")
+    mock_api()
+    page.goto(hermetic_server + "/about", wait_until="load")
+    _ready(page)
+    # блоки ниже первого экрана ждут мягкого появления, как и без «меньше движения»
+    assert page.evaluate("document.querySelectorAll('[data-rv]').length") > 0
+
+
+def test_lite_mode_is_static(hermetic_page, mock_api, hermetic_server):
+    """Статичен только лёгкий режим (здесь — экономия трафика): без GSAP, без появления блоков."""
+    page = hermetic_page
+    page.add_init_script(
+        "Object.defineProperty(navigator, 'connection', {value: {saveData: true}, configurable: true});")
+    mock_api()
+    loaded = []
+    page.on("request", lambda r: loaded.append(r.url) if "gsap" in r.url.lower() else None)
+    page.goto(hermetic_server + "/", wait_until="load")
+    _ready(page)
     page.wait_for_timeout(1500)
+    assert page.evaluate("bagam.lite") is True
     assert loaded == []
     assert page.evaluate("document.querySelectorAll('[data-rv]').length") == 0
-    # \u0441\u0447\u0451\u0442\u0447\u0438\u043a \u043d\u0430 \u0433\u043b\u0430\u0432\u043d\u043e\u0439 (\u0442\u043e\u0447\u043d\u043e\u0441\u0442\u044c \u043c\u043e\u0434\u0435\u043b\u0438) \u0441\u0440\u0430\u0437\u0443 \u043f\u043e\u043a\u0430\u0437\u044b\u0432\u0430\u0435\u0442 \u0438\u0442\u043e\u0433, \u0431\u0435\u0437 \u0431\u0435\u0433\u0430 \u043e\u0442 \u043d\u0443\u043b\u044f
     assert set(page.locator(".met [data-l=mape]").all_text_contents()) == {"7,6%"}
+
+
+@pytest.mark.parametrize("motion", ["no-preference", "reduce"])
+@pytest.mark.parametrize("path", ("/", "/stats") + SUBPAGES)
+def test_to_top_glides_on_every_page(hermetic_page, mock_api, hermetic_server, path, motion):
+    """«Наверх» везде едет плавно — и при «меньше движения» в системе (у владельца в
+    Windows выключены анимации, кнопка прыгала мгновенно), и в лёгком режиме."""
+    page = hermetic_page
+    page.emulate_media(reduced_motion=motion)
+    mock_api()
+    page.goto(hermetic_server + path, wait_until="load")
+    _ready(page)
+    frames = page.evaluate("""async () => {
+      document.documentElement.classList.add('lite');
+      bagam.lite = true;
+      window.scrollTo({top: document.documentElement.scrollHeight, behavior: 'instant'});
+      await new Promise(r => setTimeout(r, 300));
+      const start = scrollY, ys = [];
+      document.querySelector('.ftop').click();
+      for (let i = 0; i < 400 && scrollY > 0; i++) {
+        await new Promise(r => requestAnimationFrame(r));
+        ys.push(scrollY);
+      }
+      return {start, between: ys.filter(y => y > 0 && y < start).length, end: scrollY};
+    }""")
+    assert frames["start"] > 300, f"{path}: страница короче экрана — нечего проверять"
+    assert frames["end"] == 0
+    assert frames["between"] >= 10, f"{path} ({motion}): прыжок вместо плавной прокрутки"
 
 
 def test_jump_form_and_faq_work_before_any_animation_library(hermetic_page, mock_api, hermetic_server):

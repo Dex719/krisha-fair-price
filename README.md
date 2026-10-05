@@ -14,7 +14,7 @@
 [![CI](https://github.com/Dex719/krisha-fair-price/actions/workflows/ci.yml/badge.svg)](https://github.com/Dex719/krisha-fair-price/actions/workflows/ci.yml)
 ![python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
-![version](https://img.shields.io/badge/version-0.5.0-blue)
+![version](https://img.shields.io/badge/version-1.0.0-blue)
 ![license](https://img.shields.io/badge/license-ELv2-lightgrey)
 
 **[🚀 Открыть сайт](https://bagam.info)** &nbsp;·&nbsp; **[📊 Рынок Алматы](https://bagam.info/stats)** &nbsp;·&nbsp; **[🏠 Аренда](https://bagam.info/stats?mode=rent)** &nbsp;·&nbsp; **[🤖 Telegram-бот](https://t.me/fairprice_kzbot)** &nbsp;·&nbsp; **[🧵 Threads](https://www.threads.net/@bagam.kz)**

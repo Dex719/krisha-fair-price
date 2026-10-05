@@ -136,8 +136,11 @@ def test_site_js_api_and_fixes():
     assert "removeItem(OLD_KEY)" in SITE_JS
 
 
-def test_design_css_reduced_motion_and_color_scheme():
-    assert "@media (prefers-reduced-motion:reduce)" in CSS
+def test_design_css_motion_policy_and_color_scheme():
+    # «меньше движения» в системе анимации не гасит (владелец просил) — статичен только html.lite
+    assert "prefers-reduced-motion:reduce" not in CSS
+    assert "function still() { return B.lite; }" in SITE_JS
+    assert "html.lite .sk" in CSS and "html.lite::view-transition-old(root)" in CSS
     assert "html[data-theme=light]{color-scheme:light}" in CSS
     assert "html[data-theme=dark]{color-scheme:dark}" in CSS
     for dead in (".ridge{", ".map i{", ".msg.alert", ".icf{", ".sheet.busy{opacity"):

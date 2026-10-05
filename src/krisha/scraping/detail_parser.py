@@ -108,6 +108,9 @@ def parse_detail(html: str, url: str = "") -> dict[str, Any] | None:
         "building_type": params.get("flat.building"),
         "year_built": int(year) if year else None,
         "ceiling": ceiling,
+        # «Almaty», «Astana»… В базу не пишется (нет в LISTING_COLUMNS): по нему
+        # проверка ссылки отказывает объявлениям не из Алматы (predict.is_almaty).
+        "city": address.get("city"),
         "district": address.get("district"),
         "microdistrict": address.get("microdistrict"),
         "street": address.get("street"),

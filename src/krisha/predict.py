@@ -17,6 +17,7 @@ import numpy as np
 from catboost import CatBoostRegressor, Pool
 
 from krisha.config import (
+    ALMATY_BBOX,
     DB_PATH,
     MODEL_HI_PATH,
     MODEL_LO_PATH,
@@ -63,6 +64,19 @@ class ListingNotFound(RuntimeError):
     (например, /track в боте), продолжает работать (.kiro/specs/predict-edge-listings).
     """
 
+
+class ListingOutsideAlmaty(ValueError):
+    """Объявление не из Алматы: обе модели учились только на городе, и оценка
+    квартиры в Астане или пригороде была бы цифрой с потолка.
+
+    Ошибка ввода, а не наш сбой — /api/predict отвечает 422 с текстом
+    (OUTSIDE_ALMATY), бот пишет его как есть. В отличие от InvalidListingUrl
+    кэшируется негативным кэшем калитки: город у объявления не поменяется,
+    а повторная ссылка не должна снова идти на krisha.
+    """
+
+
+OUTSIDE_ALMATY = "Оцениваем только квартиры в Алматы, а это объявление из другого города"
 
 KRISHA_URL_RE = re.compile(r"krisha\.kz/a/show/(\d+)")
 KRISHA_SHOW_BASE = "https://krisha.kz/a/show/"
@@ -755,6 +769,24 @@ def user_client(
     )
 
 
+def is_almaty(listing: dict[str, Any]) -> bool:
+    """Объявление из Алматы? Решает город со страницы krisha (address.city:
+    «Almaty», у Астаны «Astana», у пригородов — свой город). Нет города —
+    координаты в ALMATY_BBOX. Нет ни того, ни другого — не отказываем:
+    проверить нечем, а потерять живое объявление Алматы хуже."""
+    city = str(listing.get("city") or "").strip().lower()
+    if city:
+        return city in ("almaty", "алматы")
+    try:
+        lat, lon = float(listing["lat"]), float(listing["lon"])
+    except (KeyError, TypeError, ValueError):
+        return True
+    return (
+        ALMATY_BBOX["lat_min"] <= lat <= ALMATY_BBOX["lat_max"]
+        and ALMATY_BBOX["lon_min"] <= lon <= ALMATY_BBOX["lon_max"]
+    )
+
+
 def predict_from_url(
     url: str,
     live_vision: bool = True,
@@ -783,6 +815,10 @@ def predict_from_url(
     listing = parse_detail(html, url)
     if listing is None:
         raise RuntimeError("Не удалось распарсить объявление")
+    # До оценки и до записи в базу: чужой город не должен ни получить вердикт,
+    # ни осесть в базе Алматы.
+    if not is_almaty(listing):
+        raise ListingOutsideAlmaty(OUTSIDE_ALMATY)
     # issue #110: одно SQLite-соединение на весь HTTP-запрос — предикт
     # (llm_flags/market/vision/analogs/log_prediction) и последующие
     # find_duplicate_id/upsert_listing переиспользуют его вместо каждый
