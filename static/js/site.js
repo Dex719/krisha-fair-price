@@ -430,7 +430,9 @@
 
   /* ------------------------------------------------------------ прокрутка */
   /* Своими кадрами: время от первого кадра, цель пересчитывается на каждом кадре (над ней может
-     что-то схлопнуться). Колесо или касание останавливают. «Меньше движения» — сразу прыжок. */
+     что-то схлопнуться). Колесо или касание останавливают. Едет одинаково везде — и при «меньше
+     движения» в системе, и в лёгком режиме: прокрутку просит сам человек кнопкой или ссылкой, а
+     прыжок на тысячи пикселей теряет место на странице (владелец просил плавно, 2026-10-02). */
   function jump(y) {
     var prev = root.style.scrollBehavior;
     root.style.scrollBehavior = 'auto';
@@ -440,7 +442,7 @@
   function glide(target, dur, done) {
     var fn = typeof target === 'function' ? target : function () { return +target || 0; };
     var from = w.pageYOffset || root.scrollTop;
-    if (still() || Math.abs(fn() - from) < 2) { jump(fn()); if (done) done(); return; }
+    if (Math.abs(fn() - from) < 2) { jump(fn()); if (done) done(); return; }
     var prev = root.style.scrollBehavior;
     root.style.scrollBehavior = 'auto';
     var t0 = 0, stopped = false;

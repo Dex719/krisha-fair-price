@@ -184,6 +184,7 @@ a.srclink:hover{color:var(--limeink);border-color:var(--limeink)}
 .rbtn:hover{border-color:var(--pbd2);background:var(--phov)}
 .rbtn:active{scale:.97}
 .rbtn svg{width:18px;height:18px;flex:none}
+.rbtn .soon{font:600 11px/1 Onest,OnestFB,sans-serif;font-style:normal;letter-spacing:.02em;padding:4px 8px;border-radius:var(--rpill);background:var(--lime);color:var(--onl)}
 .rbtn.pri{background:var(--lime);border-color:var(--lime);color:var(--onl)}
 .rbtn.pri:hover{background:color-mix(in oklab,var(--lime) 86%,#fff);border-color:transparent}
 .rnums{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line);margin-top:8px}

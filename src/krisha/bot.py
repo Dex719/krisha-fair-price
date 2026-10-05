@@ -24,7 +24,13 @@ from typing import Any
 import httpx
 
 from krisha import predict_gate
-from krisha.predict import KRISHA_URL_RE, ListingNotFound
+from krisha.predict import (
+    KRISHA_URL_RE,
+    OUTSIDE_ALMATY,
+    ListingNotFound,
+    ListingOutsideAlmaty,
+    is_almaty,
+)
 from krisha.scraping.client import SourceUnavailable
 from krisha.stats import DISTRICT_RU
 
@@ -449,6 +455,10 @@ def handle_update(update: dict[str, Any]) -> None:
         tg_call("sendMessage", chat_id=chat_id,
                 text="Такого объявления на krisha нет — похоже, его уже сняли с продажи 🤷")
         return
+    except ListingOutsideAlmaty:
+        tg_call("sendMessage", chat_id=chat_id,
+                text="Оцениваю только квартиры в Алматы, а это объявление из другого города 🏙")
+        return
     except (ValueError, RuntimeError) as exc:
         tg_call("sendMessage", chat_id=chat_id,
                 text=f"Не получилось оценить объявление: {exc}")
@@ -702,6 +712,9 @@ def _track_listing_meta(listing_id: int) -> tuple[int | None, str | None, str]:
     listing = parse_detail(page, url)
     if listing is None:
         raise RuntimeError("Не удалось разобрать объявление")
+    # слежка — тоже только за Алматы: чужой город не должен осесть в базе
+    if not is_almaty(listing):
+        raise ListingOutsideAlmaty(OUTSIDE_ALMATY)
     deal = detect_deal(listing)
     try:
         # каждая сделка — в свою базу: месячная цена аренды исказила бы статистику продажи
@@ -749,7 +762,7 @@ def _handle_track_command(chat_id: int, text: str) -> None:
     tg_call("sendChatAction", chat_id=chat_id, action="typing")
     try:
         price, title, deal = _track_listing_meta(listing_id)
-    except RuntimeError as exc:
+    except (RuntimeError, ListingOutsideAlmaty) as exc:
         tg_call("sendMessage", chat_id=chat_id, text=f"Не получилось: {exc}")
         return
 

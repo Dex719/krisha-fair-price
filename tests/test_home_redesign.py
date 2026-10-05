@@ -148,8 +148,8 @@ def test_home_report_shows_everything_prod_showed():
     assert " снизил цену на " in html and " поднял цену на " in html
     assert "renderSimilar" in html and "analogs" in html
     assert "function trackHref" in html and "?start=track_" in html
-    assert "reportShareText" in html and "navigator.share" in html
-    assert "Справедливая оценка: " in html and "Диапазон модели: " in html
+    # «Поделиться» пока «скоро» — см. test_home_polish
+    assert '<em class="soon">скоро</em>' in html
 
 
 def _names_block(html: str) -> str:

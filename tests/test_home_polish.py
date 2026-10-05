@@ -23,18 +23,18 @@ def test_factor_rows_keep_direction_value_and_bar():
     assert "f.hint" in html, "подсказка приходит из API"
 
 
-def test_share_report_shares_text_not_page_link():
-    """Делимся содержанием отчёта: ссылка на наш сайт получателю ничего не покажет."""
+def test_share_button_is_clickable_and_says_soon():
+    """«Поделиться» ещё в работе: кнопка видна и нажимается, помечена «скоро» и на
+    нажатие отвечает «Уже делаем»; событие share считает, сколько её ждут."""
     html = _static("index.html")
+    css = _static("design.css")
 
-    assert "reportShareText" in html
-    assert "Цена в объявлении: " in html
-    assert "Справедливая оценка: " in html
-    assert "Диапазон модели: " in html
-    assert "Объявление: " in html
-    assert "baǵam — справедливая цена квартир в Алматы" in html
-    assert "navigator.share({title: 'Отчёт baǵam', text})" in html
-    assert "writeText(location.href)" not in html
+    assert '<span>Поделиться отчётом</span><em class="soon">скоро</em></button>' in html
+    assert ".rbtn .soon{" in css
+    assert "lbl.textContent = 'Уже делаем'" in html
+    assert "track('share'" in html
+    # неработающая отправка не осталась мёртвым кодом
+    assert "navigator.share" not in html and "reportShareText" not in html
 
 
 def test_scale_labels_never_leave_the_track():

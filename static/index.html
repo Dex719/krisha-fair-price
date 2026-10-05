@@ -111,7 +111,7 @@ html.anim .hform{animation:bgmup .8s cubic-bezier(.16,1,.3,1) .2s both}
  </div>
  <div class="rwarn" id="rWarn" hidden></div>
  <div class="racts" id="rActs" hidden>
-  <button type="button" class="rbtn rshare"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3.5"/><path d="m7.5 8 4.5-4.5L16.5 8"/><path d="M8 11.5H6.5A1.5 1.5 0 0 0 5 13v6.5A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V13a1.5 1.5 0 0 0-1.5-1.5H16"/></svg><span>Поделиться отчётом</span></button>
+  <button type="button" class="rbtn rshare"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3.5"/><path d="m7.5 8 4.5-4.5L16.5 8"/><path d="M8 11.5H6.5A1.5 1.5 0 0 0 5 13v6.5A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V13a1.5 1.5 0 0 0-1.5-1.5H16"/></svg><span>Поделиться отчётом</span><em class="soon">скоро</em></button>
   <a class="rbtn rtrack" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 10l-4 4l6 6l4-16l-18 7l4 2l2 6l3-4"/></svg><span>Следить за ценой в боте</span></a>
  </div>
  <div class="rnums">
@@ -493,30 +493,6 @@ bagam.ready(function(){
     box.hidden = false;
   }
 
-  /* Текст отчёта для «поделиться»: делимся содержанием, а не ссылкой на страницу —
-     у получателя нет доступа к чужому объявлению по адресу нашего сайта. */
-  function reportShareText(r){
-    if (!r) return 'baǵam — справедливая цена квартир в Алматы\n' + location.origin + '/';
-    const VW = {GOOD_DEAL:'выгодно — ниже обычного диапазона', FAIR:'в рынке', OVERPRICED:'дорого — выше обычного диапазона'};
-    const u = r.deal === 'arenda' ? ' ₸/мес' : ' ₸';
-    const scam = r.scam_risk && r.scam_risk.level === 'high';
-    const url = lotUrl(r);
-    return [
-      r.title || 'Отчёт об оценке квартиры',
-      r.actual_price == null ? null : 'Цена в объявлении: ' + ru(r.actual_price) + u,
-      (r.deal === 'arenda' ? 'Справедливая аренда: ' : 'Справедливая оценка: ') + ru(r.fair_price) + u,
-      (r.fair_price_low && r.fair_price_high)
-        ? 'Диапазон модели: ' + ru(r.fair_price_low) + '–' + ru(r.fair_price_high) + u : null,
-      'Вердикт: ' + (r.actual_price == null || r.room_share ? 'без цены за квартиру' : scam ? 'подозрительно дёшево' : (VW[r.verdict] || 'в рынке')),
-      (r.deal !== 'arenda' && r.rental_yield && r.rental_yield.gross_yield_pct != null)
-        ? 'Если сдавать: ~' + ru(r.rental_yield.monthly_rent) + ' ₸/мес, доходность ' +
-          f1(r.rental_yield.gross_yield_pct) + '% годовых' : null,
-      url ? 'Объявление: ' + url : null,
-      'baǵam — справедливая цена квартир в Алматы',
-      location.origin + '/'
-    ].filter(Boolean).join('\n');
-  }
-
   /* Слежение за ценой: бот открывается сразу на этом объявлении. */
   function trackHref(r){
     const id = String(r.listing_id || (String(r.url || '').match(RX) || [])[1] || '');
@@ -587,9 +563,7 @@ bagam.ready(function(){
       : RENT ? 'по сравнению с типичной арендой в Алматы, в месяц' : 'по сравнению с типичной квартирой в Алматы';
   }
 
-  let current = null;
   function render(r){
-    current = r;
     RENT = r.deal === 'arenda';
     /* Объявление без цены: сравнивать не с чем — показываем оценку модели и убираем всё,
        что без цены превратилось бы в ноль. Подселение (аренда) — то же: цена не за квартиру. */
@@ -678,18 +652,16 @@ bagam.ready(function(){
     if (url){ src.href = url; src.textContent = url.replace(/^https?:\/\//, '') + ' ↗'; }
   }
 
-  /* «Поделиться» — одна кнопка на все разборы, текст берётся из последнего ответа */
+  /* «Поделиться» ещё в работе: кнопка нажимается и честно отвечает «скоро»,
+     а событие share показывает, сколько людей её ждут */
+  let shareTimer = 0;
   $('.rshare').addEventListener('click', () => {
-    if (!current) return;
     track('share', {deal: RENT ? 'rent' : 'sale'});
-    const text = reportShareText(current);
     const lbl = $('.rshare span');
-    if (navigator.share) navigator.share({title: 'Отчёт baǵam', text}).catch(() => {});
-    else if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => {
-      status.textContent = 'Отчёт скопирован';
-      lbl.textContent = 'Скопировано';
-      setTimeout(() => { lbl.textContent = 'Поделиться отчётом'; }, 2500);
-    });
+    status.textContent = 'Поделиться отчётом можно будет в ближайшем обновлении';
+    lbl.textContent = 'Уже делаем';
+    clearTimeout(shareTimer);
+    shareTimer = setTimeout(() => { lbl.textContent = 'Поделиться отчётом'; }, 2500);
   });
 
   /* статус ожидания — над вердиктом, а не в низу высокой карточки */
@@ -727,7 +699,12 @@ bagam.ready(function(){
     };
     // 503 — временная причина, и сервер называет её сам: перегруз либо anti-bot
     // челлендж на krisha. 404 — krisha ответила, что объявления нет (сняли).
-    if (res.status === 422) return ['Такое объявление не открывается — проверьте ссылку', 'Скопируйте адрес из строки браузера на странице объявления krisha.kz и вставьте ещё раз.', 'input'];
+    // 422 — ошибка ввода: кривая ссылка или объявление не из Алматы (причину называет сервер).
+    if (res.status === 422){
+      const d = await detail();
+      if (d.startsWith('Оцениваем только квартиры в Алматы')) return [d, 'Модели учились на объявлениях Алматы: в других городах цены устроены иначе, и оценка была бы неточной.', 'input'];
+      return ['Такое объявление не открывается — проверьте ссылку', 'Скопируйте адрес из строки браузера на странице объявления krisha.kz и вставьте ещё раз.', 'input'];
+    }
     if (res.status === 429) return ['Слишком много запросов подряд. Попробуйте через минуту', 'Частые проверки ограничены, чтобы сервиса хватало всем.'];
     if (res.status === 404) return [await detail() || 'Объявление не найдено — возможно, его уже сняли с продажи', 'Проверьте ссылку или возьмите другое объявление.', 'input'];
     if (res.status === 503) return [await detail() || 'Сервис перегружен. Попробуйте через полминуты', 'Обычно это ненадолго — нажмите «Попробовать ещё раз» чуть позже.'];

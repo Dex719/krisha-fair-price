@@ -93,6 +93,34 @@ def test_reduced_motion_skips_gsap_and_counts(hermetic_page, mock_api, hermetic_
     assert set(page.locator(".met [data-l=mape]").all_text_contents()) == {"7,6%"}
 
 
+@pytest.mark.parametrize("motion", ["no-preference", "reduce"])
+@pytest.mark.parametrize("path", ("/", "/stats") + SUBPAGES)
+def test_to_top_glides_on_every_page(hermetic_page, mock_api, hermetic_server, path, motion):
+    """«Наверх» везде едет плавно — и при «меньше движения» в системе (у владельца в
+    Windows выключены анимации, кнопка прыгала мгновенно), и в лёгком режиме."""
+    page = hermetic_page
+    page.emulate_media(reduced_motion=motion)
+    mock_api()
+    page.goto(hermetic_server + path, wait_until="load")
+    _ready(page)
+    frames = page.evaluate("""async () => {
+      document.documentElement.classList.add('lite');
+      bagam.lite = true;
+      window.scrollTo({top: document.documentElement.scrollHeight, behavior: 'instant'});
+      await new Promise(r => setTimeout(r, 300));
+      const start = scrollY, ys = [];
+      document.querySelector('.ftop').click();
+      for (let i = 0; i < 400 && scrollY > 0; i++) {
+        await new Promise(r => requestAnimationFrame(r));
+        ys.push(scrollY);
+      }
+      return {start, between: ys.filter(y => y > 0 && y < start).length, end: scrollY};
+    }""")
+    assert frames["start"] > 300, f"{path}: страница короче экрана — нечего проверять"
+    assert frames["end"] == 0
+    assert frames["between"] >= 10, f"{path} ({motion}): прыжок вместо плавной прокрутки"
+
+
 def test_jump_form_and_faq_work_before_any_animation_library(hermetic_page, mock_api, hermetic_server):
     page = hermetic_page
     mock_api()
