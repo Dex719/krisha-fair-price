@@ -1,9 +1,21 @@
 """Тесты оценки по вставленному тексту (Gemini-извлечение параметров)."""
 
+import pytest
+
 from krisha import text_parse
 from krisha.text_parse import parsed_to_listing, predict_from_text
 
-TEXT = ("Продам уютную 2-комнатную квартиру 60 м² в Бостандыкском районе, "
+
+@pytest.fixture(autouse=True)
+def _fresh_parse_cache():
+    """Ответы Gemini кэшируются в модуле: тесты с одним TEXT и разными подменами
+    `_gemini_extract` не должны получать чужой закэшированный разбор."""
+    text_parse._parse_cache.clear()
+    yield
+    text_parse._parse_cache.clear()
+
+
+TEXT =("Продам уютную 2-комнатную квартиру 60 м² в Бостандыкском районе, "
         "5/9 этаж, кирпичный дом 2015 года, 45 млн тенге, торг.")
 
 PARSED = {"is_listing": True, "rooms": 2, "area": 60.0, "floor": 5,
@@ -34,10 +46,11 @@ def test_predict_from_text_soft_paths(monkeypatch):
     monkeypatch.setattr(text_parse, "_gemini_extract",
                         lambda text, key: {"is_listing": False})
     assert predict_from_text(TEXT) is None
-    # объявление без площади/комнат — мягкая ошибка
+    # объявление без площади/комнат — мягкая ошибка (другой текст: на TEXT в
+    # кэше уже лежит «не объявление» из предыдущего шага)
     monkeypatch.setattr(text_parse, "_gemini_extract",
                         lambda text, key: {"is_listing": True, "rooms": None, "area": None})
-    assert predict_from_text(TEXT)["error"] == "no_key_fields"
+    assert predict_from_text(TEXT + " Без деталей.")["error"] == "no_key_fields"
 
 
 def test_predict_from_text_happy_path(monkeypatch):
