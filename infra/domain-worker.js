@@ -33,7 +33,17 @@ const SPACE_LOCATION = /^https?:\/\/dex719-krisha-fair-price\.hf\.space(?::\d+)?
 // Что можно отдавать из кэша Cloudflare: html-страницы сайта и статика с версией в URL.
 const PAGE_PATHS = new Set([
   "/", "/stats", "/about", "/bot", "/privacy", "/terms", "/robots.txt", "/sitemap.xml", "/llms.txt", "/favicon.ico",
+  "/.well-known/security.txt",
 ]);
+// CORS-заголовки апстрима, которые на домен не пропускаем (см. out.headers ниже).
+const CORS_HEADERS = [
+  "access-control-allow-origin",
+  "access-control-allow-credentials",
+  "access-control-allow-methods",
+  "access-control-allow-headers",
+  "access-control-expose-headers",
+  "access-control-max-age",
+];
 function isCacheablePath(pathname) {
   return PAGE_PATHS.has(pathname) || pathname.startsWith("/static/");
 }
@@ -87,6 +97,18 @@ export default {
     });
 
     const out = new Response(response.body, response);
+    // Прокси HF отражает любой Origin: на OPTIONS /api/predict с Origin:
+    // https://evil.example приходил Access-Control-Allow-Origin: https://evil.example
+    // (плюс allow-methods, allow-headers и expose-headers: *). API без
+    // аутентификации, утечки данных нет, но чужая страница могла бы из браузеров
+    // своих посетителей слать POST /api/predict — распределённый скрейп krisha
+    // через наш Space. Самому сайту CORS не нужен: страницы, API и шрифты
+    // (preload с crossorigin) — всё на одном origin, bagam.info. Поэтому
+    // CORS-заголовки апстрима снимаем: без них preflight чужого origin
+    // проваливается, а браузер не отдаёт чужой странице ответ.
+    for (const name of CORS_HEADERS) {
+      out.headers.delete(name);
+    }
     // HF вешает на каждый ответ Link: <huggingface.co/spaces/…>; rel="canonical" —
     // поисковик склеил бы домен со страницей Space и не индексировал bagam.info.
     // Канонический адрес задаёт <link rel="canonical"> в самих страницах.

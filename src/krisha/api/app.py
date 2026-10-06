@@ -114,7 +114,9 @@ _ACTIVE_CSP = CSP
 PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
 # Служебные адреса: поисковику в индексе они не нужны, даже если ссылка на них
 # где-то найдётся (robots.txt запрещает обход, но не индекс по внешней ссылке).
-_NOINDEX_PREFIXES = ("/api/", "/tg/", "/docs", "/redoc", "/openapi.json", "/livez", "/readyz")
+_NOINDEX_PREFIXES = (
+    "/api/", "/tg/", "/docs", "/redoc", "/openapi.json", "/livez", "/readyz", "/.well-known/",
+)
 
 
 # Лимит тела запроса: наш самый большой вход — короткий JSON с URL,
@@ -1594,6 +1596,42 @@ def sitemap_xml(request: Request) -> Response:
     )
     return Response(body, media_type="application/xml",
                     headers={"Cache-Control": "public, max-age=86400"})
+
+
+# security.txt (RFC 9116): куда писать об уязвимости. Контакты те же, что в
+# SECURITY.md и на странице «О проекте»: приватные сообщения GitHub и Telegram
+# автора. Expires обязателен по RFC и должен быть не дальше года: просроченный
+# файл клиенты вправе игнорировать, поэтому дату продлевают вручную (тест
+# tests/test_security_txt.py напомнит, когда она пройдёт).
+SECURITY_TXT_CONTACTS = (
+    "https://github.com/Dex719/krisha-fair-price/security/advisories/new",
+    "https://t.me/Hopepe1",
+)
+SECURITY_TXT_EXPIRES = "2027-10-01T00:00:00.000Z"
+SECURITY_TXT_POLICY = "https://github.com/Dex719/krisha-fair-price/blob/main/SECURITY.md"
+
+
+@app.api_route("/.well-known/security.txt", methods=["GET", "HEAD"], include_in_schema=False)
+async def security_txt(request: Request) -> Response:
+    # Canonical — адрес на домене сайта (_site_base_url), а не на Space: RFC 9116
+    # просит указывать место, где файл лежит «официально». Служебный адрес, а не
+    # страница: X-Robots-Tag: noindex ставит _NOINDEX_PREFIXES, в sitemap его
+    # нет. Путь не под /static/ — _CachedStatic его не видит, это обычный маршрут;
+    # обработчик 404 со слэшем тоже не мешает (путь не оканчивается на «/»).
+    body = (
+        "".join(f"Contact: {contact}\n" for contact in SECURITY_TXT_CONTACTS)
+        + f"Expires: {SECURITY_TXT_EXPIRES}\n"
+        "Preferred-Languages: ru, en\n"
+        f"Canonical: {_site_base_url(request)}/.well-known/security.txt\n"
+        f"Policy: {SECURITY_TXT_POLICY}\n"
+    )
+    payload = body.encode("utf-8")
+    headers = {"Cache-Control": "public, max-age=86400"}
+    if request.method == "HEAD":
+        # как в _asset_response: тела нет, а Content-Length остаётся настоящим
+        headers["Content-Length"] = str(len(payload))
+        payload = b""
+    return Response(payload, media_type="text/plain; charset=utf-8", headers=headers)
 
 
 @app.api_route("/rent", methods=["GET", "HEAD"], include_in_schema=False)
