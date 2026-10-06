@@ -1,6 +1,16 @@
 """Тесты Telegram-бота: форматирование и обработка апдейтов (без сети)."""
 
+import logging
+
+import httpx
+import pytest
+
 from krisha import bot, predict_gate
+from krisha.predict import ListingNotFound, ListingOutsideAlmaty
+from krisha.scraping.client import SourceUnavailable
+
+# Лимитер бота и кэш разбора Gemini чистит conftest._clear_api_caches: тесты
+# ниже пишут от одного и того же chat_id, а ведро живёт в модуле.
 
 SAMPLE_RESULT = {
     "listing_id": 123,
@@ -628,3 +638,126 @@ def test_verdicts_match_site_wording():
     text = bot.format_reply(SAMPLE_RESULT)
     assert "🟡 В рынке" in text
     assert "⚖️ Справедливая цена:" in text
+
+
+# --- аудит безопасности 2026-10-06: тексты ошибок и токен в логах ------------
+
+LEAKY = "SECRET-internal C:/srv/app/model.cbm key=abc123"
+TOKEN = "123456:AAH-very-secret-token"
+
+
+def _sent_texts(calls):
+    return [kw.get("text", "") for m, kw in calls if m == "sendMessage"]
+
+
+@pytest.mark.parametrize("exc", [RuntimeError(LEAKY), ValueError(LEAKY)])
+def test_predict_error_text_is_fixed_and_details_go_to_the_log(exc, monkeypatch, caplog):
+    """Раньше пользователю уходило «Не получилось оценить объявление: {exc}» —
+    сырой текст ValueError/RuntimeError (а под ними и чужие библиотеки)."""
+
+    def broken(url, live_vision=True, timeout=None, on_attempt=None):
+        raise exc
+
+    calls = []
+    monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
+    monkeypatch.setattr(predict_gate, "predict_from_url", broken)
+
+    with caplog.at_level(logging.WARNING, logger="krisha.bot"):
+        bot.handle_update({"message": {"chat": {"id": 42}, "text": "https://krisha.kz/a/show/321"}})
+
+    assert _sent_texts(calls) == [bot.MSG_EVAL_FAILED]
+    assert "SECRET" not in repr(calls)
+    # детали — в лог, вместе с трейсом
+    warned = [r for r in caplog.records if r.levelno == logging.WARNING and r.exc_info]
+    assert warned and warned[0].exc_info[1] is exc
+
+
+@pytest.mark.parametrize("exc,expected", [
+    (RuntimeError(LEAKY), "MSG_TRACK_FAILED"),
+    (SourceUnavailable(LEAKY), "MSG_SOURCE_UNAVAILABLE"),
+    (ListingNotFound(LEAKY), "MSG_LISTING_GONE"),
+    (ListingOutsideAlmaty(LEAKY), "MSG_OUTSIDE_ALMATY"),
+])
+def test_track_error_texts_are_fixed(exc, expected, monkeypatch, caplog):
+    """/track отвечал «Не получилось: {exc}»; SourceUnavailable несёт описание
+    попыток скрейпа — наружу ему незачем."""
+
+    def broken(listing_id):
+        raise exc
+
+    calls = []
+    monkeypatch.setattr(bot, "tg_call", lambda method, **kw: calls.append((method, kw)) or {"ok": True})
+    monkeypatch.setattr(bot, "_track_listing_meta", broken)
+
+    with caplog.at_level(logging.WARNING, logger="krisha.bot"):
+        bot.handle_update({"message": {"chat": {"id": 9}, "text": "/track https://krisha.kz/a/show/777"}})
+
+    assert _sent_texts(calls) == [getattr(bot, expected)]
+    assert "SECRET" not in repr(calls)
+    if expected == "MSG_TRACK_FAILED":  # непредвиденное — с трейсом в лог
+        assert any(r.exc_info and r.exc_info[1] is exc for r in caplog.records)
+
+
+def test_fixed_error_texts_carry_no_exception_details():
+    for text in (bot.MSG_EVAL_FAILED, bot.MSG_TRACK_FAILED, bot.MSG_SOURCE_UNAVAILABLE,
+                 bot.MSG_LISTING_GONE, bot.MSG_OUTSIDE_ALMATY, bot.RATE_LIMITED_TEXT):
+        assert "{" not in text and "Traceback" not in text
+
+
+def _mock_tg_client(handler):
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def test_tg_call_does_not_write_bot_token_to_logs(monkeypatch, caplog):
+    """httpx 0.28 пишет «HTTP Request: POST <url>» на уровне INFO, а url Bot API
+    содержит /bot<TOKEN>/. Приложение держит корневой INFO — токен попадал в логи
+    контейнера на каждый вызов. bot глушит логгеры httpx/httpcore до WARNING."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", TOKEN)
+    monkeypatch.delenv("TG_API_BASE", raising=False)
+    seen_urls = []
+
+    def handler(request):
+        seen_urls.append(str(request.url))
+        return httpx.Response(200, json={"ok": True, "result": True})
+
+    monkeypatch.setattr(bot, "_get_tg_client", lambda: _mock_tg_client(handler))
+
+    with caplog.at_level(logging.INFO):  # как logging.basicConfig(level=INFO) в api/app.py
+        assert bot.tg_call("sendMessage", chat_id=1, text="привет") == {"ok": True, "result": True}
+
+    assert seen_urls == [f"https://api.telegram.org/bot{TOKEN}/sendMessage"]  # запрос реально ушёл
+    assert TOKEN not in caplog.text
+    assert not any(TOKEN in record.getMessage() for record in caplog.records)
+    assert not [r for r in caplog.records if r.name.startswith(("httpx", "httpcore"))]
+
+
+def test_httpx_loggers_are_quieted_by_bot_module():
+    # собственный уровень логгера, а не унаследованный: корневой в проде — INFO
+    for name in ("httpx", "httpcore"):
+        assert logging.getLogger(name).level >= logging.WARNING
+
+
+def test_token_log_check_catches_a_regression(monkeypatch, caplog):
+    """Контроль: если INFO у httpx включить обратно, токен в логе ПОЯВЛЯЕТСЯ —
+    значит, тест выше действительно ловит регресс, а не проходит вхолостую."""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", TOKEN)
+    monkeypatch.setattr(
+        bot, "_get_tg_client",
+        lambda: _mock_tg_client(lambda request: httpx.Response(200, json={"ok": True})),
+    )
+    with caplog.at_level(logging.INFO, logger="httpx"):
+        bot.tg_call("getMe")
+    assert TOKEN in caplog.text
+
+
+def test_tg_call_network_error_masks_token_in_log(monkeypatch, caplog):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", TOKEN)
+
+    def handler(request):
+        raise httpx.ConnectError(f"не достучался до {request.url}")
+
+    monkeypatch.setattr(bot, "_get_tg_client", lambda: _mock_tg_client(handler))
+    with caplog.at_level(logging.INFO):
+        assert bot.tg_call("getMe") is None
+    assert TOKEN not in caplog.text
+    assert "getMe failed" in caplog.text and "***" in caplog.text

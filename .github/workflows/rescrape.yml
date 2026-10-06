@@ -158,6 +158,12 @@ jobs:
         timeout-minutes: 15
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          # Ключ шифрования состояния (subscriptions._fernet): STATE_ENCRYPTION_KEY,
+          # а без неё — токен бота. Шаг читает зашифрованное состояние, поэтому без
+          # этой строки секрет STATE_ENCRYPTION_KEY в Actions ни на что не влиял, и
+          # после смены токена ключ «уезжал» (см. порядок ротации в .env.example).
+          # Секрета нет — приходит пустая строка, и ключ берётся из токена, как раньше.
+          STATE_ENCRYPTION_KEY: ${{ secrets.STATE_ENCRYPTION_KEY }}
           # состояние (подписчики, слежка, опубликованное в канале) — в репо данных
           KRISHA_DB_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
           TG_CHANNEL_ID: ${{ secrets.TG_CHANNEL_ID }}

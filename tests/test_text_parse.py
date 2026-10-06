@@ -3,6 +3,9 @@
 from krisha import text_parse
 from krisha.text_parse import parsed_to_listing, predict_from_text
 
+# Ответы Gemini кэшируются в модуле (_parse_cache): тесты с одним TEXT и разными
+# подменами `_gemini_extract` не должны получать чужой закэшированный разбор,
+# поэтому кэш чистит conftest._clear_api_caches до и после каждого теста.
 TEXT = ("Продам уютную 2-комнатную квартиру 60 м² в Бостандыкском районе, "
         "5/9 этаж, кирпичный дом 2015 года, 45 млн тенге, торг.")
 
@@ -34,10 +37,11 @@ def test_predict_from_text_soft_paths(monkeypatch):
     monkeypatch.setattr(text_parse, "_gemini_extract",
                         lambda text, key: {"is_listing": False})
     assert predict_from_text(TEXT) is None
-    # объявление без площади/комнат — мягкая ошибка
+    # объявление без площади/комнат — мягкая ошибка (другой текст: на TEXT в
+    # кэше уже лежит «не объявление» из предыдущего шага)
     monkeypatch.setattr(text_parse, "_gemini_extract",
                         lambda text, key: {"is_listing": True, "rooms": None, "area": None})
-    assert predict_from_text(TEXT)["error"] == "no_key_fields"
+    assert predict_from_text(TEXT + " Без деталей.")["error"] == "no_key_fields"
 
 
 def test_predict_from_text_happy_path(monkeypatch):

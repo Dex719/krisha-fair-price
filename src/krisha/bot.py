@@ -12,13 +12,18 @@
 - TG_API_BASE — базовый адрес Bot API (по умолчанию https://api.telegram.org).
   Нужен, когда хостинг не пускает исходящие запросы к Telegram напрямую:
   ставим прокси (см. infra/tg-proxy-worker.js) и указываем его адрес здесь.
+- BOT_RATE_LIMIT_PER_MIN / BOT_TEXT_LIMIT_PER_MIN / BOT_STATE_LIMIT_PER_MIN —
+  лимиты на один чат: все сообщения (12), свободный текст в Gemini (3),
+  команды, пишущие состояние (5); см. блок «Лимиты на чат» ниже.
 """
 
 import hashlib
 import html
 import logging
 import os
+import threading
 import time
+from collections import deque
 from typing import Any
 
 import httpx
@@ -35,6 +40,17 @@ from krisha.scraping.client import SourceUnavailable
 from krisha.stats import DISTRICT_RU
 
 logger = logging.getLogger(__name__)
+
+# httpx (0.28) пишет КАЖДЫЙ запрос на уровне INFO строкой «HTTP Request: POST
+# https://api.telegram.org/bot<TOKEN>/sendMessage …», а приложение включает
+# корневой INFO (logging.basicConfig в api/app.py) и логгер httpx не глушит —
+# токен бота попадал в логи контейнера на каждый tg_call. Все вызовы Bot API
+# идут через tg_call, поэтому любой, кто его вызывает, уже импортировал этот
+# модуль: уровень выставляем здесь, до первого запроса. WARNING оставляет сетевые
+# сбои самого httpx, но прячет построчный лог успешных запросов; httpcore — на
+# случай, если кто-то включит DEBUG (там тоже печатаются адреса).
+for _noisy_logger in ("httpx", "httpcore"):
+    logging.getLogger(_noisy_logger).setLevel(logging.WARNING)
 
 TG_API = "https://api.telegram.org"
 
@@ -391,6 +407,157 @@ def extract_url(text: str) -> str | None:
     return f"https://krisha.kz/a/show/{match.group(1)}" if match else None
 
 
+# --- Лимиты на чат --------------------------------------------------------
+# Вебхук защищён секретом, но писать боту может ЛЮБОЙ пользователь Telegram, а
+# каждое сообщение стоит нам чужого ресурса: ссылка — поход на krisha.kz с IP
+# Space (серия 403 — бан), /track и /alerts_on — коммит в приватный репозиторий
+# данных (лимит GitHub API токена), свободный текст от 40 символов — живой вызов
+# Gemini (дневная квота ключа). Поэтому на каждый чат — скользящее окно в памяти
+# процесса (схема та же, что у _check_rate_limit в api/app.py) и три ведра:
+#   msg   — любое сообщение чата (BOT_RATE_LIMIT_PER_MIN, по умолчанию 12);
+#   text  — свободный текст, уходящий в Gemini (BOT_TEXT_LIMIT_PER_MIN, 3);
+#   state — команды, пишущие состояние: /alerts_on, /alerts_off, /track,
+#           /untrack, а также deep-link /start track_… и /start market_…
+#           (BOT_STATE_LIMIT_PER_MIN, 5).
+# Сообщение проходит, только если есть место во ВСЕХ его вёдрах; отброшенное
+# нигде не записывается (как и в _check_rate_limit) — иначе спамер сам
+# продлевал бы себе бан.
+#
+# Состояние живёт в памяти процесса. При WEB_CONCURRENCY=2 калиток две — как и у
+# predict_gate: Telegram раскладывает апдейты по обоим воркерам, каждый считает
+# своё, и фактический потолок на чат — до 2x от заданного. Числа в env — это
+# «на процесс»; дефолты подобраны с запасом на удвоение: живому человеку хватает
+# 12/3/5 в минуту с лихвой, а спамера удвоение не спасает.
+BOT_RATE_WINDOW_S = 60.0
+BOT_MAX_RATE_KEYS = 10_000  # потолок чатов на ведро: память не растёт от потока новых chat_id
+_BOT_LIMITS = {
+    "msg": ("BOT_RATE_LIMIT_PER_MIN", 12),
+    "text": ("BOT_TEXT_LIMIT_PER_MIN", 3),
+    "state": ("BOT_STATE_LIMIT_PER_MIN", 5),
+}
+_STATE_ALERT_COMMANDS = ("/alerts_on", "/alerts_off")
+
+RATE_LIMITED_TEXT = "Слишком много запросов, подожди минуту 🙏"
+MSG_LISTING_GONE = "Такого объявления на krisha нет — похоже, его уже сняли с продажи 🤷"
+MSG_OUTSIDE_ALMATY = "Оцениваю только квартиры в Алматы, а это объявление из другого города 🏙"
+MSG_SOURCE_UNAVAILABLE = ("krisha сейчас не отдаёт это объявление 🙈 "
+                          "Попробуй ещё раз через минуту")
+# Фиксированные тексты на «прочие» ValueError/RuntimeError: str(exc) пользователю
+# не отдаём — под этими типами ходят и наши ошибки, и чужих библиотек, а их
+# текст может нести внутренности (пути, куски страницы, детали модели).
+MSG_EVAL_FAILED = ("Не получилось оценить объявление — не смог его разобрать. "
+                   "Проверь ссылку и попробуй ещё раз чуть позже 🙏")
+MSG_TRACK_FAILED = ("Не получилось взять объявление в слежку — не смог его разобрать. "
+                    "Проверь ссылку и попробуй ещё раз чуть позже 🙏")
+
+_bot_hits: dict[str, dict[str, deque[float]]] = {name: {} for name in _BOT_LIMITS}
+_bot_notified: dict[str, float] = {}  # чат -> когда последний раз писали «подожди»
+_bot_rate_lock = threading.Lock()
+
+
+def _rate_now() -> float:
+    """Часы лимитера. Отдельной функцией, чтобы тесты подменяли время, не трогая time."""
+    return time.monotonic()
+
+
+def _bot_limit(bucket: str) -> int:
+    """Лимит ведра: env или дефолт. Читается на каждый вызов — правка env = рестарт."""
+    name, default = _BOT_LIMITS[bucket]
+    try:
+        return max(1, int(os.environ.get(name, default)))
+    except ValueError:  # пусто (как в .env.example) или мусор
+        return default
+
+
+def _evict_rate_keys(table: dict, now: float, stamp) -> None:
+    """Вытесняет протухшие ключи; вызывается под _bot_rate_lock при переполнении.
+
+    stamp(value) — момент последнего события по ключу (None — пусто, выкидываем).
+    Если и после чистки таблица больше потолка (толпа живых новых чатов),
+    выбрасываем самые давние с запасом в 10 %, чтобы не пересортировывать её на
+    каждом следующем сообщении.
+    """
+    for key in [k for k, v in table.items()
+                if stamp(v) is None or now - stamp(v) > BOT_RATE_WINDOW_S]:
+        del table[key]
+    if len(table) > BOT_MAX_RATE_KEYS:
+        keep = BOT_MAX_RATE_KEYS - BOT_MAX_RATE_KEYS // 10
+        for key in sorted(table, key=lambda k: stamp(table[k]))[: len(table) - keep]:
+            del table[key]
+
+
+def _bot_rate_check(chat_id: Any, buckets: tuple[str, ...]) -> str:
+    """Пропускает сообщение чата через вёдра лимитера.
+
+    "ok" — обрабатываем; "notify" — отбросить и ответить «подожди минуту»
+    (ровно один раз за окно на чат, не на ведро); "drop" — отбросить молча:
+    ответ на каждое лишнее сообщение превращал бы спам в спам по Bot API.
+    """
+    key = str(chat_id)
+    now = _rate_now()
+    with _bot_rate_lock:
+        slots: list[tuple[dict, deque]] = []
+        full = False
+        for name in buckets:
+            table = _bot_hits[name]
+            if len(table) > BOT_MAX_RATE_KEYS:
+                _evict_rate_keys(table, now, lambda q: q[-1] if q else None)
+            q = table.get(key)
+            if q is None:
+                q = deque()
+            while q and now - q[0] > BOT_RATE_WINDOW_S:
+                q.popleft()
+            if len(q) >= _bot_limit(name):
+                full = True
+            slots.append((table, q))
+        if not full:
+            for table, q in slots:
+                q.append(now)
+                table[key] = q
+            return "ok"
+        last = _bot_notified.get(key)
+        if last is not None and now - last <= BOT_RATE_WINDOW_S:
+            return "drop"
+        if len(_bot_notified) > BOT_MAX_RATE_KEYS:
+            _evict_rate_keys(_bot_notified, now, lambda ts: ts)
+        _bot_notified[key] = now
+        return "notify"
+
+
+def reset_rate_limits() -> None:
+    """Сбрасывает счётчики лимитера (для тестов: состояние живёт в модуле)."""
+    with _bot_rate_lock:
+        for table in _bot_hits.values():
+            table.clear()
+        _bot_notified.clear()
+
+
+def _limit_bucket(text: str) -> str | None:
+    """«Дорогое» ведро, которое задевает сообщение, или None — только общее.
+
+    Повторяет маршрутизацию handle_update (те же startswith и разбор команды):
+    иначе команду можно было бы набрать так, чтобы обойти ведро. Для /track и
+    /untrack считаем любую форму, и голый /track со списком тоже: он дешёвый,
+    но лишняя строгость к нему ничего не стоит.
+    """
+    if text.startswith("/start"):
+        payload = _start_payload(text)
+        return "state" if payload.startswith(("track_", "market_")) else None
+    if text.startswith("/help"):
+        return None
+    if text.startswith("/alerts"):
+        cmd = text.partition(" ")[0].split("@")[0].lower()
+        return "state" if cmd in _STATE_ALERT_COMMANDS else None
+    if text.startswith(("/track", "/untrack")):
+        return "state"
+    if extract_url(text):
+        return None
+
+    from krisha.text_parse import MIN_TEXT_LEN
+
+    return "text" if len(text) >= MIN_TEXT_LEN else None
+
+
 def handle_update(update: dict[str, Any]) -> None:
     """Обработка одного апдейта Telegram (текстовые сообщения)."""
     message = update.get("message") or update.get("edited_message")
@@ -399,6 +566,14 @@ def handle_update(update: dict[str, Any]) -> None:
     chat_id = message.get("chat", {}).get("id")
     text = (message.get("text") or "").strip()
     if not chat_id or not text:
+        return
+
+    # Лимиты — ДО record_event: отброшенное сообщение в статистику бота не идёт.
+    bucket = _limit_bucket(text)
+    verdict = _bot_rate_check(chat_id, ("msg", bucket) if bucket else ("msg",))
+    if verdict != "ok":
+        if verdict == "notify":
+            tg_call("sendMessage", chat_id=chat_id, text=RATE_LIMITED_TEXT)
         return
 
     from krisha.usage import record_event
@@ -448,20 +623,18 @@ def handle_update(update: dict[str, Any]) -> None:
         # таймауты). Человеку важно знать, что дело не в ссылке и что повтор
         # имеет смысл — иначе он решит, что объявление «не открывается», и
         # уйдёт. Ветка выше RuntimeError: SourceUnavailable — его подкласс.
-        tg_call("sendMessage", chat_id=chat_id,
-                text="krisha сейчас не отдаёт это объявление 🙈 Попробуй ещё раз через минуту")
+        tg_call("sendMessage", chat_id=chat_id, text=MSG_SOURCE_UNAVAILABLE)
         return
     except ListingNotFound:
-        tg_call("sendMessage", chat_id=chat_id,
-                text="Такого объявления на krisha нет — похоже, его уже сняли с продажи 🤷")
+        tg_call("sendMessage", chat_id=chat_id, text=MSG_LISTING_GONE)
         return
     except ListingOutsideAlmaty:
-        tg_call("sendMessage", chat_id=chat_id,
-                text="Оцениваю только квартиры в Алматы, а это объявление из другого города 🏙")
+        tg_call("sendMessage", chat_id=chat_id, text=MSG_OUTSIDE_ALMATY)
         return
-    except (ValueError, RuntimeError) as exc:
-        tg_call("sendMessage", chat_id=chat_id,
-                text=f"Не получилось оценить объявление: {exc}")
+    except (ValueError, RuntimeError):
+        # Раньше пользователю уходил сырой str(exc) — см. MSG_EVAL_FAILED.
+        logger.warning("bot: не удалось оценить %s", url, exc_info=True)
+        tg_call("sendMessage", chat_id=chat_id, text=MSG_EVAL_FAILED)
         return
     except Exception:  # noqa: BLE001 — человек не должен остаться без ответа
         # Раньше непредвиденная ошибка (например, TypeError на объявлении без
@@ -762,8 +935,20 @@ def _handle_track_command(chat_id: int, text: str) -> None:
     tg_call("sendChatAction", chat_id=chat_id, action="typing")
     try:
         price, title, deal = _track_listing_meta(listing_id)
-    except (RuntimeError, ListingOutsideAlmaty) as exc:
-        tg_call("sendMessage", chat_id=chat_id, text=f"Не получилось: {exc}")
+    except ListingOutsideAlmaty:
+        tg_call("sendMessage", chat_id=chat_id, text=MSG_OUTSIDE_ALMATY)
+        return
+    except ListingNotFound:
+        tg_call("sendMessage", chat_id=chat_id, text=MSG_LISTING_GONE)
+        return
+    except SourceUnavailable:
+        tg_call("sendMessage", chat_id=chat_id, text=MSG_SOURCE_UNAVAILABLE)
+        return
+    except RuntimeError:
+        # Раньше «Не получилось: {exc}» — текст исключения (в том числе
+        # SourceUnavailable с внутренним описанием попыток) шёл пользователю.
+        logger.warning("bot: /track не смог разобрать объявление %s", listing_id, exc_info=True)
+        tg_call("sendMessage", chat_id=chat_id, text=MSG_TRACK_FAILED)
         return
 
     ok, reason = add_tracked(chat_id, listing_id, price, title, deal=deal)
