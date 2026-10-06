@@ -23,18 +23,26 @@ def test_factor_rows_keep_direction_value_and_bar():
     assert "f.hint" in html, "подсказка приходит из API"
 
 
-def test_share_button_is_clickable_and_says_soon():
-    """«Поделиться» ещё в работе: кнопка видна и нажимается, помечена «скоро» и на
-    нажатие отвечает «Уже делаем»; событие share считает, сколько её ждут."""
+def test_share_button_is_gone():
+    """Заглушка «Поделиться — скоро» убрана: ни разметки, ни стилей, ни обработчика."""
     html = _static("index.html")
     css = _static("design.css")
 
-    assert '<span>Поделиться отчётом</span><em class="soon">скоро</em></button>' in html
-    assert ".rbtn .soon{" in css
-    assert "lbl.textContent = 'Уже делаем'" in html
-    assert "track('share'" in html
-    # неработающая отправка не осталась мёртвым кодом
-    assert "navigator.share" not in html and "reportShareText" not in html
+    assert "rshare" not in html and 'class="soon"' not in html
+    assert ".soon" not in css
+    assert "Уже делаем" not in html and "track('share'" not in html
+
+
+def test_check_gives_visible_feedback():
+    """Проверка ссылки: спиннер в кнопке, плашка успеха, адрес #check=<id> без повторных запросов."""
+    html = _static("index.html")
+    css = _static("design.css")
+
+    assert "Проверяем…" in html and "Уже считаем, секунду…" in html
+    assert 'id="rDone"' in html and "Готово — оценка по объявлению" in html
+    assert "history.replaceState" in html and "hashchange" not in html
+    assert 'id="repDemo"' in html and 'id="rHead"' in html
+    assert "[aria-invalid=true]" in css and ".spin{" in css
 
 
 def test_scale_labels_never_leave_the_track():

@@ -199,11 +199,11 @@ def test_events_sent_to_counters_are_documented():
     sent |= set(re.findall(r"bagamTrack\('([a-z_]+)'", (STATIC / "js" / "analytics.js").read_text(encoding="utf-8")))
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    assert sent == {"check_ok", "check_error", "check_bad_link", "demo", "share", "bot_click", "market_mode"}
+    assert sent == {"check_ok", "check_error", "check_bad_link", "demo", "bot_click", "market_mode"}
     for event in sent:
         assert f"| `{event}` |" in readme, event
     site = _section(_page(), "site")
-    for words in ("вердикт", "ошибки оценки", "Показать на примере", "Поделиться", "переход в бота",
+    for words in ("вердикт", "ошибки оценки", "Показать на примере", "переход в бота",
                   "переключение продажи и аренды"):
         assert words in site, words
 

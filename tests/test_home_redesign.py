@@ -148,8 +148,8 @@ def test_home_report_shows_everything_prod_showed():
     assert " снизил цену на " in html and " поднял цену на " in html
     assert "renderSimilar" in html and "analogs" in html
     assert "function trackHref" in html and "?start=track_" in html
-    # «Поделиться» пока «скоро» — см. test_home_polish
-    assert '<em class="soon">скоро</em>' in html
+    # «Поделиться» убрана совсем — см. test_home_polish
+    assert 'soon' not in html and 'rshare' not in html
 
 
 def _names_block(html: str) -> str:
@@ -203,7 +203,7 @@ def test_home_verdict_explains_itself_and_flags_scam():
     assert "Подозрительно дёшево" in html and "r.scam_risk.level === 'high'" in html
     # поделиться и слежение — кнопками сразу под вердиктом
     assert html.index('class="verdict') < html.index('id="rActs"') < html.index('class="rnums"')
-    assert 'class="rbtn rshare"' in html and 'class="rbtn rtrack"' in html
+    assert 'class="rbtn rtrack"' in html
 
 
 def test_home_report_escapes_listing_text_and_checks_urls():
