@@ -127,7 +127,7 @@ def test_home_predict_fair_renders_full_report(hermetic_page, mock_api, hermetic
     expect(page.locator("#rSim a[href*='krisha.kz/a/show/']")).to_have_count(3)
     # Кнопки сразу под вердиктом: «поделиться» и слежение в боте.
     acts = page.locator("#rActs")
-    expect(acts.locator(".rshare")).to_be_visible()
+    expect(page.locator(".rshare")).to_have_count(0)
     expect(acts.locator("a[href='https://t.me/fairprice_kzbot?start=track_761891663']")).to_be_visible()
     # Факты об объявлении.
     expect(page.locator(".rfoot")).to_contain_text("похожие снимают с продажи за")
@@ -404,7 +404,8 @@ def test_home_busy_state_while_model_thinks(hermetic_page, mock_api, hermetic_se
 
     btn = page.locator("form[data-check]:has(#lotUrl) .gobtn")
     expect(btn).to_be_disabled()
-    expect(btn).to_have_text("Считаем…")
+    expect(btn).to_have_text("Проверяем…")
+    expect(btn).to_have_attribute("data-l0", re.compile(r"Проверить"))
     expect(page.locator(".sheet")).to_have_attribute("aria-busy", "true")
     expect(page.locator("#checkStatus")).to_have_text("Считаем оценку объявления")
     # Статус ожидания — над вердиктом, а не в низу высокой карточки.
@@ -488,23 +489,39 @@ def test_home_hash_deeplink_runs_report(hermetic_page, mock_api, hermetic_server
     expect(page.locator(".vbig")).to_have_text("В рынке")
 
 
-def test_home_share_button_says_soon(hermetic_page, mock_api, hermetic_server, predict_fair):
-    """«Поделиться» ещё в работе: нажимается, отвечает «Уже делаем» и возвращает подпись."""
+def test_home_success_feedback_and_permalink(hermetic_page, mock_api, hermetic_server, predict_fair):
+    """После проверки: плашка «Готово», объект оценки в шапке карточки, фокус на нём, #check=<id> в адресе."""
     page = hermetic_page
     mock_api(predict=predict_fair)
     page.goto(hermetic_server + "/")
     wait_ready(page)
     submit(page)
     expect(page.locator(".vbig")).to_have_text("В рынке")
-    share = page.locator(".rshare")
-    expect(share).to_be_enabled()
-    expect(share.locator(".soon")).to_have_text("скоро")
 
-    share.click()
+    expect(page.locator("#rDone")).to_be_visible()
+    expect(page.locator("#rDone")).to_contain_text("Готово — оценка по объявлению")
+    expect(page.locator("#rHeadT")).to_contain_text("3-комнатная")
+    expect(page.locator("#rHeadT")).not_to_contain_text("В рынке")
+    expect(page.locator("#rHeadT")).to_be_focused()
+    expect(page.locator("#repDemo")).to_be_hidden()
+    assert page.evaluate("location.hash") == "#check=761891663"
 
-    expect(share.locator("span")).to_have_text("Уже делаем")
-    expect(page.locator("#checkStatus")).to_have_text("Поделиться отчётом можно будет в ближайшем обновлении")
-    expect(share.locator("span")).to_have_text("Поделиться отчётом", timeout=5000)
+
+def test_home_double_submit_says_already_counting(hermetic_page, mock_api, hermetic_server, predict_fair):
+    page = hermetic_page
+    mock_api()
+
+    def slow(route):
+        page.wait_for_timeout(1200)
+        route.fulfill(status=200, body=json.dumps(predict_fair), content_type="application/json")
+
+    page.route("**/api/predict", slow)
+    page.goto(hermetic_server + "/")
+    wait_ready(page)
+    submit(page)
+    page.evaluate("document.querySelector('form[data-check]:has(#lotUrl)').requestSubmit()")
+    expect(page.locator("[data-wait]").first).to_contain_text("Уже считаем, секунду…")
+    expect(page.locator("#rDone")).to_be_visible(timeout=5000)  # дождаться ответа: маршрут не должен пережить тест
 
 
 def test_home_other_city_shows_server_reason(hermetic_page, mock_api, hermetic_server):

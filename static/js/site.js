@@ -494,22 +494,7 @@
     });
   });
 
-  /* ------------------------------------------------------------ полоса прогресса */
-  (function () {
-    var bar = d.getElementById('prog');
-    if (!bar) return;
-    var busy = false;
-    function paint() {
-      busy = false;
-      var h = root.scrollHeight - w.innerHeight;
-      var k = h > 0 ? Math.min(1, Math.max(0, (w.pageYOffset || root.scrollTop) / h)) : 0;
-      bar.style.transform = 'scaleX(' + k.toFixed(4) + ')';
-    }
-    function ask() { if (!busy) { busy = true; w.requestAnimationFrame(paint); } }
-    on(w, 'scroll', ask, { passive: true });
-    on(w, 'resize', ask, { passive: true });
-    paint();
-  })();
+
 
   /* ------------------------------------------------------------ GSAP по требованию */
   var wantsGsap = !!(me && me.hasAttribute('data-gsap'));
@@ -559,8 +544,7 @@
 
   /* ------------------------------------------------------------ появление блоков (без GSAP) */
   /* Прячем только то, что ниже первого экрана: уже нарисованное не исчезает и не «влетает». */
-  var REVEAL_DEFAULT = '.sect .shead,.mets4,.step,.prin,.limlead,.lrow,.faq .qa,.tgrid,.bgrid,.crow,' +
-    '.bsplit>*,.bflt,.bstep,.flow .fn,.ncard,.fgrid>div';
+  var REVEAL_DEFAULT = '.sect .shead,.bsplit>*';
   function reveal(sel) {
     if (still() || !('IntersectionObserver' in w)) return;
     var vh = w.innerHeight || root.clientHeight;
@@ -630,7 +614,21 @@
         inp.focus();
         return;
       }
+      if (f.getAttribute('aria-busy') === 'true') return;
+      /* переход занимает время: показываем «Открываем…», а не молчим */
+      var b = f.querySelector('.gobtn'), pb = f.querySelector('[data-paste]');
+      if (b) { b.dataset.l0 = b.innerHTML; b.innerHTML = '<i class="spin" aria-hidden="true"></i>Открываем…'; b.disabled = true; }
+      if (pb) pb.disabled = true;
+      f.setAttribute('aria-busy', 'true');
       location.href='/#check=' + m[1];
+    });
+    /* возврат кнопкой «назад» из кэша страницы: форма снова рабочая */
+    on(window, 'pageshow', function (ev) {
+      if (!ev.persisted) return;
+      var b = f.querySelector('.gobtn'), pb = f.querySelector('[data-paste]');
+      if (b && b.dataset.l0 != null) { b.innerHTML = b.dataset.l0; delete b.dataset.l0; b.disabled = false; }
+      if (pb) pb.disabled = false;
+      f.setAttribute('aria-busy', 'false');
     });
   });
 

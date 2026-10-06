@@ -43,7 +43,7 @@ FINISH: unreviewed and undocumented is unfinished.
 --r1:10px;--r2:16px;--r3:24px;--rpill:99px;
 /* шкала текста: служебные ступени, на которые прибиты все дробные размеры */
 --fs-xs:12px;--fs-cap:12.5px;--fs-sm:13.5px;--fs-ui:14.5px;--fs-md:15.5px;--fs-body:16.5px;--fs-lead:17.5px;
---sh1:inset 0 1px 0 var(--edge),0 1px 2px rgba(0,0,0,.3),0 18px 40px -26px rgba(0,0,0,.75)}
+--sh1:0 1px 2px rgba(0,0,0,.3),0 18px 40px -26px rgba(0,0,0,.75)}
 html[data-theme=dark]{color-scheme:dark}
 html[data-theme=light]{color-scheme:light}
 /* светлая тема: --good/--warn как текст держат ≥4,5:1 на --bg и --panel */
@@ -56,7 +56,7 @@ html[data-theme=light]{--bg:#F1F4EC;--ink:#0E1712;--dim:#57665B;--lime:#25B96A;-
 --pbg:#EFF3EA;--pbd:#D8E0D1;--pink:#415045;--phov:#E6ECE0;--pbd2:#B9C7BB;
 --shadow:rgba(24,44,32,.22);
 --panel2:#FFFFFF;--edge:rgba(255,255,255,.9);
---sh1:inset 0 1px 0 var(--edge),0 1px 2px rgba(24,44,32,.06),0 14px 34px -22px rgba(24,44,32,.28)}
+--sh1:0 1px 2px rgba(24,44,32,.06),0 14px 34px -22px rgba(24,44,32,.28)}
 /* ---- переключатель темы ---- */
 .thbtn{appearance:none;order:2;width:40px;height:40px;flex:none;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:var(--r1);background:transparent;color:var(--dim);cursor:pointer;transition:color .25s,border-color .25s,background-color .25s}
 .thbtn:hover{color:var(--ink);border-color:var(--limeink)}
@@ -74,7 +74,6 @@ html{scrollbar-color:var(--sbar) var(--bg);scroll-behavior:smooth}
 body{background:var(--bg);color:var(--ink);font-family:Onest,OnestFB,sans-serif}
 ::selection{background:var(--lime);color:var(--onl)}
 /* полоса прогресса: site.js двигает только transform, без перерасчёта раскладки */
-.progress{position:fixed;top:0;left:0;height:2px;width:100%;background:var(--lime);z-index:60;transform:scaleX(0);transform-origin:left;pointer-events:none}
 .hero{overflow:clip}
 .wrap{max-width:1280px;margin:0 auto;padding:0 36px}
 /* NAV */
@@ -94,10 +93,9 @@ nav .nrow{pointer-events:auto;max-width:1240px;height:60px;padding:0 10px 0 22px
 .tgbtn:hover,.tgbtn:focus-visible{border-color:var(--limeink);color:var(--limeink);background:var(--hover)}
 .tgn{margin-right:10px}
 .tghw{display:grid;grid-template-columns:0fr;opacity:0;transition:grid-template-columns .42s cubic-bezier(.4,0,.2,1),opacity .28s ease}
+.tgbtn svg{width:20px;height:20px;margin-right:-2px;display:block;flex:none}
 .tgbtn:hover .tghw,.tgbtn:focus-visible .tghw{grid-template-columns:1fr;opacity:1}
 .tgh{overflow:hidden;font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font-size:var(--fs-cap);font-weight:500;color:inherit;opacity:.72;padding-right:10px}
-.tgbtn svg{width:20px;height:20px;margin-right:-2px;display:block;flex:none;transition:transform .42s cubic-bezier(.4,0,.2,1)}
-.tgbtn:hover svg,.tgbtn:focus-visible svg{transform:translate(2px,-2px)}
 /* HERO: заголовок-обещание, сразу под ним — строка ввода и одна строка пояснения */
 .hero{padding:156px 0 0;position:relative}
 .hero>.wrap{position:relative;z-index:2}
@@ -140,7 +138,7 @@ a.srclink:hover{color:var(--limeink);border-color:var(--limeink)}
 .dmed{position:absolute;left:0;right:0;border-top:1px dashed color-mix(in srgb,var(--dim) 55%,transparent);pointer-events:none;z-index:1}
 .dmedl{position:absolute;right:0;bottom:6px;padding:1px 6px;border-radius:6px;background:var(--bg);font-variant-numeric:tabular-nums;font-size:var(--fs-cap);color:var(--dim)}
 .dcol{position:relative;display:flex;align-items:flex-end;height:100%}
-.dbar{width:100%;border-radius:10px 10px 4px 4px;transform-origin:bottom;box-shadow:inset 0 1px 0 rgba(255,255,255,.22)}
+.dbar{width:100%;border-radius:10px 10px 4px 4px;transform-origin:bottom}
 .dcol.hi .dbar{background:linear-gradient(180deg,var(--vio),color-mix(in oklab,var(--vio) 62%,var(--bg)))}
 .dcol.lo .dbar{background:linear-gradient(180deg,var(--lime),color-mix(in oklab,var(--lime) 52%,var(--bg)))}
 .dlabels{display:grid;grid-template-columns:repeat(8,1fr);gap:16px;margin-top:16px}
@@ -156,7 +154,7 @@ a.srclink:hover{color:var(--limeink);border-color:var(--limeink)}
 .sheet{border:1px solid var(--line);border-radius:var(--r3);overflow:hidden;background:var(--panel);box-shadow:var(--sh1)}
 /* пример до первой проверки: пунктирная рамка и плашка «Пример» — не путать с настоящим результатом */
 .sheet.is-demo{border-style:dashed;border-color:var(--faint)}
-.rtag{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;margin:8px 8px 0;padding:11px 14px;border-radius:var(--r2);background:var(--soft);font-size:var(--fs-ui);line-height:1.45;color:var(--dim)}
+.rtag{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;margin:8px 8px 0;padding:13px 16px;border-radius:var(--r2);background:var(--soft);border:1px dashed var(--faint);font-size:var(--fs-md);line-height:1.45;color:var(--ink)}
 .rtag b{display:inline-flex;align-items:center;height:26px;padding:0 11px;border-radius:var(--rpill);background:var(--ink);color:var(--bg);font-size:13px;font-weight:700;letter-spacing:.01em}
 /* ожидание ответа — над вердиктом, а не в низу высокой карточки */
 .rwait{display:flex;align-items:center;gap:12px;margin:8px 8px 0;padding:14px 18px;border-radius:var(--r2);border:1px solid color-mix(in srgb,var(--limeink) 35%,var(--line));background:var(--limesoft);font-size:var(--fs-md);line-height:1.45;color:var(--ink)}
@@ -169,7 +167,7 @@ a.srclink:hover{color:var(--limeink);border-color:var(--limeink)}
 .rerr .rbtn{margin-top:18px}
 /* вердикт: зелёный — дешевле обычного, нейтральный — в рынке (и без вердикта), золото — дороже,
    красный — только «подозрительно дёшево». Процента у «подозрительно дёшево» нет. */
-.verdict{display:flex;align-items:center;flex-wrap:wrap;gap:14px 26px;background:var(--lime);color:var(--onl);margin:8px;border-radius:var(--r2);padding:28px 30px 24px;box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}
+.verdict{display:flex;align-items:center;flex-wrap:wrap;gap:14px 26px;background:var(--lime);color:var(--onl);margin:8px;border-radius:var(--r2);padding:28px 30px 24px}
 .verdict.fair,.verdict.none{background:var(--track);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
 .verdict.high{background:var(--vio)}
 .verdict.alert{background:var(--badfill)}
@@ -184,7 +182,6 @@ a.srclink:hover{color:var(--limeink);border-color:var(--limeink)}
 .rbtn:hover{border-color:var(--pbd2);background:var(--phov)}
 .rbtn:active{scale:.97}
 .rbtn svg{width:18px;height:18px;flex:none}
-.rbtn .soon{font:600 11px/1 Onest,OnestFB,sans-serif;font-style:normal;letter-spacing:.02em;padding:4px 8px;border-radius:var(--rpill);background:var(--lime);color:var(--onl)}
 .rbtn.pri{background:var(--lime);border-color:var(--lime);color:var(--onl)}
 .rbtn.pri:hover{background:color-mix(in oklab,var(--lime) 86%,#fff);border-color:transparent}
 .rnums{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line);margin-top:8px}
@@ -259,7 +256,7 @@ a.srclink:hover{color:var(--limeink);border-color:var(--limeink)}
    при наведении; переходы — явными ссылками внутри (.clink) */
 .trust,.botsec{padding:104px 0 0}
 .card{border-radius:var(--r3);padding:40px;position:relative;overflow:hidden;box-shadow:var(--sh1);border:1px solid var(--line);background:var(--panel)}
-.c1{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:36px 64px;align-items:center;color:var(--ink);background:radial-gradient(90% 70% at 100% 0%,var(--limesoft),transparent 70%),var(--panel)}
+.c1{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:36px 64px;align-items:center;color:var(--ink);background:var(--panel)}
 .c1 .hrow,.ctl{font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:clamp(24px,2.4vw,30px);line-height:1.15;letter-spacing:-.03em;color:var(--ink);text-wrap:balance}
 .c1 .hrow{max-width:480px}
 .c1 p{margin-top:14px;font-size:17px;line-height:1.6;max-width:500px;color:var(--dim)}
@@ -267,8 +264,7 @@ a.srclink:hover{color:var(--limeink);border-color:var(--limeink)}
 .cbtns{display:flex;flex-wrap:wrap;align-items:center;gap:14px 24px;margin-top:28px}
 .clink{display:inline-flex;align-items:center;gap:8px;font-size:var(--fs-md);font-weight:600;color:var(--limeink);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--limeink) 40%,transparent);padding-bottom:2px;transition:border-color .2s}
 .clink:hover{border-color:var(--limeink)}
-.clink svg{width:16px;height:16px;flex:none;transition:transform .3s cubic-bezier(.2,.7,.2,1)}
-.clink:hover svg{transform:translateX(3px)}
+.clink svg{width:16px;height:16px;flex:none}
 .c2{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:28px 56px;align-items:center}
 .c2 p{margin-top:12px;font-size:var(--fs-body);line-height:1.6;color:var(--dim);max-width:62ch}
 .c2 .clink{margin-top:20px}
@@ -277,14 +273,9 @@ a.srclink:hover{color:var(--limeink);border-color:var(--limeink)}
 .c2 .met b{font-size:clamp(28px,3vw,40px);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 .c2 .met span{display:block;margin-top:8px;line-height:1.4}
 /* iPhone + Telegram (референс: скриншоты Telegram для iOS) */
-.iph{margin:34px auto 0;width:336px;max-width:100%;border-radius:46px;padding:9px;background:linear-gradient(160deg,#3C4148,#101215 42%,#22262B);box-shadow:0 44px 80px -34px rgba(0,0,0,.75),0 0 0 1px rgba(255,255,255,.07)}
-.iscr{position:relative;border-radius:38px;overflow:hidden;background:#0E1621;color:#fff;font-family:-apple-system,'SF Pro Text','Onest',OnestFB,sans-serif}
-.isb{position:relative;display:flex;align-items:center;justify-content:space-between;padding:11px 24px 6px;font-size:var(--fs-sm);font-weight:600;letter-spacing:.01em}
-.isle{font-variant-numeric:tabular-nums}
-.isri{display:flex;align-items:center;gap:5px}
-.isri svg{display:block}
-.iisl{position:absolute;left:50%;top:9px;transform:translateX(-50%);width:86px;height:26px;border-radius:var(--rpill);background:#000}
-.tghd{display:flex;align-items:center;gap:10px;padding:4px 12px 10px;background:rgba(14,22,33,.94)}
+.iph{margin:34px auto 0;width:336px;max-width:100%;border-radius:30px;padding:6px;background:#1B1E22;box-shadow:0 0 0 1px rgba(255,255,255,.08)}
+.iscr{position:relative;border-radius:24px;overflow:hidden;background:#0E1621;color:#fff;font-family:-apple-system,'SF Pro Text','Onest',OnestFB,sans-serif}
+.tghd{display:flex;align-items:center;gap:10px;padding:12px 12px 10px;background:rgba(14,22,33,.94)}
 .tgbk{width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;flex:none}
 .tgbk svg{width:9px;height:15px;color:#6FB0E8}
 .tgttl{flex:1;text-align:center;line-height:1.24;min-width:0}
@@ -309,7 +300,7 @@ a.srclink:hover{color:var(--limeink);border-color:var(--limeink)}
 .tgin{display:flex;align-items:center;gap:10px;padding:9px 12px 16px;background:rgba(14,22,33,.96)}
 .tgin svg{width:21px;height:21px;color:#7B93A8;flex:none}
 .tgfl{flex:1;font-size:15px;color:#7B93A8}
-@media(max-width:900px){.iph{width:300px;border-radius:42px}}
+@media(max-width:900px){.iph{width:300px}}
 @media(max-width:760px){.iph{margin-top:28px;width:100%;max-width:330px}.tgch{padding:12px 12px 10px}.tgb{max-width:88%;font-size:14px}.tgb .mono{font-size:var(--fs-cap)}}
 .hrow{display:flex;align-items:center;gap:16px}
 .icw{display:inline-flex;flex:none;line-height:0;transform-origin:50% 50%}
@@ -335,29 +326,17 @@ a.srclink:hover{color:var(--limeink);border-color:var(--limeink)}
 .cta .sub{font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;margin-top:18px;color:var(--dim);font-size:var(--fs-cap);letter-spacing:.02em}
 .next{padding:0 0 104px}
 .ncards{display:grid;grid-template-columns:repeat(auto-fit,minmax(252px,1fr));gap:12px}
-.ncard{position:relative;isolation:isolate;overflow:hidden;background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:var(--sh1);display:flex;flex-direction:column;gap:16px;padding:22px 22px 20px;min-height:200px;text-decoration:none;color:var(--ink);transition:color .35s,border-color .35s}
-.ncard::before{content:"";position:absolute;inset:0;z-index:-1;transform:translateY(101%);transition:transform .55s cubic-bezier(.22,.75,.2,1)}
-.ncard.g::before{background:var(--lime)}
-.ncard.v::before{background:var(--vio)}
-.ncard.w::before{background:var(--ink)}
-.ncard:hover::before,.ncard:focus-visible::before{transform:translateY(0)}
-.ncard:hover,.ncard:focus-visible{color:var(--onl)}
+.ncard{position:relative;isolation:isolate;overflow:hidden;background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:var(--sh1);display:flex;flex-direction:column;gap:16px;padding:22px 22px 20px;min-height:200px;text-decoration:none;color:var(--ink);transition:border-color .25s,background-color .25s}
+.ncard:hover,.ncard:focus-visible{border-color:var(--limeink);background:var(--hover)}
 .ntop{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.nico{width:44px;height:44px;display:flex;align-items:center;justify-content:center;flex:none;border-radius:var(--r1);background:var(--soft);transition:transform .5s cubic-bezier(.22,.75,.2,1),background-color .35s}
+.nico{width:44px;height:44px;display:flex;align-items:center;justify-content:center;flex:none;border-radius:var(--r1);background:var(--soft)}
 .nico svg{width:28px;height:28px;display:block}
-.ncard:hover .nico,.ncard:focus-visible .nico{background:rgba(6,19,11,.1)}
 .ncard .nico svg{color:var(--limeink)}
-.ncard:hover .nico{transform:translateY(-4px) scale(1.06)}
-.ncard:hover .nico svg,.ncard:focus-visible .nico svg{color:var(--onl)}
-.nttl{font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:clamp(20px,1.8vw,24px);letter-spacing:-.03em;line-height:1.14;margin-top:auto;transition:transform .5s cubic-bezier(.22,.75,.2,1)}
-.ncard:hover .nttl{transform:translateX(6px)}
+.nttl{font-family:Onest,OnestFB,sans-serif;font-weight:600;font-size:clamp(20px,1.8vw,24px);letter-spacing:-.03em;line-height:1.14;margin-top:auto}
 .nbot{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.nmeta{font-size:var(--fs-sm);line-height:1.45;color:var(--dim);transition:color .35s}
-.ncard:hover .nmeta,.ncard:focus-visible .nmeta{color:rgba(6,19,11,.72)}
-.narr{display:flex;align-items:center;justify-content:center;width:34px;height:34px;flex:none;border:1px solid var(--line);border-radius:var(--rpill);transition:transform .5s cubic-bezier(.22,.75,.2,1),border-color .35s}
-.narr svg{width:15px;height:15px;color:var(--dim);transition:color .35s}
-.ncard:hover .narr{transform:translateX(5px);border-color:rgba(6,19,11,.28)}
-.ncard:hover .narr svg,.ncard:focus-visible .narr svg{color:var(--onl)}
+.nmeta{font-size:var(--fs-sm);line-height:1.45;color:var(--dim)}
+.narr{display:flex;align-items:center;justify-content:center;width:34px;height:34px;flex:none;border:1px solid var(--line);border-radius:var(--rpill)}
+.narr svg{width:15px;height:15px;color:var(--dim)}
 footer{position:relative;border-top:1px solid var(--line);padding:72px 0 0;overflow:hidden}
 .fgrid{display:grid;grid-template-columns:1.7fr 1fr 1fr 1.25fr;gap:44px}
 .flogo{display:inline-block;font-family:Unbounded,UnboundedFB,sans-serif;font-weight:800;font-size:26px;letter-spacing:-.03em;color:var(--ink);text-decoration:none;transition:opacity .25s,transform .18s cubic-bezier(.2,.7,.2,1);-webkit-tap-highlight-color:transparent}
@@ -385,9 +364,6 @@ html[data-live=off] .flive{display:none}
 .flink:hover svg{color:var(--limeink)}
 .fnote{margin-top:18px;font-size:var(--fs-ui);line-height:1.65;color:var(--dim);max-width:330px}
 .fnote b{color:var(--ink);font-weight:600}
-.fmark{display:block;width:100%;height:auto;margin:0;user-select:none;pointer-events:none}
-.fmark text{font-family:Unbounded,UnboundedFB,sans-serif;font-weight:800;font-size:200px;fill:url(#markgrad)}
-.fmarkband{margin-top:6px;padding:0 clamp(14px,2.2vw,30px);overflow:hidden}
 .fbot{margin-top:56px;border-top:1px solid var(--line);padding:20px 0 22px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;font-family:Onest,OnestFB,sans-serif;font-variant-numeric:tabular-nums;font-size:13px;color:var(--dim)}
 .ftop{display:inline-flex;align-items:center;gap:9px;background:transparent;border:1px solid var(--line);border-radius:var(--rpill);padding:10px 17px;font:inherit;color:var(--dim);cursor:pointer;transition:background-color .3s,color .3s,border-color .3s,scale .12s ease}
 .ftop svg{width:15px;height:15px;transition:transform .4s cubic-bezier(.2,.7,.2,1)}
@@ -533,8 +509,37 @@ a:focus-visible,button:focus-visible,summary:focus-visible,[tabindex]:focus-visi
 .pastebtn{display:inline-flex;align-items:center;gap:7px;background:var(--pbg);border:1px solid var(--pbd);color:var(--pink);font:600 var(--fs-sm) Onest,OnestFB,sans-serif;padding:12px 17px;border-radius:var(--rpill);cursor:pointer;white-space:nowrap;transition:color .2s,border-color .2s,background-color .2s,scale .12s ease}
 .pastebtn:hover{color:var(--ink);border-color:var(--pbd2);background:var(--phov)}
 .pastebtn svg{width:15px;height:15px;flex:none}
-.inerr{margin:12px 2px 0;font:600 var(--fs-sm) Onest,OnestFB,sans-serif;color:var(--bad);display:none;align-items:center;gap:9px}
+.inerr{margin:12px 2px 0;font:600 var(--fs-md) Onest,OnestFB,sans-serif;line-height:1.4;color:var(--bad);display:none;align-items:center;gap:9px}
 .inerr.on{display:flex}
+.inerr.on::before{content:"!";flex:none;display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--bad);color:var(--bg);font:800 13px/1 Onest,OnestFB,sans-serif}
+.inerr.hint{color:var(--dim)}
+.inerr.hint::before{background:var(--dim)}
+/* битая ссылка: красная рамка у поля */
+.inbar:has(input[aria-invalid=true]){border-color:var(--bad);box-shadow:var(--sh1),0 0 0 3px color-mix(in srgb,var(--bad) 22%,transparent)}
+.inbar input[aria-invalid=true]{border-color:var(--bad)}
+/* занятость: спиннер в кнопке и плашка у формы */
+.spin{display:inline-block;width:16px;height:16px;flex:none;border-radius:50%;border:2px solid color-mix(in srgb,currentColor 28%,transparent);border-top-color:currentColor;animation:bgmspin .8s linear infinite;vertical-align:-3px;margin-right:8px}
+.gobtn .spin{margin-right:0}
+.gobtn[disabled]{display:inline-flex;align-items:center;gap:9px}
+.inwait{display:flex;align-items:center;gap:10px;margin:12px 2px 0;font:600 var(--fs-md) Onest,OnestFB,sans-serif;line-height:1.4;color:var(--limeink)}
+.inwait[hidden]{display:none}
+.inwait .spin{margin-right:0}
+.cta .inwait{justify-content:center}
+.pastebtn[disabled]{opacity:.5;cursor:progress}
+/* вердикт одной строкой и «что оценили» — в самом верху карточки */
+.rhead{margin:8px 8px 0;padding:16px 22px 14px;border-radius:var(--r2);background:var(--soft);outline:0}
+.rheadt{margin:0;font:700 clamp(18px,2.2vw,22px)/1.25 Onest,OnestFB,sans-serif;letter-spacing:-.02em;color:var(--ink)}
+.rheadt:focus-visible{outline:2px solid var(--limeink);outline-offset:4px;border-radius:6px}
+.rheads{margin:6px 0 0;font-size:var(--fs-ui);line-height:1.5;color:var(--dim);overflow-wrap:anywhere}
+.rheads b{color:var(--ink);font-weight:600}
+.rheads a{color:var(--limeink);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--limeink) 40%,transparent)}
+/* видимое подтверждение успеха рядом с результатом */
+.rdone{display:inline-flex;align-items:center;gap:8px;margin:0 0 14px;padding:8px 16px 8px 12px;border-radius:var(--rpill);background:var(--limesoft);border:1px solid color-mix(in srgb,var(--limeink) 40%,var(--line));color:var(--limeink);font:600 var(--fs-md) Onest,OnestFB,sans-serif}
+.rdone[hidden]{display:none}
+.rdone svg{width:18px;height:18px;flex:none}
+/* метка «пример» в заголовке карточки */
+.demobadge{display:inline-flex;align-items:center;vertical-align:middle;margin-left:14px;height:30px;padding:0 13px;border-radius:var(--rpill);background:var(--ink);color:var(--bg);font:700 13px/1 Onest,OnestFB,sans-serif;letter-spacing:.06em;text-transform:uppercase}
+.demobadge[hidden]{display:none}
 .inerr svg{width:17px;height:17px;flex:none}
 .gobtn[disabled]{opacity:.62;cursor:progress}
 /* скелетон разбора (.sheet[aria-busy=true]) — только у главной, в её стилях */
@@ -586,11 +591,6 @@ html.lite nav .nrow{backdrop-filter:none;-webkit-backdrop-filter:none;background
 .plink{color:var(--limeink);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--limeink) 45%,transparent);transition:border-color .2s}
 .plink:hover{border-color:var(--limeink)}
 /* «Куда дальше» с тёмной заливкой (.w): в светлой теме заливка тёмная — текст и иконка светлые */
-.ncard.w:hover,.ncard.w:focus-visible{color:var(--bg)}
-.ncard.w:hover .nmeta,.ncard.w:focus-visible .nmeta{color:color-mix(in srgb,var(--bg) 74%,transparent)}
-.ncard.w:hover .nico svg,.ncard.w:focus-visible .nico svg,.ncard.w:hover .narr svg,.ncard.w:focus-visible .narr svg{color:var(--bg)}
-.ncard.w:hover .nico,.ncard.w:focus-visible .nico{background:color-mix(in srgb,var(--bg) 14%,transparent)}
-.ncard.w:hover .narr{border-color:color-mix(in srgb,var(--bg) 35%,transparent)}
 /* страницы без финального призыва: «Куда дальше» отступает от документа */
 main:not(:has(.cta)) .next{padding-top:104px}
 @media(max-width:820px){main:not(:has(.cta)) .next{padding-top:72px}}
@@ -641,4 +641,4 @@ html.anim [data-rv=""]{opacity:0;transform:translateY(16px)}
 
 /* ---- «меньше движения» в системе анимации не выключает (владелец просил, см. site.js:
    still). Статичен только html.lite — его правила стоят рядом с самими анимациями ---- */
-@media print{[data-rv]{opacity:1!important;transform:none!important}.progress,.offbar,.mmenu{display:none!important}}
+@media print{[data-rv]{opacity:1!important;transform:none!important}.offbar,.mmenu{display:none!important}}
