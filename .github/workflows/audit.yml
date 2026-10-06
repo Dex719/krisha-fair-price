@@ -1,0 +1,77 @@
+name: Dependency audit
+
+# Аудит безопасности 2026-10-06. Единственным сигналом об уязвимостях
+# зависимостей был pip-audit в ci.yml, а CI бежит только на push и PR: новый
+# CVE на закреплённую версию появляется БЕЗ коммитов в репозитории — неделя
+# без коммитов означала неделю без проверки того, что крутится в проде.
+# Dependabot (dependabot.yml) этого не закрывает: он читает pyproject.toml и
+# requirements.txt, а requirements*.lock — файлы с другим именем — не видит.
+#
+# Поэтому аудит вынесен в отдельный воркфлоу по расписанию. Аудитим именно
+# lock-файлы, которые реально ставятся (образ Space, рескрейп, обучение), а не
+# окружение раннера: предустановленные пакеты ubuntu-latest — не наши
+# зависимости (так же сделано в ci.yml).
+#
+# Временные исключения — только через `--ignore-vuln ID` с комментарием и датой
+# снятия рядом, и в ОБОИХ местах сразу (ci.yml и здесь): tests/
+# test_workflows_hardening.py следит, чтобы списки не разъехались.
+on:
+  schedule:
+    - cron: "23 4 * * *" # 09:23 Алматы (UTC+5): утром, до начала рабочего дня владельца
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+
+      - name: Install pip-audit
+        run: pip install -q pip-audit
+
+      # Не останавливаемся на первом красном lock: владельцу нужен полный
+      # список по всем трём, а не «починил один — всплыл следующий». --no-deps:
+      # lock плоский, зависимости уже перечислены (как в ci.yml).
+      - name: Audit locks (pip-audit)
+        run: |
+          status=0
+          for lock in requirements.lock requirements-runtime.lock requirements-train.lock; do
+            echo "::group::pip-audit -r $lock"
+            pip-audit -r "$lock" --no-deps || status=1
+            echo "::endgroup::"
+          done
+          exit "$status"
+
+      # Как в smoke.yml: без секретов (форк, свежий репозиторий) — пропускаем,
+      # красный ран в Actions остаётся сигналом в любом случае.
+      - name: Notify Telegram on failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TG_ADMIN_CHAT_ID" ]; then
+            echo "TELEGRAM_BOT_TOKEN or TG_ADMIN_CHAT_ID is not set; skip Telegram notification"
+            exit 0
+          fi
+
+          text="🚨 baǵam dependency audit failed
+          Repo: ${GITHUB_REPOSITORY}
+          Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          curl -fsS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${TG_ADMIN_CHAT_ID}" \
+            --data-urlencode "text=${text}"

@@ -47,9 +47,9 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
           cache: pip
@@ -62,9 +62,13 @@ jobs:
       - name: Download DB from release
         env:
           GH_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+          # inputs — через env, а не выражением в `run:`: подстановка GitHub
+          # раскрывается до shell и превращает значение в код (shell-инъекция,
+          # аудит безопасности 2026-10-06, подробности — в rescrape.yml).
+          INPUT_DEAL: ${{ github.event.inputs.deal }}
         run: |
           set -euo pipefail
-          if [ "${{ github.event.inputs.deal }}" = "arenda" ]; then
+          if [ "$INPUT_DEAL" = "arenda" ]; then
             ASSET=krisha_rent.db.gz; DB=data/krisha_rent.db
           else
             ASSET=krisha.db.gz; DB=data/krisha.db
@@ -78,15 +82,22 @@ jobs:
           gunzip -c /tmp/db.gz > "$DB"
 
       - name: Backfill
+        env:
+          # inputs — через env (см. шаг выше). apply не задан/не «true» —
+          # dry-run: запись только по явной галочке.
+          INPUT_APPLY: ${{ github.event.inputs.apply }}
+          INPUT_WINDOW_START: ${{ github.event.inputs.window_start }}
+          INPUT_WINDOW_END: ${{ github.event.inputs.window_end }}
+          INPUT_EXPECT: ${{ github.event.inputs.expect }}
         run: |
           set -euo pipefail
           FLAG=""
-          if [ "${{ github.event.inputs.apply }}" != "true" ]; then FLAG="--dry-run"; fi
+          if [ "${INPUT_APPLY:-}" != "true" ]; then FLAG="--dry-run"; fi
           python scripts/backfill_gap_cohort.py \
             --db "$DB" \
-            --window-start "${{ github.event.inputs.window_start }}" \
-            --window-end "${{ github.event.inputs.window_end }}" \
-            --expect "${{ github.event.inputs.expect }}" \
+            --window-start "$INPUT_WINDOW_START" \
+            --window-end "$INPUT_WINDOW_END" \
+            --expect "$INPUT_EXPECT" \
             $FLAG | tee /tmp/backfill.log
           {
             echo '### Ретро-разметка когорты'

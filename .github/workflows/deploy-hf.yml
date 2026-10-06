@@ -65,7 +65,7 @@ jobs:
     needs: gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Push snapshot to Space
         env:
@@ -92,9 +92,30 @@ jobs:
           rm -rf .git
           git init -b main
           git lfs track "data/*.db" "models/*.cbm" "*.png" "*.jpg" "*.ico"
-          git add -A
+          # Аудит безопасности 2026-10-06: Space — ПУБЛИЧНОЕ зеркало, а
+          # `git add -A` отправлял в него весь чекаут (tests/, .kiro/,
+          # scripts/, infra/, reports/ ...). Образу нужно ровно то, что
+          # копирует Dockerfile (pyproject.toml, README.md,
+          # requirements-runtime.lock, src, models, data, static) плюс сам
+          # Dockerfile, .dockerignore и .gitattributes (его только что создал
+          # `git lfs track`). Остальное наружу не едет. Список явный: новый
+          # каталог в корне репозитория попадёт в публичный Space только если
+          # его добавят сюда осознанно; несуществующий путь валит шаг (fatal),
+          # а не уезжает молча сломанным снапшотом.
+          # tests/test_workflows_hardening.py сверяет этот список с COPY из Dockerfile.
+          git add Dockerfile README.md pyproject.toml requirements-runtime.lock \
+            .dockerignore .gitattributes src models data static
           # -f: data/build_revision.txt в .gitignore (он генерится здесь и не
           # должен лежать в репозитории), но в снапшот для Space обязан попасть
           git add -f data/build_revision.txt
           git -c user.name=deploy -c user.email=deploy@local commit -m "deploy $GITHUB_SHA"
-          git push --force "https://Dex719:$HF_TOKEN@huggingface.co/spaces/Dex719/krisha-fair-price" main
+          # Токен — не в URL и не в argv: токен в `https://user:TOKEN@host` виден
+          # в списке процессов раннера и в выводе git при сбое (remote URL
+          # печатается в ошибках), а argv любой дочерней команды читается
+          # соседними процессами. credential helper получает его из окружения
+          # (HF_TOKEN унаследован от шага), в командной строке лежит лишь
+          # литерал `$HF_TOKEN`, который раскрывает sh внутри самого helper'а.
+          # Отвечаем только на `get` — на store/erase печатать пароль незачем.
+          # git-lfs берёт учётку тем же путём (git credential fill).
+          git -c credential.helper='!f() { test "$1" = get || exit 0; echo "username=Dex719"; echo "password=$HF_TOKEN"; }; f' \
+            push --force https://huggingface.co/spaces/Dex719/krisha-fair-price main

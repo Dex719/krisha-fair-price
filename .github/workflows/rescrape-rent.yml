@@ -29,9 +29,9 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
           cache: pip
@@ -72,11 +72,16 @@ jobs:
         env:
           KRISHA_DELAY_MIN: "2.5"
           KRISHA_DELAY_MAX: "5.0"
+          # inputs — через env, а не выражением в `run:` (shell-инъекция:
+          # аудит безопасности 2026-10-06, подробности — в rescrape.yml).
+          # По расписанию inputs пусты, и дефолты `:-` работают как прежние `||`.
+          INPUT_PAGES: ${{ github.event.inputs.pages }}
+          INPUT_MAX_NEW: ${{ github.event.inputs.max_new }}
         run: |
           python scripts/rescrape.py \
             --deal arenda \
-            --pages "${{ github.event.inputs.pages || '250' }}" \
-            --max-new "${{ github.event.inputs.max_new || '1000' }}" \
+            --pages "${INPUT_PAGES:-250}" \
+            --max-new "${INPUT_MAX_NEW:-1000}" \
             --fail-empty \
             --summary-json /tmp/rescrape_rent_stats.json
 
