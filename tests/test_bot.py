@@ -9,15 +9,8 @@ from krisha import bot, predict_gate
 from krisha.predict import ListingNotFound, ListingOutsideAlmaty
 from krisha.scraping.client import SourceUnavailable
 
-
-@pytest.fixture(autouse=True)
-def _fresh_bot_limits():
-    """Лимитер бота живёт в модуле (по 12 сообщений в минуту на чат), а тесты
-    ниже пишут от одного и того же chat_id: чистим до и после каждого."""
-    bot.reset_rate_limits()
-    yield
-    bot.reset_rate_limits()
-
+# Лимитер бота и кэш разбора Gemini чистит conftest._clear_api_caches: тесты
+# ниже пишут от одного и того же chat_id, а ведро живёт в модуле.
 
 SAMPLE_RESULT = {
     "listing_id": 123,

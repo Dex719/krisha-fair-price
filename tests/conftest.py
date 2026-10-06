@@ -62,7 +62,7 @@ def _clear_api_caches():
     для первого (кэш предикта, свежести базы, статистики). Чистим до и после:
     порядок тестов не должен ничего значить.
     """
-    from krisha import predict_gate
+    from krisha import bot, predict_gate, text_parse
     from krisha.api import app as app_module
     from krisha.api import metrics
 
@@ -84,9 +84,16 @@ def _clear_api_caches():
     # Счётчик rate-limit тоже общий: у TestClient один «IP» на все тесты, и
     # без сброса пятнадцатый запрос ЛЮБОГО теста получал 429 из-за соседей.
     app_module._rate.clear()
+    # То же у бота (лимитер на чат) и у кэша разбора Gemini: оба живут в
+    # модулях. Тесты, что шлют боту сообщения от одного и того же chat_id (42),
+    # иначе копили бы общее ведро и однажды упёрлись в лимит соседей.
+    bot.reset_rate_limits()
+    text_parse._parse_cache.clear()
     yield
     for cache in caches:
         cache.clear()
     predict_gate.clear()
     metrics.reset()
     app_module._rate.clear()
+    bot.reset_rate_limits()
+    text_parse._parse_cache.clear()

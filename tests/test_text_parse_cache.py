@@ -6,6 +6,7 @@
 
 import json
 import threading
+from pathlib import Path
 
 import httpx
 import pytest
@@ -196,3 +197,21 @@ def test_cache_is_thread_safe(monkeypatch):
     assert not errors
     assert len(text_parse._parse_cache) == 40
     assert 40 <= len(calls) <= 40 * 8  # гонка допускает дубли вызовов, но не потерю кэша
+
+
+def test_privacy_page_describes_the_parse_cache():
+    """/privacy держится в ногу с кодом (test_page_privacy): кэш хранит до часа
+    извлечённые параметры по отпечатку текста — об этом сказано на странице, и
+    срок на ней тот же, что в коде."""
+    page = (Path(__file__).resolve().parents[1] / "static" / "privacy.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert text_parse.PARSE_CACHE_TTL_S == 3600.0
+    assert "До часа или до перезапуска контейнера" in page
+    assert "до часа лежит в памяти сервера под отпечатком текста" in page
+    # поля, что кэш реально хранит из ответа модели, — те же, что названы на странице
+    stored = {"area", "floor", "district", "microdistrict", "complex_name", "address", "price"}
+    assert stored <= set(text_parse.RESPONSE_SCHEMA["properties"])
+    for word in ("площадь", "этаж", "район", "микрорайон", "жилой комплекс", "адрес", "цена"):
+        assert word in page
