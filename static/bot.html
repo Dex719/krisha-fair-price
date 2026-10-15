@@ -5,16 +5,17 @@
 <meta name="theme-color" content="#0A100C" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#F1F4EC" media="(prefers-color-scheme: light)">
 <script>
-/* до первой отрисовки: тема (сохранённый выбор, иначе системная) и режим движения; bagam.ready — очередь до загрузки site.js */
+/* до первой отрисовки: тема (сохранённый выбор, иначе тёмная) и режим движения; bagam.ready — очередь до загрузки site.js */
 (function(d,w){var n=navigator,c=n.connection||{},m=function(q){return !!(w.matchMedia&&w.matchMedia(q).matches)},t;
 try{t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme')}catch(e){}
-d.setAttribute('data-theme',t==='light'||t==='dark'?t:m('(prefers-color-scheme: light)')?'light':'dark');
+d.setAttribute('data-theme',t==='light'?'light':'dark');
 var lite=!!c.saveData||/(^|-)(slow-2g|2g)$/.test(c.effectiveType||'')||(n.deviceMemory&&n.deviceMemory<=2);
-d.classList.add('js',lite?'lite':'anim');if(m('(prefers-reduced-motion: reduce)'))d.classList.add('rm');
+var rm=m('(prefers-reduced-motion: reduce)'),mo;try{mo=localStorage.getItem('bagam-motion')}catch(e){}
+d.classList.add('js',mo==='off'||(mo!=='on'&&lite)?'still':'anim');if(lite)d.classList.add('lite');if(rm)d.classList.add('rm');
 w.bagam={q:[],ready:function(f){this.q.push(f)}};
 })(document.documentElement,window);
 </script>
-<title>Telegram-бот baǵam — оценка квартиры и слежение за ценой │ baǵam</title>
+<title>Telegram-бот baǵam — оценка квартиры и слежка за ценой │ baǵam</title>
 <meta name="description" content="Telegram-бот baǵam оценивает квартиру по ссылке или тексту, следит за ценой объявления и присылает уведомления о выгодных объявлениях.">
 <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/unb-lat.woff2">
 <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/unb-gacute.woff2">
@@ -156,7 +157,7 @@ html:not(.js) .ref .qi{display:block}
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="baǵam">
 <meta property="og:url" content="https://bagam.info/bot">
-<meta property="og:title" content="Telegram-бот baǵam — оценка квартиры и слежение за ценой │ baǵam">
+<meta property="og:title" content="Telegram-бот baǵam — оценка квартиры и слежка за ценой │ baǵam">
 <meta property="og:description" content="Telegram-бот baǵam оценивает квартиру по ссылке или тексту, следит за ценой объявления и присылает уведомления о выгодных объявлениях.">
 <meta property="og:image" content="https://bagam.info/static/img/og.jpg">
 <meta property="og:image:width" content="1200">
@@ -176,12 +177,12 @@ html:not(.js) .ref .qi{display:block}
 <div class="mmenu" id="mmenu" role="dialog" aria-modal="true" aria-label="Меню" aria-hidden="true">
 <a class="ml" href="/">Оценка<i>главная</i></a>
 <a class="ml" href="/stats">Рынок<i>цены продажи и аренды по районам</i></a>
-<a class="ml" href="/bot" aria-current="page">Telegram-бот<i>оценка в чате и слежение за ценой</i></a>
+<a class="ml" href="/bot" aria-current="page">Telegram-бот<i>оценка в чате и слежка за ценой</i></a>
 <a class="ml" href="/about">О проекте<i>как считает модель</i></a>
 <div class="msub">
 <a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">Открыть бота · @fairprice_kzbot</a>
 <a href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener">Исходный код на GitHub</a>
-<button class="mth" type="button" data-theme-toggle><span>Тема оформления</span><b data-theme-label>тёмная</b></button>
+<button class="mth" type="button" role="switch" aria-checked="true" data-motion-toggle><span>Анимации</span><b data-motion-label aria-hidden="true">вкл</b></button>
 <span>данные krisha.kz · Алматы</span>
 <button class="mclose" type="button" data-mclose>Закрыть меню</button>
 </div>
@@ -205,19 +206,7 @@ html:not(.js) .ref .qi{display:block}
    <div class="tgch">
     <span class="tgday">Сегодня</span>
     <div class="tgb out"><span class="mono">krisha.kz/a/show/1012607661</span><span class="tgt">21:04<svg viewBox="0 0 18 11" fill="none" aria-hidden="true"><path d="M1.2 6.3 4 9.1l5.6-6.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m7.6 8.6.9.9 6-7.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
-    <div class="tgb in wide">
-     <span class="ln">🏠 <b>2-комнатная квартира · 49&nbsp;м² · 5/9 этаж</b></span>
-     <span class="ln">📍 Алматы, Алатауский р-н, мкр Алтын орда</span>
-     <span class="ln gap">💰 Цена в объявлении: <b>25&nbsp;900&nbsp;000&nbsp;₸</b></span>
-     <span class="ln">⚖️ Справедливая цена: <b>28&nbsp;700&nbsp;000&nbsp;₸</b></span>
-     <span class="ln">📏 Диапазон оценки: <b class="nw">26.4–31.0&nbsp;млн&nbsp;₸</b></span>
-     <span class="ln">🟢 Выгодно — дешевле оценки (-9.8%)</span>
-     <span class="ln gap">📊 <b>Почему такая цена</b> (топ-3 фактора; от типичной квартиры — 27.3&nbsp;млн&nbsp;₸):</span>
-     <span class="ln">▲ Уровень цен района: +5.6% (+1.6&nbsp;млн&nbsp;₸)</span>
-     <span class="ln">▼ Этаж: -2.1% (-0.6&nbsp;млн&nbsp;₸)</span>
-     <span class="ln">▲ Площадь: +1.5% (+0.4&nbsp;млн&nbsp;₸)</span>
-     <span class="tgt">21:04</span>
-    </div>
+    <div class="tgb in wide"><span class="ln">🟢 <b>Выгодно: на 9,8% дешевле оценки</b></span><span class="ln">🏠 2-комнатная квартира · 49&nbsp;м² · 5/9 этаж</span><span class="ln">📍 Алматы, Алатауский р-н, мкр Алтын орда</span><span class="ln tpre"><span>Цена</span><b>25,9 млн ₸</b><span>Оценка</span><b>28,7 млн ₸</b><span>Обычно</span><b>26,4–31,0 млн ₸</b></span><span class="ln"><b>Почему такая оценка</b> · от типичной 27,3&nbsp;млн ₸</span><span class="ln tpre"><span>▲ цены района</span><b>+1,6 млн</b><span>▼ этаж</span><b>−600 тыс</b><span>▲ площадь</span><b>+400 тыс</b></span><span class="tgt">21:04</span></div><div class="tgkb"><div class="r"><span>👀 Следить за ценой</span><span>🏘 Похожие · 3</span></div><div class="r"><span>🌐 Подробный разбор на сайте</span></div></div>
    </div>
    <div class="tgin"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 11.5 12.1 19.4a5 5 0 0 1-7.1-7.1l8.4-8.4a3.4 3.4 0 1 1 4.8 4.8l-8.3 8.3a1.8 1.8 0 1 1-2.5-2.5l7.6-7.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tgfl">Сообщение</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="2.6" width="6" height="11.4" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M5.5 11.4a6.5 6.5 0 0 0 13 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M12 18v3.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></div>
   </div>
@@ -240,7 +229,7 @@ html:not(.js) .ref .qi{display:block}
   <div class="tghd"><span class="tgbk"><svg viewBox="0 0 9 15" fill="none" aria-hidden="true"><path d="M7.6 1.4 1.7 7.5l5.9 6.1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="tgttl"><b>baǵam</b><i>бот</i></span><span class="tgav">b</span></div>
   <div class="tgch">
    <div class="tgb out"><span class="ln">Продам 2-комн. квартиру 49 м², 5/9 этаж, Алатауский район, 27,5 млн</span><span class="tgt">19:20<svg viewBox="0 0 18 11" fill="none" aria-hidden="true"><path d="M1.2 6.3 4 9.1l5.6-6.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m7.6 8.6.9.9 6-7.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
-   <div class="tgb in wide"><span class="ln">📝 <b>Оценка по тексту</b> — примерная: без фото, точного адреса и истории объявления.</span><span class="ln">Распознал: комнат, площадь, этаж, этажность, район, цена.</span><span class="ln gap">💰 Цена в объявлении: <b>27&nbsp;500&nbsp;000&nbsp;₸</b></span><span class="ln">⚖️ Справедливая цена: <b>28&nbsp;700&nbsp;000&nbsp;₸</b></span><span class="ln">…</span><span class="tgt">19:20</span></div>
+   <div class="tgb in wide"><span class="ln">📝 <b>Оценка по тексту</b> — примерная: без фото, точного адреса и истории объявления.</span><span class="ln">Распознал: число комнат, площадь, этаж, этажность, район, цена.</span><span class="ln gap">💰 Цена в объявлении: <b>27&nbsp;500&nbsp;000&nbsp;₸</b></span><span class="ln">⚖️ Справедливая цена: <b>28&nbsp;700&nbsp;000&nbsp;₸</b></span><span class="ln">…</span><span class="tgt">19:20</span></div>
   </div>
  </div>
 </div>
@@ -260,9 +249,9 @@ html:not(.js) .ref .qi{display:block}
   <div class="tgch">
    <span class="tgday">Вчера</span>
    <div class="tgb out"><span class="mono">/track krisha.kz/a/show/1012607661</span><span class="tgt">21:05<svg viewBox="0 0 18 11" fill="none" aria-hidden="true"><path d="M1.2 6.3 4 9.1l5.6-6.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m7.6 8.6.9.9 6-7.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
-   <div class="tgb in"><span class="ln">👀 Слежу за «2-комнатная квартира · 49&nbsp;м² · 5/9 этаж». Текущая цена: <b>27&nbsp;500&nbsp;000&nbsp;₸</b>.</span><span class="ln">Напишу, если цена изменится или объявление снимут с продажи. Список: /track, отписка: /untrack</span><span class="tgt">21:05</span></div>
+   <div class="tgb in"><span class="ln">👀 <b>Слежу за ценой</b></span><span class="ln">🏠 2-комнатная квартира · 49&nbsp;м² · 5/9 этаж</span><span class="ln">Сейчас <b>27 500 000&nbsp;₸</b>. Напишу, если цену изменят или объявление снимут с продажи.</span><span class="tgt">21:05</span></div><div class="tgkb"><div class="r"><span>📋 Мои объявления</span><span>✖️ Не следить</span></div></div>
    <span class="tgday">Сегодня</span>
-   <div class="tgb in"><span class="ln">📉 <span class="lk">2-комнатная квартира · 49&nbsp;м² · 5/9 этаж</span></span><span class="ln">Цена: 27.5&nbsp;млн&nbsp;₸ → <b>26.9&nbsp;млн&nbsp;₸</b> (-2.2%)</span><span class="tgt">08:12</span></div>
+   <div class="tgb in"><span class="ln">📉 <b>Цену снизили на 600&nbsp;тыс ₸</b> (−2,2%)</span><span class="ln">🏠 <span class="lk">2-комнатная квартира · 49&nbsp;м² · 5/9 этаж</span></span><span class="ln tpre"><span>Было</span><b>27,5 млн ₸</b><span>Стало</span><b>26,9 млн ₸</b></span><span class="tgt">08:12</span></div>
   </div>
  </div>
 </div>
@@ -282,17 +271,9 @@ html:not(.js) .ref .qi{display:block}
   <div class="tgch">
    <span class="tgday">Вчера</span>
    <div class="tgb out"><span class="mono">/alerts_on 2к до 45млн бостандыкский</span><span class="tgt">20:40<svg viewBox="0 0 18 11" fill="none" aria-hidden="true"><path d="M1.2 6.3 4 9.1l5.6-6.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m7.6 8.6.9.9 6-7.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
-   <div class="tgb in"><span class="ln">✅ Подписал: <b>2-комн, до 45 млн ₸, Бостандыкский</b>.</span><span class="ln">Пришлю новые выгодные объявления после ближайшего обновления базы (раз в день, обычно в первой половине дня). Отписаться: /alerts_off</span><span class="tgt">20:40</span></div>
+   <div class="tgb in"><span class="ln">✅ <b>Подписка включена:</b> 2-комн, до 45&nbsp;млн ₸, Бостандыкский.</span><span class="ln">Пришлю новые выгодные объявления после ближайшего обновления базы (раз в день, обычно в первой половине дня). Отписаться: /alerts_off</span><span class="tgt">20:40</span></div>
    <span class="tgday">Сегодня</span>
-   <div class="tgb in wide">
-    <span class="ln">🔥 <b>Новые выгодные объявления</b></span>
-    <span class="ln gap">🏠 <span class="lk">2-комнатная квартира · 52&nbsp;м² · 6/9 этаж</span></span>
-    <span class="ln">💰 38.4 млн ₸ (оценка 41.2 млн, -6.8%) · Бостандыкский</span>
-    <span class="ln gap">🏠 <span class="lk">2-комнатная квартира · 58&nbsp;м² · 3/5 этаж</span></span>
-    <span class="ln">💰 44.0 млн ₸ (оценка 47.9 млн, -8.1%) · Бостандыкский</span>
-    <span class="ln gap">Отписаться: /alerts_off</span>
-    <span class="tgt">08:12</span>
-   </div>
+   <div class="tgb in"><span class="ln">🔥 <b>2 новых выгодных объявления</b></span><span class="ln">по фильтру: 2-комн, до 45&nbsp;млн ₸, Бостандыкский</span><span class="tgt">08:12</span></div><div class="tgkb"><div class="r"><span>⚙️ Изменить фильтр</span><span>🔕 Отписаться</span></div></div><div class="tgb in wide"><span class="ln">🟢 <b>−6,8% к оценке</b> · Бостандыкский</span><span class="ln">🏠 <span class="lk">2-комнатная квартира · 52&nbsp;м² · 6/9 этаж</span></span><span class="ln tpre"><span>Цена</span><b>38,4 млн ₸</b><span>Оценка</span><b>41,2 млн ₸</b></span><span class="tgt">08:12</span></div><div class="tgkb"><div class="r"><span>Открыть ↗</span><span>👀 Следить</span></div></div><div class="tgb in wide"><span class="ln">🟢 <b>−8,1% к оценке</b> · Бостандыкский</span><span class="ln">🏠 <span class="lk">2-комнатная квартира · 58&nbsp;м² · 3/5 этаж</span></span><span class="ln tpre"><span>Цена</span><b>44,0 млн ₸</b><span>Оценка</span><b>47,9 млн ₸</b></span><span class="tgt">08:12</span></div><div class="tgkb"><div class="r"><span>Открыть ↗</span><span>👀 Следить</span></div></div>
   </div>
  </div>
 </div>
@@ -340,10 +321,10 @@ html:not(.js) .ref .qi{display:block}
  <p>Ответ собирается из блоков. Блок появляется, только если для него есть данные: у аренды не будет доходности, у объявления без фото — оценки ремонта. Цифры в примерах условные.</p>
  <div class="blks">
   <div class="blk"><h3>Срок до снятия</h3><p>Сколько дней обычно висят похожие объявления с близкой ценой. Снятие не всегда значит продажу — это ориентир.<code>⏳ Похожие по цене (в рынке) снимают с продажи за ~35 дн. (по 112 снятым)</code></p></div>
-  <div class="blk"><h3>Доходность, если сдавать</h3><p>Только для продажи: ожидаемая аренда и доходность в год рядом с доходностью района.<code>📈 Если сдавать: ~210 тыс ₸/мес · доходность 9.2% годовых (в районе ~7.9%)</code></p></div>
+  <div class="blk"><h3>Доходность, если сдавать</h3><p>Только для продажи: ожидаемая аренда и доходность в год рядом с доходностью района.<code>📈 Сдавать: ~210 тыс ₸/мес · 9,2% годовых (в районе ~7,9%)</code></p></div>
   <div class="blk"><h3>Проверка цены</h3><p>Если цена заметно ниже того, что объясняют характеристики квартиры, бот советует проверить объявление. Это сигнал, а не обвинение продавца.<code>⚠️ Цена ниже ожидаемой — стоит проверить: …</code></p></div>
   <div class="blk"><h3>Ремонт по фото</h3><p>Состояние ремонта по фотографиям объявления, если их удалось разобрать.<code>🛠 Ремонт по фото: … — комментарий</code></p></div>
-  <div class="blk"><h3>Похожие квартиры</h3><p>До трёх похожих объявлений со ссылкой и ценой.<code>• 2-комнатная квартира · 47 м² — 27.9 млн ₸</code></p></div>
+  <div class="blk"><h3>Похожие квартиры</h3><p>По кнопке «Похожие» под оценкой — до трёх похожих объявлений со ссылкой и ценой.<code>• 2-комнатная квартира · 47 м² — 27,9 млн ₸</code></p></div>
  </div>
  <p>Если у объявления есть фото, ответ приходит подписью к первому из них; у подписи в Telegram лимит 1024 символа, поэтому длинный ответ бот обрезает по строкам. Если аренда похожа на подселение или сдачу комнаты, бот предупреждает, что цена указана за место, а оценка — за квартиру целиком, и вердикт не ставит.</p>
  </div>
@@ -426,8 +407,8 @@ html:not(.js) .ref .qi{display:block}
 </div>
 
 <div class="fbot">
- <span>© 2026 baǵam · данные krisha.kz · Алматы</span>
- <button class="ftop" type="button" aria-label="Наверх"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="1.9"/></svg>наверх</button>
+ <span>© 2026 baǵam · bagam.info · данные krisha.kz · Алматы</span>
+ <span class="fbact"><button class="fmo" type="button" role="switch" aria-checked="true" data-motion-toggle>Анимации<b data-motion-label aria-hidden="true">вкл</b></button><button class="ftop" type="button" aria-label="Наверх"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="1.9"/></svg>наверх</button></span>
 </div>
 
 </div>

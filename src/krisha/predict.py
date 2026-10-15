@@ -78,6 +78,15 @@ class ListingOutsideAlmaty(ValueError):
 
 OUTSIDE_ALMATY = "Оцениваем только квартиры в Алматы, а это объявление из другого города"
 
+
+class DailyRentNotSupported(ValueError):
+    """Посуточная аренда: модель аренды знает только помесячные цены, и сутки
+    против месяца дали бы ложный вердикт. Ошибка ввода — 422 с текстом
+    DAILY_RENT; как и чужой город, кэшируется негативным кэшем калитки."""
+
+
+DAILY_RENT = "Посуточную аренду не оцениваем — только продажу и аренду на месяц и дольше"
+
 KRISHA_URL_RE = re.compile(r"krisha\.kz/a/show/(\d+)")
 KRISHA_SHOW_BASE = "https://krisha.kz/a/show/"
 VERDICT_THRESHOLD = 0.10  # ±10% — справедливая цена
@@ -787,6 +796,19 @@ def is_almaty(listing: dict[str, Any]) -> bool:
     )
 
 
+def _delisted_at(conn: sqlite3.Connection, listing_id: Any) -> str | None:
+    """Когда краулер пометил объявление снятым (is_active = 0), иначе None."""
+    try:
+        row = conn.execute(
+            "SELECT is_active, delisted_at FROM listings WHERE id = ?", (int(listing_id),)
+        ).fetchone()
+    except (sqlite3.Error, TypeError, ValueError):
+        return None
+    if row is None or row[0] != 0:
+        return None
+    return row[1] or ""
+
+
 def predict_from_url(
     url: str,
     live_vision: bool = True,
@@ -824,14 +846,21 @@ def predict_from_url(
     # find_duplicate_id/upsert_listing переиспользуют его вместо каждый
     # своего get_conn().
     from krisha.db import find_duplicate_id, listing_fingerprint, price_bounds_for, upsert_listing
-    from krisha.rent import detect_deal
+    from krisha.rent import detect_deal, is_daily_rent
 
     # Аренда и продажа — разные базы: рынок, аналоги, история и дубли ищем в
     # базе своей сделки, туда же кладём проверенную ссылку (со своими
     # границами цены — продажные отбраковали бы любую аренду).
     deal = detect_deal(listing)
+    if deal == RENT and is_daily_rent(listing):
+        raise DailyRentNotSupported(DAILY_RENT)
     with get_conn(RENT_DB_PATH if deal == RENT else DB_PATH) as conn:
+        # Снято ли объявление по нашей базе — до записи: страница у krisha ещё
+        # открывается (архив), но из выдачи оно пропало. Оценку отдаём, а карточка
+        # честно говорит, что объявление уже снято.
+        delisted_at = _delisted_at(conn, listing.get("id"))
         result = predict_from_listing(listing, live_vision=live_vision, conn=conn, deal=deal)
+        result["delisted_at"] = delisted_at
         # Каждая проверенная ссылка пополняет базу (fail-soft: read-only FS и т.п.)
         result["duplicate_of"] = None
         try:

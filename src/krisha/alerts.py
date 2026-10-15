@@ -17,6 +17,7 @@ from typing import Any
 
 from krisha.config import DB_PATH
 from krisha.db import get_conn
+from krisha.numfmt import dec, pct
 from krisha.scam import FRESH_DAYS
 from krisha.stats import DISTRICT_RU
 
@@ -177,34 +178,73 @@ def _price_chunk(chunk: list[dict]) -> list[tuple[dict, dict]]:
     return priced
 
 
-def format_alert(deals: list[dict]) -> str:
-    """HTML-сообщение для Telegram со списком выгодных лотов."""
-    lines = ["🔥 <b>Новые выгодные объявления</b>", ""]
-    for d in deals:
-        price_mln = d["price"] / 1_000_000
-        fair_mln = d["fair_price"] / 1_000_000
-        district = DISTRICT_RU.get(d.get("district") or "", "")
-        title = html.escape(d.get("title") or f"{d.get('rooms', '?')}-комн, {d.get('area', '?')} м²")
-        lines.append(f"🏠 <a href=\"{html.escape(d['url'])}\">{title}</a>")
-        detail = f"💰 {price_mln:.1f} млн ₸ (оценка {fair_mln:.1f} млн, {d['diff_pct']:+.1f}%)"
-        if district:
-            detail += f" · {district}"
-        lines.append(detail)
-        if d.get("suspicious"):
-            # та же формулировка, что в карточке бота (issue #157)
-            lines.append(
-                f"🚨 Цена сильно ниже рынка — проверьте внимательнее: на "
-                f"{d['below_low_pct']:.0f}% ниже нижней границы справедливого интервала"
-            )
-        lines.append("")
-    lines.append("Отписаться: /alerts_off")
+def _deals_word(n: int) -> str:
+    a, b = n % 100, n % 10
+    if 10 < a < 20 or b == 0 or b >= 5:
+        return "новых выгодных объявлений"
+    return "новое выгодное объявление" if b == 1 else "новых выгодных объявления"
+
+
+def format_alert_header(deals: list[dict], flt: dict | None = None) -> str:
+    """Первое сообщение подборки: сколько нашлось и по какому фильтру."""
+    from krisha.subscriptions import describe_filters
+
+    head = f"🔥 <b>{len(deals)} {_deals_word(len(deals))}</b>"
+    if flt:
+        head += f"\nпо фильтру: {html.escape(describe_filters(flt))}"
+    return head
+
+
+def format_deal_card(d: dict) -> str:
+    """Одно выгодное объявление — отдельной карточкой: вердикт, квартира, цена и оценка блоком."""
+    district = DISTRICT_RU.get(d.get("district") or "", "")
+    title = html.escape(d.get("title") or f"{d.get('rooms', '?')}-комн, {d.get('area', '?')} м²")
+    lines = [f"🟢 <b>{pct(d['diff_pct'])} к оценке</b>" + (f" · {district}" if district else ""),
+             f"🏠 <a href=\"{html.escape(d['url'])}\">{title}</a>",
+             "<pre>" + html.escape(f"Цена    {dec(d['price'] / 1_000_000)} млн ₸\n"
+                                   f"Оценка  {dec(d['fair_price'] / 1_000_000)} млн ₸") + "</pre>"]
+    if d.get("suspicious"):
+        # та же формулировка, что в карточке бота (issue #157)
+        lines.append(
+            f"🚨 Цена сильно ниже рынка — проверьте внимательнее: на "
+            f"{d['below_low_pct']:.0f}% ниже нижней границы справедливого интервала"
+        )
     return "\n".join(lines)
+
+
+def deal_keyboard(d: dict) -> dict | None:
+    """Кнопки карточки: открыть объявление и взять его в слежку."""
+    row: list[dict] = []
+    if str(d.get("url") or "").startswith("http"):
+        row.append({"text": "Открыть ↗", "url": d["url"]})
+    if d.get("id") is not None and str(d["id"]).isdigit():
+        row.append({"text": "👀 Следить", "callback_data": f"track:{d['id']}"})
+    return {"inline_keyboard": [row]} if row else None
+
+
+HEADER_KEYBOARD = {"inline_keyboard": [[
+    {"text": "⚙️ Изменить фильтр", "callback_data": "help:alerts"},
+    {"text": "🔕 Отписаться", "callback_data": "alerts:off"},
+]]}
+
+
+def format_alert(deals: list[dict], flt: dict | None = None) -> str:
+    """Вся подборка одним текстом (печать в сухом прогоне scripts/send_alerts.py):
+    заголовок и карточки — то же, что send_alerts шлёт отдельными сообщениями.
+    «Отписаться» в рассылке — кнопка под заголовком, поэтому строки с командой здесь нет."""
+    parts = [format_alert_header(deals, flt)] + [format_deal_card(d) for d in deals]
+    return "\n\n".join(parts)
+
+
+# Пауза между сообщениями одному чату: Telegram режет больше ~1 сообщения в секунду в чат.
+ALERT_CARD_PAUSE_S = 0.4
 
 
 def send_alerts(
     subscriptions: dict[str, dict], deals: list[dict], persist: bool = True
 ) -> int:
-    """Рассылает алерты; возвращает число отправленных сообщений."""
+    """Рассылает подборки: заголовок и по карточке с кнопками на каждое объявление.
+    Возвращает число чатов, которым подборка дошла."""
     from krisha.bot import tg_call
 
     sent = 0
@@ -213,11 +253,21 @@ def send_alerts(
         matched = [d for d in deals if match_filters(d, flt)][:MAX_DEALS_PER_CHAT]
         if not matched:
             continue
-        resp = tg_call("sendMessage", chat_id=int(chat_id), text=format_alert(matched),
-                       parse_mode="HTML", disable_web_page_preview=True)
-        if resp and resp.get("ok"):
-            sent += 1
-            delivered_ids.update(int(d["id"]) for d in matched if d.get("id") is not None)
+        resp = tg_call("sendMessage", chat_id=int(chat_id), text=format_alert_header(matched, flt),
+                       parse_mode="HTML", reply_markup=HEADER_KEYBOARD)
+        if not (resp and resp.get("ok")):
+            continue
+        sent += 1
+        for d in matched:
+            time.sleep(ALERT_CARD_PAUSE_S)
+            extra = {}
+            keyboard = deal_keyboard(d)
+            if keyboard:
+                extra["reply_markup"] = keyboard
+            card = tg_call("sendMessage", chat_id=int(chat_id), text=format_deal_card(d),
+                           parse_mode="HTML", disable_web_page_preview=True, **extra)
+            if card and card.get("ok") and d.get("id") is not None:
+                delivered_ids.add(int(d["id"]))
     # Помечаем только реально доставленные: окно теперь ловит лот и по
     # scraped_at, так что без этой отметки очередь дообновления деталей
     # (issue #102) присылала бы один и тот же лот снова и снова.

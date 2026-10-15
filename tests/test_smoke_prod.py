@@ -140,7 +140,7 @@ class SequencedClient(FakeClient):
         return entry.pop() if isinstance(entry, SequenceResponse) else entry
 
 
-def _busy(detail="Источник временно не отдаёт объявление, попробуй ещё раз"):
+def _busy(detail="Источник временно не отдаёт объявление, попробуйте ещё раз"):
     return FakeResponse(status_code=503, text='{"detail": "%s"}' % detail)
 
 

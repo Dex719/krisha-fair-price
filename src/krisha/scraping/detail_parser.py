@@ -22,6 +22,19 @@ logger = logging.getLogger(__name__)
 FLOOR_TITLE_RE = re.compile(r"(\d+)/(\d+)\s*этаж")  # "4/5 этаж" в title
 FLOOR_PARAM_RE = re.compile(r"(\d+)\s*из\s*(\d+)")  # "4 из 5" в параметрах
 FIRST_NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)?")
+# Кнопки переводчика krisha внутри блока описания: «Перевести Перевод может быть
+# неточным Показать оригинал» в конце текста — у ~40% объявлений. Это интерфейс
+# сайта, а не слова продавца: в карточке и в признаках описания ему не место.
+TRANSLATE_UI_RE = re.compile(
+    r"\s*(?:Перевести\s+)?Перевод может быть неточным(?:\s+Показать оригинал)?\s*$"
+)
+
+
+def clean_description(text: str | None) -> str | None:
+    """Описание без хвоста переводчика krisha; пустое — None."""
+    if not text:
+        return None
+    return TRANSLATE_UI_RE.sub("", text).strip() or None
 
 
 def _first_number(text: str | None) -> float | None:
@@ -125,7 +138,7 @@ def parse_detail(html: str, url: str = "") -> dict[str, Any] | None:
         # тип сделки определяется по параметрам (krisha.rent.detect_deal).
         # В базу не пишется — нет в LISTING_COLUMNS.
         "deal": adv.get("sectionAlias") if adv.get("sectionAlias") in ("prodazha", "arenda") else None,
-        "description": desc_el.get_text(" ", strip=True) if desc_el else None,
+        "description": clean_description(desc_el.get_text(" ", strip=True)) if desc_el else None,
         "photos_count": len(adv.get("photos") or []),
         "photos": photos,  # список URL фото; в БД не пишется (нет в LISTING_COLUMNS), нужен для API
         "raw_params": json.dumps(params, ensure_ascii=False),

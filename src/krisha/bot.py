@@ -29,9 +29,11 @@ from typing import Any
 import httpx
 
 from krisha import predict_gate
+from krisha.numfmt import dec, pct, signed
 from krisha.predict import (
     KRISHA_URL_RE,
     OUTSIDE_ALMATY,
+    DailyRentNotSupported,
     ListingNotFound,
     ListingOutsideAlmaty,
     is_almaty,
@@ -145,10 +147,10 @@ VERDICT_RU = {
 
 HELP_TEXT = (
     "🏠 <b>baǵam</b> — Telegram-бот для оценки квартир в Алматы\n\n"
-    "1) Пришли ссылку на объявление "
+    "1) Пришлите ссылку на объявление "
     "(<code>https://krisha.kz/a/show/…</code>) — покажу справедливую цену, "
     "диапазон и факторы.\n"
-    "2) Нет ссылки? Вставь текст объявления — сделаю примерную оценку по описанию.\n"
+    "2) Нет ссылки? Вставьте текст объявления — сделаю примерную оценку по описанию.\n"
     "3) <code>/track ссылка</code> — слежка за объявлением о продаже или аренде: "
     "напишу, если цена изменится или объявление снимут.\n"
     "4) <code>/alerts</code> — уведомления о новых выгодных объявлениях с фильтрами; "
@@ -244,84 +246,110 @@ def fmt_tenge(value: float | int, per_month: bool = False) -> str:
 
 
 def fmt_band(low: float, high: float, per_month: bool = False) -> str:
-    """Интервал модели компактно: «40.5–52.4 млн ₸», для аренды «250–340 тыс ₸/мес»."""
+    """Интервал модели компактно: «40,5–52,4 млн ₸», для аренды «250–340 тыс ₸/мес»."""
     if per_month:
         return f"{low / 1_000:.0f}–{high / 1_000:.0f} тыс ₸/мес"
-    return f"{low / 1_000_000:.1f}–{high / 1_000_000:.1f} млн ₸"
+    return f"{dec(low / 1_000_000)}–{dec(high / 1_000_000)} млн ₸"
+
+
+SITE_URL = "https://bagam.info"
+
+# Вердикт — первой строкой и словами сайта: «Выгодно: на 9,8% дешевле оценки».
+VERDICT_HEAD = {
+    "GOOD_DEAL": ("🟢", "Выгодно"),
+    "FAIR": ("🟡", "В рынке"),
+    "OVERPRICED": ("🔴", "Дорого"),
+}
+
+
+def _money(value: float, rent: bool) -> str:
+    """Сумма коротко: «25,9 млн ₸», у аренды — «230 тыс ₸/мес»."""
+    if rent:
+        return f"{round(value / 1_000):,}".replace(",", " ") + " тыс ₸/мес"
+    return f"{dec(value / 1_000_000)} млн ₸"
+
+
+def _delta(value: float, rent: bool) -> str:
+    """Вклад фактора со знаком: «+1,6 млн», «−600 тыс»."""
+    if rent or abs(value) < 950_000:
+        return f"{signed(value / 1_000, 0)} тыс"
+    return f"{signed(value / 1_000_000)} млн"
+
+
+# Блок кода в Telegram на телефоне держит ~32 знака в строке: длинные имена
+# факторов сокращаем, иначе колонка значений переносится и выравнивание теряется.
+FACTOR_SHORT = {
+    "hex7_ppsm": "цены в округе",
+    "hex8_ppsm": "цены в квартале",
+    "district_ppsm": "цены района",
+    "microdistrict_ppsm": "цены микрорайона",
+    "knn_ppsm": "цены соседних домов",
+    "dist_center_km": "до центра",
+    "district_mismatch": "район ≠ координаты",
+}
+
+
+def _short_factor(feature: str) -> str:
+    name = FACTOR_SHORT.get(feature) or FEATURE_RU.get(feature, feature)
+    name = name.split(" (")[0].lower()
+    return name if len(name) <= 20 else name[:19] + "…"
+
+
+def _pre(rows: list[tuple[str, str]]) -> str:
+    """Выровненный блок «подпись · значение»: в Telegram — моноширинный <pre>."""
+    width = max(len(label) for label, _ in rows) + 2
+    body = "\n".join(label.ljust(width) + value for label, value in rows)
+    return f"<pre>{html.escape(body)}</pre>"
+
+
+def verdict_line(result: dict[str, Any]) -> str:
+    verdict, diff = result.get("verdict"), result.get("diff_pct")
+    if result.get("actual_price") is None:
+        return "⚖️ <b>Оценка модели</b> — в объявлении нет цены"
+    if not verdict or verdict not in VERDICT_HEAD:
+        return "⚖️ <b>Оценка модели</b> — без вердикта"
+    mark, word = VERDICT_HEAD[verdict]
+    if diff is None:
+        return f"{mark} <b>{word}</b>"
+    if abs(diff) < 0.05:
+        return f"{mark} <b>{word}: ровно по оценке</b>"
+    side = "дешевле" if diff < 0 else "дороже"
+    return f"{mark} <b>{word}: на {dec(abs(diff))}% {side} оценки</b>"
 
 
 def format_reply(result: dict[str, Any]) -> str:
     """Текст ответа бота (HTML) по результату predict_from_url.
 
-    Аренда (deal="arenda") — те же блоки, но цены в ₸/мес, крупные суммы в
-    тысячах, а не миллионах, и «сдают» вместо «снимают с продажи».
+    Порядок как на сайте: вердикт → что за квартира → цена, оценка и обычный
+    диапазон выровненным блоком → почему такая оценка → срок и доходность.
+    Действия (следить, похожие, разбор на сайте) — кнопками, см. reply_keyboard.
+    Аренда (deal="arenda") — те же блоки в ₸/мес и «сдают» вместо «снимают с продажи».
     """
     rent = result.get("deal") == "arenda"
-    lines: list[str] = []
+    lines: list[str] = [verdict_line(result)]
     title = result.get("title")
     address = result.get("address")
     if title:
-        lines.append(f"🏠 <b>{html.escape(title)}</b>")
+        lines.append(f"🏠 {html.escape(title)}")
     if address:
         lines.append(f"📍 {html.escape(address)}")
-    if lines:
-        lines.append("")
 
+    rows: list[tuple[str, str]] = []
     actual = result.get("actual_price")
     if actual:
-        what = "Аренда в объявлении" if rent else "Цена в объявлении"
-        lines.append(f"💰 {what}: <b>{fmt_tenge(actual, rent)}</b>")
-    what = "Справедливая аренда" if rent else "Справедливая цена"
-    lines.append(f"⚖️ {what}: <b>{fmt_tenge(result['fair_price'], rent)}</b>")
+        rows.append(("Аренда" if rent else "Цена", _money(actual, rent)))
+    rows.append(("Оценка", _money(result["fair_price"], rent)))
     # Интервал модели: по нему ставится вердикт («выгодно» — цена ниже нижней границы)
     low, high = result.get("fair_price_low"), result.get("fair_price_high")
     if low and high:
-        lines.append(f"📏 Диапазон оценки: <b>{fmt_band(low, high, rent)}</b>")
+        rows.append(("Обычно", fmt_band(low, high, rent)))
+    lines.append(_pre(rows))
+
     if result.get("room_share"):
         lines.append(
             "⚠️ Похоже на подселение или сдачу комнаты: цена — за место, "
             "а оценка — за квартиру целиком, поэтому без вердикта."
         )
-
-    verdict = result.get("verdict")
-    diff = result.get("diff_pct")
-    if verdict:
-        line = VERDICT_RU.get(verdict, verdict)
-        if diff is not None:
-            line += f" ({diff:+.1f}%)"
-        lines.append(line)
-
-    # Срок продажи v1: медиана дней до снятия у похожих (снятие != продажа)
-    liq = result.get("liquidity")
-    if liq:
-        if liq.get("band_median_days") is not None:
-            band_ru = {"below": "дешевле рынка", "near": "в рынке", "above": "дороже рынка"}
-            gone = "сдают" if rent else "снимают с продажи"
-            lines.append(
-                f"⏳ Похожие по цене ({band_ru.get(liq.get('band'), '')}) "
-                f"{gone} за ~<b>{liq['band_median_days']} дн.</b> "
-                f"(по {liq['band_sample']} снятым)"
-            )
-        else:
-            scope = " по городу" if liq.get("scope") == "city" else ""
-            gone = "сдают" if rent else "снимают с продажи"
-            lines.append(
-                f"⏳ Похожие{scope} {gone} за ~<b>{liq['median_days']} дн.</b> "
-                f"(по {liq['sample']} снятым)"
-            )
-
-    ry = result.get("rental_yield")
-    if ry and ry.get("gross_yield_pct") is not None:
-        line = (
-            f"📈 Если сдавать: ~<b>{ry['monthly_rent'] / 1_000:.0f} тыс ₸/мес</b> · "
-            f"доходность <b>{ry['gross_yield_pct']:.1f}%</b> годовых"
-        )
-        if ry.get("district_yield_pct") is not None:
-            line += f" (в районе ~{ry['district_yield_pct']:.1f}%)"
-        if ry.get("assumes_renovation"):
-            line += ", после ремонта"
-        lines.append(line)
-
     # issue #157: формулировка осторожная. Мы знаем только, что цена не
     # объясняется характеристиками квартиры, — обвинять продавца не в чем.
     scam = result.get("scam_risk")
@@ -334,6 +362,8 @@ def format_reply(result: dict[str, Any]) -> str:
         )
         reasons = ", ".join(scam.get("reasons") or [])
         lines.append(f"{mark} <b>{head}:</b> {html.escape(reasons)}")
+    if result.get("delisted_at") is not None:
+        lines.append("🏁 По нашим данным объявление уже снято — оценка по последней цене.")
 
     reno = result.get("renovation")
     if reno:
@@ -342,41 +372,81 @@ def format_reply(result: dict[str, Any]) -> str:
             line += f" — {html.escape(reno['comment'])}"
         lines.append(line)
 
-    factors = result.get("top_factors") or []
+    factors = [f for f in (result.get("top_factors") or [])[:3] if f.get("impact")]
     if factors:
-        lines.append("")
         base = result.get("factors_base")
         # Вклады считаются от «типичной квартиры» модели — без неё «всё снижает,
         # а оценка выше цены» выглядит ошибкой.
-        ref = ""
-        if base:
-            ref = "; от типичной квартиры — " + (
-                f"{base / 1_000:.0f} тыс ₸/мес" if rent else f"{base / 1_000_000:.1f} млн ₸"
-            )
-        lines.append(f"📊 <b>Почему такая цена</b> (топ-3 фактора{ref}):")
-        for f in factors[:3]:
-            arrow = "▲" if f["impact"] > 0 else "▼"
-            name = FEATURE_RU.get(f["feature"], f["feature"])
-            line = f"{arrow} {name}"
-            pct, tenge = f.get("impact_pct"), f.get("impact_tenge")
-            if pct is not None and abs(pct) >= 0.05:
-                line += f": {pct:+.1f}%"
-                if rent and tenge and abs(tenge) >= 5_000:
-                    line += f" ({tenge / 1_000:+.0f} тыс ₸/мес)"
-                elif not rent and tenge and abs(tenge) >= 100_000:
-                    line += f" ({tenge / 1_000_000:+.1f} млн ₸)"
-            lines.append(line)
+        ref = f" · от типичной {_money(base, rent)}" if base else ""
+        lines.append(f"<b>Почему такая оценка</b>{ref}")
+        # вклад — в деньгах; старый ответ без денег — в процентах, без них — только направление
+        lines.append(_pre([
+            (("▲ " if f["impact"] > 0 else "▼ ") + _short_factor(f["feature"]),
+             _delta(f["impact_tenge"], rent) if f.get("impact_tenge")
+             else pct(f["impact_pct"]) if f.get("impact_pct") is not None else "")
+            for f in factors
+        ]))
 
-    analogs = result.get("analogs") or []
+    # Срок продажи v1: медиана дней до снятия у похожих (снятие != продажа)
+    liq = result.get("liquidity")
+    gone = "сдают" if rent else "снимают с продажи"
+    if liq and liq.get("band_median_days") is not None:
+        band_ru = {"below": "дешевле рынка", "near": "в рынке", "above": "дороже рынка"}
+        lines.append(
+            f"⏳ Похожие по цене ({band_ru.get(liq.get('band'), '')}) {gone} "
+            f"за ~<b>{liq['band_median_days']} дн.</b> (по {liq['band_sample']} снятым)"
+        )
+    elif liq:
+        scope = " по городу" if liq.get("scope") == "city" else ""
+        lines.append(
+            f"⏳ Похожие{scope} {gone} за ~<b>{liq['median_days']} дн.</b> "
+            f"(по {liq['sample']} снятым)"
+        )
+
+    ry = result.get("rental_yield")
+    if ry and ry.get("gross_yield_pct") is not None:
+        line = (
+            f"📈 Сдавать: ~<b>{ry['monthly_rent'] / 1_000:.0f} тыс ₸/мес</b> · "
+            f"<b>{dec(ry['gross_yield_pct'])}%</b> годовых"
+        )
+        if ry.get("district_yield_pct") is not None:
+            line += f" (в районе ~{dec(ry['district_yield_pct'])}%)"
+        if ry.get("assumes_renovation"):
+            line += ", после ремонта"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _listing_id(result: dict[str, Any]) -> str:
+    lid = str(result.get("listing_id") or "")
+    if not lid.isdigit():
+        match = KRISHA_URL_RE.search(str(result.get("url") or ""))
+        lid = match.group(1) if match else ""
+    return lid
+
+
+def reply_keyboard(result: dict[str, Any]) -> dict[str, Any] | None:
+    """Кнопки под оценкой: следить, похожие, подробный разбор на сайте."""
+    lid = _listing_id(result)
+    if not lid:
+        return None
+    first = [{"text": "👀 Следить за ценой", "callback_data": f"track:{lid}"}]
+    analogs = [a for a in (result.get("analogs") or []) if a.get("url")]
     if analogs:
-        lines.append("")
-        lines.append("🏘 <b>Похожие квартиры:</b>")
-        for a in analogs[:3]:
-            title = html.escape(a.get("title") or f"{a.get('rooms', '?')}-комн, {a.get('area', '?')} м²")
-            price = (f"{a['price'] / 1_000:.0f} тыс ₸/мес" if rent
-                     else f"{a['price'] / 1_000_000:.1f} млн ₸")
-            lines.append(f'• <a href="{html.escape(a["url"])}">{title}</a> — {price}')
+        first.append({"text": f"🏘 Похожие · {min(len(analogs), 3)}", "callback_data": f"sim:{lid}"})
+    return {"inline_keyboard": [
+        first,
+        [{"text": "🌐 Подробный разбор на сайте", "url": f"{SITE_URL}/#check={lid}"}],
+    ]}
 
+
+def format_similar(result: dict[str, Any]) -> str:
+    """Похожие объявления — отдельным сообщением по кнопке «Похожие»."""
+    rent = result.get("deal") == "arenda"
+    lines = ["🏘 <b>Похожие квартиры</b> — сравните сами:"]
+    for a in [a for a in (result.get("analogs") or []) if a.get("url")][:3]:
+        title = html.escape(a.get("title") or f"{a.get('rooms', '?')}-комн, {a.get('area', '?')} м²")
+        lines.append(f'• <a href="{html.escape(a["url"])}">{title}</a> — {_money(a["price"], rent)}')
     return "\n".join(lines)
 
 
@@ -393,7 +463,14 @@ def _clip_html(text: str, limit: int) -> str:
         return text
     out: list[str] = []
     total = 0
+    blocks: list[str] = []
     for line in text.split("\n"):
+        # строки внутри <pre>…</pre> не режем: обрыв посреди блока ломает разметку
+        if blocks and blocks[-1].count("<pre>") > blocks[-1].count("</pre>"):
+            blocks[-1] += "\n" + line
+        else:
+            blocks.append(line)
+    for line in blocks:
         # +1 на перевод строки, +1 на многоточие в конце
         if total + len(line) + 2 > limit:
             break
@@ -437,18 +514,19 @@ _BOT_LIMITS = {
 }
 _STATE_ALERT_COMMANDS = ("/alerts_on", "/alerts_off")
 
-RATE_LIMITED_TEXT = "Слишком много запросов, подожди минуту 🙏"
+RATE_LIMITED_TEXT = "Слишком много запросов — подождите минуту 🙏"
 MSG_LISTING_GONE = "Такого объявления на krisha нет — похоже, его уже сняли с продажи 🤷"
 MSG_OUTSIDE_ALMATY = "Оцениваю только квартиры в Алматы, а это объявление из другого города 🏙"
+MSG_DAILY_RENT = "Посуточную аренду не оцениваю — только продажу и аренду на месяц и дольше 🗓"
 MSG_SOURCE_UNAVAILABLE = ("krisha сейчас не отдаёт это объявление 🙈 "
-                          "Попробуй ещё раз через минуту")
+                          "Попробуйте ещё раз через минуту")
 # Фиксированные тексты на «прочие» ValueError/RuntimeError: str(exc) пользователю
 # не отдаём — под этими типами ходят и наши ошибки, и чужих библиотек, а их
 # текст может нести внутренности (пути, куски страницы, детали модели).
 MSG_EVAL_FAILED = ("Не получилось оценить объявление — не смог его разобрать. "
-                   "Проверь ссылку и попробуй ещё раз чуть позже 🙏")
+                   "Проверьте ссылку и попробуйте ещё раз чуть позже 🙏")
 MSG_TRACK_FAILED = ("Не получилось взять объявление в слежку — не смог его разобрать. "
-                    "Проверь ссылку и попробуй ещё раз чуть позже 🙏")
+                    "Проверьте ссылку и попробуйте ещё раз чуть позже 🙏")
 
 _bot_hits: dict[str, dict[str, deque[float]]] = {name: {} for name in _BOT_LIMITS}
 _bot_notified: dict[str, float] = {}  # чат -> когда последний раз писали «подожди»
@@ -559,7 +637,10 @@ def _limit_bucket(text: str) -> str | None:
 
 
 def handle_update(update: dict[str, Any]) -> None:
-    """Обработка одного апдейта Telegram (текстовые сообщения)."""
+    """Обработка одного апдейта Telegram: текстовые сообщения и нажатия inline-кнопок."""
+    if update.get("callback_query"):
+        _handle_callback(update["callback_query"])
+        return
     message = update.get("message") or update.get("edited_message")
     if not message:
         return
@@ -603,7 +684,11 @@ def handle_update(update: dict[str, Any]) -> None:
     if not url:
         _handle_free_text(chat_id, text)
         return
+    _evaluate_url(chat_id, url)
 
+
+def _evaluate_url(chat_id: int, url: str) -> None:
+    """Оценка объявления по ссылке: ответ с фото, вердиктом и кнопками."""
     tg_call("sendChatAction", chat_id=chat_id, action="typing")
     try:
         # Через общую калитку (кэш + single-flight + слоты + короткий сетевой
@@ -613,10 +698,10 @@ def handle_update(update: dict[str, Any]) -> None:
         result = predict_gate.cached_predict(url, live_vision=True)
     except predict_gate.PredictBusy:
         tg_call("sendMessage", chat_id=chat_id,
-                text="Сейчас много запросов, попробуй через полминуты 🙏")
+                text="Сейчас много запросов — попробуйте через полминуты 🙏")
         return
     except FileNotFoundError:
-        tg_call("sendMessage", chat_id=chat_id, text="Модель ещё не загружена, попробуй позже 🙏")
+        tg_call("sendMessage", chat_id=chat_id, text="Модель ещё не загружена — попробуйте позже 🙏")
         return
     except SourceUnavailable:
         # Не наша поломка: krisha не отдала страницу (anti-bot челлендж, блок,
@@ -631,6 +716,9 @@ def handle_update(update: dict[str, Any]) -> None:
     except ListingOutsideAlmaty:
         tg_call("sendMessage", chat_id=chat_id, text=MSG_OUTSIDE_ALMATY)
         return
+    except DailyRentNotSupported:
+        tg_call("sendMessage", chat_id=chat_id, text=MSG_DAILY_RENT)
+        return
     except (ValueError, RuntimeError):
         # Раньше пользователю уходил сырой str(exc) — см. MSG_EVAL_FAILED.
         logger.warning("bot: не удалось оценить %s", url, exc_info=True)
@@ -643,33 +731,124 @@ def handle_update(update: dict[str, Any]) -> None:
         logger.exception("bot: непредвиденная ошибка оценки %s", url)
         tg_call("sendMessage", chat_id=chat_id,
                 text="Не получилось оценить объявление — что-то пошло не так на нашей стороне. "
-                     "Попробуй ещё раз чуть позже 🙏")
+                     "Попробуйте ещё раз чуть позже 🙏")
         return
 
     reply = format_reply(result)
+    extra: dict[str, Any] = {}
+    keyboard = reply_keyboard(result)
+    if keyboard:
+        extra["reply_markup"] = keyboard
     photos = result.get("photos") or []
     sent = None
     if photos:
         caption = _clip_html(reply, CAPTION_LIMIT)
         sent = tg_call("sendPhoto", chat_id=chat_id, photo=photos[0],
-                       caption=caption, parse_mode="HTML")
+                       caption=caption, parse_mode="HTML", **extra)
     if not photos or not (sent or {}).get("ok"):
         tg_call("sendMessage", chat_id=chat_id, text=reply,
-                parse_mode="HTML", disable_web_page_preview=True)
+                parse_mode="HTML", disable_web_page_preview=True, **extra)
+
+
+# --- Inline-кнопки ----------------------------------------------------------
+# callback_data — «действие:номер объявления» (Telegram ограничивает её 64 байтами).
+# Нажатие проходит те же лимиты, что и сообщение: «следить» пишет состояние.
+_CALLBACK_STATE = ("track", "untrack", "alerts")
+
+
+def _demo_url(deal: str) -> str | None:
+    """Свежее активное объявление из базы — для кнопок «Пример продажи / аренды»."""
+    import random
+
+    from krisha.config import DB_PATH, RENT_DB_PATH
+    from krisha.db import get_conn
+
+    try:
+        with get_conn(RENT_DB_PATH if deal == "arenda" else DB_PATH) as conn:
+            rows = conn.execute(
+                "SELECT url FROM listings WHERE is_active = 1 AND url LIKE '%krisha.kz/a/show/%' "
+                "ORDER BY last_seen DESC LIMIT 50"
+            ).fetchall()
+    except Exception:  # noqa: BLE001 — нет базы — нет примера, бот отвечает подсказкой
+        logger.warning("bot: не удалось взять пример из базы", exc_info=True)
+        return None
+    return extract_url(str(random.choice(rows)[0])) if rows else None
+
+
+def _handle_callback(cq: dict[str, Any]) -> None:
+    message = cq.get("message") or {}
+    chat_id = message.get("chat", {}).get("id")
+    data = str(cq.get("data") or "")
+    if cq.get("id"):
+        tg_call("answerCallbackQuery", callback_query_id=cq["id"])
+    if not chat_id or not data:
+        return
+    action, _, arg = data.partition(":")
+    buckets = ("msg", "state") if action in _CALLBACK_STATE else ("msg",)
+    verdict = _bot_rate_check(chat_id, buckets)
+    if verdict != "ok":
+        if verdict == "notify":
+            tg_call("sendMessage", chat_id=chat_id, text=RATE_LIMITED_TEXT)
+        return
+
+    from krisha.usage import record_event
+
+    record_event("bot", user_id=chat_id)
+
+    if action in ("track", "untrack", "sim", "redo"):
+        if not arg.isdigit() or not _valid_listing_id(int(arg)):
+            return
+        url = f"https://krisha.kz/a/show/{arg}"
+        if action == "track":
+            _handle_track_command(chat_id, f"/track {url}")
+        elif action == "untrack":
+            _handle_track_command(chat_id, f"/untrack {url}")
+        elif action == "redo":
+            _evaluate_url(chat_id, url)
+        else:
+            try:
+                result = predict_gate.cached_predict(url, live_vision=True)
+            except Exception:  # noqa: BLE001 — похожие — не повод ронять бота
+                logger.warning("bot: похожие для %s не получились", arg, exc_info=True)
+                tg_call("sendMessage", chat_id=chat_id, text=MSG_EVAL_FAILED)
+                return
+            tg_call("sendMessage", chat_id=chat_id, text=format_similar(result),
+                    parse_mode="HTML", disable_web_page_preview=True)
+        return
+    if action == "list":
+        _handle_track_command(chat_id, "/track")
+    elif action == "demo" and arg in ("prodazha", "arenda"):
+        url = _demo_url(arg)
+        if url:
+            _evaluate_url(chat_id, url)
+        else:
+            tg_call("sendMessage", chat_id=chat_id, parse_mode="HTML", text=NO_URL_HINT)
+    elif action == "help" and arg == "track":
+        tg_call("sendMessage", chat_id=chat_id, text=TRACK_HELP, parse_mode="HTML")
+    elif action == "alerts" and arg == "off":
+        _handle_alerts_command(chat_id, "/alerts_off")
+    elif action == "help" and arg == "alerts":
+        tg_call("sendMessage", chat_id=chat_id, text=ALERTS_HELP, parse_mode="HTML")
+
+
+HELP_KEYBOARD = [
+    [{"text": "🏠 Пример продажи", "callback_data": "demo:prodazha"},
+     {"text": "🔑 Пример аренды", "callback_data": "demo:arenda"}],
+    [{"text": "👀 Слежка за ценой", "callback_data": "help:track"},
+     {"text": "🔥 Выгодные", "callback_data": "help:alerts"}],
+    [{"text": "❓ Как считает модель", "url": f"{SITE_URL}/about"}],
+]
 
 
 def _send_help(chat_id: int, message: dict[str, Any]) -> None:
-    """Короткий общий help; payload deep-link обрабатывается отдельно."""
-    payload: dict[str, Any] = {"chat_id": chat_id, "text": HELP_TEXT,
-                               "parse_mode": "HTML",
-                               "disable_web_page_preview": True}
+    """Приветствие с кнопками: примеры, слежка, выгодные; deep-link — отдельно."""
+    keyboard = [list(row) for row in HELP_KEYBOARD]
     base = public_base_url()
     if base and message.get("chat", {}).get("type") == "private":
         # web_app-кнопки Telegram разрешает только в личных чатах
-        payload["reply_markup"] = {"inline_keyboard": [[
-            {"text": "📱 Открыть приложение", "web_app": {"url": base}}
-        ]]}
-    tg_call("sendMessage", **payload)
+        keyboard.insert(0, [{"text": "📱 Открыть приложение", "web_app": {"url": base}}])
+    tg_call("sendMessage", chat_id=chat_id, text=HELP_TEXT, parse_mode="HTML",
+            disable_web_page_preview=True, reply_markup={"inline_keyboard": keyboard})
 
 
 def _start_payload(text: str) -> str:
@@ -698,9 +877,9 @@ def _handle_start_payload(chat_id: int, payload: str) -> bool:
                 "sendMessage",
                 chat_id=chat_id,
                 parse_mode="HTML",
-                text="район не узнал. Подпишись вручную: "
+                text="Район не узнал. Подпишитесь вручную: "
                      "<code>/alerts_on бостандыкский</code> "
-                     "или открой /alerts, чтобы посмотреть формат фильтров.",
+                     "или откройте /alerts, чтобы посмотреть формат фильтров.",
             )
             return True
         _handle_alerts_command(chat_id, f"/alerts_on {DISTRICT_RU[district]}")
@@ -708,11 +887,11 @@ def _handle_start_payload(chat_id: int, payload: str) -> bool:
     return False
 
 
-NO_URL_HINT = ("Не вижу ссылки на объявление 🤔\nПришли ссылку вида "
+NO_URL_HINT = ("Не вижу ссылки на объявление 🤔\nПришлите ссылку вида "
                "<code>https://krisha.kz/a/show/123456789</code> — или просто "
-               "вставь текст объявления, попробую оценить по описанию.")
+               "вставьте текст объявления, попробую оценить по описанию.")
 
-_PARSED_RU = {"rooms": "комнат", "area": "площадь", "floor": "этаж",
+_PARSED_RU = {"rooms": "число комнат", "area": "площадь", "floor": "этаж",
               "total_floors": "этажность", "year_built": "год постройки",
               "ceiling": "потолки", "district": "район",
               "microdistrict": "микрорайон", "building_type": "тип дома",
@@ -731,7 +910,7 @@ def _handle_free_text(chat_id: int, text: str) -> None:
     try:
         result = predict_from_text(text)
     except FileNotFoundError:
-        tg_call("sendMessage", chat_id=chat_id, text="Модель ещё не загружена, попробуй позже 🙏")
+        tg_call("sendMessage", chat_id=chat_id, text="Модель ещё не загружена — попробуйте позже 🙏")
         return
     except Exception:  # noqa: BLE001 — свободный текст не должен ронять бота
         logger.exception("text_parse failed")
@@ -743,7 +922,7 @@ def _handle_free_text(chat_id: int, text: str) -> None:
     if result.get("error") == "no_key_fields":
         tg_call("sendMessage", chat_id=chat_id, parse_mode="HTML",
                 text="Похоже на объявление, но не вижу ключевых параметров 🤔\n"
-                     "Добавь в текст хотя бы <b>площадь</b> и <b>число комнат</b>.")
+                     "Добавьте в текст хотя бы <b>площадь</b> и <b>число комнат</b>.")
         return
 
     parsed = result.get("parsed_fields") or {}
@@ -781,13 +960,13 @@ def _handle_alerts_command(chat_id: int, text: str) -> None:
         flt = parse_filters(args)
         set_subscription(chat_id, flt)
         tg_call("sendMessage", chat_id=chat_id, parse_mode="HTML",
-                text=f"✅ Подписал: <b>{describe_filters(flt)}</b>.\n"
+                text=f"✅ <b>Подписка включена:</b> {describe_filters(flt)}.\n"
                      "Пришлю новые выгодные объявления после ближайшего обновления базы "
                      "(раз в день, обычно в первой половине дня). Отписаться: /alerts_off")
     elif cmd == "/alerts_off":
         removed = remove_subscription(chat_id)
         tg_call("sendMessage", chat_id=chat_id,
-                text="Отписал 👌" if removed else "Ты и не был подписан 🙂")
+                text="Отписал 👌" if removed else "Подписки и не было 🙂")
     else:
         sub = load_subscriptions().get(str(chat_id))
         status = f"\n\nТекущая подписка: <b>{describe_filters(sub)}</b>" if sub else ""
@@ -825,7 +1004,7 @@ def _tracked_list_text(chat_id: int) -> str:
 
     lots = list_tracked(chat_id)
     if not lots:
-        return "Ты пока ни за чем не следишь. Пришли /track со ссылкой на объявление."
+        return "Вы пока ни за чем не следите. Пришлите /track со ссылкой на объявление."
     lines = ["👀 <b>Слежу для тебя:</b>", ""]
     for lid, state in lots.items():
         title = html.escape(state.get("title") or f"Объявление {lid}")
@@ -835,7 +1014,7 @@ def _tracked_list_text(chat_id: int) -> str:
         elif state.get("deal") == "arenda":
             price_txt = f" — {price / 1_000:.0f} тыс ₸/мес"
         else:
-            price_txt = f" — {price / 1_000_000:.1f} млн ₸"
+            price_txt = f" — {dec(price / 1_000_000)} млн ₸"
         lines.append(f'• <a href="https://krisha.kz/a/show/{lid}">{title}</a>{price_txt}')
     return "\n".join(lines)
 
@@ -955,7 +1134,7 @@ def _handle_track_command(chat_id: int, text: str) -> None:
     if not ok and reason == "limit":
         tg_call("sendMessage", chat_id=chat_id,
                 text=f"Лимит: не больше {MAX_TRACKED_PER_CHAT} объявлений в слежке. "
-                     "Убери что-нибудь: /untrack <ссылка>")
+                     "Уберите что-нибудь: /untrack <ссылка>")
         return
     if not ok:
         tg_call("sendMessage", chat_id=chat_id, text="Уже слежу за этим объявлением 👌")
@@ -963,14 +1142,17 @@ def _handle_track_command(chat_id: int, text: str) -> None:
 
     name = html.escape(title or f"Объявление {listing_id}")
     rent = deal == "arenda"
-    what = "Текущая аренда" if rent else "Текущая цена"
-    price_txt = f" {what}: <b>{fmt_tenge(price, rent)}</b>." if price else ""
-    when = ("Проверяю раз в день, после вечернего обновления базы аренды; "
-            "напишу, если аренда изменится или объявление снимут. ") if rent else (
-            "Напишу, если цена изменится или объявление снимут с продажи. ")
+    what = "Аренда сейчас" if rent else "Сейчас"
+    price_txt = f"{what} <b>{fmt_tenge(price, rent)}</b>. " if price else ""
+    when = ("Проверяю раз в день, после вечернего обновления базы аренды: "
+            "напишу, если аренда изменится или объявление снимут.") if rent else (
+            "Напишу, если цену изменят или объявление снимут с продажи.")
     tg_call("sendMessage", chat_id=chat_id, parse_mode="HTML",
-            text=f"👀 Слежу за «{name}».{price_txt}\n{when}"
-                 "Список: /track, отписка: /untrack")
+            text=f"👀 <b>Слежу за ценой</b>\n🏠 {name}\n{price_txt}{when}",
+            reply_markup={"inline_keyboard": [[
+                {"text": "📋 Мои объявления", "callback_data": "list"},
+                {"text": "✖️ Не следить", "callback_data": f"untrack:{listing_id}"},
+            ]]})
 
 
 def public_base_url() -> str | None:
@@ -1014,7 +1196,7 @@ def setup_webhook(retries: int = 3) -> bool:
             "setWebhook",
             url=f"{base}{WEBHOOK_PATH}",
             secret_token=webhook_secret(token),
-            allowed_updates=["message"],
+            allowed_updates=["message", "callback_query"],
             # drop_pending_updates НЕ ставим. Space пересобирается каждую ночь
             # (свежая база запекается в образ) и рестартует при каждом деплое —
             # с этим флагом каждый рестарт выбрасывал всё, что Telegram не успел
