@@ -20,7 +20,7 @@ STATIC = ROOT / "static"
 
 # Ключи localStorage, о которых сказано в политике. Новый ключ на любой странице
 # сайта нужно сначала описать в разделе «Память браузера» на /privacy.
-DOCUMENTED_STORAGE_KEYS = {"bagam-theme", "kfp-theme", "bagam-stats"}
+DOCUMENTED_STORAGE_KEYS = {"bagam-theme", "bagam-motion", "kfp-theme", "bagam-stats"}
 
 
 def _page() -> str:

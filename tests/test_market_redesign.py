@@ -209,10 +209,12 @@ def test_page_colors_come_from_theme_tokens():
     css = _page_css(html)
 
     assert not re.search(r"#[0-9a-fA-F]{3,8}\b", css)
-    # светлая тема: заливки графиков темнее, чтобы держать 3:1 к дорожке и панели
-    assert "html[data-theme=light]{--c-lo:" in css
-    # статичный режим — html.lite (слабое устройство, экономия трафика), не «меньше движения»
-    assert "html.lite" in (STATIC / "design.css").read_text(encoding="utf-8")
+    # светлая тема: заливки графиков темнее, чтобы держать 3:1 к дорожке и панели. Цвета графиков —
+    # общие с главной, в design.css, а не копия в странице
+    assert "html[data-theme=light]{--c-lo:" in (STATIC / "design.css").read_text(encoding="utf-8")
+    assert "--c-lo:" not in css
+    # статичный режим — html.still: «меньше движения», лёгкий режим или выключенный переключатель
+    assert "html.still" in (STATIC / "design.css").read_text(encoding="utf-8")
 
 
 def test_single_h1_and_logical_headings():

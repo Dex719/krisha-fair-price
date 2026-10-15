@@ -32,10 +32,13 @@ def test_home_uses_bagam_meta_design_css_and_local_favicon():
     html = _static("index.html")
 
     assert (
-        "<title>Оценка квартиры в Алматы: справедливая цена продажи и аренды │ baǵam</title>"
+        "<title>baǵam (bagam.info) — оценка квартиры в Алматы: справедливая цена продажи и аренды</title>"
         in html
     )
     assert '<meta name="description"' in html
+    # бренд находится и латиницей, и кириллицей: «bagam», «bagam info», «багам»
+    assert '"alternateName":["bagam","bagam.info","bagam info","багам","Багам"]' in html
+    assert "bagam.info, «багам»" in html
     assert 'href="/static/design.css"' in html
     assert 'rel="icon" type="image/svg+xml" href="/static/favicon.svg"' in html
     assert '<a href="/stats">Рынок</a>' in html

@@ -3,7 +3,7 @@
    Подключение: <script src="/static/js/site.js" defer></script> в <head>. На главной и на
    «Рынке» — с атрибутом data-gsap: только там bagam.boot() подгружает GSAP + ScrollTrigger.
    Тему до первой отрисовки ставит маленький инлайн-скрипт в <head>; он же выставляет классы
-   html.js / html.anim / html.lite / html.rm и заводит очередь window.bagam.ready(fn), поэтому
+   html.js / html.anim | html.still / html.lite / html.rm и заводит очередь window.bagam.ready(fn), поэтому
    постраничный код может обращаться к bagam откуда угодно — fn выполнится, когда этот файл готов.
 
    Наружу — window.bagam:
@@ -20,13 +20,14 @@
      pct(n, digits=1)       процент: 7,3%
      plural(n, [1,2,5])     склонение: plural(3, ['объявление','объявления','объявлений']) → 'объявления'
      esc(s)                 экранирование для innerHTML
-     glide(y|fn, ms, done)  плавная прокрутка своими кадрами — всегда, в любом режиме
+     glide(y|fn, ms, done)  плавная прокрутка своими кадрами; при html.still — мгновенно
      reveal(selector)       мягкое появление блоков ниже первого экрана (IntersectionObserver + CSS)
      countUp(el)            счётчик от нуля до текущего текста элемента (сам запускается для [data-count])
      markCurrent()          пересчитать aria-current в шапке, меню и подвале (после history.replaceState)
      tg(fn)                 fn(Telegram.WebApp), когда SDK загружен (только внутри Telegram)
      theme(), setTheme(t)   текущая тема и её смена ('light' | 'dark', выбор запоминается)
      rm, lite               «меньше движения» в системе и лёгкий режим (слабое устройство, сеть)
+     motion(), setMotion(b) анимации включены? / переключить (выбор в bagam-motion перекрывает систему)
    События на document: 'stats' (detail — /api/stats), 'health' (detail — /api/health),
    'bagam:theme' (detail — 'light' | 'dark'). */
 (function (w, d) {
@@ -47,13 +48,50 @@
   }
   function later(fn) { if (w.requestIdleCallback) w.requestIdleCallback(fn, { timeout: 1200 }); else setTimeout(fn, 80); }
 
-  /* «Меньше движения» в системе анимации НЕ выключает: у владельца в Windows анимации выключены,
-     и сайт без входов, счётчиков и плавной прокрутки выглядел мёртвым — он прямо просил их
-     вернуть (2026-10-02, снова 2026-10-06). Статичен только лёгкий режим: слабое устройство,
-     экономия трафика, медленная сеть. B.rm — для тонкой настройки, если понадобится. */
-  B.rm = mq('(prefers-reduced-motion: reduce)').matches;
+  /* Движение. Анимации включены по умолчанию — и при «меньше движения» в системе: у владельца в
+     Windows анимации выключены, а на сайте он хочет их видеть (2026-10-02, 2026-10-06, снова
+     2026-10-15). Кому движение мешает, выключает его переключателем «Анимации» в мобильном меню и
+     подвале ([data-motion-toggle], выбор в bagam-motion: 'on' | 'off'). Сами собой анимации
+     выключаются только в лёгком режиме: слабое устройство, экономия трафика, медленная сеть.
+     html.still — без входов, счётчиков, шиммера и плавной прокрутки. Класс до первой отрисовки
+     ставит инлайн-скрипт в <head>, здесь — смена на лету. */
+  var MKEY = 'bagam-motion';
+  var rmq = mq('(prefers-reduced-motion: reduce)');
+  B.rm = rmq.matches;
   B.lite = root.classList.contains('lite');
-  function still() { return B.lite; }
+  function still() { return root.classList.contains('still'); }
+  function motionSaved() {
+    try { var v = w.localStorage.getItem(MKEY); return v === 'on' || v === 'off' ? v : null; } catch (e) { return null; }
+  }
+  function paintMotion() {
+    var onv = !still();
+    $$('[data-motion-label]').forEach(function (e) { e.textContent = onv ? 'вкл' : 'выкл'; });
+    $$('[data-motion-toggle]').forEach(function (b) { b.setAttribute('aria-checked', onv ? 'true' : 'false'); });
+  }
+  function applyMotion() {
+    var v = motionSaved(), off = v === 'off' || (v !== 'on' && B.lite);
+    root.classList.toggle('still', off);
+    root.classList.toggle('anim', !off);
+    paintMotion();
+  }
+  function setMotion(onv) {
+    try { w.localStorage.setItem(MKEY, onv ? 'on' : 'off'); } catch (e) {}
+    applyMotion();
+    fire('bagam:motion', onv);
+  }
+  B.motion = function () { return !still(); };
+  B.setMotion = setMotion;
+  on(d, 'click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-motion-toggle]');
+    if (!b) return;
+    e.preventDefault();
+    setMotion(still());
+  });
+  function rmChanged() { B.rm = rmq.matches; applyMotion(); }
+  if (rmq.addEventListener) rmq.addEventListener('change', rmChanged);
+  else if (rmq.addListener) rmq.addListener(rmChanged);
+  on(w, 'storage', function (e) { if (e.key === MKEY) applyMotion(); });
+  paintMotion();
 
   /* ------------------------------------------------------------ форматирование */
   function isNum(x) { return typeof x === 'number' && isFinite(x); }
@@ -85,7 +123,7 @@
 
   /* ------------------------------------------------------------ тема */
   /* Один ключ bagam-theme. Старый kfp-theme переносим и удаляем. Без сохранённого выбора
-     тема следует системной (и её смене на лету) — это решает инлайн-скрипт в <head>. */
+     тема тёмная (решение владельца, 2026-10-15) — её ставит инлайн-скрипт в <head>. */
   var KEY = 'bagam-theme', OLD_KEY = 'kfp-theme';
   var BG = { dark: '#0A100C', light: '#F1F4EC' };
   function store() { try { return w.localStorage; } catch (e) { return null; } }
@@ -129,10 +167,6 @@
     e.preventDefault();
     setTheme(theme() === 'light' ? 'dark' : 'light', true);
   });
-  var sysLight = mq('(prefers-color-scheme: light)');
-  function sysChanged() { if (!saved()) setTheme(sysLight.matches ? 'light' : 'dark', false); }
-  if (sysLight.addEventListener) sysLight.addEventListener('change', sysChanged);
-  else if (sysLight.addListener) sysLight.addListener(sysChanged);
   on(w, 'storage', function (e) {
     if (e.key === KEY && (e.newValue === 'light' || e.newValue === 'dark')) setTheme(e.newValue, false);
   });
@@ -340,10 +374,14 @@
       fire('health', h);
     }
   }
-  /* скелетоны: без свежего кэша живые числа и графики мерцают, пока не придут данные */
+  /* скелетоны: без свежего кэша мерцают только пустые места («—»). Число, которое сервер уже
+     вписал в разметку, видно сразу — ответ API его тихо обновит, а не спрячет на 12 секунд */
+  function blank(e) { return /^[\s —-]*$/.test(e.textContent); }
   function skel(onOff) {
-    liveEls().forEach(function (e) { e.classList.toggle('sk', onOff); });
-    $$('[data-skel]').forEach(function (e) { e.classList.toggle('loading', onOff); });
+    liveEls().forEach(function (e) { e.classList.toggle('sk', onOff && blank(e)); });
+    $$('[data-skel]').forEach(function (e) {
+      e.classList.toggle('loading', onOff && !e.children.length);
+    });
   }
   function getJSON(path) {
     var ctl = ('AbortController' in w) ? new AbortController() : null;
@@ -433,9 +471,8 @@
 
   /* ------------------------------------------------------------ прокрутка */
   /* Своими кадрами: время от первого кадра, цель пересчитывается на каждом кадре (над ней может
-     что-то схлопнуться). Колесо или касание останавливают. Едет одинаково везде — и при «меньше
-     движения» в системе, и в лёгком режиме: прокрутку просит сам человек кнопкой или ссылкой, а
-     прыжок на тысячи пикселей теряет место на странице (владелец просил плавно, 2026-10-02). */
+     что-то схлопнуться). Колесо или касание останавливают. При html.still («меньше движения» или
+     выключенный переключатель «Анимации») — мгновенный переход без проезда по странице. */
   function jump(y) {
     var prev = root.style.scrollBehavior;
     root.style.scrollBehavior = 'auto';
@@ -445,7 +482,7 @@
   function glide(target, dur, done) {
     var fn = typeof target === 'function' ? target : function () { return +target || 0; };
     var from = w.pageYOffset || root.scrollTop;
-    if (Math.abs(fn() - from) < 2) { jump(fn()); if (done) done(); return; }
+    if (still() || Math.abs(fn() - from) < 2) { jump(fn()); if (done) done(); return; }
     var prev = root.style.scrollBehavior;
     root.style.scrollBehavior = 'auto';
     var t0 = 0, stopped = false;
@@ -520,9 +557,9 @@
       var guard = setTimeout(resolve, 7000);
       function start() {
         if (slowNetwork()) {
-          root.classList.remove('anim');
           root.classList.add('lite');
           B.lite = true;
+          applyMotion();
           clearTimeout(guard);
           resolve();
           return;
@@ -547,11 +584,24 @@
   var REVEAL_DEFAULT = '.sect .shead,.bsplit>*';
   function reveal(sel) {
     if (still() || !('IntersectionObserver' in w)) return;
-    var vh = w.innerHeight || root.clientHeight;
+    /* Где блок — узнаём из первого отчёта IntersectionObserver, а не getBoundingClientRect:
+       замер при запуске скрипта заставлял браузер синхронно строить раскладку всей страницы
+       (длинная задача ~130–300 мс на телефоне). Отчёт приходит после отрисовки, бесплатно.
+       Блоки на экране и выше него не трогаем; ниже — прячем и показываем при подходе. */
     var io = new IntersectionObserver(function (es) {
       es.forEach(function (en) {
-        if (!en.isIntersecting) return;
         var el = en.target;
+        if (!el.__rvSeen) {
+          el.__rvSeen = true;
+          var r = en.boundingClientRect, vh = w.innerHeight || root.clientHeight;
+          if (r.top < vh || r.bottom <= 0 || !r.height) { io.unobserve(el); return; }
+          var p = el.parentNode;
+          p.__rvn = (p.__rvn || 0) + 1;
+          el.style.setProperty('--rvi', String(Math.min(p.__rvn - 1, 6)));
+          el.setAttribute('data-rv', '');
+          return;
+        }
+        if (!en.isIntersecting) return;
         io.unobserve(el);
         el.setAttribute('data-rv', 'in');
         var done = function (e) {
@@ -565,13 +615,7 @@
       });
     }, { rootMargin: '0px 0px -6% 0px', threshold: 0.01 });
     $$(sel || REVEAL_DEFAULT).forEach(function (el) {
-      if (el.hasAttribute('data-rv')) return;
-      var r = el.getBoundingClientRect();
-      if (r.top < vh || r.bottom <= 0 || !r.height) return;
-      var p = el.parentNode;
-      p.__rvn = (p.__rvn || 0) + 1;
-      el.style.setProperty('--rvi', String(Math.min(p.__rvn - 1, 6)));
-      el.setAttribute('data-rv', '');
+      if (el.hasAttribute('data-rv') || el.__rvSeen) return;
       io.observe(el);
     });
   }
@@ -583,6 +627,32 @@
      Обработчик вешается сразу, а не после GSAP. Если форма всё же ушла обычным GET
      (Enter до загрузки скрипта) — подбираем ?url= и уводим туда же. */
   var LOT_RX = /krisha\.kz\/a\/show\/(\d+)/i;
+  /* поле «ссылка на объявление»: пусто, одна ссылка, голый номер (как на странице 404) или
+     несколько разных ссылок — у каждого случая свой ответ, а не одно «нужна ссылка» */
+  function parseLot(v) {
+    v = String(v || '').trim();
+    if (!v) return { err: 'empty' };
+    var ids = [], re = /krisha\.kz\/a\/show\/(\d+)/ig, m;
+    while ((m = re.exec(v))) if (ids.indexOf(m[1]) < 0) ids.push(m[1]);
+    if (!ids.length && /^\d{6,12}$/.test(v)) ids.push(v);
+    if (ids.length > 1) return { err: 'many' };
+    return ids.length ? { id: ids[0] } : { err: 'bad' };
+  }
+  var LOT_ERR = {
+    empty: 'Вставьте ссылку на объявление с krisha.kz',
+    many: 'В поле несколько ссылок — оставьте одну',
+    bad: 'Нужна ссылка на объявление вида krisha.kz/a/show/1012607661 или его номер'
+  };
+  B.parseLot = parseLot;
+  /* текст ошибки связан с полем: скринридер назовёт причину вместе с полем */
+  function fieldError(inp, err, text) {
+    if (!err) return;
+    if (!err.id) err.id = (inp.id || 'lot') + 'Err';
+    err.textContent = text;
+    err.classList.add('on');
+    inp.setAttribute('aria-invalid', 'true');
+    inp.setAttribute('aria-describedby', err.id);
+  }
   (function () {
     try {
       var u = new URLSearchParams(location.search).get('url');
@@ -593,7 +663,10 @@
   $$('form[data-jump]').forEach(function (f) {
     var inp = f.querySelector('input'), err = f.parentElement.querySelector('[data-err]'), paste = f.querySelector('[data-paste]');
     if (!inp) return;
-    function clear() { if (err) err.classList.remove('on'); inp.removeAttribute('aria-invalid'); }
+    function clear() {
+      if (err) { err.classList.remove('on'); err.textContent = ''; }
+      inp.removeAttribute('aria-invalid'); inp.removeAttribute('aria-describedby');
+    }
     if (paste) {
       if (!navigator.clipboard || !navigator.clipboard.readText) paste.remove();
       else on(paste, 'click', function () {
@@ -607,10 +680,9 @@
     on(inp, 'input', clear);
     on(f, 'submit', function (e) {
       e.preventDefault();
-      var m = inp.value.trim().match(LOT_RX);
-      if (!m) {
-        inp.setAttribute('aria-invalid', 'true');
-        if (err) { err.textContent = 'Нужна ссылка на объявление вида krisha.kz/a/show/1012607661'; err.classList.add('on'); }
+      var lot = parseLot(inp.value);
+      if (!lot.id) {
+        fieldError(inp, err, LOT_ERR[lot.err]);
         inp.focus();
         return;
       }
@@ -620,7 +692,7 @@
       if (b) { b.dataset.l0 = b.innerHTML; b.innerHTML = '<i class="spin" aria-hidden="true"></i>Открываем…'; b.disabled = true; }
       if (pb) pb.disabled = true;
       f.setAttribute('aria-busy', 'true');
-      location.href='/#check=' + m[1];
+      location.href = '/#check=' + lot.id;
     });
     /* возврат кнопкой «назад» из кэша страницы: форма снова рабочая */
     on(window, 'pageshow', function (ev) {
