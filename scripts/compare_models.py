@@ -14,8 +14,9 @@ test_pool скармливается N чекпойнтам.
   строки, дописанные в базу после обучения, в фрейм не попадают;
 - дальше боевой пайплайн из krisha.train/krisha.features: clean →
   resolve_zones → dedup_relistings → time_based_split → purge;
-- фичи ЕДИНЫЕ для всех эпох — по картам train-среза эпохи-якоря (ppsm_maps из
-  models/model_meta.json, spatial_ref из models/spatial_ref.json), как
+- фичи ЕДИНЫЕ для всех эпох — по картам train-среза эпохи-якоря (до refit —
+  ppsm_maps из models/model_meta.json и models/spatial_ref.json; после refit
+  10.2026 — пересчёт по train-части сплита, т.к. карты меты включают тест), как
   гейт кормит старую модель картами НОВОГО train-среза. Старые эпохи
   получают чуть сдвинутые ковариаты, но сдвиг одинаков для всех — любая
   разница метрик изолирована до весов модели.
@@ -23,7 +24,10 @@ test_pool скармливается N чекпойнтам.
 Валидация по якорям обязательна: последняя эпоха ERAS (metrics.model),
 предпоследняя (metrics.old_model — посчитана гейтом ровно на этом тесте)
 и baseline из меты должны сойтись с воспроизведёнными значениями; иначе
-фрейм собран не так — exit 1.
+фрейм собран не так — exit 1. После refit якорь metrics.model не проверяется
+(отгруженная модель видела тест), metrics.old_model — на тех же «невиданных»
+строках, что брал гейт; эпохи, видевшие часть общего теста, из ранжирования
+исключаются с причиной.
 
 Запуск:
     python scripts/compare_models.py --eras-dir <dir с <commit>/model.cbm>
@@ -91,7 +95,20 @@ ERAS: list[dict[str, str]] = [
     {"commit": "c244821", "date": "2026-08-09",
      "label": "Weekly retrain 09.08"},
     {"commit": "974c893", "date": "2026-08-16",
-     "label": "Weekly retrain 16.08 (текущий прод)"},
+     "label": "Weekly retrain 16.08"},
+    # С 08.2026 артефакты не лежат в git (релиз model-latest в krisha-db
+    # хранит только последнюю модель): ключ эпохи — коммит меты в текущей
+    # истории, model.cbm эпохи кладётся в <eras-dir>/<commit>/ вручную.
+    # Нет артефакта — эпоха честно помечается «исключена», отчёт не падает.
+    {"commit": "dc00228", "date": "2026-08-23", "label": "Weekly retrain 23.08"},
+    {"commit": "f9f838a", "date": "2026-08-30", "label": "Weekly retrain 30.08"},
+    {"commit": "705001d", "date": "2026-09-06", "label": "Weekly retrain 06.09"},
+    {"commit": "9b0430d", "date": "2026-09-13", "label": "Weekly retrain 13.09"},
+    {"commit": "8b8670d", "date": "2026-09-20", "label": "Weekly retrain 20.09"},
+    {"commit": "6e14c3a", "date": "2026-09-27", "label": "Weekly retrain 27.09"},
+    {"commit": "9dffb26", "date": "2026-10-04",
+     "label": "Weekly retrain 04.10: refit на всех данных, 4000 деревьев"},
+    {"commit": "518c187", "date": "2026-10-18", "label": "Weekly retrain 18.10 (текущий прод)"},
 ]
 KNOWN_TRANSFORMS = {"log1p"}  # log1p → инверсия np.expm1
 
@@ -139,16 +156,30 @@ def load_dataset_asof(db_path: Path | str, trained_at: pd.Timestamp) -> pd.DataF
     return df.reset_index(drop=True)
 
 
+def era_data_cutoff(meta: dict | None) -> pd.Timestamp | None:
+    """Граница данных отгруженной модели эпохи (refit на всех данных, с 10.2026).
+
+    У эпох до refit (модель училась без test-окна) границы в мете нет — None.
+    """
+    cutoff = (((meta or {}).get("metrics") or {}).get("final_fit") or {}).get("max_first_seen")
+    return pd.Timestamp(cutoff) if cutoff else None
+
+
 def evaluate_era(
     era: dict[str, str],
     eras_dir: Path,
     test_df: pd.DataFrame,
     y_true: np.ndarray,
+    test_first_seen: pd.Series | None = None,
 ) -> dict[str, Any]:
     """Одна эпоха на общем фрейме → строка отчёта (metrics либо note-причина).
 
     Фейлы predict НЕ глушатся в NaN-метрики: как в гейте (old_model_error →
     fail-closed), эпоха с разошедшимся фиче-сетом честно исключается.
+
+    Эпоха после refit (final_fit.max_first_seen в мете) обучена на данных,
+    включая часть общего теста, — на нём она выглядела бы лучше, чем есть.
+    Такая эпоха исключается из общего ранжирования с причиной в note.
     """
     row: dict[str, Any] = {
         "commit": era["commit"], "date": era["date"], "label": era["label"],
@@ -166,6 +197,15 @@ def evaluate_era(
         era_meta = json.loads(meta_path.read_text(encoding="utf-8"))
         own = era_meta.get("metrics", {}).get("model", {}).get("mape")
         row["own_reported_mape"] = round(float(own), 6) if own is not None else None
+        cutoff = era_data_cutoff(era_meta)
+        if cutoff is not None and test_first_seen is not None:
+            seen = int((test_first_seen <= cutoff).sum())
+            if seen:
+                row["note"] = (
+                    f"исключена: refit на данных до {cutoff:%Y-%m-%d} — видела {seen} "
+                    f"из {len(test_first_seen)} строк общего теста"
+                )
+                return row
 
     transform = era.get("target_transform", "log1p")
     if transform not in KNOWN_TRANSFORMS:
@@ -190,6 +230,33 @@ def evaluate_era(
     metrics = evaluate(y_true, y_pred)
     row.update({k: round(v, 6) for k, v in metrics.items()})
     return row
+
+
+def _prev_anchor_on_unseen(
+    era: dict[str, str],
+    eras_dir: Path,
+    raw_test: pd.DataFrame,
+    test_df: pd.DataFrame,
+    y_true: np.ndarray,
+    history: pd.DataFrame,
+    expected_rows: int,
+) -> float | None:
+    """MAPE предыдущей эпохи на тех же строках, что гейт (metrics.old_model).
+
+    Маску гейт строил по max_first_seen старой меты; с аудита 24.10 — ещё и
+    без перевыставлений, виденных старой моделью. Какой версией кода считан
+    якорь, по мете не понять — берём ту маску, чей размер совпал с
+    old_model_rows. Не совпала ни одна — None (якорь честно не сойдётся).
+    """
+    from krisha.train import _unseen_by_old_model
+
+    meta_path = eras_dir / era["commit"] / "model_meta.json"
+    for hist in (None, history):
+        mask = _unseen_by_old_model(raw_test, meta_path, hist)
+        if mask is not None and int(mask.sum()) == expected_rows:
+            sub = test_df.loc[mask].reset_index(drop=True)
+            return evaluate_era(era, eras_dir, sub, y_true[mask]).get("mape")
+    return None
 
 
 def to_markdown(rows: list[dict[str, Any]]) -> str:
@@ -247,13 +314,13 @@ def main() -> None:
     anchor_meta = json.loads(Path(args.meta).read_text(encoding="utf-8"))
     anchor_metrics = anchor_meta["metrics"]
     trained_at = pd.Timestamp(anchor_metrics["trained_at"])
-    ppsm_maps = anchor_meta["ppsm_maps"]
-    spatial_ref = json.loads(Path(args.spatial_ref).read_text(encoding="utf-8"))
+    refit_anchor = "final_fit" in anchor_metrics
 
     # --- Воспроизведение сплита эпохи-якоря (train.train, шаг за шагом) ---
     df = load_dataset_asof(args.db, trained_at)
     df = clean_listings(df)
     df = resolve_zones(df)
+    history_before_dedup = df
     df = dedup_relistings(df)
     dedup_stats = df.attrs.get("dedup_stats", {})
     logger.info("Дедуп: %s (в мете эпохи: %s)", dedup_stats, anchor_metrics.get("dedup"))
@@ -271,6 +338,22 @@ def main() -> None:
     )
 
     # --- Единый фичефрейм: карты train-среза эпохи-якоря (как в гейте) ---
+    # С 10.2026 (refit на всех данных) ppsm_maps/spatial_ref в мете и в
+    # spatial_ref.json — от финальной модели, то есть ВКЛЮЧАЮТ тест: цены
+    # тестовых квартир протекали бы в их же district/hex/knn-фичи. Для такой
+    # эпохи-якоря карты пересчитываются по train-части воспроизведённого
+    # сплита — ровно так, как train() строил их для метрик. У эпох до refit
+    # карты меты и так train-only — берём их (точнее воспроизводит якорь).
+    if refit_anchor:
+        from krisha.features import compute_ppsm_maps
+        from krisha.spatial import build_spatial_ref
+
+        ppsm_maps = compute_ppsm_maps(raw_train)
+        spatial_ref = build_spatial_ref(raw_train)
+        logger.info("Якорь после refit: карты пересчитаны по train-части сплита")
+    else:
+        ppsm_maps = anchor_meta["ppsm_maps"]
+        spatial_ref = json.loads(Path(args.spatial_ref).read_text(encoding="utf-8"))
     # Точка центра — эпохи-якоря: все эпохи из ERAS учились на ней (city_center
     # в мете с 10.2026, раньше — LEGACY_ALMATY_CENTER), см. features.model_center
     test_df = build_features(
@@ -288,8 +371,9 @@ def main() -> None:
 
     # --- Эпохи + бейзлайн -------------------------------------------------
     rows: list[dict[str, Any]] = []
+    test_first_seen = pd.to_datetime(raw_test["first_seen"], errors="coerce", utc=True)
     for era in ERAS:
-        row = evaluate_era(era, Path(args.eras_dir), test_df, y_true)
+        row = evaluate_era(era, Path(args.eras_dir), test_df, y_true, test_first_seen)
         rows.append(row)
         logger.info(
             "%s (%s): mape=%s%s", era["commit"], era["date"], row["mape"],
@@ -316,15 +400,31 @@ def main() -> None:
     # --- Валидация по якорям (критерий корректности всего пайплайна) ------
     by_commit = {r["commit"]: r for r in rows if r.get("commit")}
     cur_era, prev_era = ERAS[-1]["commit"], ERAS[-2]["commit"]
-    anchors = [
-        (f"{cur_era} (metrics.model)", anchor_metrics["model"]["mape"],
-         by_commit.get(cur_era, {}).get("mape")),
-        (f"{prev_era} (metrics.old_model)", anchor_metrics["old_model"]["mape"],
-         by_commit.get(prev_era, {}).get("mape")),
-        ("baseline (metrics.baseline)", anchor_metrics["baseline"]["mape"],
-         baseline_row["mape"]),
-    ]
+    anchors = []
     anchor_report = []
+    if refit_anchor:
+        # Отгруженная модель эпохи-якоря — refit на train+test; metrics.model
+        # меты посчитан моделью БЕЗ теста, которой в артефактах нет.
+        anchor_report.append({
+            "anchor": f"{cur_era} (metrics.model)", "ok": True,
+            "note": "не воспроизводится: в артефакте refit на всех данных, метрика меты — "
+                    "от модели без теста",
+        })
+    else:
+        anchors.append((f"{cur_era} (metrics.model)", anchor_metrics["model"]["mape"],
+                        by_commit.get(cur_era, {}).get("mape")))
+    if "old_model" in anchor_metrics:
+        prev_mape = by_commit.get(prev_era, {}).get("mape")
+        if anchor_metrics.get("old_model_rows"):
+            # Гейт сравнивал старую модель только на строках новее её данных
+            prev_mape = _prev_anchor_on_unseen(
+                ERAS[-2], Path(args.eras_dir), raw_test, test_df, y_true,
+                history_before_dedup, int(anchor_metrics["old_model_rows"]),
+            )
+        anchors.append((f"{prev_era} (metrics.old_model)", anchor_metrics["old_model"]["mape"],
+                        prev_mape))
+    anchors.append(("baseline (metrics.baseline)", anchor_metrics["baseline"]["mape"],
+                    baseline_row["mape"]))
     anchors_ok = True
     for name, expected, actual in anchors:
         delta = abs(actual - expected) if actual is not None else float("inf")
@@ -372,8 +472,10 @@ def main() -> None:
         "excluded_checkpoints": EXCLUDED_CHECKPOINTS,
         "map_strategy": (
             f"единый фрейм: тест эпохи {trained_at:%Y-%m-%d}, фичи по картам её train-среза "
-            "(ppsm_maps из model_meta.json, spatial_ref.json) — как гейт кормит "
-            "старую модель картами нового train; era-карты моделям не выдаются"
+            + ("(пересчитаны по train-части сплита: карты меты после refit включают тест)"
+               if refit_anchor else "(ppsm_maps из model_meta.json, spatial_ref.json)")
+            + " — как гейт кормит старую модель картами нового train; era-карты моделям "
+            "не выдаются"
         ),
         "anchors": anchor_report,
         "rows": rows,
