@@ -273,8 +273,9 @@ def test_source_challenge_answers_503_not_502(monkeypatch):
 def test_source_challenge_is_not_negatively_cached(monkeypatch):
     """Главный сценарий проекта — тысяча человек с ОДНОЙ ссылкой из поста.
 
-    Закэшировать челлендж значило бы запереть их всех на минуту из-за того,
-    что не повезло первому, хотя источник уже пускает.
+    Закэшировать челлендж на минуту значило бы запереть их всех из-за того,
+    что не повезло первому, хотя источник уже пускает. Помним его секунды
+    (SOURCE_FAILURE_TTL_S) — ровно чтобы не повторять скрейп следом.
     """
     attempts: list[int] = []
     outcomes = [ChallengeBlocked("челлендж"), None]
@@ -287,11 +288,14 @@ def test_source_challenge_is_not_negatively_cached(monkeypatch):
         return _payload()
 
     monkeypatch.setattr(predict_gate, "predict_from_url", flaky)
+    monkeypatch.setattr(predict_gate, "SOURCE_FAILURE_TTL_S", 0.2)
     client = TestClient(app)
     url = "https://krisha.kz/a/show/91"
 
     assert client.post("/api/predict", json={"url": url}).status_code == 503
-    # второй заход идёт наружу заново — и проходит
+    assert not predict_gate._negative._values, "в минутный негативный кэш отказ не попадает"
+    time.sleep(0.25)
+    # после коротких секунд заход идёт наружу заново — и проходит
     assert client.post("/api/predict", json={"url": url}).status_code == 200
     assert len(attempts) == 2
 
@@ -345,11 +349,18 @@ def test_source_failure_is_not_negatively_cached(monkeypatch):
         return _payload()
 
     monkeypatch.setattr(predict_gate, "predict_from_url", flaky)
+    monkeypatch.setattr(predict_gate, "SOURCE_FAILURE_TTL_S", 0.2)
     client = TestClient(app)
     url = "https://krisha.kz/a/show/91"
 
     assert client.post("/api/predict", json={"url": url}).status_code == 503
+    # Секунды — тот же отказ из памяти, без похода наружу...
+    assert client.post("/api/predict", json={"url": url}).status_code == 503
+    assert len(attempts) == 1
+    # ...а потом снова пробуем: krisha могла ожить.
+    time.sleep(0.25)
     assert client.post("/api/predict", json={"url": url}).status_code == 200
+    assert len(attempts) == 2
 
 
 def test_scrape_attempt_outcomes_reach_metrics(monkeypatch):
