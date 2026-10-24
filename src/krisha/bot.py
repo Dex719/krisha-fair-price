@@ -24,6 +24,7 @@ import os
 import threading
 import time
 from collections import deque
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -61,6 +62,8 @@ def tg_api_base() -> str:
     """Базовый адрес Bot API. Переопределяется через TG_API_BASE (прокси)."""
     return (os.environ.get("TG_API_BASE") or TG_API).rstrip("/")
 WEBHOOK_PATH = "/tg/webhook"
+# Типы апдейтов вебхука: без callback_query inline-кнопки молча не работают.
+WEBHOOK_ALLOWED_UPDATES = ("message", "callback_query")
 CAPTION_LIMIT = 1024  # лимит Telegram на подпись к фото
 
 FEATURE_RU = {
@@ -220,13 +223,29 @@ def tg_error_summary(data: Any) -> str:
     return summary
 
 
+PROXY_SECRET_HEADER = "X-Proxy-Secret"
+
+
+def _proxy_headers() -> dict[str, str]:
+    """Общий секрет с tg-прокси (infra/tg-proxy-worker.js, env PROXY_SECRET).
+
+    Шлём только когда запросы и правда идут через прокси (TG_API_BASE) и
+    секрет задан (TG_PROXY_SECRET): в настоящий api.telegram.org он не нужен.
+    """
+    secret = os.environ.get("TG_PROXY_SECRET", "").strip()
+    if not secret or not os.environ.get("TG_API_BASE"):
+        return {}
+    return {PROXY_SECRET_HEADER: secret}
+
+
 def tg_call(method: str, **payload: Any) -> dict | None:
     """Вызов метода Telegram Bot API. Ошибки логируем, наружу не роняем."""
     token = bot_token()
     if not token:
         return None
     try:
-        resp = _get_tg_client().post(f"{tg_api_base()}/bot{token}/{method}", json=payload)
+        extra = {"headers": headers} if (headers := _proxy_headers()) else {}
+        resp = _get_tg_client().post(f"{tg_api_base()}/bot{token}/{method}", json=payload, **extra)
         data = resp.json()
         if not data.get("ok"):
             logger.warning("Telegram %s: %s", method, tg_error_summary(data))
@@ -366,11 +385,11 @@ def format_reply(result: dict[str, Any]) -> str:
         lines.append("🏁 По нашим данным объявление уже снято — оценка по последней цене.")
 
     reno = result.get("renovation")
-    if reno:
-        line = f"🛠 Ремонт по фото: <b>{html.escape(reno.get('label') or '')}</b>"
-        if reno.get("comment"):
-            line += f" — {html.escape(reno['comment'])}"
-        lines.append(line)
+    if reno and reno.get("label"):
+        # Только уровень из фиксированного словаря. Свободный comment Gemini
+        # не показываем: это текст, который модель прочитала с фото, — надпись
+        # на снимке превращалась в дословную реплику бота (инъекция).
+        lines.append(f"🛠 Ремонт по фото: <b>{html.escape(reno['label'])}</b>")
 
     factors = [f for f in (result.get("top_factors") or [])[:3] if f.get("impact")]
     if factors:
@@ -775,6 +794,62 @@ def _demo_url(deal: str) -> str | None:
     return extract_url(str(random.choice(rows)[0])) if rows else None
 
 
+MSG_SIMILAR_NONE = "Похожих активных объявлений в базе сейчас нет 🤷"
+MSG_SIMILAR_NO_DB = "База объявлений ещё загружается — попробуйте «Похожие» через пару минут 🙏"
+MSG_SIMILAR_UNKNOWN = ("Этого объявления пока нет в нашей базе — пришлите ссылку ещё раз, "
+                       "оценю его, и кнопка «Похожие» заработает 🙏")
+
+
+def _similar_for(listing_id: int, url: str) -> dict[str, Any] | str:
+    """Похожие для кнопки — без сети: готовая оценка из кэша калитки или
+    find_analogs по строке из базы. Строка в ответе — текст ошибки.
+
+    Раньше кнопка звала cached_predict(url, live_vision=True): кэш живёт в
+    одном воркере из двух, и промах означал полный скрейп krisha и Gemini
+    Vision ради списка из трёх ссылок, а любая ошибка — «не получилось оценить».
+    """
+    for live in (True, False):
+        cached = predict_gate.peek(url, live_vision=live)
+        if cached and cached.get("analogs"):
+            return cached
+
+    import sqlite3
+
+    from krisha.analogs import find_analogs
+    from krisha.config import DB_PATH, RENT_DB_PATH
+    from krisha.db import get_conn
+
+    any_db = False
+    for deal, db_path in (("prodazha", DB_PATH), ("arenda", RENT_DB_PATH)):
+        if not Path(db_path).exists():  # get_conn создал бы пустой файл
+            continue
+        try:
+            with get_conn(db_path) as conn:
+                row = conn.execute("SELECT * FROM listings WHERE id = ?", (listing_id,)).fetchone()
+                any_db = True
+                if row is None:
+                    continue
+                analogs = find_analogs(dict(row), conn=conn)
+        except (sqlite3.Error, FileNotFoundError, OverflowError):
+            logger.warning("bot: похожие — база %s недоступна", deal, exc_info=True)
+            continue
+        return {"deal": deal, "analogs": analogs} if analogs else MSG_SIMILAR_NONE
+    return MSG_SIMILAR_UNKNOWN if any_db else MSG_SIMILAR_NO_DB
+
+
+def _send_similar(chat_id: int, listing_id: int, url: str) -> None:
+    try:
+        found = _similar_for(listing_id, url)
+    except Exception:  # noqa: BLE001 — похожие — не повод ронять бота
+        logger.exception("bot: похожие для %s не получились", listing_id)
+        found = MSG_SIMILAR_NO_DB
+    if isinstance(found, str):
+        tg_call("sendMessage", chat_id=chat_id, text=found)
+        return
+    tg_call("sendMessage", chat_id=chat_id, text=format_similar(found),
+            parse_mode="HTML", disable_web_page_preview=True)
+
+
 def _handle_callback(cq: dict[str, Any]) -> None:
     message = cq.get("message") or {}
     chat_id = message.get("chat", {}).get("id")
@@ -806,14 +881,7 @@ def _handle_callback(cq: dict[str, Any]) -> None:
         elif action == "redo":
             _evaluate_url(chat_id, url)
         else:
-            try:
-                result = predict_gate.cached_predict(url, live_vision=True)
-            except Exception:  # noqa: BLE001 — похожие — не повод ронять бота
-                logger.warning("bot: похожие для %s не получились", arg, exc_info=True)
-                tg_call("sendMessage", chat_id=chat_id, text=MSG_EVAL_FAILED)
-                return
-            tg_call("sendMessage", chat_id=chat_id, text=format_similar(result),
-                    parse_mode="HTML", disable_web_page_preview=True)
+            _send_similar(chat_id, int(arg), url)
         return
     if action == "list":
         _handle_track_command(chat_id, "/track")
@@ -1196,7 +1264,7 @@ def setup_webhook(retries: int = 3) -> bool:
             "setWebhook",
             url=f"{base}{WEBHOOK_PATH}",
             secret_token=webhook_secret(token),
-            allowed_updates=["message", "callback_query"],
+            allowed_updates=list(WEBHOOK_ALLOWED_UPDATES),
             # drop_pending_updates НЕ ставим. Space пересобирается каждую ночь
             # (свежая база запекается в образ) и рестартует при каждом деплое —
             # с этим флагом каждый рестарт выбрасывал всё, что Telegram не успел
@@ -1250,12 +1318,33 @@ def webhook_status(force: bool = False) -> str:
         _last_webhook_check[0] = now - _WEBHOOK_CHECK_INTERVAL_S + _WEBHOOK_RETRY_S
         _last_webhook_status[0] = "unknown"
         return "unknown"
-    current = (data.get("result") or {}).get("url") or ""
+    info = data.get("result") or {}
+    current = info.get("url") or ""
     expected = f"{base}{WEBHOOK_PATH}"
-    if current == expected:
+    if current == expected and _allowed_updates_ok(info.get("allowed_updates")):
         _last_webhook_status[0] = "ok"
         return "ok"
-    # Слетел или смотрит на старый хостинг — чиним
+    # Слетел, смотрит на старый хостинг или подписан не на те апдейты — чиним
     fixed = setup_webhook(retries=1)
-    _last_webhook_status[0] = "ok" if fixed else ("unset" if not current else "mismatch")
+    if fixed:
+        _last_webhook_status[0] = "ok"
+    elif not current:
+        _last_webhook_status[0] = "unset"
+    else:
+        _last_webhook_status[0] = "mismatch"
     return _last_webhook_status[0]
+
+
+def _allowed_updates_ok(allowed: Any) -> bool:
+    """Подписан ли вебхук на всё, что нужно боту.
+
+    URL совпадал, а allowed_updates от старой регистрации (только message)
+    оставались — нажатия inline-кнопок до бота не доходили, и проверка
+    этого не видела. Поля нет или список пуст — у Telegram это «все типы,
+    кроме chat_member», то есть callback_query входит.
+    """
+    if not allowed:
+        return True
+    if not isinstance(allowed, list):
+        return False
+    return set(WEBHOOK_ALLOWED_UPDATES) <= set(allowed)
