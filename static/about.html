@@ -5,12 +5,13 @@
 <meta name="theme-color" content="#0A100C" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#F1F4EC" media="(prefers-color-scheme: light)">
 <script>
-/* до первой отрисовки: тема (сохранённый выбор, иначе системная) и режим движения; bagam.ready — очередь до загрузки site.js */
+/* до первой отрисовки: тема (сохранённый выбор, иначе тёмная) и режим движения; bagam.ready — очередь до загрузки site.js */
 (function(d,w){var n=navigator,c=n.connection||{},m=function(q){return !!(w.matchMedia&&w.matchMedia(q).matches)},t;
 try{t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme')}catch(e){}
-d.setAttribute('data-theme',t==='light'||t==='dark'?t:m('(prefers-color-scheme: light)')?'light':'dark');
+d.setAttribute('data-theme',t==='light'?'light':'dark');
 var lite=!!c.saveData||/(^|-)(slow-2g|2g)$/.test(c.effectiveType||'')||(n.deviceMemory&&n.deviceMemory<=2);
-d.classList.add('js',lite?'lite':'anim');if(m('(prefers-reduced-motion: reduce)'))d.classList.add('rm');
+var rm=m('(prefers-reduced-motion: reduce)'),mo;try{mo=localStorage.getItem('bagam-motion')}catch(e){}
+d.classList.add('js',mo==='off'||(mo!=='on'&&lite)?'still':'anim');if(lite)d.classList.add('lite');if(rm)d.classList.add('rm');
 w.bagam={q:[],ready:function(f){this.q.push(f)}};
 })(document.documentElement,window);
 </script>
@@ -118,12 +119,12 @@ html:not(.js) .qi{display:none}
 <div class="mmenu" id="mmenu" role="dialog" aria-modal="true" aria-label="Меню" aria-hidden="true">
 <a class="ml" href="/">Оценка<i>главная</i></a>
 <a class="ml" href="/stats">Рынок<i>цены продажи и аренды по районам</i></a>
-<a class="ml" href="/bot">Telegram-бот<i>оценка в чате и слежение за ценой</i></a>
+<a class="ml" href="/bot">Telegram-бот<i>оценка в чате и слежка за ценой</i></a>
 <a class="ml" href="/about" aria-current="page">О проекте<i>как считает модель</i></a>
 <div class="msub">
 <a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">Открыть бота · @fairprice_kzbot</a>
 <a href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener">Исходный код на GitHub</a>
-<button class="mth" type="button" data-theme-toggle><span>Тема оформления</span><b data-theme-label>тёмная</b></button>
+<button class="mth" type="button" role="switch" aria-checked="true" data-motion-toggle><span>Анимации</span><b data-motion-label aria-hidden="true">вкл</b></button>
 <span>данные krisha.kz · Алматы</span>
 <button class="mclose" type="button" data-mclose>Закрыть меню</button>
 </div>
@@ -204,8 +205,8 @@ html:not(.js) .qi{display:none}
 <div class="ncards">
 <a class="ncard g" href="/"><span class="ntop"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span></span><span class="nttl">Проверить квартиру</span><span class="nbot"><span class="nmeta">оценка по ссылке<br>обычно за несколько секунд</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
 <a class="ncard v" href="/stats"><span class="ntop"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4v16h16"/><path d="m7.5 14.5 3.4-3.6 2.8 2.6 5-5.5"/><path d="M15.2 8h3.5v3.5"/></svg></span></span><span class="nttl">Рынок продажи</span><span class="nbot"><span class="nmeta">медиана <span data-l="ppsmk">742 тыс ₸/м²</span><br>8 районов</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
-<a class="ncard w" href="/stats?mode=rent"><span class="ntop"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg></span></span><span class="nttl">Аренда</span><span class="nbot"><span class="nmeta">медиана аренды<br>и доходность районов</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
-<a class="ncard g" href="/bot"><span class="ntop"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 10l-4 4l6 6l4-16l-18 7l4 2l2 6l3-4"/></svg></span></span><span class="nttl">Telegram-бот</span><span class="nbot"><span class="nmeta">оценка в чате,<br>слежение за ценой</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard w" href="/stats?mode=rent"><span class="ntop"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg></span></span><span class="nttl">Рынок аренды</span><span class="nbot"><span class="nmeta">медиана аренды<br>и доходность районов</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
+<a class="ncard g" href="/bot"><span class="ntop"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 10l-4 4l6 6l4-16l-18 7l4 2l2 6l3-4"/></svg></span></span><span class="nttl">Telegram-бот</span><span class="nbot"><span class="nmeta">оценка в чате,<br>слежка за ценой</span><span class="narr"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7" stroke="currentColor" stroke-width="1.8"/></svg></span></span></a>
 </div>
 </div></section>
 </main>
@@ -244,8 +245,8 @@ html:not(.js) .qi{display:none}
 </div>
 
 <div class="fbot">
- <span>© 2026 baǵam · данные krisha.kz · Алматы</span>
- <button class="ftop" type="button" aria-label="Наверх"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="1.9"/></svg>наверх</button>
+ <span>© 2026 baǵam · bagam.info · данные krisha.kz · Алматы</span>
+ <span class="fbact"><button class="fmo" type="button" role="switch" aria-checked="true" data-motion-toggle>Анимации<b data-motion-label aria-hidden="true">вкл</b></button><button class="ftop" type="button" aria-label="Наверх"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="1.9"/></svg>наверх</button></span>
 </div>
 
 </div>

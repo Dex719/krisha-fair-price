@@ -34,8 +34,8 @@ def test_format_alert_and_describe():
         "district": "Bostandykskiy_r-n",
     }]
     text = format_alert(deals)
-    assert "krisha.kz/a/show/1" in text and "40.0 млн" in text and "-14.9%" in text
-    assert "Бостандыкский" in text and "/alerts_off" in text
+    assert "krisha.kz/a/show/1" in text and "40,0 млн" in text and "−14,9%" in text
+    assert "Бостандыкский" in text and "🔥 <b>1 новое выгодное объявление</b>" in text
     assert "45 млн" in describe_filters(parse_filters("2к 45"))
 
 

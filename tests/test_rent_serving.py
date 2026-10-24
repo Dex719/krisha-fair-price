@@ -139,12 +139,13 @@ def test_bot_reply_for_rent_uses_monthly_units():
         "analogs": [{"url": "https://krisha.kz/a/show/1", "title": "2-комн", "price": 280_000}],
     }
     text = bot.format_reply(result)
-    assert "Аренда в объявлении: <b>320 000 ₸/мес</b>" in text
-    assert "Справедливая аренда: <b>290 000 ₸/мес</b>" in text
+    assert "Аренда  320 тыс ₸/мес" in text and "Оценка  290 тыс ₸/мес" in text
     assert "сдают за" in text and "снимают с продажи" not in text
-    assert "Кондиционер: +5.1% (+14 тыс ₸/мес)" in text
-    assert "280 тыс ₸/мес" in text
+    assert "▲ кондиционер  +14 тыс" in text
     assert "млн" not in text
+    # похожие — отдельным сообщением по кнопке «Похожие»
+    similar = bot.format_similar(result)
+    assert "280 тыс ₸/мес" in similar and "млн" not in similar
 
 
 def test_bot_reply_for_room_share_warns():
@@ -248,7 +249,7 @@ def test_bot_reply_shows_rental_yield_for_sale():
         "rental_yield": {"monthly_rent": 330_000, "gross_yield_pct": 8.8, "district_yield_pct": 8.5,
                          "assumes_renovation": False},
     })
-    assert "Если сдавать: ~<b>330 тыс ₸/мес</b> · доходность <b>8.8%</b> годовых (в районе ~8.5%)" in text
+    assert "Сдавать: ~<b>330 тыс ₸/мес</b> · <b>8,8%</b> годовых (в районе ~8,5%)" in text
 
 
 def test_rent_factors_are_merged_and_add_up_to_estimate(rent_env):

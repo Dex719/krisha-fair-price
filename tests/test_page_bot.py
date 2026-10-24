@@ -240,11 +240,13 @@ def test_reply_block_examples_follow_format_reply():
                      "price": 27_900_000}],
     }
     reply = bot.format_reply(result)
+    # похожие — отдельным сообщением по кнопке «Похожие»
+    similar = bot.format_similar(result)
 
-    for line in _page_lines(reply):
+    for line in _page_lines(reply) + _page_lines(similar):
         if line.startswith(("⏳", "📈", "•")):
             assert _squash(line) in _squash(_main_text()), f"пример блока расходится с ботом: {line!r}"
-    assert "⚖️ Справедливая цена: 28 700 000 ₸" in _plain(reply)
+    assert "Оценка 28,7 млн ₸" in _plain(reply)
 
 
 def test_alerts_chat_is_what_format_alert_produces():

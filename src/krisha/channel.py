@@ -15,6 +15,7 @@ import os
 from typing import Any
 
 from krisha.config import ROOT_DIR
+from krisha.numfmt import dec, pct
 from krisha.stats import DISTRICT_RU
 from krisha.subscriptions import save_json_state
 
@@ -44,8 +45,8 @@ def format_digest(deals: list[dict[str, Any]]) -> str:
         title = html.escape(d.get("title") or f"{d.get('rooms', '?')}-комн, {d.get('area', '?')} м²")
         district = DISTRICT_RU.get(d.get("district") or "", "")
         lines.append(f"{i}. <a href=\"{html.escape(d['url'])}\">{title}</a>")
-        detail = (f"   💰 {d['price'] / 1e6:.1f} млн ₸ · оценка модели "
-                  f"{d['fair_price'] / 1e6:.1f} млн ({d['diff_pct']:+.1f}%)")
+        detail = (f"   💰 {dec(d['price'] / 1e6)} млн ₸ · оценка модели "
+                  f"{dec(d['fair_price'] / 1e6)} млн ({pct(d['diff_pct'])})")
         if district:
             detail += f" · {district}"
         lines.append(detail)

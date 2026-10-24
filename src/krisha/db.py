@@ -322,6 +322,8 @@ ON CONFLICT(id) DO UPDATE SET
 # трогаем вовсе (остаются данные последнего скрейпа). Остальные поля ведут
 # себя как в обычном скрейп-upsert'е — COALESCE(excluded, старое): свежий
 # парс перезаписывает, а NULL из неполного парса не затирает хорошие данные.
+# Снятое объявление пользовательская проверка не «оживляет»: страница krisha
+# открывается и у архивных лотов, а в выдачу их возвращает только рескрейп.
 _USER_UPSERT_SET = ", ".join(
     f"{c} = COALESCE(excluded.{c}, listings.{c})"
     for c in [*LISTING_COLUMNS, "fingerprint", "coords_approx"]
@@ -338,9 +340,7 @@ INSERT INTO listings (
 )
 ON CONFLICT(id) DO UPDATE SET
     {_USER_UPSERT_SET},
-    last_seen = datetime('now'),
-    is_active = 1,
-    delisted_at = NULL;
+    last_seen = datetime('now');
 """
 
 

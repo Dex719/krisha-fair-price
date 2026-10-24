@@ -26,6 +26,7 @@ from typing import Any
 
 from krisha.config import DATA_DIR, DB_PATH, MAX_TRUSTED_DELIST_LAG_DAYS
 from krisha.db import get_conn
+from krisha.numfmt import dec, pct
 
 logger = logging.getLogger(__name__)
 
@@ -262,16 +263,22 @@ def _lot_event(lid: str, state: dict[str, Any], row, rent: bool = False) -> str 
     if new is None or old is None or int(new) == int(old):
         return None
     diff_pct = (new - old) / old * 100 if old else 0
-    arrow = "📉" if new < old else "📈"
-    fmt, what = (_fmt_rent, "Аренда") if rent else (_fmt_mln, "Цена")
+    down = new < old
+    arrow = "📉" if down else "📈"
+    fmt = _fmt_rent if rent else _fmt_mln
+    what = ("Аренду" if rent else "Цену") + (" снизили" if down else " подняли")
+    step = abs(new - old)
+    step_txt = _fmt_rent(step) if rent else (f"{step / 1_000:.0f} тыс ₸" if step < 950_000 else _fmt_mln(step))
+    # Было / Стало — выровненным блоком, как цифры в оценке бота
+    block = _html.escape(f"Было   {fmt(old)}\nСтало  {fmt(new)}")
     return (
-        f"{arrow} {link}\n{what}: {fmt(old)} → <b>{fmt(new)}</b> "
-        f"({diff_pct:+.1f}%)"
+        f"{arrow} <b>{what} на {step_txt}</b> ({pct(diff_pct)})\n"
+        f"🏠 {link}\n<pre>{block}</pre>"
     )
 
 
 def _fmt_mln(value: int | float) -> str:
-    return f"{value / 1_000_000:.1f} млн ₸"
+    return f"{dec(value / 1_000_000)} млн ₸"
 
 
 def _fmt_rent(value: int | float) -> str:

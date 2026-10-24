@@ -42,8 +42,8 @@ def test_head_is_shared(name):
 
     assert '<script src="/static/js/site.js" defer' in head
     assert '<link rel="stylesheet" href="/static/design.css">' in head
-    # тема до первой отрисовки: сохранённый выбор, иначе системная — без вспышки
-    assert "localStorage.getItem('bagam-theme')" in head and "prefers-color-scheme: light" in head
+    # тема до первой отрисовки: сохранённый выбор, иначе тёмная (решение владельца) — без вспышки
+    assert "localStorage.getItem('bagam-theme')" in head and "t==='light'?'light':'dark'" in head
     assert head.count('<meta name="theme-color"') == 2
     assert '<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">' in head
     # шрифты объявлены один раз в design.css, на странице — только preload логотипа и текста
@@ -66,7 +66,18 @@ def test_no_copies_of_shared_code(name):
     # /rent — режим «Рынка»
     assert not re.search(r'href="/rent[#"]', html), f"{name}: ссылка на /rent"
     # GSAP — только там, где есть что анимировать. «Рынку» хватает bagam.reveal/countUp и CSS
-    assert ("data-gsap" in html) == (name == "index.html"), name
+    # GSAP не нужен ни одной странице: появления — bagam.reveal и CSS (−115 КБ скриптов на главной)
+    assert "data-gsap" not in html and "gsap." not in html, name
+    # разбор поля «ссылка на объявление» — один на сайт (bagam.parseLot в site.js)
+    assert "function parseLot" not in html and "krisha\\.kz\\/a\\/show\\/(\\d+)/ig" not in html, name
+
+
+def test_no_dead_animation_library():
+    """GSAP не грузит ни одна страница — ни файлов, ни загрузчика в site.js."""
+    assert not (STATIC / "js" / "gsap.min.js").exists()
+    assert not (STATIC / "js" / "ScrollTrigger.min.js").exists()
+    for dead in ("gsapLoad", "data-gsap", "ScrollTrigger", "B.boot"):
+        assert dead not in SITE_JS, dead
 
 
 def test_shell_markup_is_identical_on_every_page():
@@ -121,7 +132,7 @@ def test_current_page_is_marked_with_aria_current(name, current):
 
 
 def test_site_js_api_and_fixes():
-    for api in ("B.ready", "B.boot", "B.put", "B.live", "B.ru", "B.fmt", "B.pct", "B.plural",
+    for api in ("B.ready", "B.parseLot", "B.lotError", "B.put", "B.live", "B.ru", "B.fmt", "B.pct", "B.plural",
                 "B.glide", "B.reveal", "B.countUp", "B.markCurrent", "B.tg", "B.setTheme"):
         assert api in SITE_JS, f"site.js: нет {api}"
     # «Назад» в Telegram ведёт на главную, а не в необъявленный HOME_URL
@@ -137,10 +148,16 @@ def test_site_js_api_and_fixes():
 
 
 def test_design_css_motion_policy_and_color_scheme():
-    # «меньше движения» в системе анимации не гасит (владелец просил) — статичен только html.lite
-    assert "prefers-reduced-motion:reduce" not in CSS
-    assert "function still() { return B.lite; }" in SITE_JS
-    assert "html.lite .sk" in CSS and "html.lite::view-transition-old(root)" in CSS
+    # движение: анимации по умолчанию включены (владелец просил, и при «меньше движения» в системе);
+    # статичен лёгкий режим или выключенный переключатель (html.still)
+    assert "mo==='off'||(mo!=='on'&&lite)?'still':'anim'" in _page('index.html')
+    # переключатель «Анимации» запоминает выбор в bagam-motion
+    assert "function still() { return root.classList.contains('still'); }" in SITE_JS
+    assert "var MKEY = 'bagam-motion';" in SITE_JS and "B.setMotion = setMotion;" in SITE_JS
+    assert "html.still .sk" in CSS and "html.still::view-transition-old(root)" in CSS
+    assert "html.still{scroll-behavior:auto}" in CSS
+    # прокрутка при still — мгновенная
+    assert "if (still() || Math.abs(fn() - from) < 2)" in SITE_JS
     assert "html[data-theme=light]{color-scheme:light}" in CSS
     assert "html[data-theme=dark]{color-scheme:dark}" in CSS
     for dead in (".ridge{", ".map i{", ".msg.alert", ".icf{", ".sheet.busy{opacity"):

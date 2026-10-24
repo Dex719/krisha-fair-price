@@ -56,7 +56,12 @@ from krisha.config import (
     feature_forecast,
 )
 from krisha.db import data_observed_at, get_conn, remember_update_id
-from krisha.predict import InvalidListingUrl, ListingNotFound, ListingOutsideAlmaty
+from krisha.predict import (
+    DailyRentNotSupported,
+    InvalidListingUrl,
+    ListingNotFound,
+    ListingOutsideAlmaty,
+)
 from krisha.predict_gate import PredictBusy
 from krisha.scraping.client import ChallengeBlocked, SourceUnavailable
 from krisha.stats import compute_rent_stats, get_stats, heatmap_points
@@ -701,7 +706,7 @@ def _check_rate_limit(request: Request, *, bucket: str = "api", limit: int | Non
             metrics.bump("rate_limited")
             raise HTTPException(
                 status_code=429,
-                detail="Слишком много запросов, подожди минуту",
+                detail="Слишком много запросов, подождите минуту",
                 headers={"Retry-After": str(retry_after)},
             )
         q.append(now)
@@ -721,7 +726,7 @@ _BUSY_RETRY_AFTER = "30"
 # а не через полминуты, как при перегрузе.
 _CHALLENGE_RETRY_AFTER = "5"
 # Один текст на любой отказ источника: фронт показывает detail любого 503 как есть.
-_SOURCE_DETAIL = "Источник временно не отдаёт объявление, попробуй ещё раз"
+_SOURCE_DETAIL = "Источник временно не отдаёт объявление, попробуйте ещё раз"
 
 
 @app.post("/api/predict", response_model=PredictResponse)
@@ -758,19 +763,22 @@ async def predict(req: PredictRequest, request: Request) -> PredictResponse:
             metrics.bump("predict_wait_timeout")
             raise HTTPException(
                 status_code=503,
-                detail="Сервис перегружен, попробуй через полминуты",
+                detail="Сервис перегружен, попробуйте через полминуты",
                 headers={"Retry-After": _BUSY_RETRY_AFTER},
             )
     except PredictBusy:
         metrics.bump("predict_busy")
         raise HTTPException(
             status_code=503,
-            detail="Сервис перегружен, попробуй через полминуты",
+            detail="Сервис перегружен, попробуйте через полминуты",
             headers={"Retry-After": _BUSY_RETRY_AFTER},
         ) from None
     except InvalidListingUrl as exc:
         # 422 — пользовательская валидация URL, текст безопасен и полезен
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except DailyRentNotSupported as exc:
+        # Посуточная аренда — тоже ошибка ввода: модель знает только месячную цену.
+        raise HTTPException(status_code=422, detail=str(exc)) from None
     except ListingOutsideAlmaty as exc:
         # Объявление не из Алматы — тоже ошибка ввода: 422 с текстом, который
         # фронт показывает как есть. Ветка выше ValueError — это его подкласс.

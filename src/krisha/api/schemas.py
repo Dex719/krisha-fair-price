@@ -123,6 +123,9 @@ class PredictResponse(BaseModel):
     scam_risk: ScamRisk | None = None       # бейдж «подозрительно дёшево»
     renovation: Renovation | None = None    # оценка ремонта по фото — за FEATURE_VISION (#157)
     rental_yield: RentalYield | None = None  # продажа: аренда и доходность, если сдавать
+    # Объявление пропало из выдачи krisha по нашей базе (краулер пометил снятым),
+    # хотя страница ещё открывается: когда пометили ("" — дата неизвестна), иначе None.
+    delisted_at: str | None = None
 
 
 class DemoResponse(BaseModel):

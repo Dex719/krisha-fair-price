@@ -65,7 +65,7 @@ def health_data() -> dict:
         "model_median_error_pct": 5.1,
         "model_r2": 0.937,
         "data_age_hours": 3.0,
-        "freshness": "fresh",
+        "freshness": "ok",
     }
 
 
@@ -170,6 +170,9 @@ def _wait_health(base_url: str, timeout: float = 90.0) -> None:
 def _start_server(hermetic: bool) -> tuple[subprocess.Popen, str]:
     port = _free_port()
     env = os.environ.copy()
+    # сервер — код и статика ЭТОЙ копии репозитория: при editable-установке из другой копии
+    # (git worktree) uvicorn иначе подхватит чужой пакет и отдаст чужой static/
+    env["PYTHONPATH"] = os.pathsep.join(p for p in (str(ROOT / "src"), env.get("PYTHONPATH", "")) if p)
     if hermetic:
         # без похода в GitHub Release за базой/моделями на старте: фронт всё
         # равно кормится роутами-моками, база серверу для отдачи статики не нужна.

@@ -80,7 +80,7 @@ def test_check_updates_price_drop(tmp_path, monkeypatch):
     assert len(updates) == 1
     chat_id, text = updates[0]
     assert chat_id == 42
-    assert "📉" in text and "47.5 млн ₸" in text and "-5.0%" in text
+    assert "📉" in text and "47,5 млн ₸" in text and "−5,0%" in text
 
     # цена запомнена — повторный проход без изменений молчит
     assert tracking.check_tracked_updates(db_path=db, path=path) == []
@@ -222,7 +222,7 @@ def test_tracked_lot_with_unknown_price_heals_and_then_alerts(tmp_path, monkeypa
     assert len(messages) == 1
     chat_id, text = messages[0]
     assert chat_id == 5
-    assert "📉" in text and "36.0 млн" in text
+    assert "📉" in text and "36,0 млн" in text
 
 
 def _make_rent_db(tmp_path, lid=222, price=300_000, is_active=1):
@@ -248,7 +248,8 @@ def test_rent_lot_is_checked_against_rent_db_with_rent_wording(tmp_path, monkeyp
     updates = tracking.check_tracked_updates(db_path=rent_db, path=path, deal="arenda")
     assert len(updates) == 1
     text = updates[0][1]
-    assert "📉" in text and "Аренда: 300 тыс ₸/мес → <b>280 тыс ₸/мес</b>" in text
+    assert "📉 <b>Аренду снизили на 20 тыс ₸/мес</b>" in text
+    assert "Было   300 тыс ₸/мес" in text and "Стало  280 тыс ₸/мес" in text
     assert tracking.check_tracked_updates(db_path=rent_db, path=path, deal="arenda") == []
 
 
@@ -272,7 +273,7 @@ def test_sale_and_rent_passes_do_not_touch_each_other(tmp_path, monkeypatch):
     tracking.add_tracked(42, 222, 300_000, "Аренда", path=path, deal="arenda")
 
     sale = tracking.check_tracked_updates(db_path=sale_db, path=path)
-    assert len(sale) == 1 and "47.5 млн ₸" in sale[0][1] and "тыс ₸/мес" not in sale[0][1]
+    assert len(sale) == 1 and "47,5 млн ₸" in sale[0][1] and "тыс ₸/мес" not in sale[0][1]
     assert tracking.list_tracked(42, path=path)["222"]["price"] == 300_000  # аренду не тронули
 
     rent = tracking.check_tracked_updates(db_path=rent_db, path=path, deal="arenda")

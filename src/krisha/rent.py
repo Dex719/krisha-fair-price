@@ -77,6 +77,31 @@ def detect_deal(listing: dict) -> str:
     return "prodazha"
 
 
+# Посуточная аренда. База и модель аренды — только помесячные объявления
+# (краулер ходит в выдачу «на длительный срок»), а цена за сутки против
+# месячной оценки дала бы ложное «Выгодно» или «Подозрительно дёшево».
+# Явный признак — «посуточно / за сутки / почасово» в заголовке или
+# параметрах. В описании те же слова встречаются и у помесячных («посуточно
+# не сдаю»), поэтому описанию верим только вместе с суточной ценой: дешевле
+# DAILY_PRICE_CEILING помесячно квартиру в Алматы не сдают (в базе аренды
+# минимум ~47 тыс ₸/мес — и это единичные лоты), а сутки стоят 8–40 тыс ₸.
+DAILY_RE = re.compile(r"посуточ|за сутки|в сутки|сутк[иа]|почасов|тәулік", re.IGNORECASE)
+DAILY_PRICE_CEILING = 45_000
+
+
+def is_daily_rent(listing: dict) -> bool:
+    """Объявление о посуточной (или почасовой) аренде, а не помесячной."""
+    head = " ".join(str(listing.get(k) or "") for k in ("title", "raw_params"))
+    if DAILY_RE.search(head):
+        return True
+    price = listing.get("price")
+    return (
+        price is not None
+        and price < DAILY_PRICE_CEILING
+        and bool(DAILY_RE.search(str(listing.get("description") or "")))
+    )
+
+
 def is_room_share(description: str | None) -> bool:
     """Похоже на подселение / сдачу комнаты, а не квартиры целиком."""
     return bool(description) and bool(ROOM_SHARE_RE.search(str(description)))

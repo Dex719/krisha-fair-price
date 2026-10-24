@@ -5,18 +5,19 @@
 <meta name="theme-color" content="#0A100C" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#F1F4EC" media="(prefers-color-scheme: light)">
 <script>
-/* до первой отрисовки: тема (сохранённый выбор, иначе системная) и режим движения; bagam.ready — очередь до загрузки site.js */
+/* до первой отрисовки: тема (сохранённый выбор, иначе тёмная) и режим движения; bagam.ready — очередь до загрузки site.js */
 /* лёгкий режим (без анимаций, теней и размытия) — только по явным признакам: экономия трафика, 2G, ≤2 ГБ памяти; «4 ядра и 4 ГБ» — это обычный Android, ему оставляем полную версию */
 (function(d,w){var n=navigator,c=n.connection||{},m=function(q){return !!(w.matchMedia&&w.matchMedia(q).matches)},t;
 try{t=localStorage.getItem('bagam-theme')||localStorage.getItem('kfp-theme')}catch(e){}
-d.setAttribute('data-theme',t==='light'||t==='dark'?t:m('(prefers-color-scheme: light)')?'light':'dark');
+d.setAttribute('data-theme',t==='light'?'light':'dark');
 var lite=!!c.saveData||/(^|-)(slow-2g|2g)$/.test(c.effectiveType||'')||(n.deviceMemory&&n.deviceMemory<=2);
-d.classList.add('js',lite?'lite':'anim');if(m('(prefers-reduced-motion: reduce)'))d.classList.add('rm');
+var rm=m('(prefers-reduced-motion: reduce)'),mo;try{mo=localStorage.getItem('bagam-motion')}catch(e){}
+d.classList.add('js',mo==='off'||(mo!=='on'&&lite)?'still':'anim');if(lite)d.classList.add('lite');if(rm)d.classList.add('rm');
 w.bagam={q:[],ready:function(f){this.q.push(f)}};
 })(document.documentElement,window);
 </script>
-<title>Оценка квартиры в Алматы: справедливая цена продажи и аренды │ baǵam</title>
-<meta name="description" content="Вставьте ссылку на продажу или аренду квартиры с krisha.kz — baǵam бесплатно сравнит её с рынком Алматы и покажет справедливую цену и обычный диапазон.">
+<title>baǵam (bagam.info) — оценка квартиры в Алматы: справедливая цена продажи и аренды</title>
+<meta name="description" content="baǵam (bagam.info, «багам») — бесплатная оценка квартиры в Алматы: вставьте ссылку на продажу или аренду с krisha.kz, и сервис сравнит её с рынком и покажет справедливую цену.">
 <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/unb-lat.woff2">
 <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/unb-gacute.woff2">
 <link rel="preload" as="font" type="font/woff2" crossorigin href="/static/fonts/onest-cyr.woff2">
@@ -29,12 +30,13 @@ w.bagam={q:[],ready:function(f){this.q.push(f)}};
 html.anim .hero h1 span{animation:bgmup .85s cubic-bezier(.16,1,.3,1) both}
 html.anim .hero h1 .l2{animation-delay:.1s}
 html.anim .hform{animation:bgmup .8s cubic-bezier(.16,1,.3,1) .2s both}
+html.anim .hcard{animation:bgmup .9s cubic-bezier(.16,1,.3,1) .35s both}
 /* ---------- скелетон карточки, пока модель считает: aria-busy на .sheet (.sk и bgmsk — в design.css) ---------- */
-.sheet[aria-busy=true] :is(.vbig,.vpct,.vsub,.vwhy,.rv,.rsub,.rssub,.rmk span,.fxv,.fxn,.fxh,.fxpv,.rchip){
+.sheet[aria-busy=true] :is(.vbig,.vpct,.vsub,.vwhy,.rv,.rsub,.rssub,.rmk span,.fxv,.fxn,.fxh,.rchip){
  color:transparent!important;border-color:transparent!important;
  background:linear-gradient(90deg,var(--soft) 25%,var(--hover) 37%,var(--soft) 63%);
  background-size:250% 100%;animation:bgmsk 1.3s linear infinite;border-radius:8px}
-.sheet[aria-busy=true] :is(.vbig,.vsub,.vwhy,.rv,.rchip,.fxv,.fxn,.fxpv) *{opacity:0}
+.sheet[aria-busy=true] :is(.vbig,.vsub,.vwhy,.rv,.rchip,.fxv,.fxn) *{opacity:0}
 .sheet[aria-busy=true] .verdict{background:var(--panel)!important;box-shadow:inset 0 0 0 1px var(--line)}
 .sheet[aria-busy=true] :is(.fxb i,.fxd,.rz,.rmk i){opacity:.25}
 .sheet[aria-busy=true] :is(.racts,.rwarn,.rextra){opacity:.35;pointer-events:none}
@@ -47,8 +49,8 @@ html.anim .hform{animation:bgmup .8s cubic-bezier(.16,1,.3,1) .2s both}
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="baǵam">
 <meta property="og:url" content="https://bagam.info/">
-<meta property="og:title" content="Оценка квартиры в Алматы: справедливая цена продажи и аренды │ baǵam">
-<meta property="og:description" content="Вставьте ссылку на продажу или аренду квартиры с krisha.kz — baǵam бесплатно сравнит её с рынком Алматы и покажет справедливую цену и обычный диапазон.">
+<meta property="og:title" content="baǵam (bagam.info) — оценка квартиры в Алматы: справедливая цена продажи и аренды">
+<meta property="og:description" content="baǵam (bagam.info, «багам») — бесплатная оценка квартиры в Алматы: вставьте ссылку на продажу или аренду с krisha.kz, и сервис сравнит её с рынком и покажет справедливую цену.">
 <meta property="og:image" content="https://bagam.info/static/img/og.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -57,11 +59,11 @@ html.anim .hform{animation:bgmup .8s cubic-bezier(.16,1,.3,1) .2s both}
 <meta name="twitter:card" content="summary_large_image">
 <script type="application/ld+json">
 {"@context":"https://schema.org","@graph":[
-{"@type":"WebSite","@id":"https://bagam.info/#website","url":"https://bagam.info/","name":"baǵam","alternateName":["bagam","bagam.info"],"description":"Бесплатная оценка квартиры в Алматы по ссылке на объявление krisha.kz: справедливая цена продажи и аренды, обычный диапазон цены и факторы, которые на неё влияют.","inLanguage":"ru","publisher":{"@id":"https://bagam.info/#org"}},
-{"@type":"Organization","@id":"https://bagam.info/#org","name":"baǵam","alternateName":"bagam","url":"https://bagam.info/","logo":"https://bagam.info/static/apple-touch-icon.png","sameAs":["https://t.me/fairprice_kzbot","https://github.com/Dex719/krisha-fair-price"]}
+{"@type":"WebSite","@id":"https://bagam.info/#website","url":"https://bagam.info/","name":"baǵam","alternateName":["bagam","bagam.info","bagam info","багам","Багам"],"description":"Бесплатная оценка квартиры в Алматы по ссылке на объявление krisha.kz: справедливая цена продажи и аренды, обычный диапазон цены и факторы, которые на неё влияют.","inLanguage":"ru","publisher":{"@id":"https://bagam.info/#org"}},
+{"@type":"Organization","@id":"https://bagam.info/#org","name":"baǵam","alternateName":["bagam","bagam.info","багам"],"url":"https://bagam.info/","logo":"https://bagam.info/static/apple-touch-icon.png","sameAs":["https://t.me/fairprice_kzbot","https://github.com/Dex719/krisha-fair-price"]}
 ]}
 </script>
-<script src="/static/js/site.js" defer data-gsap></script>
+<script src="/static/js/site.js" defer></script>
 </head><body>
 <a class="skip" href="#main">Перейти к содержимому</a>
 <nav aria-label="Основная навигация"><div class="wrap nrow">
@@ -73,25 +75,29 @@ html.anim .hform{animation:bgmup .8s cubic-bezier(.16,1,.3,1) .2s both}
 <div class="mmenu" id="mmenu" role="dialog" aria-modal="true" aria-label="Меню" aria-hidden="true">
 <a class="ml" href="/" aria-current="page">Оценка<i>главная</i></a>
 <a class="ml" href="/stats">Рынок<i>цены продажи и аренды по районам</i></a>
-<a class="ml" href="/bot">Telegram-бот<i>оценка в чате и слежение за ценой</i></a>
+<a class="ml" href="/bot">Telegram-бот<i>оценка в чате и слежка за ценой</i></a>
 <a class="ml" href="/about">О проекте<i>как считает модель</i></a>
 <div class="msub">
 <a href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener">Открыть бота · @fairprice_kzbot</a>
 <a href="https://github.com/Dex719/krisha-fair-price" target="_blank" rel="noopener">Исходный код на GitHub</a>
-<button class="mth" type="button" data-theme-toggle><span>Тема оформления</span><b data-theme-label>тёмная</b></button>
+<button class="mth" type="button" role="switch" aria-checked="true" data-motion-toggle><span>Анимации</span><b data-motion-label aria-hidden="true">вкл</b></button>
 <span>данные krisha.kz · Алматы</span>
 <button class="mclose" type="button" data-mclose>Закрыть меню</button>
 </div>
 </div>
 <main id="main">
 
-<header class="hero"><div class="wrap">
+<header class="hero"><div class="wrap hgrid">
+<div class="hmain">
 <h1><span class="l1">Не переплачиваете за&nbsp;квартиру?</span> <span class="l2">Проверьте по&nbsp;ссылке с&nbsp;<em>krisha.kz</em></span></h1>
 <div class="hform">
 <form class="inbar" data-check novalidate><label class="vh" for="lotUrl">Ссылка на объявление с krisha.kz</label><input id="lotUrl" name="url" type="url" inputmode="url" autocomplete="url" enterkeyhint="go" spellcheck="false" placeholder="krisha.kz/a/show/1012607661"><button class="pastebtn" type="button" data-paste aria-label="Вставить ссылку из буфера" title="Вставить из буфера"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1.6" stroke="currentColor" stroke-width="1.8"/><path d="M8 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="pbl">Вставить</span></button><button class="gobtn" type="submit">Проверить <i>→</i></button></form><p class="inerr" data-err role="alert"></p><p class="inwait" data-wait aria-hidden="true" hidden><i class="spin"></i><span></span></p>
 <p class="hnote">Продажа или аренда в Алматы — сравним с <b><span data-l="total">21 113</span>&nbsp;<span data-l="totalw" data-forms="объявлением,объявлениями,объявлениями">объявлениями</span></b> и покажем справедливую цену.</p>
-<p class="demos" data-demos hidden><span>Нет ссылки под рукой?</span><button class="demolink" type="button" data-demo hidden>пример продажи</button><button class="demolink" type="button" data-demo-rent hidden>пример аренды</button></p>
+<p class="hstale" id="hStale" role="note" hidden></p>
+<p class="demos" data-demos><span>Нет ссылки под рукой?</span><button class="demolink" type="button" data-demo>пример продажи</button><button class="demolink" type="button" data-demo-rent>пример аренды</button></p>
 </div>
+</div>
+<a class="hcard" href="#razbor" aria-label="Пример разбора: 2-комнатная квартира, в рынке, на 4,2% дешевле оценки"><span class="hchd"><span><b>2-комнатная · 49 м²</b> · Наурызбайский</span><span class="hcpill">пример</span></span><span class="hcbig"><span class="w">В рынке</span><span class="p"><b>−4,2%</b><span>дешевле оценки</span></span></span><span class="hcbar"><span class="z" style="left:23.68%;width:52.64%"></span><span class="a" style="left:39.56%"><span>27,5 млн</span></span><span class="f" style="left:49.58%"></span></span><span class="hcrows"><span><span>Цена в объявлении</span><b>27 500 000 ₸</b></span><span><span>Честная оценка</span><b>28 700 000 ₸</b></span><span><span>Обычный диапазон</span><b>25,6–31,9 млн ₸</b></span></span></a>
 </div></header>
 
 <section class="rep" id="razbor"><div class="wrap">
@@ -104,10 +110,11 @@ html.anim .hform{animation:bgmup .8s cubic-bezier(.16,1,.3,1) .2s both}
  <div class="rwait" id="rWait" hidden><i aria-hidden="true"></i><span>Открываем объявление и сравниваем с похожими…</span></div>
  <div class="rerr" id="rErr" role="alert" hidden><b class="rerrt"></b><p class="rerrx"></p><button class="rbtn" type="button" data-retry>Попробовать ещё раз</button></div>
  <div class="rbody" id="rBody">
+ <div class="rmain">
  <div class="verdict fair">
   <span class="vbig">В рынке</span>
   <span class="vsub">цена в обычных пределах для таких квартир</span>
-  <span class="vpct">−4,2%</span>
+  <span class="vpct">−4,2%<small class="vdir">дешевле оценки</small></span>
   <p class="vwhy">Обычный разброс для таких квартир — от −10,8% до +11,1%. Разница −4,2% в него укладывается.</p>
  </div>
  <div class="rwarn" id="rWarn" hidden></div>
@@ -132,20 +139,18 @@ html.anim .hform{animation:bgmup .8s cubic-bezier(.16,1,.3,1) .2s both}
   </div>
  </div>
  <div class="rwhy">
-  <div class="rwhd"><h3 class="rwttl">Почему такая оценка</h3><span class="rwsub" id="fxSub">по сравнению с типичной квартирой в Алматы</span></div>
-  <div class="fxpath" id="fxPath">
-   <div class="fxp"><span class="fxpl">Типичная квартира</span><b class="fxpv">43,8 млн <small>₸</small></b></div><span class="fxpa" aria-hidden="true">→</span>
-   <div class="fxp"><span class="fxpl">Особенности этой</span><b class="fxpv">−15,1 млн <small>₸</small></b></div><span class="fxpa" aria-hidden="true">→</span>
-   <div class="fxp tot"><span class="fxpl">Оценка</span><b class="fxpv">28,7 млн <small>₸</small></b></div>
-  </div>
-  <div class="fxlist" id="fxList"><div class="fx neg"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v15" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 12.5 6.5 6.5 6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="vh">снижает</span></span><span class="fxn">Площадь 49 м²</span><div class="fxb"><i style="--w:1"></i></div><span class="fxv">−9,6 млн</span><span class="fxh">Квартира меньше типичной, поэтому целиком стоит дешевле — хотя метр в небольших квартирах обычно дороже.</span></div><div class="fx neg"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v15" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 12.5 6.5 6.5 6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="vh">снижает</span></span><span class="fxn">Наурызбайский район</span><div class="fxb"><i style="--w:.323"></i></div><span class="fxv">−3,1 млн</span><span class="fxh">Один из самых доступных районов: метр здесь примерно на 11% дешевле, чем в среднем по городу.</span></div><div class="fx neg"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v15" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 12.5 6.5 6.5 6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="vh">снижает</span></span><span class="fxn">Цены в квартале ~500 м</span><div class="fxb"><i style="--w:.125"></i></div><span class="fxv">−1,2 млн</span></div><div class="fx pos"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20V5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 11.5 6.5-6.5 6.5 6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="vh">повышает</span></span><span class="fxn">Ремонт</span><div class="fxb"><i style="--w:.094"></i></div><span class="fxv">+900 тыс</span></div><div class="fx pos"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20V5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 11.5 6.5-6.5 6.5 6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="vh">повышает</span></span><span class="fxn">Этаж 7 из 10</span><div class="fxb"><i style="--w:.063"></i></div><span class="fxv">+600 тыс</span></div><div class="fx oth"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="6" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="18" cy="12" r="1.6" fill="currentColor"/></svg></span><span class="fxn">Прочее — остальные особенности вместе</span><div class="fxb"><i style="--w:.281"></i></div><span class="fxv">−2,7 млн</span></div></div>
+  <div class="rwhd"><h3 class="rwttl">Почему такая оценка</h3><span class="rwsub" id="fxSub">от типичной квартиры в Алматы — к этой</span></div>
+  <div class="fxlist" id="fxList"><div class="fx base"><span class="fxd"></span><span class="fxn">Типичная квартира</span><div class="fxb"><i style="--a:0.000;--w:0.949"></i></div><span class="fxv">43,8 млн ₸</span></div><div class="fx neg"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v15" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 12.5 6.5 6.5 6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="vh">снижает</span></span><span class="fxn">Площадь 49 м²</span><div class="fxb"><i style="--a:0.560;--w:0.389"></i></div><span class="fxv">−9,6 млн</span><span class="fxh">Квартира меньше типичной, поэтому целиком стоит дешевле — хотя метр в небольших квартирах обычно дороже.</span></div><div class="fx neg"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v15" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 12.5 6.5 6.5 6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="vh">снижает</span></span><span class="fxn">Наурызбайский район</span><div class="fxb"><i style="--a:0.434;--w:0.126"></i></div><span class="fxv">−3,1 млн</span><span class="fxh">Один из самых доступных районов: метр здесь примерно на 11% дешевле, чем в среднем по городу.</span></div><div class="fx neg"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v15" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 12.5 6.5 6.5 6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="vh">снижает</span></span><span class="fxn">Цены в квартале ~500 м</span><div class="fxb"><i style="--a:0.386;--w:0.049"></i></div><span class="fxv">−1,2 млн</span></div><div class="fx pos"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20V5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 11.5 6.5-6.5 6.5 6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="vh">повышает</span></span><span class="fxn">Ремонт</span><div class="fxb"><i style="--a:0.386;--w:0.037"></i></div><span class="fxv">+900 тыс</span></div><div class="fx pos"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20V5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="m5.5 11.5 6.5-6.5 6.5 6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="vh">повышает</span></span><span class="fxn">Этаж 7 из 10</span><div class="fxb"><i style="--a:0.422;--w:0.024"></i></div><span class="fxv">+600 тыс</span></div><div class="fx oth"><span class="fxd"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="6" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="18" cy="12" r="1.6" fill="currentColor"/></svg></span><span class="fxn">Прочее — остальные особенности вместе</span><div class="fxb"><i style="--a:0.337;--w:0.110"></i></div><span class="fxv">−2,7 млн</span></div><div class="fx tot"><span class="fxd"></span><span class="fxn">Оценка</span><div class="fxb"><i style="--a:0.000;--w:0.337"></i></div><span class="fxv">28,7 млн ₸</span></div></div>
  </div>
- <div class="rextra ryield" id="rYield" hidden></div>
- <div class="rextra" id="rHist" hidden></div>
- <div class="rextra" id="rSim" hidden></div>
  <div class="rfoot">
   <span class="rchip">2-комнатная · 49 м² · 7/10 этаж · <b>Наурызбайский район</b></span>
   <span class="rchip">похожие снимают с продажи за <b>~6 дн.</b></span>
+ </div>
+ </div>
+ <div class="rside">
+ <div class="rextra ryield" id="rYield" hidden></div>
+ <div class="rextra" id="rHist" hidden></div>
+ <div class="rextra" id="rSim" hidden></div>
  </div>
  </div>
 </div>
@@ -174,21 +179,21 @@ html.anim .hform{animation:bgmup .8s cubic-bezier(.16,1,.3,1) .2s both}
 <section class="botsec"><div class="wrap">
 <div class="card c1">
  <div class="ctx">
-  <h2 class="hrow"><span class="icw"><svg class="ic2 icb" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 14l6 6l4-16l-18 7l4 2l2 6l3-4" stroke="currentColor" stroke-width="1.7"/><path d="M15 10l-4 4" stroke="var(--vio)" stroke-width="1.7"/></svg></span>Оценка и слежение за ценой в Telegram</h2>
-  <p>Telegram-бот умеет три вещи: оценить квартиру по ссылке или тексту, следить за ценой объявления через /track и присылать уведомления о выгодных объявлениях через /alerts, когда на рынке появляется подходящий вариант.</p>
+  <h2 class="hrow"><span class="icw"><svg class="ic2 icb" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 14l6 6l4-16l-18 7l4 2l2 6l3-4" stroke="currentColor" stroke-width="1.7"/><path d="M15 10l-4 4" stroke="var(--vio)" stroke-width="1.7"/></svg></span>Оценка и слежка за ценой в Telegram</h2>
+  <p>Telegram-бот умеет три вещи: оценить квартиру по ссылке или тексту, следить за ценой объявления через /track и присылать уведомления о выгодных объявлениях через /alerts_on, когда на рынке появляется подходящий вариант.</p>
   <p>Снизят цену или снимут объявление — бот напишет сам. Сайт открывать не нужно.</p>
   <div class="cbtns"><a class="rbtn pri" href="https://t.me/fairprice_kzbot" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 10l-4 4l6 6l4-16l-18 7l4 2l2 6l3-4"/></svg>Открыть @fairprice_kzbot</a><a class="clink" href="/bot">Все команды бота<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M12 5l7 7-7 7"/></svg></a></div>
  </div>
- <div class="iph" role="img" aria-label="Пример переписки с ботом baǵam в Telegram: ссылка на объявление, оценка «В рынке, −4,2%», команда /track и сообщение о снижении цены">
+ <div class="iph" role="img" aria-label="Пример переписки с ботом baǵam в Telegram: ссылка на объявление, оценка «В рынке: на 4,2% дешевле оценки» с кнопками «Следить» и «Похожие», затем сообщение о снижении цены">
  <div class="iscr">
     <div class="tghd"><span class="tgbk"><svg viewBox="0 0 9 15" fill="none" aria-hidden="true"><path d="M7.6 1.4 1.7 7.5l5.9 6.1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="tgttl"><b>baǵam</b><i>бот · онлайн</i></span><span class="tgav">b</span></div>
   <div class="tgch">
    <span class="tgday">Сегодня</span>
    <div class="tgb out"><span class="tgu">krisha.kz/a/show/1012607661</span><span class="tgt">21:04<svg viewBox="0 0 18 11" fill="none" aria-hidden="true"><path d="M1.2 6.3 4 9.1l5.6-6.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m7.6 8.6.9.9 6-7.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
-   <div class="tgb in"><strong>В рынке, −4,2%</strong><span class="ln">Справедливая цена: <b>28,7&nbsp;млн&nbsp;₸</b></span><span class="ln">В объявлении: 27,5&nbsp;млн&nbsp;₸</span><span class="ln">2-комн., 49 м², Наурызбайский р-н</span><span class="tgt">21:04</span></div>
-   <div class="tgb out"><span class="tgu">/track</span><span class="tgt">21:05<svg viewBox="0 0 18 11" fill="none" aria-hidden="true"><path d="M1.2 6.3 4 9.1l5.6-6.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m7.6 8.6.9.9 6-7.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
-   <div class="tgb in">Слежу за ценой этого объявления. Напишу, как только она изменится.<span class="tgt">21:05</span></div>
-   <div class="tgb in">Цена снижена: <b>26,9&nbsp;млн&nbsp;₸</b> — на 600 тысяч меньше.<span class="tgt">08:12</span></div>
+   <div class="tgb in"><strong>🟡 В рынке: на 4,2% дешевле оценки</strong><span class="ln">2-комн · 49&nbsp;м² · Наурызбайский р-н</span><span class="ln tpre"><span>Цена</span><b>27,5&nbsp;млн&nbsp;₸</b><span>Оценка</span><b>28,7&nbsp;млн&nbsp;₸</b><span>Обычно</span><b>25,6–31,9&nbsp;млн</b></span><span class="tgt">21:04</span></div><div class="tgkb"><div class="r"><span>👀 Следить за ценой</span><span>🏘 Похожие · 3</span></div><div class="r"><span>🌐 Разбор на сайте</span></div></div>
+   <div class="tgb out"><span class="tgu">👀 Следить за ценой</span><span class="tgt">21:05<svg viewBox="0 0 18 11" fill="none" aria-hidden="true"><path d="M1.2 6.3 4 9.1l5.6-6.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="m7.6 8.6.9.9 6-7.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+   <div class="tgb in"><strong>👀 Слежу за ценой</strong>Напишу, если цену изменят или объявление снимут.<span class="tgt">21:05</span></div>
+   <div class="tgb in"><strong>📉 Цену снизили на 600 тыс ₸</strong><span class="ln tpre"><span>Было</span><b>27,5&nbsp;млн&nbsp;₸</b><span>Стало</span><b>26,9&nbsp;млн&nbsp;₸</b></span><span class="tgt">08:12</span></div>
   </div>
   <div class="tgin"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 11.5 12.1 19.4a5 5 0 0 1-7.1-7.1l8.4-8.4a3.4 3.4 0 1 1 4.8 4.8l-8.3 8.3a1.8 1.8 0 1 1-2.5-2.5l7.6-7.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="tgfl">Сообщение</span><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="9" y="2.6" width="6" height="11.4" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M5.5 11.4a6.5 6.5 0 0 0 13 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M12 18v3.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></div>
  </div>
@@ -237,26 +242,19 @@ html.anim .hform{animation:bgmup .8s cubic-bezier(.16,1,.3,1) .2s both}
 </div>
 
 <div class="fbot">
- <span>© 2026 baǵam · данные krisha.kz · Алматы</span>
- <button class="ftop" type="button" aria-label="Наверх"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="1.9"/></svg>наверх</button>
+ <span>© 2026 baǵam · bagam.info · данные krisha.kz · Алматы</span>
+ <span class="fbact"><button class="fmo" type="button" role="switch" aria-checked="true" data-motion-toggle>Анимации<b data-motion-label aria-hidden="true">вкл</b></button><button class="ftop" type="button" aria-label="Наверх"><svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="1.9"/></svg>наверх</button></span>
 </div>
 
 </div>
 </footer>
 
 <script>
-/* анимации главной: GSAP грузится лениво (bagam.boot); без него — статичная страница.
-   Цифры разбора стоят в разметке сразу — анимируются только декоративные появления. */
-bagam.ready(function(){
-  bagam.boot(function(){
-    if (!window.gsap || !window.ScrollTrigger || location.search.includes('static')) return;
-    gsap.registerPlugin(ScrollTrigger);
-    var once = function(trigger, start){ return {trigger: trigger, start: start || 'top 86%', once: true}; };
-    gsap.utils.toArray('.card').forEach(function(el){
-      gsap.from(el, {y: 40, opacity: 0, duration: .9, ease: 'expo.out', clearProps: 'transform', scrollTrigger: once(el, 'top 85%')});
-    });
-    gsap.from('.cta h2', {y: 40, opacity: 0, duration: 1, ease: 'expo.out', clearProps: 'transform', scrollTrigger: once('.cta', 'top 75%')});
-  });
+/* появления главной без библиотек: bagam.reveal (IntersectionObserver + CSS). Прячется только то,
+   что ниже первого экрана; полосы районов и факторов растут, метки шкалы въезжают на место.
+   Цифры разбора стоят в разметке сразу — анимируются только появления. */
+bagam.ready(function(b){
+  b.reveal('.rep .shead,.rax,.fxlist,.trust .card,.dband .shead,.dlabels,.botsec .card,.cta h2');
 });
 </script>
 <script>
@@ -264,6 +262,10 @@ bagam.ready(function(){
 (function(){
   const API = '/api/predict';
   const RX = /krisha\.kz\/a\/show\/(\d+)/i;
+  /* разбор поля (пусто, одна ссылка, голый номер, несколько ссылок) и тексты ошибок — одни на весь
+     сайт: bagam.parseLot / bagam.lotError в site.js. Он грузится с defer, поэтому отправка формы
+     ждёт его через bagam.ready (до загрузки — очередь, после — сразу) */
+  const submitForm = f => f.requestSubmit ? f.requestSubmit() : f.dispatchEvent(new Event('submit', {cancelable: true}));
   /* цели счётчиков посещаемости (bagam.track из site.js); без счётчиков — ничего не делает */
   const track = (name, params) => { if (window.bagam && bagam.track) bagam.track(name, params); };
   /* больше 45 секунд не ждём: сервер завис или перегружен — честно говорим и даём повторить */
@@ -385,6 +387,14 @@ bagam.ready(function(){
         (high ? 'Не вносите задаток до просмотра квартиры и проверки документов.'
           : 'Низкая цена бывает и честной, но перед задатком посмотрите квартиру и документы.') + '</i></div>');
     }
+    if (r.delisted_at != null){
+      const when = r.delisted_at ? fmtHistDate(r.delisted_at) : '';
+      parts.push('<div><b>Объявление уже снято с публикации</b>' +
+        '<i>По нашим данным оно пропало из выдачи krisha.kz' + (when ? ' (' + esc(when) + ')' : '') +
+        '. Оценка — по последней цене в объявлении: квартира могла уже уйти.</i></div>');
+    }
+    const st = staleText();
+    if (st) parts.push('<div><b>Данные рынка устарели</b><i>' + esc(st) + '</i></div>');
     if (r.duplicate_of){
       parts.push('<div><b>Похоже на перезалив объявления №' + esc(r.duplicate_of) + '</b>' +
         '<i>Квартиру с теми же характеристиками уже выставляли — проверьте, не подняли ли цену при новом размещении.</i></div>');
@@ -395,6 +405,23 @@ bagam.ready(function(){
     box.hidden = !parts.length;
   }
 
+  /* данные рынка давно не обновлялись (/api/health: freshness=stale) — говорим об этом и под формой,
+     и в карточке результата, а не только мелким чипом в подвале */
+  let health = null;
+  function staleText(){
+    if (!health || health.freshness !== 'stale') return '';
+    /* «устарели» наступает после 30 ч: до двух суток считаем часами («33 ч назад»), а не «давно»
+       или округлённые «2 дня» при 36 ч */
+    const h = health.data_age_hours, n = h != null ? Math.round(h / 24) : 0;
+    const ago = h == null ? 'давно' : h < 48 ? Math.round(h) + ' ч назад'
+      : n + ' ' + (window.bagam && bagam.plural ? bagam.plural(n, ['день', 'дня', 'дней']) : 'дн.') + ' назад';
+    return 'Объявления обновлялись ' + ago + ' — оценка может отставать от сегодняшних цен.';
+  }
+  bagam.ready(b => b.live.then(res => {
+    health = res && res.health;
+    const box = $('#hStale'), t = staleText();
+    if (box){ box.textContent = t; box.hidden = !t; }
+  }));
   const histDate = v => new Date(String(v || '').replace(' ', 'T'));
   const fmtHistDate = v => {
     try { return new Intl.DateTimeFormat('ru-RU', {day:'numeric', month:'short'}).format(histDate(v)); }
@@ -419,7 +446,7 @@ bagam.ready(function(){
       const d = p.price - hist[i].price;
       return '<div class="rxr"><span class="rxd">' + esc(fmtHistDate(p.at)) + '</span>' +
         '<span class="rxn">' + ru(hist[i].price) + ' → ' + ru(p.price) + ' ₸</span>' +
-        '<span class="rxv ' + (d < 0 ? 'dn' : 'up') + '">' + (d < 0 ? '−' : '+') + money(Math.abs(d)) + '</span></div>';
+        '<span class="rxv ' + (d < 0 ? 'dn' : 'up') + '">' + (d < 0 ? '−' : '+') + money(Math.abs(d)) + ' ' + UNIT() + '</span></div>';
     }).join('');
     box.innerHTML = '<div class="rxttl">История цены</div><div class="rxsum">' + esc(summary) + '</div>' + rows;
     box.hidden = false;
@@ -446,7 +473,7 @@ bagam.ready(function(){
       return '<a class="rxr" href="' + esc(lotUrl(a)) + '" target="_blank" rel="noopener noreferrer">' +
         '<span class="rxd">' + (a.ppsm ? ru(a.ppsm) + ' <small>₸/м²' + (RENT ? ' в мес' : '') + '</small>' : '—') + '</span>' +
         '<span class="rxn">' + esc(meta || 'объявление') + '</span>' +
-        '<span class="rxv">' + money(a.price) + ' ↗</span></a>';
+        '<span class="rxv">' + money(a.price) + ' ' + UNIT() + ' ↗</span></a>';
     }).join('');
     box.innerHTML = '<div class="rxttl">Похожие объявления</div>' +
       '<div class="rxsum">Сравните сами: цена за метр' + (RENT ? ' в месяц' : '') + ', параметры и цена целиком</div>' + rows;
@@ -489,7 +516,7 @@ bagam.ready(function(){
     box.hidden = false;
   }
 
-  /* Слежение за ценой: бот открывается сразу на этом объявлении. */
+  /* Слежка за ценой: бот открывается сразу на этом объявлении. */
   function trackHref(r){
     const id = String(r.listing_id || (String(r.url || '').match(RX) || [])[1] || '');
     return /^\d+$/.test(id) ? 'https://t.me/fairprice_kzbot?start=track_' + id : 'https://t.me/fairprice_kzbot';
@@ -514,8 +541,10 @@ bagam.ready(function(){
     return band + ' Разница ' + pct(r.diff_pct) + (skew ? ' в этот диапазон укладывается.' : ' в него укладывается.');
   }
 
-  /* «Почему такая оценка»: типичная квартира → особенности этой → оценка.
-     factors_base + Σ вкладов + factors_other == fair_price — путь сходится до тенге. */
+  /* «Почему такая оценка» водопадом: типичная квартира → вклад каждой особенности → оценка.
+     factors_base + Σ вкладов + factors_other == fair_price — полосы сходятся ровно к оценке.
+     Полоса фактора идёт от накопленной суммы до следующей (--a — начало, --w — длина, доли шкалы);
+     шкала не от нуля — от чуть ниже минимума пути, иначе вклады в миллион не видно рядом с 40 млн. */
   function renderFactors(r){
     const all = (r.top_factors || []).filter(f => f && Number.isFinite(+f.impact_tenge) && +f.impact_tenge);
     const known = [], hidden = [];
@@ -529,35 +558,57 @@ bagam.ready(function(){
     const other = Number.isFinite(r.factors_other)
       ? r.factors_other + rest.reduce((s, f) => s + (+f.impact_tenge), 0) : null;
     const showOther = other != null && Math.abs(other) >= (RENT ? 500 : 5000);
-    const mx = Math.max(1, ...shown.map(f => Math.abs(f.impact_tenge)), showOther ? Math.abs(other) : 0);
-    const row = (cls, icon, dir, name, v, hint) =>
+    const steps = shown.map(f => ({f, v: +f.impact_tenge}));
+    if (showOther) steps.push({f: null, v: other});
+    /* старый API без базы: путь считаем назад от оценки, строку «типичная квартира» не показываем */
+    const start = base != null ? base : r.fair_price - steps.reduce((s, x) => s + x.v, 0);
+    let cur = start;
+    const pts = [start, r.fair_price];
+    steps.forEach(x => { x.from = cur; cur += x.v; x.to = cur; pts.push(cur); });
+    const lo = Math.min(...pts), hi = Math.max(...pts), pad = (hi - lo) * 0.55 || Math.abs(hi) * 0.05;
+    const d0 = lo - pad, d1 = hi + pad * 0.15;
+    const X = v => Math.max(0, Math.min(1, (v - d0) / (d1 - d0)));
+    const bar = (a, b) => 'style="--a:' + X(Math.min(a, b)).toFixed(3) + ';--w:' + Math.abs(X(b) - X(a)).toFixed(3) + '"';
+    const row = (cls, icon, dir, name, st, val, hint) =>
       '<div class="fx ' + cls + '"><span class="fxd">' + icon + (dir ? '<span class="vh">' + dir + '</span>' : '') + '</span>' +
       '<span class="fxn">' + esc(name) + '</span>' +
-      '<div class="fxb"><i style="--w:' + (Math.abs(v) / mx).toFixed(3) + '"></i></div>' +
-      '<span class="fxv">' + delta(v) + '</span>' +
+      '<div class="fxb"><i ' + st + '></i></div>' +
+      '<span class="fxv">' + val + '</span>' +
       (hint ? '<span class="fxh">' + esc(hint) + '</span>' : '') + '</div>';
-    $('#fxList').innerHTML = shown.map(f => {
-      const p = f.impact_tenge > 0;
-      return row(p ? 'pos' : 'neg', p ? AUP : ADN, p ? 'повышает' : 'снижает', label(f.feature, r.details), f.impact_tenge, f.hint);
-    }).join('') + (showOther ? row('oth', AOT, '', 'Прочее — остальные особенности вместе', other, '') : '');
-    const path = $('#fxPath');
-    path.hidden = base == null;
-    /* старый API без базы: путь прячем и не оставляем в нём цифры примера */
-    if (base == null) path.querySelectorAll('.fxpv').forEach(el => { el.textContent = ''; });
-    else {
-      /* знак ₸ — мелким Onest: в Unbounded его нет, запасной шрифт рисует огромную «Т» */
-      const put = (el, text) => { el.innerHTML = esc(text) + ' <small>' + UNIT() + '</small>'; };
-      const cells = path.querySelectorAll('.fxp');
-      cells[0].querySelector('.fxpl').textContent = RENT ? 'Типичная аренда' : 'Типичная квартира';
-      put(cells[0].querySelector('.fxpv'), money(base));
-      /* середина — разность уже округлённых концов: 43,8 + 2,9 = 46,7, а не «+3,0» из-за округления */
-      const rd = n => RENT ? Math.round(n / 1000) * 1000 : Math.round(n / 1e5) * 1e5;
-      put(cells[1].querySelector('.fxpv'), delta(rd(r.fair_price) - rd(base)));
-      put(cells[2].querySelector('.fxpv'), money(r.fair_price));
-    }
+    const rows = [];
+    if (base != null) rows.push(row('base', '', '', RENT ? 'Типичная аренда' : 'Типичная квартира', bar(d0, start), money(base) + ' ' + UNIT()));
+    steps.forEach(x => {
+      if (!x.f){ rows.push(row('oth', AOT, '', 'Прочее — остальные особенности вместе', bar(x.from, x.to), delta(x.v), '')); return; }
+      const p = x.v > 0;
+      rows.push(row(p ? 'pos' : 'neg', p ? AUP : ADN, p ? 'повышает' : 'снижает', label(x.f.feature, r.details), bar(x.from, x.to), delta(x.v), x.f.hint));
+    });
+    rows.push(row('tot', '', '', RENT ? 'Справедливая аренда' : 'Оценка', bar(d0, r.fair_price), money(r.fair_price) + ' ' + UNIT()));
+    $('#fxList').innerHTML = rows.join('');
+    /* полосы растут с нуля: класс .pre обнуляет ширину, снимаем его через кадр */
+    const fl = $('#fxList'); fl.classList.add('pre');
+    requestAnimationFrame(() => requestAnimationFrame(() => fl.classList.remove('pre')));
     $('#fxSub').textContent = base == null ? 'что сильнее всего сдвинуло оценку'
-      : RENT ? 'по сравнению с типичной арендой в Алматы, в месяц' : 'по сравнению с типичной квартирой в Алматы';
+      : RENT ? 'от типичной аренды в Алматы — к этой, в месяц' : 'от типичной квартиры в Алматы — к этой';
   }
+
+  /* деления шкалы: круглые суммы с шагом, при котором их 4–8 (продажа — млн, аренда — тыс) */
+  function drawTicks(a, b){
+    const ax = $('.rax'); if (!ax) return;
+    ax.querySelectorAll('.rtk').forEach(el => el.remove());
+    const unit = RENT ? 1000 : 1e6, steps = RENT ? [5, 10, 20, 25, 50, 100, 200] : [0.5, 1, 2, 5, 10, 20, 50];
+    const step = steps.find(st => (b - a) / unit / st <= 8) || steps[steps.length - 1];
+    for (let v = Math.ceil(a / unit / step) * step; v * unit <= b; v += step){
+      const x = (v * unit - a) / (b - a) * 100;
+      if (x < 2 || x > 98) continue;
+      const t = document.createElement('span');
+      t.className = 'rtk'; t.style.left = x.toFixed(2) + '%';
+      t.innerHTML = '<b>' + (RENT ? ru(v) : m1(v)) + '</b>';
+      t.setAttribute('aria-hidden', 'true');
+      ax.appendChild(t);
+    }
+  }
+  /* пример в разметке: та же раскладка, что посчитал бы render (25,6–31,9 млн, объявление 27,5) */
+  drawTicks(22765000, 34735000);
 
   function render(r){
     RENT = r.deal === 'arenda';
@@ -579,7 +630,10 @@ bagam.ready(function(){
     $('.vsub').textContent = sub;
     const vpct = $('.vpct');
     vpct.hidden = noVerdict || scam;
-    vpct.textContent = vpct.hidden ? '' : pct(r.diff_pct);
+    /* «+3,0%» само по себе читается в обе стороны — подпись говорит, дороже или дешевле оценки */
+    const dir = r.diff_pct > 0 ? 'дороже оценки' : r.diff_pct < 0 ? 'дешевле оценки' : 'ровно по оценке';
+    vpct.innerHTML = vpct.hidden ? '' : esc(pct(r.diff_pct)) + '<small class="vdir">' + dir + '</small>';
+    vpct.dataset.say = vpct.hidden ? '' : pct(r.diff_pct) + ', ' + dir;
     const fp = r.fair_price;
     const lo = r.fair_price_low || fp * 0.9, hi = r.fair_price_high || fp * 1.1;
     const why = $('.vwhy');
@@ -620,7 +674,13 @@ bagam.ready(function(){
     zone($('.rz.lo'), 0, zl);
     zone($('.rz.mid'), zl, +(zh - zl).toFixed(2));
     zone($('.rz.hi'), zh, +(100 - zh).toFixed(2));
-    $('#rRange').innerHTML = (r.fair_price_low && r.fair_price_high ? 'обычный диапазон — ' : 'примерный диапазон — ') + nw(range(lo, hi));
+    drawTicks(a, b);
+    /* шкала растягивается до цены объявления, и маркер у края при +68% выглядит так же, как при +12%:
+       размер выхода за диапазон пишем словами */
+    const out = noPrice ? 0 : ref > hi ? ref - hi : ref < lo ? ref - lo : 0;
+    $('#rRange').innerHTML = (r.fair_price_low && r.fair_price_high ? 'обычный диапазон — ' : 'примерный диапазон — ') + nw(range(lo, hi)) +
+      (out ? '<b class="rover">цена в объявлении на ' + nw(money(Math.abs(out)) + ' ' + UNIT()) + (out > 0 ? ' выше' : ' ниже') + ' диапазона</b>' : '');
+    $('.rmk.ask').classList.toggle('out', !!out);
     const ask = $('.rmk.ask'), fair = $('.rmk.fair');
     ask.hidden = noPrice;
     ask.style.left = scaleAt.ask + '%';
@@ -642,6 +702,8 @@ bagam.ready(function(){
     $('.rfoot').innerHTML = chips.join('');
     $('.rfoot').hidden = !chips.length;
     renderYield(r); renderHist(r); renderSimilar(r);
+    /* правая колонка разбора — только когда ей есть что показать */
+    body.classList.toggle('wide', ['#rYield', '#rHist', '#rSim'].some(sel => !$(sel).hidden));
     const url = lotUrl(r);
     src.hidden = !url;
     if (url){ src.href = url; src.textContent = url.replace(/^https?:\/\//, '') + ' ↗'; }
@@ -663,15 +725,18 @@ bagam.ready(function(){
   function setBusy(on){
     sheet.setAttribute('aria-busy', on ? 'true' : 'false');
     waitTimers.forEach(clearTimeout); waitTimers = [];
-    wait.hidden = !on;
+    wait.hidden = true;
     if (on){ head.hidden = true; done.hidden = true; }
     if (!on) return;
-    waitTxt.textContent = 'Открываем объявление на krisha.kz и сравниваем с похожими…';
-    waitTimers.push(setTimeout(() => { waitTxt.textContent = 'Сервер просыпается после простоя — это бывает до 30 секунд.'; }, 6000));
+    /* обычно ответ за пару секунд — хватает спиннера в кнопке и скелетона; строка в карточке
+       появляется, только если ждать приходится дольше обычного */
+    waitTimers.push(setTimeout(() => { waitTxt.textContent = 'Дольше обычного: сервер мог уснуть после простоя — просыпается до 30 секунд.'; wait.hidden = false; }, 10000));
     waitTimers.push(setTimeout(() => { waitTxt.textContent = 'Всё ещё считаем. Если ответа не будет до 45 секунд, остановим запрос и предложим повторить.'; }, 25000));
   }
 
-  /* ошибка — внутри карточки: что случилось и что сделать; пример прячем */
+  /* ошибка — внутри карточки: что случилось и что сделать; пример прячем.
+     e = [заголовок, пояснение, 'input' | '', секунд до повтора] */
+  let retryTimer = 0;
   function showError(e){
     body.hidden = true;
     tag.hidden = true;
@@ -680,13 +745,30 @@ bagam.ready(function(){
     errBox.querySelector('.rerrt').textContent = e[0];
     errBox.querySelector('.rerrx').textContent = e[1];
     /* повтор имеет смысл при временной беде; битую или снятую ссылку повтор не исправит */
-    errBox.querySelector('[data-retry]').hidden = e[2] === 'input';
+    const rb = errBox.querySelector('[data-retry]');
+    rb.hidden = e[2] === 'input';
+    clearInterval(retryTimer);
+    rb.disabled = false; rb.textContent = 'Попробовать ещё раз';
+    let left = e[3] || 0;
+    if (left && !rb.hidden){
+      const tick = () => {
+        if (left <= 0){ clearInterval(retryTimer); rb.disabled = false; rb.textContent = 'Попробовать ещё раз'; return; }
+        rb.disabled = true; rb.textContent = 'Повторить можно через ' + left + ' с'; left--;
+      };
+      tick(); retryTimer = setInterval(tick, 1000);
+    }
     errBox.hidden = false;
     src.hidden = true;
   }
   const ERR_TIMEOUT = ['Оценка не пришла за 45 секунд', 'Сервер перегружен или завис. Попробуйте ещё раз через минуту — обычно ответ приходит за несколько секунд.'];
   const ERR_NET = ['Нет связи с сервисом', 'Проверьте интернет и попробуйте ещё раз.'];
   const ERR_DOWN = ['Сервис сейчас не отвечает. Попробуйте ещё раз через минуту', 'Похоже, сервер перезапускается — обычно это занимает минуту.'];
+  /* 502 отдаёт и Cloudflare, пока Space перезапускается, и сам сервис на внутренней ошибке
+     (в том числе когда страницу объявления не удалось разобрать). По коду их не различить —
+     поэтому без приговора объявлению и с кнопкой повтора */
+  const ERR_502 = ['Сервис сейчас не отвечает. Попробуйте ещё раз через минуту', 'Сервер мог перезапускаться — обычно это занимает минуту. Если ошибка повторяется на этом объявлении, возможно, его страницу не удаётся разобрать — попробуйте другое.'];
+  /* сервер сам говорит, через сколько секунд повторять (Retry-After): кнопка ждёт столько же */
+  const retryAfter = res => { const n = parseInt(res.headers.get('Retry-After') || '', 10); return n > 0 ? Math.min(n, 90) : 0; };
   async function httpError(res){
     const detail = async () => {
       const b = await res.json().catch(() => null);
@@ -699,11 +781,13 @@ bagam.ready(function(){
     if (res.status === 422){
       const d = await detail();
       if (d.startsWith('Оцениваем только квартиры в Алматы')) return [d, 'Модели учились на объявлениях Алматы: в других городах цены устроены иначе, и оценка была бы неточной.', 'input'];
+      if (d.startsWith('Посуточную аренду')) return [d, 'Модель аренды знает помесячные цены: сутки против месяца дали бы неверный вердикт.', 'input'];
       return ['Такое объявление не открывается — проверьте ссылку', 'Скопируйте адрес из строки браузера на странице объявления krisha.kz и вставьте ещё раз.', 'input'];
     }
-    if (res.status === 429) return ['Слишком много запросов подряд. Попробуйте через минуту', 'Частые проверки ограничены, чтобы сервиса хватало всем.'];
+    if (res.status === 429) return ['Слишком много запросов подряд. Попробуйте через минуту', 'Частые проверки ограничены, чтобы сервиса хватало всем.', '', retryAfter(res) || 60];
     if (res.status === 404) return [await detail() || 'Объявление не найдено — возможно, его уже сняли с продажи', 'Проверьте ссылку или возьмите другое объявление.', 'input'];
-    if (res.status === 503) return [await detail() || 'Сервис перегружен. Попробуйте через полминуты', 'Обычно это ненадолго — нажмите «Попробовать ещё раз» чуть позже.'];
+    if (res.status === 503) return [await detail() || 'Сервис перегружен. Попробуйте через полминуты', 'Обычно это ненадолго — кнопка повтора станет доступна, когда можно пробовать снова.', '', retryAfter(res)];
+    if (res.status === 502) return ERR_502;
     return ERR_DOWN;
   }
 
@@ -741,10 +825,10 @@ bagam.ready(function(){
       b.disabled = on; if (pb) pb.disabled = on;
       f.setAttribute('aria-busy', on ? 'true' : 'false');
       f.classList.toggle('is-busy', on);
+      /* строка под формой — только у нижней формы, откуда карточку не видно */
       if (w){
-        w.hidden = !on;
-        if (on) w.querySelector('span').textContent = f === from && f.closest('.hero') ? 'Считаем — разбор откроется ниже.'
-          : 'Считаем — результат появится в разделе «Разбор объявления».';
+        w.hidden = !(on && f === from && !f.closest('.hero'));
+        if (!w.hidden) w.querySelector('span').textContent = 'Считаем — результат появится в разделе «Разбор объявления».';
       }
     });
   }
@@ -760,62 +844,143 @@ bagam.ready(function(){
     nudgeTimer = setTimeout(() => { sp.textContent = keep; }, 2200);
   }
 
-  let busyNow = false, lastId = null, lastForm = null, fromDemo = false;
-  async function check(id, form){
+  /* gen — поколение запроса: растёт при каждой новой проверке, клике «пример» и переходе по истории.
+     Ответ, пришедший после смены поколения, уже никому не нужен: его не рисуем и адрес не трогаем */
+  let busyNow = false, lastId = null, lastForm = null, shownId = null;
+  let gen = 0, curCtl = null;
+  let demoMisses = 0, retryDemo = null, lastDemo = null;
+  /* последние разборы по номеру: «назад / вперёд» показывает их из памяти, а не тратит
+     лимит запросов на повторный расчёт */
+  const CACHE_MAX = 20, cache = new Map();
+  function remember(id, data){
+    cache.delete(id); cache.set(id, data);
+    if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
+  }
+  /* что было на карточке до запроса: тихий повтор примера, который не удался, возвращает как было */
+  const snap = () => ({body: body.hidden, tag: tag.hidden, badge: demoBadge.hidden, demo: sheet.classList.contains('is-demo'),
+    head: head.hidden, done: done.hidden, src: src.hidden, err: errBox.hidden});
+  function restore(s){
+    body.hidden = s.body; tag.hidden = s.tag; demoBadge.hidden = s.badge; sheet.classList.toggle('is-demo', s.demo);
+    head.hidden = s.head; done.hidden = s.done; src.hidden = s.src; errBox.hidden = s.err;
+  }
+  function idle(){ busyNow = false; curCtl = null; setBusy(false); setFormsBusy(false); }
+  /* идущий расчёт больше не нужен (человек ушёл по истории): обрываем его, ответ не нарисуется */
+  function cancel(){
+    if (!busyNow) return;
+    gen++;
+    if (curCtl) curCtl.abort();
+    retryDemo = null;
+    idle();
+    status.textContent = '';
+  }
+  /* готовый разбор на карточку — и свежий ответ, и из памяти */
+  function show(id, data){
+    render(data);
+    // Те же слова, что в карточке: подселение и «подозрительно дёшево» — без процента
+    status.textContent = 'Готово: ' + $('.vbig').textContent + ($('.vpct').hidden ? '' : ', ' + $('.vpct').dataset.say);
+    shownId = id;
+  }
+  /* source: 'link' — своя ссылка (форма, история, повтор), 'demo' — кнопка «пример» */
+  async function check(id, form, source){
     if (busyNow){ nudge(form); return; }
+    source = source || 'link';
+    const my = ++gen;
     busyNow = true; lastId = id; lastForm = form;
-    /* пример с кнопки «Показать на примере» — отдельной меткой, чтобы не путать со своими ссылками */
-    const source = fromDemo ? 'demo' : 'link';
-    fromDemo = false;
+    const before = snap();
     const inp = form.querySelector('input');
     setFormsBusy(true, form);
     errBox.hidden = true;
     body.hidden = false;
     tag.hidden = true;
+    /* пока считается ваша ссылка, карточка уже не «пример» */
+    demoBadge.hidden = true;
+    sheet.classList.remove('is-demo');
     setBusy(true);
     status.textContent = 'Считаем оценку объявления';
     bringIntoView(form);
     const ctl = 'AbortController' in window ? new AbortController() : null;
+    curCtl = ctl;
     let late = false;
     const timer = ctl ? setTimeout(() => { late = true; ctl.abort(); }, LIMIT) : 0;
     try {
       const res = await fetch(API, {method: 'POST', headers: {'content-type': 'application/json'},
         body: JSON.stringify({url: 'https://krisha.kz/a/show/' + id}), signal: ctl ? ctl.signal : undefined});
-      if (!res.ok) throw {ui: await httpError(res)};
+      if (my !== gen) return;
+      if (!res.ok) throw {ui: await httpError(res), status: res.status};
       const data = await res.json();
-      render(data);
+      if (my !== gen) return;
+      remember(id, data);
+      show(id, data);
       track('check_ok', {deal: RENT ? 'rent' : 'sale', verdict: String(data.verdict || ''), source});
-      // Те же слова, что в карточке: подселение и «подозрительно дёшево» — без процента
-      status.textContent = 'Готово: ' + $('.vbig').textContent + ($('.vpct').hidden ? '' : ', ' + $('.vpct').textContent);
-      /* адрес с номером: результат можно переслать, он переживает перезагрузку
-         (хеш через replaceState не вызывает повторной проверки — слушателя смены хеша нет) */
-      try { history.replaceState(null, '', location.pathname + location.search + '#check=' + id); } catch (e2){}
+      /* адрес с номером: результат можно переслать, он переживает перезагрузку.
+         Новая проверка — новая запись истории: «назад» возвращает к прошлому разбору или к пустой карточке */
+      try {
+        const to = location.pathname + location.search + '#check=' + id;
+        if (location.hash === '#check=' + id) history.replaceState(null, '', to); else history.pushState(null, '', to);
+      } catch (e2){}
       setBusy(false);
       bringIntoView(form);
       headT.focus({preventScroll: true});
     } catch (ex){
+      if (my !== gen) return;
       const e = late ? ERR_TIMEOUT : ex && ex.ui ? ex.ui : ex instanceof TypeError ? ERR_NET
         : ['Не удалось получить оценку. Попробуйте ещё раз', 'Если повторится — попробуйте через пару минут.'];
       track('check_error', {kind: late ? 'timeout' : e[2] === 'input' ? 'input' : e === ERR_NET ? 'network' : 'server', source});
+      /* пример из базы мог уже уйти с krisha (404): молча берём другой, а не показываем ошибку.
+         Пока другой подбирается, карточка — какой была до клика (с пометкой «пример»), статус пуст */
+      if (source === 'demo' && ex && ex.status === 404 && demoMisses < 2){
+        demoMisses++; retryDemo = lastDemo;
+        restore(before);
+        status.textContent = '';
+        return;
+      }
       showError(e);
-      status.textContent = 'Не удалось получить оценку';
+      /* причину озвучивает сама карточка (role=alert) — второй раз её не повторяем */
+      status.textContent = '';
       if (e[2] === 'input'){ inp.setAttribute('aria-invalid', 'true'); inp.focus({preventScroll: true}); }
       else errBox.querySelector('[data-retry]').focus({preventScroll: true, focusVisible: false});
     } finally {
       clearTimeout(timer);
-      busyNow = false;
-      setBusy(false);
-      setFormsBusy(false);
+      /* сменилось поколение — состояние форм уже принадлежит новому запросу */
+      if (my === gen){
+        idle();
+        if (retryDemo){ const d = retryDemo; retryDemo = null; d(); } else if (source === 'demo') demoMisses = 0;
+      }
     }
   }
+  /* «назад» / «вперёд»: адрес и карточка не расходятся. #check=<id> — показываем этот разбор
+     (из памяти, если он там есть), пустой адрес после своей проверки — убираем её и возвращаем
+     приглашение вставить ссылку. Расчёт, который шёл в этот момент, обрываем: он про другой адрес */
+  addEventListener('popstate', () => {
+    const m = location.hash.match(/check=(\d+)/);
+    if (m){
+      const id = m[1];
+      if (id === shownId && !busyNow) return;
+      cancel();
+      const f = forms[0];
+      f.querySelector('input').value = 'https://krisha.kz/a/show/' + id;
+      const hit = cache.get(id);
+      if (hit) show(id, hit); else check(id, f);
+      return;
+    }
+    if (location.hash || !shownId) return;
+    cancel();
+    shownId = null;
+    body.hidden = true; head.hidden = true; done.hidden = true; errBox.hidden = true; src.hidden = true;
+    tag.querySelector('b').textContent = 'Разбор';
+    tag.querySelector('span').textContent = 'Вставьте ссылку на объявление выше — и здесь появится разбор.';
+    tag.hidden = false;
+  });
   errBox.querySelector('[data-retry]').addEventListener('click', () => { if (lastId) check(lastId, lastForm); });
 
   document.querySelectorAll('form[data-check]').forEach(form => {
     const inp = form.querySelector('input');
     const paste = form.querySelector('[data-paste]');
     const err = form.parentElement.querySelector('[data-err]');
-    const clear = () => { err.classList.remove('on', 'hint'); inp.removeAttribute('aria-invalid'); };
-    const hint = t => { err.textContent = t; err.classList.add('on', 'hint'); };
+    /* текст ошибки связан с полем (aria-describedby): скринридер назовёт причину вместе с полем */
+    if (!err.id) err.id = inp.id + 'Err';
+    const clear = () => { err.classList.remove('on', 'hint'); err.textContent = ''; inp.removeAttribute('aria-invalid'); inp.removeAttribute('aria-describedby'); };
+    const hint = t => { err.textContent = t; err.classList.add('on', 'hint'); inp.setAttribute('aria-describedby', err.id); };
     if (paste){
       if (!navigator.clipboard || !navigator.clipboard.readText) paste.remove();
       else paste.addEventListener('click', async () => {
@@ -831,56 +996,63 @@ bagam.ready(function(){
     /* «пример продажи / аренды»: случайное активное объявление у сервиса — живой разбор
        для того, у кого нет ссылки под рукой. Следующий пример берём заранее: если этот
        уже сняли с продажи (404), повторный клик покажет другое объявление, а не ту же ошибку */
-    const demos = form.parentElement.querySelector('[data-demos]');
     [['[data-demo]', '/api/demo'], ['[data-demo-rent]', '/api/demo?deal=arenda']].forEach(([sel, from]) => {
       const demo = form.parentElement.querySelector(sel);
       if (!demo) return;
       const pick = () => fetch(from).then(r => r.ok ? r.json() : null)
         .then(d => d && d.url && RX.test(d.url) ? d.url : null).catch(() => null);
+      /* строка примеров видна сразу (появляясь после ответа API, она сдвигала разбор вниз — CLS);
+         пока пример подбирается, кнопка ждёт его с «Ищем пример…» */
       let next = pick();
-      next.then(url => {
-        if (!url) return;
-        demo.hidden = false;
-        if (demos) demos.hidden = false;
-        demo.addEventListener('click', async () => {
-          if (busyNow){ nudge(form); return; }
-          if (demo.disabled) return;
-          /* пример ещё подбирается — показываем ожидание, а не молчим */
-          const t0 = demo.textContent;
-          demo.disabled = true; demo.textContent = 'Ищем пример…'; demo.setAttribute('aria-busy', 'true');
-          const url = await next;
-          next = pick();
-          demo.disabled = false; demo.textContent = t0; demo.removeAttribute('aria-busy');
-          if (!url){ hint('Не получилось подобрать пример. Вставьте свою ссылку'); return; }
-          inp.value = url;
-          clear();
-          track('demo', {deal: sel === '[data-demo-rent]' ? 'rent' : 'sale'});
-          fromDemo = true;
-          form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event('submit', {cancelable: true}));
-        });
-      });
+      const run = async () => {
+        if (busyNow){ nudge(form); return; }
+        if (demo.disabled) return;
+        const my = ++gen;
+        /* пример ещё подбирается — показываем ожидание, а не молчим */
+        const t0 = demo.textContent;
+        demo.disabled = true; demo.textContent = 'Ищем пример…'; demo.setAttribute('aria-busy', 'true');
+        const url = await next;
+        next = pick();
+        demo.disabled = false; demo.textContent = t0; demo.removeAttribute('aria-busy');
+        /* пока пример подбирался, человек отправил свою ссылку или ушёл по истории:
+           пример не затирает ни поле, ни разбор */
+        if (my !== gen || busyNow) return;
+        if (!url){ hint('Не получилось подобрать пример. Вставьте свою ссылку'); return; }
+        inp.value = url;
+        clear();
+        track('demo', {deal: sel === '[data-demo-rent]' ? 'rent' : 'sale'});
+        lastDemo = run;
+        check(url.match(RX)[1], form, 'demo');
+      };
+      demo.addEventListener('click', run);
     });
     form.addEventListener('submit', e => {
       e.preventDefault();
-      const m = inp.value.trim().match(RX);
-      if (!m){
-        track('check_bad_link');
-        fromDemo = false;
-        inp.setAttribute('aria-invalid', 'true');
-        err.textContent = 'Нужна ссылка на объявление вида krisha.kz/a/show/1012607661';
-        err.classList.remove('hint'); err.classList.add('on');
-        inp.focus();
-        return;
-      }
-      clear();
-      check(m[1], form);
+      /* своя ссылка важнее примера, который ещё подбирается (во время расчёта поколение не трогаем:
+         повторное нажатие получит «Уже считаем») */
+      if (!busyNow) gen++;
+      const v = inp.value;
+      bagam.ready(b => {
+        const lot = b.parseLot(v);
+        if (!lot.id){
+          track('check_bad_link', {kind: lot.err});
+          inp.setAttribute('aria-invalid', 'true');
+          inp.setAttribute('aria-describedby', err.id);
+          err.textContent = b.lotError[lot.err];
+          err.classList.remove('hint'); err.classList.add('on');
+          inp.focus();
+          return;
+        }
+        clear();
+        check(lot.id, form);
+      });
     });
   });
   // приход с подстраницы: /#check=<id> — сразу считаем
   const h = location.hash.match(/check=(\d+)/);
   if (h){
     const f = document.querySelector('form[data-check]');
-    if (f){ f.querySelector('input').value = 'https://krisha.kz/a/show/' + h[1]; f.requestSubmit(); }
+    if (f){ f.querySelector('input').value = 'https://krisha.kz/a/show/' + h[1]; submitForm(f); }
   }
 })();
 </script>

@@ -67,19 +67,20 @@ def test_predict_from_url_canonicalizes_against_ssrf(monkeypatch):
 
 def test_format_reply_contains_key_fields():
     text = bot.format_reply(SAMPLE_RESULT)
-    assert "52 000 000 ₸" in text
-    assert "48 120 000 ₸" in text
-    assert "Справедливая цена" in text
-    assert "+8.1%" in text
-    assert "Площадь" in text and "▲" in text
-    assert "Расстояние до центра" in text and "▼" in text
+    # вердикт первой строкой, цифры — выровненным блоком <pre>
+    assert text.startswith("🟡 <b>В рынке: на 8,1% дороже оценки</b>")
+    assert "Цена    52,0 млн ₸" in text and "Оценка  48,1 млн ₸" in text
+    assert "<pre>" in text and "</pre>" in text
+    assert "площадь" in text and "▲" in text
+    assert "до центра" in text and "▼" in text
 
 
 def test_format_reply_without_actual_price():
     result = dict(SAMPLE_RESULT, actual_price=None, verdict=None, diff_pct=None)
     text = bot.format_reply(result)
-    assert "Цена в объявлении" not in text
-    assert "48 120 000 ₸" in text
+    assert "Цена " not in text
+    assert "Оценка  48,1 млн ₸" in text
+    assert text.startswith("⚖️ <b>Оценка модели</b>")
 
 
 def test_format_reply_liquidity_band_and_segment():
@@ -151,7 +152,7 @@ def test_start_market_unknown_payload_explains_manual_subscription(monkeypatch):
     bot.handle_update({"message": {"chat": {"id": 42}, "text": "/start market_unknown"}})
 
     assert calls and calls[-1][0] == "sendMessage"
-    assert "район не узнал" in calls[-1][1]["text"]
+    assert "Район не узнал" in calls[-1][1]["text"]
     assert "/alerts_on" in calls[-1][1]["text"]
     assert "🏠 <b>FairPrice</b>" not in calls[-1][1]["text"]
 
@@ -174,7 +175,11 @@ def test_handle_update_predicts_and_sends_photo(monkeypatch):
     assert "sendPhoto" in methods
     photo_call = [kw for m, kw in calls if m == "sendPhoto"][0]
     assert photo_call["photo"] == "https://example.com/p1.jpg"
-    assert "48 120 000 ₸" in photo_call["caption"]
+    assert "Оценка  48,1 млн ₸" in photo_call["caption"]
+    # под оценкой — кнопки: следить, разбор на сайте
+    kb = photo_call["reply_markup"]["inline_keyboard"]
+    assert kb[0][0]["callback_data"] == "track:123"
+    assert kb[-1][0]["url"] == "https://bagam.info/#check=123"
 
 
 def test_handle_update_explains_source_failure_instead_of_generic_error(monkeypatch):
@@ -241,7 +246,7 @@ def test_webhook_secret_is_stable():
 
 
 def test_format_reply_factor_magnitudes():
-    """«Почему такая цена»: топ-3 фактора с процентами и деньгами."""
+    """«Почему такая оценка»: топ-3 фактора с деньгами, выровненным блоком."""
     result = dict(
         SAMPLE_RESULT,
         top_factors=[
@@ -253,11 +258,11 @@ def test_format_reply_factor_magnitudes():
         ],
     )
     text = bot.format_reply(result)
-    assert "Почему такая цена" in text
-    assert "Площадь: +23.4% (+9.1 млн ₸)" in text
-    assert "Расстояние до центра: -7.7% (-3.9 млн ₸)" in text
-    assert "Комнаты: +2.0% (+0.9 млн ₸)" in text
-    assert "Этаж" not in text  # только топ-3
+    assert "Почему такая оценка" in text
+    assert "▲ площадь    +9,1 млн" in text
+    assert "▼ до центра  −3,9 млн" in text
+    assert "▲ комнаты    +0,9 млн" in text
+    assert "▲ этаж" not in text  # только топ-3
 
 
 def test_start_adds_miniapp_button_in_private(monkeypatch):
@@ -268,10 +273,12 @@ def test_start_adds_miniapp_button_in_private(monkeypatch):
     kb = calls[0][1]["reply_markup"]["inline_keyboard"]
     assert kb[0][0]["web_app"] == {"url": "https://kfp.example.com"}
 
-    # в группе web_app-кнопку не шлём (Telegram их там не разрешает)
+    # в группе web_app-кнопку не шлём (Telegram их там не разрешает), остальные кнопки — да
     calls.clear()
     bot.handle_update({"message": {"chat": {"id": -1, "type": "group"}, "text": "/help"}})
-    assert "reply_markup" not in calls[0][1]
+    kb = calls[0][1]["reply_markup"]["inline_keyboard"]
+    assert not any("web_app" in b for row in kb for b in row)
+    assert kb[0][0]["callback_data"] == "demo:prodazha"
 
     # без публичного URL — обычный help
     calls.clear()
@@ -279,7 +286,7 @@ def test_start_adds_miniapp_button_in_private(monkeypatch):
     monkeypatch.delenv("RAILWAY_PUBLIC_DOMAIN", raising=False)
     monkeypatch.delenv("SPACE_HOST", raising=False)
     bot.handle_update({"message": {"chat": {"id": 42, "type": "private"}, "text": "/start"}})
-    assert "reply_markup" not in calls[0][1]
+    assert calls[0][1]["reply_markup"]["inline_keyboard"] == bot.HELP_KEYBOARD
 
 
 def test_webhook_status_self_heals(monkeypatch):
@@ -493,10 +500,10 @@ def test_track_rejects_out_of_range_listing_id(monkeypatch):
 def test_format_reply_shows_model_band():
     """Справка обещает диапазон — ответ его показывает (продажа в млн, аренда в тыс/мес)."""
     sale = bot.format_reply(dict(SAMPLE_RESULT, fair_price_low=40_500_000, fair_price_high=52_400_000))
-    assert "Диапазон оценки: <b>40.5–52.4 млн ₸</b>" in sale
+    assert "Обычно  40,5–52,4 млн ₸" in sale
     rent = bot.format_reply(dict(SAMPLE_RESULT, deal="arenda", actual_price=320_000, fair_price=290_000,
                                  fair_price_low=250_000, fair_price_high=340_000))
-    assert "Диапазон оценки: <b>250–340 тыс ₸/мес</b>" in rent
+    assert "Обычно  250–340 тыс ₸/мес" in rent
     # нет интервала — нет и строки
     assert "Диапазон" not in bot.format_reply(SAMPLE_RESULT)
 
@@ -602,9 +609,9 @@ def test_format_reply_explains_reference_point_and_merged_age_label():
     )
     text = bot.format_reply(result)
 
-    assert "от типичной квартиры — 43.8 млн ₸" in text
-    assert "Возраст дома: -7.7% (-3.2 млн ₸)" in text
-    assert "Расположение на карте" in text
+    assert "от типичной 43,8 млн ₸" in text
+    assert "▼ возраст дома" in text and "−3,2 млн" in text
+    assert "расположение на кар" in text
     assert bot.FEATURE_RU["year_built"] == bot.FEATURE_RU["building_age"]
 
 
@@ -634,10 +641,9 @@ def test_verdicts_match_site_wording():
     assert bot.VERDICT_RU["FAIR"].startswith("🟡 В рынке")
     assert bot.VERDICT_RU["OVERPRICED"].startswith("🔴 Дорого")
     assert not any("ереплат" in v for v in bot.VERDICT_RU.values())
-    # SAMPLE_RESULT — вердикт FAIR: в ответе новое название, сумма оценки подписана как раньше
+    # SAMPLE_RESULT — вердикт FAIR: в ответе то же слово, что на сайте, и направление разницы
     text = bot.format_reply(SAMPLE_RESULT)
-    assert "🟡 В рынке" in text
-    assert "⚖️ Справедливая цена:" in text
+    assert "🟡 <b>В рынке" in text and "дороже оценки" in text
 
 
 # --- аудит безопасности 2026-10-06: тексты ошибок и токен в логах ------------
