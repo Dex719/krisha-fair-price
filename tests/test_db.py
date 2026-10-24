@@ -125,6 +125,55 @@ def test_record_sighting_then_full_upsert_fills_detail(tmp_path):
     assert row["price"] == 21_000_000
 
 
+def test_detail_upsert_does_not_revive_delisted_listing(tmp_path):
+    """Аудит 24.10: докачка детальной страницы снятого лота не трогает
+    last_seen / is_active / delisted_at — это делают только сайтинги выдачи."""
+    db = tmp_path / "test.db"
+    init_db(db)
+    record_sighting(42, "https://krisha.kz/a/show/42", 20_000_000, db)
+    with get_conn(db) as conn:
+        conn.execute(
+            "UPDATE listings SET is_active = 0, last_seen = '2026-10-01 00:00:00', "
+            "delisted_at = '2026-10-04 00:00:00' WHERE id = 42"
+        )
+
+    upsert_listing(make_listing(42, price=21_000_000), db)
+
+    with get_conn(db) as conn:
+        row = conn.execute(
+            "SELECT title, price, is_active, last_seen, delisted_at, scraped_at "
+            "FROM listings WHERE id=42"
+        ).fetchone()
+    assert row["title"] == "test"  # детали при этом пишутся
+    assert row["price"] == 21_000_000
+    assert row["scraped_at"] is not None
+    assert row["is_active"] == 0
+    assert row["last_seen"] == "2026-10-01 00:00:00"
+    assert row["delisted_at"] == "2026-10-04 00:00:00"
+
+    # а сайтинг выдачи по-прежнему возвращает лот в активные
+    record_sighting(42, "https://krisha.kz/a/show/42", 21_000_000, db)
+    with get_conn(db) as conn:
+        row = conn.execute(
+            "SELECT is_active, delisted_at FROM listings WHERE id=42"
+        ).fetchone()
+    assert row["is_active"] == 1
+    assert row["delisted_at"] is None
+
+
+def test_detail_upsert_of_new_listing_sets_seen_fields(tmp_path):
+    """Первая запись (INSERT, напр. краул) — по-прежнему активна и с last_seen."""
+    db = tmp_path / "test.db"
+    init_db(db)
+    upsert_listing(make_listing(7), db)
+    with get_conn(db) as conn:
+        row = conn.execute(
+            "SELECT is_active, first_seen, last_seen FROM listings WHERE id=7"
+        ).fetchone()
+    assert row["is_active"] == 1
+    assert row["first_seen"] is not None and row["last_seen"] is not None
+
+
 # ---------- issue #128: лог предиктов ----------
 
 

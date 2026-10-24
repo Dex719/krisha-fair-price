@@ -229,3 +229,65 @@ def test_report_shows_drain_completed_and_unattributed(monkeypatch, tmp_path):
     assert "Backlog разобран" in text
     assert "dedup_stats.py" in text
     assert "без атрибуции к шарду: 45" in text
+
+
+def _assert_telegram_html_safe(text: str) -> None:
+    """Аудит 24.10: Telegram (parse_mode=HTML) отвечает 400 на голый `<`/`&`.
+    Разрешены только наши теги <b>/</b> и сущности &lt; &gt; &amp;."""
+    import re
+
+    stripped = re.sub(r"</?b>", "", text)
+    assert "<" not in stripped, stripped
+    assert ">" not in stripped, stripped
+    assert not re.search(r"&(?!(?:lt|gt|amp|quot);)", stripped), stripped
+
+
+def test_report_escapes_html_from_stats(monkeypatch, tmp_path):
+    """mode_reason «backlog N < порога выхода M», причина подрезки, фаза бана
+    и имена шардов приходят из summary-json как есть — в тексте они должны
+    быть экранированы, иначе отчёт не доходит вовсе."""
+    db = tmp_path / "krisha.db"
+    _make_db(db)
+    monkeypatch.setitem(daily_report._SCOPES, "sale", ("🌅 Утренний отчёт: продажа", db, tmp_path / "none.json"))
+    summary = _summary(
+        tmp_path / "stats.json",
+        mode="steady<x>",
+        mode_reason="backlog 1200 < порога выхода 3000 & ещё",
+        delay_range=["<2", "4&"],
+        max_new_details=1200,
+        plan_trimmed={"wanted_new": 4500, "wanted_refresh": 800, "reason": "time<budget & queue>"},
+        banned=True,
+        banned_phase="detail<&>",
+        failed_shards=["almaty<1>&2"],
+        starved_shards=["bostandyk&<3>"],
+        detail_queue_after=1200,
+        unattributed_backlog=45,
+        recovery_pass=True,
+        observation_gap_days="3<4",
+        suspicious=True,
+        active_in_db_before="9 & 9",
+    )
+
+    text = build_daily_report("sale", summary)
+
+    _assert_telegram_html_safe(text)
+    assert "backlog 1200 &lt; порога выхода 3000 &amp; ещё" in text
+    assert "time&lt;budget &amp; queue&gt;" in text
+    assert "detail&lt;&amp;&gt;" in text
+    assert "almaty&lt;1&gt;&amp;2" in text
+    assert "<b>" in text  # свои теги не экранируются
+
+
+def test_report_steady_mode_reason_is_html_safe(monkeypatch, tmp_path):
+    """Обычный steady-режим: реальная строка mode_reason из pass_plan."""
+    db = tmp_path / "krisha.db"
+    _make_db(db)
+    monkeypatch.setitem(daily_report._SCOPES, "sale", ("🌅 Утренний отчёт: продажа", db, tmp_path / "none.json"))
+    summary = _summary(
+        tmp_path / "stats.json",
+        mode="steady",
+        mode_reason="backlog 1200 < порога выхода 3000",
+        delay_range=[2.0, 4.0],
+        max_new_details=1200,
+    )
+    _assert_telegram_html_safe(build_daily_report("sale", summary))

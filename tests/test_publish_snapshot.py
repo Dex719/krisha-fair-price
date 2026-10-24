@@ -5,7 +5,7 @@
 
 import json
 import sys
-from datetime import date, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -191,3 +191,72 @@ def test_tag_uses_utc_today(monkeypatch):
     monkeypatch.setattr(ps, "datetime", FakeDatetime)
     tag = f"{ps.TAG_PREFIX}-{FakeDatetime.now(timezone.utc).date().isoformat()}"
     assert tag == "snapshot-2026-07-05"
+
+
+# --- Аудит 24.10: ротация продажи не сносит архив аренды ----------------------
+
+
+class _RotateGh:
+    def __init__(self, releases: dict[str, set[str]]):
+        self.releases = releases
+        self.deleted_releases: list[str] = []
+        self.deleted_assets: list[tuple[str, str]] = []
+
+    def __call__(self, args, check=True):
+        verb = args[1]
+        if verb == "list":
+            out = json.dumps([{"tagName": t} for t in self.releases])
+        elif verb == "view":
+            out = "\n".join(sorted(self.releases[args[2]]))
+        elif verb == "delete-asset":
+            self.releases[args[2]].discard(args[3])
+            self.deleted_assets.append((args[2], args[3]))
+            out = ""
+        elif verb == "delete":
+            self.releases.pop(args[2])
+            self.deleted_releases.append(args[2])
+            out = ""
+        else:
+            raise AssertionError(args)
+        return ps.subprocess.CompletedProcess(args, 0, out, "")
+
+
+def test_rotation_deletes_only_own_assets(monkeypatch):
+    today = datetime.now(timezone.utc).date()
+    old = today - timedelta(days=30)
+    while old.weekday() == 6:
+        old -= timedelta(days=1)
+    old_only_sale = old - timedelta(days=1)
+    while old_only_sale.weekday() == 6:
+        old_only_sale -= timedelta(days=1)
+    old_sunday = today - timedelta(days=30)
+    while old_sunday.weekday() != 6:
+        old_sunday -= timedelta(days=1)
+    both = {"krisha.db.gz", "krisha.db.gz.sha256", "krisha_rent.db.gz", "krisha_rent.db.gz.sha256"}
+    gh = _RotateGh({
+        f"snapshot-{old}": set(both),
+        f"snapshot-{old_only_sale}": {"krisha.db.gz", "krisha.db.gz.sha256"},
+        f"snapshot-{old_sunday}": set(both),
+        f"snapshot-{today}": set(both),
+    })
+    monkeypatch.setattr(ps, "run_gh", gh)
+
+    ps.rotate(14, "krisha.db.gz")
+
+    # смешанный релиз: продажа удалена, аренда осталась, релиз жив
+    assert gh.releases[f"snapshot-{old}"] == {"krisha_rent.db.gz", "krisha_rent.db.gz.sha256"}
+    # релиз только с продажей опустел — удалён целиком
+    assert gh.deleted_releases == [f"snapshot-{old_only_sale}"]
+    # воскресный и свежий не тронуты
+    assert gh.releases[f"snapshot-{old_sunday}"] == both
+    assert gh.releases[f"snapshot-{today}"] == both
+
+
+def test_main_passes_asset_name_to_rotation(tmp_path, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(ps, "publish", lambda *a, **k: None)
+    monkeypatch.setattr(ps, "rotate", lambda days, asset=None: seen.update(days=days, asset=asset))
+    args = _assets(tmp_path)
+    args[args.index("--rotate-keep-days") + 1] = "14"
+    assert ps.main(args) == 0
+    assert seen == {"days": 14, "asset": "krisha.db.gz"}

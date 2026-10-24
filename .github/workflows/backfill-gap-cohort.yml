@@ -28,10 +28,14 @@ on:
         type: boolean
         default: false
 
-# Та же группа, что у прохода аренды: нельзя писать в базу параллельно с
-# рескрейпом, иначе один из двух зальёт свою версию поверх чужой.
+# Та же группа, что у прохода выбранной базы: нельзя писать в базу
+# параллельно с рескрейпом, иначе один из двух зальёт свою версию поверх
+# чужой. Аудит 03.10: группа была жёстко арендной, и при deal=prodazha
+# ремонт мог идти одновременно с ночным проходом продажи (krisha-db-writes
+# в rescrape.yml / retrain.yml; аренда — krisha-rent-db-writes в rescrape-rent.yml).
 concurrency:
-  group: krisha-rent-db-writes
+  # как и шаг скачивания: всё, что не «arenda», — база продажи
+  group: ${{ inputs.deal == 'arenda' && 'krisha-rent-db-writes' || 'krisha-db-writes' }}
   cancel-in-progress: false
 
 permissions:
@@ -117,5 +121,7 @@ jobs:
           sha256sum /tmp/out.gz | cut -d' ' -f1 > /tmp/out.gz.sha256
           cp /tmp/out.gz "/tmp/$ASSET"
           cp /tmp/out.gz.sha256 "/tmp/$ASSET.sha256"
-          gh release upload db-latest "/tmp/$ASSET" "/tmp/$ASSET.sha256" --clobber --repo "$KRISHA_DATA_REPO"
+          # временное имя → сверка sha256 → подмена (аудит 24.10, см. rescrape.yml)
+          python scripts/release_upload.py --repo "$KRISHA_DATA_REPO" --tag db-latest \
+            "/tmp/$ASSET" "/tmp/$ASSET.sha256"
           echo "Залито: $ASSET, $(du -h /tmp/out.gz | cut -f1)" >> "$GITHUB_STEP_SUMMARY"

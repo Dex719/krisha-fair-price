@@ -321,7 +321,7 @@ def _rescrape_args(tmp_path: Path, **env: str) -> list[str]:
 def test_rescrape_defaults_and_empty_max_new_keeps_the_mode_preset(tmp_path, env):
     args = _rescrape_args(tmp_path, **env)
 
-    assert args == ["--pages", "250", "--time-budget-min", "320", *RESCRAPE_TAIL]
+    assert args == ["--pages", "250", "--time-budget-min", "300", *RESCRAPE_TAIL]
     assert "--max-new" not in args, "пустой max_new = пресет режима, флаг передавать нельзя"
 
 
@@ -353,7 +353,7 @@ def _rent_args(tmp_path: Path, **env: str) -> list[str]:
     return _printed_args(done.stdout)
 
 
-RENT_TAIL = ["--fail-empty", "--summary-json", "/tmp/rescrape_rent_stats.json"]
+RENT_TAIL = ["--time-budget-min", "300", "--fail-empty", "--fail-below", "2000", "--summary-json", "/tmp/rescrape_rent_stats.json"]
 
 
 @needs_bash
@@ -457,6 +457,52 @@ def test_backfill_deal_cannot_inject_shell_code(tmp_path):
         _assert_nothing_executed(tmp_path)
     # значение, не равное «arenda», — это продажа: безопасный выбор по умолчанию
     assert "ASSET=krisha.db.gz" in github_env.read_text(encoding="utf-8")
+
+
+# Аудит 24.10: отсутствие базы аренды в релизе — ошибка, кроме bootstrap=true.
+def _rent_download(tmp_path: Path, assets: str, **env: str):
+    prelude = (
+        f"gh() {{ printf '%s\\n' {assets}; }}\n"
+        f"python() {{ {PRINT_ARGS} \"$@\"; }}\n"
+    )
+    return _run_step(
+        "rescrape-rent.yml", "Download rent DB from release", tmp_path,
+        {"KRISHA_DATA_REPO": "x/y", **{f"INPUT_{k.upper()}": v for k, v in env.items()}},
+        prelude=prelude,
+    )
+
+
+@needs_bash
+@pytest.mark.parametrize("bootstrap", [None, "", "false", "1"])
+def test_rent_download_requires_db_unless_bootstrap(tmp_path, bootstrap):
+    env = {} if bootstrap is None else {"bootstrap": bootstrap}
+    done = _rent_download(tmp_path, "krisha.db.gz", **env)
+    assert done.returncode == 0, done.stderr
+    # без bootstrap всегда строгое скачивание: нет ассета → db_release падает
+    assert _printed_args(done.stdout) == [
+        "-m", "krisha.db_release", "--rent", "--require", "--force", "--strict-checksum",
+    ]
+
+
+@needs_bash
+def test_rent_bootstrap_starts_empty_only_when_asset_absent(tmp_path):
+    done = _rent_download(tmp_path, "krisha.db.gz", bootstrap="true")
+    assert done.returncode == 0, done.stderr
+    assert _printed_args(done.stdout) == []
+    assert "начинаем с нуля" in done.stdout
+
+    for present in ("krisha_rent.db.gz", "krisha_rent.db.gz.uploading"):
+        done = _rent_download(tmp_path, f"krisha.db.gz {present}", bootstrap="true")
+        assert done.returncode == 0, done.stderr
+        assert "--strict-checksum" in _printed_args(done.stdout), present
+
+
+@needs_bash
+def test_rent_bootstrap_input_cannot_inject_shell_code(tmp_path):
+    for payload in PAYLOADS:
+        done = _rent_download(tmp_path, "krisha.db.gz", bootstrap=payload)
+        assert done.returncode == 0, done.stderr
+        _assert_nothing_executed(tmp_path)
 
 
 # --------------------------------------------------------------------------- #

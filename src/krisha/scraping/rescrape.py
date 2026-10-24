@@ -37,6 +37,7 @@ from krisha.db import (
     _record_price_if_changed,
     advance_shard_cursor,
     advance_sweep_pass_seq,
+    clear_detail_failure,
     consecutive_bans,
     get_conn,
     init_db,
@@ -47,6 +48,7 @@ from krisha.db import (
     price_bounds_for,
     recent_sweep_runs,
     record_consecutive_bans,
+    record_detail_failure,
     record_listing_shards,
     record_parse_anomaly,
     record_sighting,
@@ -85,6 +87,12 @@ from krisha.validity import MAX_TEST_TVD, total_variation_distance
 logger = logging.getLogger(__name__)
 
 DELIST_AFTER_DAYS = 3  # не видели в выдаче N дней → считаем снятым
+
+# Аудит 03.10 / 24.10: сколько раз лот может не докачаться (404, таймаут,
+# битый парс), прежде чем курсор шарда разрешено провести мимо него. До этого
+# первый же сбой в последовательной части окна останавливает отметку: лот
+# остаётся выше неё и берётся следующим проходом, а не теряется до заворота.
+DETAIL_POISON_ATTEMPTS = 3
 
 # Сигнатуры анти-бот/капча-страниц (нижний регистр) — сервер отдал HTTP 200,
 # но это не выдача. Проверяются только на первой странице шарда, чтобы не
@@ -817,6 +825,9 @@ def sweep(
                 "backlog_before": backlog_map[label],
                 "fetched": 0,
                 "last_ok": None,
+                # Первый несостоявшийся лот последовательной части окна
+                # останавливает курсор (см. DETAIL_POISON_ATTEMPTS).
+                "cursor_blocked": False,
             })
         logger.info(
             "План докачки: %s лотов (потолок %s) по шардам: %s",
@@ -896,8 +907,29 @@ def sweep(
                     if detail_html
                     else None
                 )
+                if listing is None:
+                    # Аудит 03.10 (воспроизведено): раньше следующий успешный
+                    # лот уводил last_ok ниже упавшего, и тот оказывался выше
+                    # отметки — до заворота курсора (недели при очереди 20k+)
+                    # его никто не брал. Теперь отметка встаёт на первом сбое.
+                    # Лот, не докачавшийся DETAIL_POISON_ATTEMPTS раз,
+                    # «ядовитый»: курсор проходит мимо, иначе он стоял бы вечно.
+                    with get_conn(db_path) as conn:
+                        attempts = record_detail_failure(conn, lid)
+                    if lid not in p["fresh"] and not p["cursor_blocked"]:
+                        if attempts >= DETAIL_POISON_ATTEMPTS:
+                            p["last_ok"] = lid
+                            logger.warning(
+                                "Лот %s не докачался %s раз — курсор шарда «%s» "
+                                "проходит мимо него",
+                                lid, attempts, p["shard"],
+                            )
+                        else:
+                            p["cursor_blocked"] = True
                 if listing is not None:
                     upsert_listing(listing, db_path, price_bounds=bounds)
+                    with get_conn(db_path) as conn:
+                        clear_detail_failure(conn, lid)
                     new_count += 1
                     p["fetched"] += 1
                     # Курсор двигаем только по УСПЕШНО докачанным: недобор
@@ -908,7 +940,7 @@ def sweep(
                     # обход начинал бы backlog заново.
                     if lid in p["fresh"]:
                         p["fresh_fetched"] += 1
-                    else:
+                    elif not p["cursor_blocked"]:
                         p["last_ok"] = lid
             if p["quota"] or p["fetched"]:
                 logger.info(

@@ -11,6 +11,7 @@ Fail-soft: отчёт не должен ронять пайплайн рескр
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import logging
 import os
@@ -24,6 +25,18 @@ from krisha.monitoring import ADMIN_CHAT_ENV
 from krisha.usage import ALMATY_TZ, load_state
 
 logger = logging.getLogger(__name__)
+
+
+def _e(value: object) -> str:
+    """Строку из stats — в текст для parse_mode=HTML.
+
+    Аудит 24.10: mode_reason («backlog N < порога выхода M»), причины
+    подрезки плана, фаза бана и имена шардов уходили в Telegram как есть —
+    голый `<` или `&` даёт 400 «can't parse entities», и отчёт не приходит
+    вовсе (как раз в обычном steady-режиме). Экранируем всё, что пришло из
+    summary-json, а теги ставим только сами.
+    """
+    return html.escape(str(value), quote=False)
 
 # Пути по умолчанию — как в rescrape.yml / rescrape-rent.yml (--summary-json)
 SALE_SUMMARY_PATH = Path("/tmp/rescrape_stats.json")
@@ -216,7 +229,7 @@ def _verdict_lines(stats: dict | None, db_path: Path, scope: str) -> list[str]:
         return [f"✅ <b>ОК</b> — все проверки прошли ({len(checks)})"]
     return [
         f"🔴 <b>ПРОБЛЕМА</b> — не прошло проверок: {len(failed)} из {len(checks)}",
-        *(f"  • {t}" for t in failed),
+        *(f"  • {_e(t)}" for t in failed),
     ]
 
 
@@ -279,13 +292,13 @@ def build_daily_report(scope: str = "sale", summary_path: Path | str | None = No
     lines.extend(_verdict_lines(stats, db_path, scope))
     if stats:
         lines.append(
-            f"Проход: в выдаче <b>{stats.get('found_in_search', '?')}</b>, "
+            f"Проход: в выдаче <b>{_e(stats.get('found_in_search', '?'))}</b>, "
             # discovered_new — реально впервые увиденные лоты; new_listings
             # (докачанные детали из общей очереди) оставлен как фолбэк для
             # summary-JSON, снятых до появления нового ключа.
-            f"новых <b>{stats.get('discovered_new', stats.get('new_listings', '?'))}</b>, "
-            f"изменений цены {stats.get('price_changes', '?')}, "
-            f"{_delisted_fragment(stats)}"
+            f"новых <b>{_e(stats.get('discovered_new', stats.get('new_listings', '?')))}</b>, "
+            f"изменений цены {_e(stats.get('price_changes', '?'))}, "
+            f"{_e(_delisted_fragment(stats))}"
         )
         # issue #152: режим прохода (выбран по backlog'у, не по флагу) и его
         # эффективные потолки — решение должно читаться из отчёта, а не
@@ -293,15 +306,15 @@ def build_daily_report(scope: str = "sale", summary_path: Path | str | None = No
         if stats.get("mode"):
             delay = stats.get("delay_range") or ["?", "?"]
             lines.append(
-                f"Режим: <b>{stats['mode']}</b> ({stats.get('mode_reason', '?')}); "
-                f"паузы {delay[0]}–{delay[1]} с; потолок новых "
+                f"Режим: <b>{_e(stats['mode'])}</b> ({_e(stats.get('mode_reason', '?'))}); "
+                f"паузы {_e(delay[0])}–{_e(delay[1])} с; потолок новых "
                 # эффективный (после подрезки очередью/бюджетом), fallback —
                 # заявленный для старых summary без нового поля
-                f"{stats.get('max_new_effective') or stats.get('max_new_details', '?')}"
+                f"{_e(stats.get('max_new_effective') or stats.get('max_new_details', '?'))}"
                 + (
-                    f", урезан заранее с {stats['plan_trimmed']['wanted_new']}"
-                    f"+{stats['plan_trimmed']['wanted_refresh']} "
-                    f"({stats['plan_trimmed']['reason']})"
+                    f", урезан заранее с {_e(stats['plan_trimmed']['wanted_new'])}"
+                    f"+{_e(stats['plan_trimmed']['wanted_refresh'])} "
+                    f"({_e(stats['plan_trimmed']['reason'])})"
                     if stats.get("plan_trimmed")
                     else ""
                 )
@@ -317,19 +330,19 @@ def build_daily_report(scope: str = "sale", summary_path: Path | str | None = No
         if stats.get("recovery_pass"):
             lines.append(
                 f"📌 Восстановительный проход: лоты не наблюдались "
-                f"{stats.get('observation_gap_days', '?')} дн. "
+                f"{_e(stats.get('observation_gap_days', '?'))} дн. "
                 "«Новые» — в основном пропущенное за перерыв, а не приток рынка; "
                 "снятия датированы сегодня, хотя лоты ушли внутри перерыва"
             )
         if stats.get("failed_shards"):
-            lines.append("⚠️ Сбойные шарды: " + ", ".join(stats["failed_shards"]))
+            lines.append("⚠️ Сбойные шарды: " + ", ".join(_e(s) for s in stats["failed_shards"]))
         if stats.get("starved_shards"):
             # issue #168: имена важны — «шард без квоты» без указания района
             # неотличим от шума, а так видно, какой угол города заморожен.
             lines.append(
                 "🥶 Шарды с backlog'ом и нулевой квотой серией проходов "
                 "(заморожены для докачки, квотой не лечится — нужно покрытие): "
-                + ", ".join(stats["starved_shards"])
+                + ", ".join(_e(s) for s in stats["starved_shards"])
             )
         if stats.get("delist_blocked"):
             share = stats.get("delist_share")
@@ -342,12 +355,12 @@ def build_daily_report(scope: str = "sale", summary_path: Path | str | None = No
         # но детали ещё не докачаны. Растущая очередь = приток обгоняет лимит.
         queue_after = stats.get("detail_queue_after")
         if queue_after:
-            lines.append(f"📥 Очередь деталей: {queue_after}")
+            lines.append(f"📥 Очередь деталей: {_e(queue_after)}")
         if stats.get("unattributed_backlog"):
             # issue #152: видно всегда при ненулевом значении — красным
             # вердикт делают только материальные величины (см. _invariants).
             lines.append(
-                f"🧩 из них без атрибуции к шарду: {stats['unattributed_backlog']}"
+                f"🧩 из них без атрибуции к шарду: {_e(stats['unattributed_backlog'])}"
             )
         if stats.get("suspicious"):
             active_before = stats.get("active_in_db_before")
@@ -359,7 +372,7 @@ def build_daily_report(scope: str = "sale", summary_path: Path | str | None = No
             )
             lines.append(
                 "🚨 Parse-rate просел: в выдаче "
-                f"{stats.get('found_in_search', '?')} против {baseline} — "
+                f"{_e(stats.get('found_in_search', '?'))} против {_e(baseline)} — "
                 "проверьте вёрстку/блокировку, db-latest не обновлён"
             )
     else:
