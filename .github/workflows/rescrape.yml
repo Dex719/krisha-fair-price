@@ -13,7 +13,7 @@ on:
         default: ""
       time_budget_min:
         description: "Мягкий дедлайн прохода, мин (меньше timeout-minutes — успеть залить базу)"
-        default: "320"
+        default: "300"
       delay_min:
         description: "Минимальная пауза между запросами, сек (пусто — из режима: drain 1.5 / steady 2.0)"
         default: ""
@@ -55,11 +55,28 @@ jobs:
           pip install -e . --no-deps
 
       - name: Download DB from release
+        id: download_db
         env:
           KRISHA_DB_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
         run: python -m krisha.db_release --require
 
+      # Аудит 24.10: серия банов и номер прохода живут в sweep_state базы, а
+      # база заливается только после удачного прохода — упавший с баном проход
+      # терял свой +1, откат пауз не срабатывал, ротация шардов повторялась.
+      # Теперь они едут и отдельным файлом sweep_state_<deal>.json (шаг
+      # «Save sweep state», always()); здесь вливаются обратно. Fail-soft:
+      # файла нет или сеть — проход идёт на значениях из базы.
+      - name: Restore sweep state
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          KRISHA_DB_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+        run: python -m krisha.scraping.sweep_state_file pull --deal prodazha
+
       - name: Rescrape
+        # Жёсткий потолок шага поверх мягкого дедлайна: зависший проход не
+        # должен съесть время заливки и шага состояния (аудит 24.10).
+        timeout-minutes: 315
         env:
           # issue #190 §2.3 (ревью 02.09). Режим прохода (#152) выбирается
           # кодом по backlog'у: drain = 4500 деталей при паузах 1.5–3.0 с,
@@ -93,7 +110,7 @@ jobs:
           python scripts/rescrape.py \
             --pages "${INPUT_PAGES:-250}" \
             "${max_new_args[@]}" \
-            --time-budget-min "${INPUT_TIME_BUDGET_MIN:-320}" \
+            --time-budget-min "${INPUT_TIME_BUDGET_MIN:-300}" \
             --fail-empty \
             --fail-below 8000 \
             --summary-json /tmp/rescrape_stats.json
@@ -110,6 +127,19 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      # always(): именно упавший проход (бан → --fail-empty) должен донести
+      # свою серию банов и номер прохода до следующего раннера.
+      - name: Save sweep state
+        if: always() && steps.download_db.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python -m krisha.scraping.sweep_state_file export --deal prodazha --out /tmp/sweep_state_prodazha.json
+          python scripts/release_upload.py --repo "$KRISHA_DATA_REPO" --tag db-latest /tmp/sweep_state_prodazha.json
+
       # Критический путь — сразу после сбора (.kiro/specs/rescrape-post-steps).
       # Раньше заливка ждала шаг Alerts, а тот без своего потолка разросся до
       # 80 минут: 2026-09-20 джоба умерла по timeout-minutes на алертах, и
@@ -119,14 +149,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
         run: |
+          set -euo pipefail
           sqlite3 data/krisha.db "VACUUM;" || true
           gzip -9 -c data/krisha.db > /tmp/krisha.db.gz
           # Контрольная сумма рядом с базой: db_release проверяет её при скачивании
           sha256sum /tmp/krisha.db.gz | cut -d' ' -f1 > /tmp/krisha.db.gz.sha256
-          gh release upload db-latest /tmp/krisha.db.gz /tmp/krisha.db.gz.sha256 --clobber --repo "$KRISHA_DATA_REPO"
+          # Аудит 24.10: не `gh release upload --clobber` (удаляет старый ДО
+          # заливки нового) — временное имя, сверка sha256, потом подмена.
+          python scripts/release_upload.py --repo "$KRISHA_DATA_REPO" --tag db-latest \
+            /tmp/krisha.db.gz /tmp/krisha.db.gz.sha256
           echo "Размер базы в релизе: $(du -h /tmp/krisha.db.gz | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
 
+      # База уже в релизе: сбой рестарта (HF 5xx) не должен ронять ран и
+      # отменять вторую заливку с вердиктами алертов (аудит 03.10).
       - name: Restart Space (подтянуть свежую базу)
+        continue-on-error: true
+        timeout-minutes: 5
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
@@ -150,7 +188,9 @@ jobs:
 
       # always(): утренний отчёт админу нужнее всего как раз когда проход упал.
       # Свой потолок: база уже в релизе, и вторичный шаг больше не может
-      # съесть бюджет джобы (320 + ~3 + 15 + ~2 ≈ 340 < 350 мин).
+      # съесть бюджет джобы (аудит 24.10: 300 проход + ~5 установка/скачивание
+      # + ~3 заливка + 15 алерты + ≤10 вторая заливка ≈ 333 < 350 мин; раньше
+      # «≈340» не учитывало установку и вторую заливку без своего потолка).
       - name: Alerts
         id: alerts
         if: always()
@@ -183,12 +223,17 @@ jobs:
       # ещё раз, чтобы они не пропали. Только если проход удался (первая
       # заливка была) и алерты дошли до конца; иначе в релизе остаётся база
       # первой заливки — собранное не теряется в любом случае.
+      # always(): без него шаг пропускался, стоило упасть любому вторичному
+      # шагу между заливками (рестарт Space) — аудит 03.10.
       - name: Upload DB again (вердикты алертов)
-        if: steps.upload_db.outcome == 'success' && steps.alerts.outcome == 'success'
+        if: always() && steps.upload_db.outcome == 'success' && steps.alerts.outcome == 'success'
+        timeout-minutes: 10
         env:
           GH_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
         run: |
+          set -euo pipefail
           sqlite3 data/krisha.db "VACUUM;" || true
           gzip -9 -c data/krisha.db > /tmp/krisha.db.gz
           sha256sum /tmp/krisha.db.gz | cut -d' ' -f1 > /tmp/krisha.db.gz.sha256
-          gh release upload db-latest /tmp/krisha.db.gz /tmp/krisha.db.gz.sha256 --clobber --repo "$KRISHA_DATA_REPO"
+          python scripts/release_upload.py --repo "$KRISHA_DATA_REPO" --tag db-latest \
+            /tmp/krisha.db.gz /tmp/krisha.db.gz.sha256

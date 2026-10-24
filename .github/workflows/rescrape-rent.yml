@@ -11,6 +11,10 @@ on:
       max_new:
         description: "Максимум новых детальных страниц"
         default: "1000"
+      bootstrap:
+        description: "Первый запуск: базы аренды в релизе ещё нет — начать с пустой (иначе её отсутствие = ошибка)"
+        type: boolean
+        default: false
 
 concurrency:
   group: krisha-rent-db-writes
@@ -42,33 +46,46 @@ jobs:
           pip install -e . --no-deps
 
       - name: Download rent DB from release
+        id: download_db
         env:
           GH_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+          KRISHA_DB_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+          # input — через env, а не выражением в `run:` (shell-инъекция:
+          # аудит безопасности 2026-10-06, подробности — в rescrape.yml)
+          INPUT_BOOTSTRAP: ${{ github.event.inputs.bootstrap }}
         run: |
           set -euo pipefail
           # Раньше здесь стояло `download && gunzip || echo "базы ещё нет"`,
           # и `||` глотал ЛЮБУЮ ошибку — сетевой сбой, битый gzip, урезанную
           # закачку. Проход стартовал с пустой базой, находил «все объявления
           # новыми» и заливал этот огрызок обратно в db-latest поверх
-          # накопленной истории. Отличаем «ассета нет» (нормально для первого
-          # запуска) от «скачать не удалось» (падаем).
-          # Список ассетов — отдельной командой: `if gh … | grep` не отличал
-          # «ассета нет» от «gh упал» (502, лимит, сеть) — сбой GitHub уводил
-          # в ветку «начинаем с нуля», и пустая база затирала db-latest.
-          # Теперь ошибка gh валит шаг (set -e), а grep смотрит на готовый список.
-          assets=$(gh release view db-latest --repo "$KRISHA_DATA_REPO" --json assets -q '.assets[].name')
-          if grep -qx 'krisha_rent.db.gz' <<<"$assets"; then
-            gh release download db-latest --repo "$KRISHA_DATA_REPO" -p krisha_rent.db.gz -O /tmp/krisha_rent.db.gz
-            if grep -qx 'krisha_rent.db.gz.sha256' <<<"$assets"; then
-              gh release download db-latest --repo "$KRISHA_DATA_REPO" -p krisha_rent.db.gz.sha256 -O /tmp/rent.sha256
-              echo "$(cat /tmp/rent.sha256)  /tmp/krisha_rent.db.gz" | sha256sum -c -
+          # накопленной истории.
+          # Аудит 24.10: и «ассета нет» больше не повод начинать с нуля —
+          # неатомарный `--clobber` мог удалить базу посреди заливки, и
+          # следующий проход затирал историю пустой. Пустая база — только по
+          # явному bootstrap=true при ручном запуске.
+          if [ "${INPUT_BOOTSTRAP:-false}" = "true" ]; then
+            # Список ассетов — отдельной командой: `if gh … | grep` не отличал
+            # «ассета нет» от «gh упал» (502, лимит, сеть). Ошибка gh валит шаг.
+            assets=$(gh release view db-latest --repo "$KRISHA_DATA_REPO" --json assets -q '.assets[].name')
+            if ! grep -qxE 'krisha_rent\.db\.gz(\.uploading)?' <<<"$assets"; then
+              echo "bootstrap=true и арендной базы в релизе нет — начинаем с нуля"
+              exit 0
             fi
-            gunzip -c /tmp/krisha_rent.db.gz > data/krisha_rent.db
-          else
-            echo "Арендной базы в релизе ещё нет — начинаем с нуля"
           fi
+          # Нет ассета, сбой сети, битый gzip или нет/не сошёлся .sha256 — ошибка.
+          python -m krisha.db_release --rent --require --force --strict-checksum
+
+      # Серия банов и номер прохода — вне базы (см. одноимённый шаг в rescrape.yml).
+      - name: Restore sweep state
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          KRISHA_DB_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+        run: python -m krisha.scraping.sweep_state_file pull --deal arenda
 
       - name: Rescrape rent
+        timeout-minutes: 315
         env:
           KRISHA_DELAY_MIN: "2.5"
           KRISHA_DELAY_MAX: "5.0"
@@ -77,12 +94,18 @@ jobs:
           # По расписанию inputs пусты, и дефолты `:-` работают как прежние `||`.
           INPUT_PAGES: ${{ github.event.inputs.pages }}
           INPUT_MAX_NEW: ${{ github.event.inputs.max_new }}
+        # Аудит 03.10: --fail-below — та же защита от «тихо собрали мало», что
+        # у продажи (8000 при стоке ~44k). Выдача аренды ~9k лотов, порог
+        # 2000 срабатывает на обрезанной/заблокированной выдаче, а не на
+        # обычных колебаниях. Мягкий дедлайн 300 — как у продажи (аудит 24.10).
         run: |
           python scripts/rescrape.py \
             --deal arenda \
             --pages "${INPUT_PAGES:-250}" \
             --max-new "${INPUT_MAX_NEW:-1000}" \
+            --time-budget-min 300 \
             --fail-empty \
+            --fail-below 2000 \
             --summary-json /tmp/rescrape_rent_stats.json
 
       - name: Job summary
@@ -97,15 +120,49 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Upload rent DB to release
+      - name: Save sweep state
+        if: always() && steps.download_db.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 5
         env:
           GH_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
         run: |
+          set -euo pipefail
+          python -m krisha.scraping.sweep_state_file export --deal arenda --out /tmp/sweep_state_arenda.json
+          python scripts/release_upload.py --repo "$KRISHA_DATA_REPO" --tag db-latest /tmp/sweep_state_arenda.json
+
+      - name: Upload rent DB to release
+        id: upload_db
+        timeout-minutes: 15
+        env:
+          GH_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+        run: |
+          set -euo pipefail
           sqlite3 data/krisha_rent.db "VACUUM;" || true
           gzip -9 -c data/krisha_rent.db > /tmp/krisha_rent.db.gz
           sha256sum /tmp/krisha_rent.db.gz | cut -d' ' -f1 > /tmp/krisha_rent.db.gz.sha256
-          gh release upload db-latest /tmp/krisha_rent.db.gz /tmp/krisha_rent.db.gz.sha256 --clobber --repo "$KRISHA_DATA_REPO"
+          # Временное имя → сверка sha256 → подмена (аудит 24.10, см. rescrape.yml)
+          python scripts/release_upload.py --repo "$KRISHA_DATA_REPO" --tag db-latest \
+            /tmp/krisha_rent.db.gz /tmp/krisha_rent.db.gz.sha256
           echo "Размер арендной базы в релизе: $(du -h /tmp/krisha_rent.db.gz | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
+
+      # Аудит 03.10: прод (оценка арендных ссылок, доходность продажи) качает
+      # базу аренды при старте — без рестарта Space сидел на вчерашней до
+      # случайного перезапуска. Как у продажи: база уже в релизе, сбой
+      # рестарта ран не красит.
+      - name: Restart Space (подтянуть свежую базу аренды)
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "HF_TOKEN не задан — пропускаю рестарт Space"
+            exit 0
+          fi
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $HF_TOKEN" \
+            https://huggingface.co/api/spaces/Dex719/krisha-fair-price/restart
 
       - name: Snapshot release
         continue-on-error: true  # архив вторичен — не красит ран
@@ -134,3 +191,15 @@ jobs:
         run: |
           python -m krisha.subscriptions --pull
           python scripts/send_alerts.py --deal arenda
+
+      # Аудит 03.10: вечерний отчёт админу по аренде (krisha.daily_report
+      # --scope rent) нигде не запускался. always() — как и утренний: он
+      # нужнее всего, когда проход упал (вердикт «счётчики не найдены»).
+      - name: Daily report (аренда)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
+        run: python -m krisha.daily_report --scope rent
