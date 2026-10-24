@@ -100,6 +100,7 @@ def test_alerted_listings_are_not_resent(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "krisha.bot.tg_call", lambda m, **kw: sent.append(kw) or {"ok": True}
     )
+    monkeypatch.setattr(alerts, "_sleep", lambda s: None)
     deals = [{"id": 2, "url": "u", "price": 30_000_000, "area": 60.0,
               "fair_price": 35_000_000, "diff_pct": -14.3, "title": "Лот"}]
     assert alerts.send_alerts({"77": {}}, deals) == 1

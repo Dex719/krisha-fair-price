@@ -45,7 +45,9 @@ def test_track_button_runs_track_command(calls, monkeypatch):
 
 
 def test_similar_button_sends_analogs(calls, monkeypatch):
-    monkeypatch.setattr(predict_gate, "cached_predict", lambda url, live_vision=True: RESULT)
+    # готовая оценка из кэша калитки — без сети: cached_predict звать нельзя
+    monkeypatch.setattr(predict_gate, "cached_predict", lambda *a, **k: pytest.fail("скрейп krisha"))
+    monkeypatch.setattr(predict_gate, "peek", lambda url, live_vision=False: RESULT if live_vision else None)
     _press("sim:1012607661")
     text = [kw["text"] for m, kw in calls if m == "sendMessage"][-1]
     assert "Похожие квартиры" in text and "28,9 млн ₸" in text and "krisha.kz/a/show/1" in text
@@ -93,9 +95,10 @@ def test_long_reply_keeps_pre_block_whole():
     assert clipped.count("<pre>") == clipped.count("</pre>")
 
 
-def test_alerts_go_as_header_and_cards_with_buttons(monkeypatch):
+def test_alerts_go_as_header_and_cards_with_buttons(monkeypatch, tmp_path):
     from krisha import alerts
 
+    monkeypatch.setattr(alerts, "ALERTED_PATH", tmp_path / "alerted_ids.json")
     sent: list[dict] = []
     monkeypatch.setattr("krisha.bot.tg_call", lambda method, **kw: sent.append(kw) or {"ok": True})
     monkeypatch.setattr(alerts, "ALERT_CARD_PAUSE_S", 0)

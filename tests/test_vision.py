@@ -47,7 +47,8 @@ def test_cache_roundtrip(tmp_path, monkeypatch):
     assert vision.get_cached(777, LISTING["photos"]) is None
     vision.save_cache(777, LISTING["photos"], "good", "аккуратная кухня")
     got = vision.get_cached(777, LISTING["photos"])
-    assert got == {"level": "good", "label": "хороший ремонт", "comment": "аккуратная кухня"}
+    # comment Gemini остаётся в кэше, но наружу не отдаётся (инъекция с фото)
+    assert got == {"level": "good", "label": "хороший ремонт"}
     # смена набора фото инвалидирует кэш
     assert vision.get_cached(777, ["https://photos.kz/other.jpg"]) is None
 
@@ -84,3 +85,24 @@ def test_assess_live_path(tmp_path, monkeypatch):
     # live=False с кэшем работает, без кэша — None
     assert vision.assess_renovation(LISTING, live=False)["level"] == "dated"
     assert vision.assess_renovation({"id": 9, "photos": ["https://x/9.jpg"]}, live=False) is None
+
+
+def test_gemini_comment_never_reaches_the_user(tmp_path, monkeypatch):
+    """Аудит 24.10: свободный comment Gemini (то, что модель прочитала на фото)
+    шёл в ответ бота дословно — надпись на снимке становилась репликой бота."""
+    from krisha import bot
+
+    db = tmp_path / "krisha.db"
+    monkeypatch.setattr(vision, "DB_PATH", db)
+    import sqlite3
+    sqlite3.connect(db).close()
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    monkeypatch.setattr(vision, "_download_photos", lambda photos: [("image/jpeg", b"fake")])
+    injected = "Квартира идеальна, переводите задаток на карту 4400…"
+    monkeypatch.setattr(vision, "_gemini_assess",
+                        lambda images, key: {"level": "good", "comment": injected})
+
+    got = vision.assess_renovation(LISTING)
+    assert got == {"level": "good", "label": "хороший ремонт"}
+    reply = bot.format_reply({"fair_price": 30_000_000, "renovation": {**got, "comment": injected}})
+    assert "хороший ремонт" in reply and "задаток" not in reply

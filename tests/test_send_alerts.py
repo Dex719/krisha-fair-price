@@ -37,6 +37,27 @@ def test_pricing_failure_alerts_admin_and_keeps_the_rest(monkeypatch):
     assert admin and "не оценился" in admin[0]
 
 
+def test_short_steps_go_before_deal_alerts(monkeypatch):
+    """Аудит 24.10: подборки — самая долгая часть шага с таймаутом 15 минут.
+    Слежка, канал и отчёты уходят ДО них, а не пропадают вместе с хвостом."""
+    import signal
+
+    sa = _load()
+    called = []
+    monkeypatch.setattr(sa, "find_good_deals", lambda: [{"id": 1}])
+    for name in ("_send_deal_alerts", "_post_channel_digest", "_send_track_alerts",
+                 "_maybe_monthly_report", "_maybe_weekly_usage_report", "_send_daily_admin_report"):
+        monkeypatch.setattr(sa, name, lambda *a, _n=name, **k: called.append(_n))
+    monkeypatch.setattr(sys, "argv", ["send_alerts.py"])
+    previous = signal.getsignal(signal.SIGTERM)
+    try:
+        assert sa.main() == 0
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+    assert called[-1] == "_send_deal_alerts"
+    assert called[0] == "_send_track_alerts" and "_post_channel_digest" in called
+
+
 # --- chat_id в публичном логе Actions -------------------------------------------
 
 CHAT = 987654321
@@ -60,13 +81,21 @@ def test_track_alerts_never_print_full_chat_id(monkeypatch, capsys):
         sa, "check_tracked_updates", lambda **kw: [] if kw.get("persist") else [(CHAT, "📉 цена")]
     )
     monkeypatch.setattr(sa, "_quiet_hours", lambda now=None: False)
-    monkeypatch.setattr(bot, "tg_call", lambda m, **kw: {"ok": False, "error_code": 403})
+    monkeypatch.setattr("krisha.alerts._sleep", lambda s: None)
+    monkeypatch.setattr(bot, "tg_call", lambda m, **kw: {"ok": False, "error_code": 500})
 
     sa._send_track_alerts(dry_run=True)
     sa._send_track_alerts(dry_run=False)
 
+    forgotten = []
+    monkeypatch.setattr("krisha.subscriptions.forget_chat", forgotten.append)
+    monkeypatch.setattr(bot, "tg_call", lambda m, **kw: {"ok": False, "error_code": 403,
+                                                         "description": "Forbidden: bot was blocked by the user"})
+    sa._send_track_alerts(dry_run=False)
+
     out = capsys.readouterr().out
     assert "Не доставлено в chat ***21" in out and "--- chat ***21" in out
+    assert "Чат ***21 недоступен" in out and forgotten == [CHAT]
     assert str(CHAT) not in out
 
 

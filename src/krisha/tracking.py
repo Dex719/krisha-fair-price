@@ -60,12 +60,42 @@ def _save(
     path: Path | None = None,
     deleted_keys: set[str] | None = None,
     touched_keys: set[str] | None = None,
-) -> None:
+    update_only: bool = False,
+) -> dict[str, Any]:
+    """Сохраняет tracked.json; возвращает итог после слияния с сервером.
+
+    Ключи слияния — пары "чат:лот" (см. subscriptions._merge_remote): два
+    воркера uvicorn с внутрипроцессным STATE_LOCK иначе теряли лот, взятый
+    в слежку в соседнем процессе секундой раньше.
+    """
     from krisha.subscriptions import save_json_state
 
-    save_json_state(
-        path or TRACKED_PATH, tracked, message, deleted_keys=deleted_keys, touched_keys=touched_keys,
+    written = save_json_state(
+        path or TRACKED_PATH, tracked, message, deleted_keys=deleted_keys,
+        touched_keys=touched_keys, update_only=update_only, normalize=_enforce_limit,
     )
+    return written if isinstance(written, dict) else tracked
+
+
+def _lot_key(chat_id: Any, listing_id: Any) -> str:
+    return f"{chat_id}:{listing_id}"
+
+
+def _enforce_limit(tracked: Any) -> Any:
+    """Лимит MAX_TRACKED_PER_CHAT после слияния: два «Следить» с разных
+    воркеров по отдельности проходят проверку, а вместе дают 11 лотов.
+    Оставляем самые ранние по since — опоздавший лот не пройдёт, и add_tracked
+    скажет пользователю «лимит», а не «слежу»."""
+    if not isinstance(tracked, dict):
+        return tracked
+    out = {}
+    for chat, lots in tracked.items():
+        if isinstance(lots, dict) and len(lots) > MAX_TRACKED_PER_CHAT:
+            keep = sorted(lots, key=lambda lid: (str(lots[lid].get("since") or ""), lid)
+                          if isinstance(lots[lid], dict) else ("", lid))
+            lots = {lid: lots[lid] for lid in keep[:MAX_TRACKED_PER_CHAT]}
+        out[chat] = lots
+    return out
 
 
 def _refresh(path: Path | None) -> None:
@@ -111,7 +141,12 @@ def add_tracked(
             **({"deal": RENT} if deal == RENT else {}),
         }
         # Без chat_id/listing_id в message: история коммитов публична
-        _save(tracked, "track: обновление слежки", path, touched_keys={str(chat_id)})
+        written = _save(tracked, "track: обновление слежки", path,
+                        touched_keys={_lot_key(chat_id, listing_id)})
+        if str(listing_id) not in (written.get(str(chat_id)) or {}):
+            # Соседний воркер за это время добил чат до лимита — наш лот
+            # отсечён при слиянии (_enforce_limit).
+            return False, "limit"
         return True, None
 
 
@@ -128,6 +163,8 @@ def remove_tracked(chat_id: int, listing_id: int | None, path: Path | None = Non
         if listing_id is None:
             removed = len(chat)
             del tracked[str(chat_id)]
+            # весь чат — удаление ключа верхнего уровня (issue #111)
+            gone = {str(chat_id)}
         else:
             if str(listing_id) not in chat:
                 return 0
@@ -135,12 +172,30 @@ def remove_tracked(chat_id: int, listing_id: int | None, path: Path | None = Non
             removed = 1
             if not chat:
                 del tracked[str(chat_id)]
-        # Если чат ушёл целиком — это удаление ключа верхнего уровня, о котором
-        # надо сказать слиянию (issue #111), иначе он вернётся с сервера.
-        gone = {str(chat_id)} if str(chat_id) not in tracked else None
-        _save(tracked, "track: обновление слежки", path, deleted_keys=gone,
-              touched_keys={str(chat_id)})
+            # Удаляем ровно пару чат+лот: лот, который соседний воркер только
+            # что добавил в тот же чат, должен уцелеть.
+            gone = {_lot_key(chat_id, listing_id)}
+        _save(tracked, "track: обновление слежки", path, deleted_keys=gone, touched_keys=set())
         return removed
+
+
+def move_tracked(old_chat_id: Any, new_chat_id: Any, path: Path | None = None) -> int:
+    """Группа стала супергруппой: слежка переезжает на новый id чата."""
+    from krisha.subscriptions import STATE_LOCK
+
+    old, new = str(old_chat_id), str(new_chat_id)
+    with STATE_LOCK:
+        _refresh(path)
+        tracked = load_tracked(path)
+        lots = tracked.pop(old, None)
+        if not lots:
+            return 0
+        target = tracked.setdefault(new, {})
+        for lid, state in lots.items():
+            target.setdefault(lid, state)
+        _save(tracked, "track: обновление слежки", path, deleted_keys={old},
+              touched_keys={_lot_key(new, lid) for lid in target})
+        return len(lots)
 
 
 def list_tracked(chat_id: int, path: Path | None = None) -> dict[str, Any]:
@@ -175,9 +230,12 @@ def check_tracked_updates(
         return []
 
     messages: list[tuple[int, str]] = []
-    # Сохраняем только чаты, которые этот проход реально поменял: остальные
-    # мог за это время поправить бот на Space (/track), и наша копия их старее.
+    # Сохраняем только пары чат+лот, которые этот проход реально поменял, и
+    # только поверх того, что лежит на сервере в момент записи (update_only).
+    # tracked.json скачан в начале шага Actions; /track и /untrack, сделанные
+    # за минуты рассылки, раньше откатывались записью этой устаревшей копии.
     touched: set[str] = set()
+    removed: set[str] = set()
     with get_conn(db_path) as conn:
         for chat_id, lots in tracked.items():
             if only_chats is not None and int(chat_id) not in only_chats:
@@ -201,13 +259,14 @@ def check_tracked_updates(
                     # висели без алертов. id на krisha общий, так что раз лот нашёлся
                     # в базе аренды — это аренда; помечаем и дальше проверяем как её.
                     state["deal"] = RENT
-                    touched.add(chat_id)
+                    touched.add(_lot_key(chat_id, lid))
                 event = _lot_event(lid, state, row, rent=deal == RENT)
                 if not row["is_active"]:
                     if event is not None:
                         events.append(event)
                         del lots[lid]  # снят с продажи — слежка закончена
-                        touched.add(chat_id)
+                        removed.add(_lot_key(chat_id, lid))
+                        touched.discard(_lot_key(chat_id, lid))
                     continue
                 # Цену активного лота подтягиваем из базы ВСЕГДА, а не только
                 # когда есть что отправить. Лот, взятый в слежку с неизвестной
@@ -221,14 +280,15 @@ def check_tracked_updates(
                 ):
                     state["price"] = row["price"]
                     state["title"] = state.get("title") or row["title"]
-                    touched.add(chat_id)
+                    touched.add(_lot_key(chat_id, lid))
                 if event is not None:
                     events.append(event)
             if events:
                 messages.append((int(chat_id), "\n\n".join(events)))
 
-    if touched and persist:
-        _save(tracked, "track: обновление цен после рескрейпа", path, touched_keys=touched)
+    if (touched or removed) and persist:
+        _save(tracked, "track: обновление цен после рескрейпа", path,
+              deleted_keys=removed, touched_keys=touched, update_only=True)
     return messages
 
 

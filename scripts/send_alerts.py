@@ -14,6 +14,7 @@
 
 import argparse
 import logging
+import signal
 import sys
 
 from krisha.alerts import (
@@ -63,7 +64,8 @@ def _quiet_hours(now=None) -> bool:
 
 
 def _send_track_alerts(dry_run: bool, deal: str = "prodazha") -> None:
-    from krisha.bot import mask_chat_id, tg_call
+    from krisha.alerts import _Pacer, deliver
+    from krisha.bot import mask_chat_id
     from krisha.config import DB_PATH, RENT_DB_PATH
 
     db_path = RENT_DB_PATH if deal == "arenda" else DB_PATH
@@ -75,18 +77,27 @@ def _send_track_alerts(dry_run: bool, deal: str = "prodazha") -> None:
     print(f"Обновлений по слежке (/track, {deal}): {len(updates)}")
     silent = _quiet_hours()
     delivered: set[int] = set()
+    pacer = _Pacer()
     for chat_id, message in updates:
         if dry_run:
             print(f"--- chat {mask_chat_id(chat_id)}:\n{message}")
             continue
-        resp = tg_call("sendMessage", chat_id=chat_id, text=message,
-                       parse_mode="HTML", disable_web_page_preview=True,
-                       disable_notification=silent)
-        if resp and resp.get("ok"):
-            delivered.add(int(chat_id))
+        # deliver: повтор на 429, переезд группы на новый id, а заблокировавший
+        # бота чат лишается подписки и слежки — не стучимся туда каждый день.
+        _, target, status = deliver(chat_id, pacer, text=message, parse_mode="HTML",
+                                    disable_web_page_preview=True, disable_notification=silent)
+        if status == "ok":
+            # после переезда группы слежка уже лежит под новым id
+            delivered.update({int(chat_id), int(target)})
+        elif status == "gone":
+            print(f"Чат {mask_chat_id(chat_id)} недоступен (бот заблокирован/чата нет) — "
+                  "подписка и слежка убраны")
         else:
             print(f"Не доставлено в chat {mask_chat_id(chat_id)} — состояние не фиксируем, повторим позже")
     if delivered:
+        # Сохраняются только пары чат+лот, поменянные этим проходом, и только
+        # поверх серверной копии на момент записи (tracking._save, update_only):
+        # /track и /untrack, сделанные за время шага, не откатываются.
         check_tracked_updates(db_path=db_path, persist=True, only_chats=delivered, deal=deal)
 
 
@@ -143,6 +154,9 @@ def main() -> int:
     parser.add_argument("--deal", choices=("prodazha", "arenda"), default="prodazha",
                         help="arenda — только слежка за арендой, по базе аренды")
     args = parser.parse_args()
+    # Таймаут шага Actions гасит процесс сигналом: превращаем SIGTERM в
+    # SystemExit, чтобы finally рассылки успел записать журнал доставки.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
 
     if args.deal == "arenda":
         _send_track_alerts(args.dry_run, deal="arenda")
@@ -154,14 +168,17 @@ def main() -> int:
         # Слежка, отчёты и утренний отчёт модели не требуют — шлём их всё равно,
         # а выгодные лоты и дайджест пропускаем: пустой дайджест хуже никакого.
         deals, pricing_error = [], exc
-    if pricing_error is None:
-        _send_deal_alerts(args.dry_run, deals)
+    # Порядок: всё короткое и разовое — ДО подборок. Подборки — самая долгая
+    # часть (сотни подписчиков × 6 сообщений); если шаг упрётся в таймаут на
+    # них, слежка, канал и отчёты уже ушли, а не пропали вместе с хвостом.
     _send_track_alerts(args.dry_run)
     if pricing_error is None:
         _post_channel_digest(args.dry_run, deals)
     _maybe_monthly_report(args.dry_run)
     _maybe_weekly_usage_report(args.dry_run)
     _send_daily_admin_report(args.dry_run)
+    if pricing_error is None:
+        _send_deal_alerts(args.dry_run, deals)
     if pricing_error is not None:
         message = f"⚠️ Алерты: {pricing_error}. Выгодные лоты и дайджест канала сегодня не отправлены."
         print(message, file=sys.stderr)

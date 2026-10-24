@@ -332,4 +332,6 @@ def test_nightly_pass_saves_only_chats_it_changed(tmp_path, monkeypatch):
 
     tracking.check_tracked_updates(db_path=db, path=path)
 
-    assert saved["touched_keys"] == {"42"}
+    # пара чат+лот, а не чат целиком; поверх сервера — только обновлением
+    assert saved["touched_keys"] == {"42:111"}
+    assert saved["update_only"] is True
