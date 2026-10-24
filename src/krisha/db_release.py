@@ -63,6 +63,14 @@ RELEASE_TAG = "db-latest"
 ASSET_NAME = "krisha.db.gz"
 RENT_ASSET_NAME = "krisha_rent.db.gz"
 
+# Аудит 24.10: `gh release upload --clobber` сначала удалял ассет, потом лил
+# новый — сбой посередине оставлял релиз без файла. Теперь заливка
+# (scripts/release_upload.py) кладёт файл под именем `<имя>.uploading`,
+# сверяет sha256, удаляет старый и переименовывает новый. В коротком окне
+# между удалением и переименованием есть только временный файл — чтение
+# ниже его подхватывает, а не считает ассет отсутствующим.
+UPLOAD_TMP_SUFFIX = ".uploading"
+
 MODEL_RELEASE_TAG = "model-latest"
 MODEL_ASSET_NAME = "models.tar.gz"
 # Пути (относительно MODELS_DIR) внутри models.tar.gz — то, что реально
@@ -110,19 +118,10 @@ def _api_headers(accept: str = "application/vnd.github+json") -> dict[str, str]:
     return headers
 
 
-def _asset_source(tag: str, name: str, url_env: str) -> tuple[str, dict, str | None, dict]:
-    """Откуда качать ассет: (url, заголовки, url контрольной суммы, её заголовки).
+def release_asset_urls(tag: str) -> dict[str, str]:
+    """{имя: API-url} готовых (state=uploaded) ассетов релиза ``tag``.
 
-    ``url_env`` задан — прямая ссылка без токена, как раньше; checksum — по
-    соседнему ``<url>.sha256``. Иначе ассет ищется по имени в релизе ``tag``
-    репозитория данных через API: приватный ассет отдаётся только по
-    ``/releases/assets/<id>`` с ``Accept: application/octet-stream``.
-    Редирект на подписанную ссылку хранилища httpx проходит сам и
-    Authorization на чужой хост не переносит.
-    """
-    override = os.environ.get(url_env)
-    if override:
-        return override, {}, f"{override}.sha256", {}
+    FileNotFoundError — релиза нет (или нет доступа к приватному репо)."""
     resp = httpx.get(
         f"{GITHUB_API}/repos/{DATA_REPO}/releases/tags/{tag}", headers=_api_headers(), timeout=30.0
     )
@@ -130,11 +129,50 @@ def _asset_source(tag: str, name: str, url_env: str) -> tuple[str, dict, str | N
         hint = "" if os.environ.get(TOKEN_ENV) else f" — репозиторий приватный, задайте {TOKEN_ENV}"
         raise FileNotFoundError(f"Релиз {DATA_REPO}@{tag} не найден{hint}")
     resp.raise_for_status()
-    assets = {a["name"]: a["url"] for a in resp.json().get("assets", [])}
-    if name not in assets:
-        raise FileNotFoundError(f"В релизе {DATA_REPO}@{tag} нет ассета {name}")
+    # state != uploaded — заливка ещё идёт (или оборвалась): такой ассет не читаем
+    return {
+        a["name"]: a["url"]
+        for a in resp.json().get("assets", [])
+        if a.get("state", "uploaded") == "uploaded"
+    }
+
+
+def _asset_source(tag: str, name: str, url_env: str) -> tuple[str, dict, list[str], dict]:
+    """Откуда качать ассет: (url, заголовки, url-ы контрольной суммы, их заголовки).
+
+    ``url_env`` задан — прямая ссылка без токена, как раньше; checksum — по
+    соседнему ``<url>.sha256``. Иначе ассет ищется по имени в релизе ``tag``
+    репозитория данных через API: приватный ассет отдаётся только по
+    ``/releases/assets/<id>`` с ``Accept: application/octet-stream``.
+    Редирект на подписанную ссылку хранилища httpx проходит сам и
+    Authorization на чужой хост не переносит.
+
+    Нет ``name``, но есть ``name.uploading`` — это окно атомарной заливки
+    (старый удалён, новый ещё не переименован, см. UPLOAD_TMP_SUFFIX):
+    берём временный, он уже сверен по sha256. Кандидатов контрольной суммы
+    может быть два (основной и временный .sha256) — файл обязан совпасть
+    хотя бы с одним: база и её .sha256 переименовываются по очереди.
+    """
+    override = os.environ.get(url_env)
+    if override:
+        return override, {}, [f"{override}.sha256"], {}
+    assets = release_asset_urls(tag)
+    url = assets.get(name)
+    if url is None:
+        url = assets.get(f"{name}{UPLOAD_TMP_SUFFIX}")
+        if url is None:
+            raise FileNotFoundError(f"В релизе {DATA_REPO}@{tag} нет ассета {name}")
+        logger.warning(
+            "В релизе %s@%s есть только %s%s — идёт заливка, беру временный",
+            DATA_REPO, tag, name, UPLOAD_TMP_SUFFIX,
+        )
+    sha_urls = [
+        assets[n]
+        for n in (f"{name}.sha256", f"{name}.sha256{UPLOAD_TMP_SUFFIX}")
+        if n in assets
+    ]
     octet = _api_headers("application/octet-stream")
-    return assets[name], octet, assets.get(f"{name}.sha256"), octet
+    return url, octet, sha_urls, octet
 
 
 def _fetch(url: str, headers: dict, dest: Path) -> None:
@@ -145,38 +183,74 @@ def _fetch(url: str, headers: dict, dest: Path) -> None:
                 fh.write(chunk)
 
 
-def _verify_checksum(gz_path: Path, sha_url: str | None, headers: dict | None = None) -> None:
-    """Сверяет sha256 архива с файлом `<asset>.sha256` из релиза (если он есть).
+class ChecksumUnavailable(ValueError):
+    """Строгая проверка: контрольную сумму получить не удалось."""
 
-    Рескрейп-workflow публикует контрольную сумму рядом с базой. Нет файла
-    (старый релиз, кастомный KRISHA_DB_URL) — пропускаем молча: проверка
-    появляется бесплатно, ничего не ломая. Не сошлось — ValueError.
-    """
-    if not sha_url:
-        return
+
+def _fetch_expected_sha(sha_url: str, headers: dict | None) -> str | None:
     try:
         resp = httpx.get(sha_url, headers=headers or {}, follow_redirects=True, timeout=30.0)
     except httpx.HTTPError:
-        return
+        return None
     if resp.status_code != 200:
-        return
+        return None
     expected = resp.text.split()[0].strip().lower() if resp.text.strip() else ""
-    if len(expected) != 64:
+    return expected if len(expected) == 64 else None
+
+
+def _verify_checksum(
+    gz_path: Path,
+    sha_url: str | list[str] | None,
+    headers: dict | None = None,
+    strict: bool = False,
+) -> None:
+    """Сверяет sha256 архива с файлом `<asset>.sha256` из релиза (если он есть).
+
+    Рескрейп-workflow публикует контрольную сумму рядом с базой. Нет файла
+    (старый релиз, кастомный KRISHA_DB_URL) — по умолчанию пропускаем молча:
+    проверка появляется бесплатно, ничего не ломая. ``strict`` (учение по
+    восстановлению, скачивание базы аренды в CI) — тогда ненайденная или
+    нескачавшаяся контрольная сумма — ChecksumUnavailable, а не тишина.
+    Не сошлось — ValueError. Кандидатов может быть несколько (окно
+    атомарной заливки, см. _asset_source) — достаточно совпасть с одним.
+    """
+    urls = [sha_url] if isinstance(sha_url, str) else [u for u in (sha_url or []) if u]
+    expected = [e for e in (_fetch_expected_sha(u, headers) for u in urls) if e]
+    if not expected:
+        if strict:
+            raise ChecksumUnavailable(
+                f"Контрольная сумма для {gz_path.name} не получена "
+                f"({'нет ассета .sha256' if not urls else 'скачать не удалось'})"
+            )
         return
     digest = hashlib.sha256()
     with open(gz_path, "rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             digest.update(chunk)
     actual = digest.hexdigest()
-    if actual != expected:
-        raise ValueError(f"Checksum базы не сошёлся: ожидали {expected}, получили {actual}")
-    logger.info("Checksum базы сошёлся (sha256 %s…)", expected[:12])
+    if actual not in expected:
+        raise ValueError(
+            f"Checksum базы не сошёлся: ожидали {' или '.join(expected)}, получили {actual}"
+        )
+    logger.info("Checksum базы сошёлся (sha256 %s…)", actual[:12])
+
+
+def _strict_kw(strict: bool) -> dict:
+    # Флаг передаём, только когда он включён: старые вызовы (и подмены в
+    # тестах) с прежней сигнатурой продолжают работать.
+    return {"strict": True} if strict else {}
 
 
 def download(
-    db_path: Path | str = DB_PATH, asset: str = ASSET_NAME, url_env: str = "KRISHA_DB_URL"
+    db_path: Path | str = DB_PATH,
+    asset: str = ASSET_NAME,
+    url_env: str = "KRISHA_DB_URL",
+    strict_checksum: bool = False,
 ) -> bool:
-    """Скачивает, проверяет checksum и распаковывает базу атомарно (tmp → rename)."""
+    """Скачивает, проверяет checksum и распаковывает базу атомарно (tmp → rename).
+
+    ``strict_checksum`` — без контрольной суммы не распаковывать (см. _verify_checksum).
+    """
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     logger.info("Скачиваю базу %s из %s@%s", asset, DATA_REPO, RELEASE_TAG)
@@ -184,7 +258,7 @@ def download(
     with tempfile.TemporaryDirectory(dir=db_path.parent) as tmpdir:
         gz_path = Path(tmpdir) / asset
         _fetch(url, headers, gz_path)
-        _verify_checksum(gz_path, sha_url, sha_headers)
+        _verify_checksum(gz_path, sha_url, sha_headers, **_strict_kw(strict_checksum))
         tmp_db = Path(tmpdir) / "krisha.db"
         with gzip.open(gz_path, "rb") as src, open(tmp_db, "wb") as dst:
             shutil.copyfileobj(src, dst)
@@ -193,7 +267,7 @@ def download(
     return True
 
 
-def ensure_db(force: bool = False) -> bool:
+def ensure_db(force: bool = False, strict_checksum: bool = False) -> bool:
     """Скачивает базу из релиза, если локального файла нет (или ``force``).
 
     Возвращает True, если база была скачана. Ошибки сети не роняют
@@ -207,13 +281,15 @@ def ensure_db(force: bool = False) -> bool:
     if db_path.exists() and db_path.stat().st_size > 0 and not force:
         return False
     try:
+        if strict_checksum:
+            return download(db_path, strict_checksum=True)
         return download(db_path)
     except Exception:
         logger.exception("Не удалось скачать базу из релиза %s", RELEASE_TAG)
         return False
 
 
-def ensure_rent_db(force: bool = False) -> bool:
+def ensure_rent_db(force: bool = False, strict_checksum: bool = False) -> bool:
     """То же для базы аренды (ассет krisha_rent.db.gz). Fail-soft."""
     if os.environ.get("KRISHA_DB_AUTO", "1") == "0" and not force:
         return False
@@ -221,7 +297,8 @@ def ensure_rent_db(force: bool = False) -> bool:
     if db_path.exists() and db_path.stat().st_size > 0 and not force:
         return False
     try:
-        return download(db_path, RENT_ASSET_NAME, "KRISHA_RENT_DB_URL")
+        extra = {"strict_checksum": True} if strict_checksum else {}
+        return download(db_path, RENT_ASSET_NAME, "KRISHA_RENT_DB_URL", **extra)
     except Exception:
         logger.exception("Не удалось скачать базу аренды из релиза %s", RELEASE_TAG)
         return False
@@ -231,6 +308,7 @@ def download_models(
     models_dir: Path | str = MODELS_DIR,
     asset: str = MODEL_ASSET_NAME,
     url_env: str = "KRISHA_MODEL_URL",
+    strict_checksum: bool = False,
 ) -> bool:
     """Скачивает, проверяет checksum и распаковывает архив моделей атомарно.
 
@@ -249,7 +327,7 @@ def download_models(
     with tempfile.TemporaryDirectory(dir=models_dir) as tmpdir:
         tar_path = Path(tmpdir) / asset
         _fetch(url, headers, tar_path)
-        _verify_checksum(tar_path, sha_url, sha_headers)
+        _verify_checksum(tar_path, sha_url, sha_headers, **_strict_kw(strict_checksum))
         extract_dir = Path(tmpdir) / "extracted"
         extract_dir.mkdir()
         with tarfile.open(tar_path, "r:gz") as tar:
@@ -309,6 +387,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--rent", action="store_true", help="аренда: база krisha_rent.db / модели в models/rent/"
     )
+    parser.add_argument(
+        "--strict-checksum",
+        action="store_true",
+        help="база: без опубликованной контрольной суммы не распаковывать (ошибка, а не тишина)",
+    )
     args = parser.parse_args(argv)
 
     if args.models:
@@ -322,7 +405,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     ensure, db_path = (ensure_rent_db, Path(RENT_DB_PATH)) if args.rent else (ensure_db, Path(DB_PATH))
-    downloaded = ensure(force=args.force)
+    if args.strict_checksum:
+        downloaded = ensure(force=args.force, strict_checksum=True)
+    else:
+        downloaded = ensure(force=args.force)
     present = db_path.exists() and db_path.stat().st_size > 0
     if args.require and not present:
         print("База отсутствует и скачать её не удалось", file=sys.stderr)

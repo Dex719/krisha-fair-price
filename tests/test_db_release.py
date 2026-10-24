@@ -319,7 +319,7 @@ def test_private_release_downloads_asset_by_api_with_token(tmp_path, monkeypatch
     assert db.read_bytes() == payload
     assert seen["release_auth"] == "Bearer tok"
     assert seen["asset"] == (f"{api}/releases/assets/1", "Bearer tok", "application/octet-stream")
-    assert [c[0] for c in checks] == [f"{api}/releases/assets/2"]
+    assert [c[0] for c in checks] == [[f"{api}/releases/assets/2"]]
     assert checks[0][1]["Authorization"] == "Bearer tok"
 
 
@@ -350,3 +350,88 @@ def test_ensure_db_without_token_does_not_crash(tmp_path, monkeypatch, auto_on):
     monkeypatch.setattr(db_release, "DB_PATH", tmp_path / "krisha.db")
     monkeypatch.setattr(db_release.httpx, "get", lambda *a, **kw: _FakeJson(404))
     assert db_release.ensure_db() is False
+
+
+# --- аудит 24.10: окно атомарной заливки и строгая проверка sha -------------
+
+
+def test_asset_source_falls_back_to_uploading_tmp(monkeypatch):
+    """Старый ассет уже удалён, новый ещё не переименован: читаем временный,
+    а кандидатами контрольной суммы служат и основной, и временный .sha256."""
+    _no_overrides(monkeypatch)
+    monkeypatch.setenv("KRISHA_DB_TOKEN", "tok")
+    api = f"https://api.github.com/repos/{db_release.DATA_REPO}"
+    release = {"assets": [
+        {"name": "krisha_rent.db.gz.uploading", "url": f"{api}/releases/assets/7", "state": "uploaded"},
+        {"name": "krisha_rent.db.gz.sha256", "url": f"{api}/releases/assets/8", "state": "uploaded"},
+        {"name": "krisha_rent.db.gz.sha256.uploading", "url": f"{api}/releases/assets/9", "state": "uploaded"},
+    ]}
+    monkeypatch.setattr(db_release.httpx, "get", lambda *a, **kw: _FakeJson(200, release))
+    url, _, sha_urls, _ = db_release._asset_source("db-latest", "krisha_rent.db.gz", "KRISHA_RENT_DB_URL")
+    assert url == f"{api}/releases/assets/7"
+    assert sha_urls == [f"{api}/releases/assets/8", f"{api}/releases/assets/9"]
+
+
+def test_asset_source_prefers_final_name_and_ignores_unfinished_upload(monkeypatch):
+    _no_overrides(monkeypatch)
+    monkeypatch.setenv("KRISHA_DB_TOKEN", "tok")
+    api = f"https://api.github.com/repos/{db_release.DATA_REPO}"
+    release = {"assets": [
+        {"name": "krisha.db.gz", "url": f"{api}/releases/assets/1", "state": "uploaded"},
+        {"name": "krisha.db.gz.uploading", "url": f"{api}/releases/assets/2", "state": "uploaded"},
+    ]}
+    monkeypatch.setattr(db_release.httpx, "get", lambda *a, **kw: _FakeJson(200, release))
+    url, *_ = db_release._asset_source("db-latest", "krisha.db.gz", "KRISHA_DB_URL")
+    assert url == f"{api}/releases/assets/1"
+
+    # недолитый временный (state=starter) не считается ассетом
+    release = {"assets": [
+        {"name": "krisha.db.gz.uploading", "url": f"{api}/releases/assets/2", "state": "starter"},
+    ]}
+    monkeypatch.setattr(db_release.httpx, "get", lambda *a, **kw: _FakeJson(200, release))
+    with pytest.raises(FileNotFoundError):
+        db_release._asset_source("db-latest", "krisha.db.gz", "KRISHA_DB_URL")
+
+
+class _Text:
+    def __init__(self, text, status_code=200):
+        self.text = text
+        self.status_code = status_code
+
+
+def test_verify_checksum_accepts_any_candidate(tmp_path, monkeypatch):
+    import hashlib
+
+    gz = tmp_path / "krisha.db.gz"
+    gz.write_bytes(b"data")
+    good = hashlib.sha256(b"data").hexdigest()
+    texts = {"old": "0" * 64, "new": good}
+    monkeypatch.setattr(db_release.httpx, "get", lambda url, **kw: _Text(texts[url]))
+    db_release._verify_checksum(gz, ["old", "new"])  # база уже новая, .sha256 ещё старый
+    with pytest.raises(ValueError):
+        db_release._verify_checksum(gz, ["old"])
+
+
+def test_verify_checksum_strict_requires_sha(tmp_path, monkeypatch):
+    """Аудит 24.10: без .sha256 учение и CI-скачивание аренды обязаны падать."""
+    gz = tmp_path / "krisha.db.gz"
+    gz.write_bytes(b"data")
+    db_release._verify_checksum(gz, [])  # мягкий режим — тишина
+    with pytest.raises(db_release.ChecksumUnavailable):
+        db_release._verify_checksum(gz, [], strict=True)
+    monkeypatch.setattr(db_release.httpx, "get", lambda url, **kw: _Text("", 404))
+    with pytest.raises(db_release.ChecksumUnavailable):
+        db_release._verify_checksum(gz, ["https://x/sha"], strict=True)
+
+
+def test_cli_strict_checksum_reaches_rent_download(tmp_path, monkeypatch, auto_on):
+    calls = []
+    monkeypatch.setattr(db_release, "RENT_DB_PATH", tmp_path / "krisha_rent.db")
+
+    def fake_download(path, asset, url_env, strict_checksum=False):
+        calls.append(strict_checksum)
+        raise db_release.ChecksumUnavailable("нет sha")
+
+    monkeypatch.setattr(db_release, "download", fake_download)
+    assert db_release.main(["--rent", "--require", "--strict-checksum"]) == 1
+    assert calls == [True]
