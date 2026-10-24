@@ -1,0 +1,90 @@
+name: Restore drill
+
+# Аудит 24.10: scripts/restore_drill.py существовал, но нигде не запускался —
+# а бэкап, который ни разу не разворачивали, бэкапом не является. Раз в неделю
+# скачиваем обе базы из db-latest (строго: без .sha256 — провал), проверяем
+# целостность, схему, свежесть (как /api/health) и поднимаем на них сервис.
+# Только чтение релизов — в базы ничего не пишется, поэтому без concurrency
+# с рескрейпами (окно подмены ассета читатель переживает сам).
+on:
+  schedule:
+    - cron: "0 10 * * 3" # среда 15:00 Алматы (UTC+5): между утренним и вечерним проходами
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: restore-drill
+  cancel-in-progress: false
+
+env:
+  KRISHA_DATA_REPO: Dex719/krisha-db
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: |
+          pip install -r requirements.lock
+          pip install -e . --no-deps
+
+      # Сервис на восстановленной базе проверяется вместе с моделью (/api/health
+      # → model_loaded): весов в checkout нет, они в приватном model-latest.
+      - name: Download models
+        env:
+          KRISHA_DB_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+        run: python -m krisha.db_release --models --require
+
+      - name: Drill (продажа)
+        id: sale
+        continue-on-error: true
+        env:
+          KRISHA_DB_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+        run: python scripts/restore_drill.py
+
+      - name: Drill (аренда)
+        id: rent
+        continue-on-error: true
+        env:
+          KRISHA_DB_TOKEN: ${{ secrets.KRISHA_DB_TOKEN }}
+        run: python scripts/restore_drill.py --rent
+
+      # Оба учения идут всегда (красная продажа не прячет аренду), итог — здесь.
+      - name: Verdict
+        env:
+          SALE: ${{ steps.sale.outcome }}
+          RENT: ${{ steps.rent.outcome }}
+        run: |
+          echo "### Учение по восстановлению: продажа — $SALE, аренда — $RENT" >> "$GITHUB_STEP_SUMMARY"
+          [ "$SALE" = "success" ] && [ "$RENT" = "success" ]
+
+      # Как в audit.yml: без секретов — пропускаем, красный ран остаётся сигналом.
+      - name: Notify Telegram on failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TG_ADMIN_CHAT_ID" ]; then
+            echo "TELEGRAM_BOT_TOKEN or TG_ADMIN_CHAT_ID is not set; skip Telegram notification"
+            exit 0
+          fi
+
+          text="🚨 baǵam restore drill failed
+          Repo: ${GITHUB_REPOSITORY}
+          Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          curl -fsS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${TG_ADMIN_CHAT_ID}" \
+            --data-urlencode "text=${text}"

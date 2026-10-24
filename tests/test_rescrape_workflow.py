@@ -233,6 +233,20 @@ def test_backfill_concurrency_matches_the_target_db():
     assert _wf("rescrape-rent.yml")["concurrency"]["group"] == "krisha-rent-db-writes"
 
 
+def test_restore_drill_runs_weekly_for_both_dbs():
+    wf = _wf("restore-drill.yml")
+    on = wf["on"] if "on" in wf else wf[True]
+    assert "workflow_dispatch" in on
+    (cron,) = [c["cron"] for c in on["schedule"]]
+    minute, hour, dom, month, dow = cron.split()
+    assert dom == month == "*" and dow.isdigit(), "раз в неделю"
+    assert wf["permissions"] == {"contents": "read"}
+    runs = "\n".join(str(s.get("run", "")) for s in _all_steps("restore-drill.yml"))
+    assert "python scripts/restore_drill.py\n" in runs + "\n"
+    assert "python scripts/restore_drill.py --rent" in runs
+    assert "krisha.db_release --models --require" in runs
+
+
 def test_keepalive_restores_health_state_after_checkout():
     steps = _wf("space-keepalive.yml")["jobs"]["keepalive"]["steps"]
     uses = [str(s.get("uses", "")) for s in steps]
