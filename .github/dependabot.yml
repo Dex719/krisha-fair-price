@@ -2,6 +2,15 @@
 # Версии в pyproject.toml плавающие (>=), поэтому главное здесь —
 # security-обновления и подсказки про новые мажоры, которые иначе
 # прилетели бы в Docker-сборку молча.
+#
+# requirements*.lock Dependabot НЕ видит (аудит 24.10: алертов 0 при 38 CVE
+# в pillow): экосистема pip ищет только requirements*.txt/*.in, setup.py,
+# pyproject.toml и Pipfile/poetry.lock, а указать ей произвольные имена файлов
+# нельзя. Переименовывать lock-файлы ради этого не стоит — их имена зашиты
+# в Dockerfile, воркфлоу и тесты, а `uv pip compile` Dependabot всё равно не
+# воспроизведёт. Безопасность закреплённых версий закрывает ночной
+# .github/workflows/audit.yml (pip-audit по всем трём lock); обновление —
+# `make lock UV_FLAGS="--upgrade-package <пакет>"`.
 version: 2
 updates:
   - package-ecosystem: "pip"
