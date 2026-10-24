@@ -37,6 +37,15 @@ def wait_ready(page):
     expect(page.locator("[data-l=total]").first).to_have_text("18 680")
 
 
+def expect_pct(page, value: str, direction: str):
+    """Процент вердикта и подпись под ним («дороже/дешевле оценки»); озвучка — одной фразой."""
+    vpct = page.locator(".vpct")
+    expect(vpct).to_be_visible()
+    expect(vpct.locator(".vdir")).to_have_text(direction)
+    expect(vpct).to_have_text(value + direction)
+    expect(vpct).to_have_attribute("data-say", f"{value}, {direction}")
+
+
 def test_home_loads_market_stats_and_offers_demo(hermetic_page, mock_api, hermetic_server):
     page = hermetic_page
     mock_api()
@@ -95,7 +104,8 @@ def test_home_predict_fair_renders_full_report(hermetic_page, mock_api, hermetic
     sheet = page.locator(".sheet")
     # Вердикт FAIR → «В рынке», плашка нейтральная (золото — только «дороже»).
     expect(sheet.locator(".vbig")).to_have_text("В рынке")
-    expect(sheet.locator(".vpct")).to_have_text("+1,8%")
+    # «+1,8%» само по себе читается в обе стороны — под процентом подпись, куда он
+    expect_pct(page, "+1,8%", "дороже оценки")
     expect(page.locator(".verdict")).to_have_class("verdict fair")
     # Почему «в рынке»: вердикт по обычному разбросу, а не по проценту.
     expect(page.locator(".vwhy")).to_have_text(
@@ -112,9 +122,11 @@ def test_home_predict_fair_renders_full_report(hermetic_page, mock_api, hermetic
     # Две метки на шкале: цена в объявлении и оценка.
     expect(page.locator(".rmk.ask span")).to_have_text("в объявлении · 47 млн")
     expect(page.locator(".rmk.fair span")).to_have_text("оценка · 46,2 млн")
-    # Факторы: 5 штук, русские подписи, направление словом.
-    factors = page.locator("#fxList .fx")
+    # Факторы водопадом: 5 особенностей и итоговая строка «Оценка», русские подписи, направление словом.
+    factors = page.locator("#fxList .fx:not(.tot)")
     expect(factors).to_have_count(5)
+    expect(page.locator("#fxList .fx")).to_have_count(6)
+    expect(page.locator("#fxList .fx.tot .fxv")).to_have_text("46,2 млн ₸")
     expect(factors.first).to_have_class("fx pos")
     expect(factors.first.locator(".fxn")).to_contain_text("Площадь")
     expect(factors.first.locator(".fxd")).to_contain_text("повышает")
@@ -135,9 +147,10 @@ def test_home_predict_fair_renders_full_report(hermetic_page, mock_api, hermetic
     # Источник — ссылка на объявление, и живой статус.
     expect(page.locator("#repSrc")).to_contain_text("krisha.kz/a/show/761891663")
     expect(page.locator("#repSrc")).to_have_attribute("href", LOT_URL)
-    # Старый API без factors_base: путь «типичная квартира → оценка» не рисуем.
-    expect(page.locator("#fxPath")).to_be_hidden()
-    expect(page.locator("#checkStatus")).to_have_text("Готово: В рынке, +1,8%")
+    # Старый API без factors_base: строку «Типичная квартира» не рисуем, подпись — про сдвиг оценки.
+    expect(page.locator("#fxList .fx.base")).to_have_count(0)
+    expect(page.locator("#fxSub")).to_have_text("что сильнее всего сдвинуло оценку")
+    expect(page.locator("#checkStatus")).to_have_text("Готово: В рынке, +1,8%, дороже оценки")
     # Предупреждений нет — блок скрыт.
     expect(page.locator("#rWarn")).to_be_hidden()
 
@@ -152,7 +165,7 @@ def test_home_predict_overpriced_verdict_label(hermetic_page, mock_api, hermetic
 
     expect(page.locator(".vbig")).to_have_text("Дорого")
     expect(page.locator(".vsub")).to_contain_text("есть повод торговаться")
-    expect(page.locator(".vpct")).to_have_text("+29,9%")
+    expect_pct(page, "+29,9%", "дороже оценки")
     expect(page.locator(".verdict")).to_have_class("verdict high")
     expect(page.locator(".vwhy")).to_contain_text("Цена выше даже верхней границы.")
 
@@ -188,7 +201,7 @@ def test_home_good_deal_without_scam_risk_is_green(hermetic_page, mock_api, herm
     submit(page)
 
     expect(page.locator(".vbig")).to_have_text("Выгодно")
-    expect(page.locator(".vpct")).to_have_text("−28,5%")
+    expect_pct(page, "−28,5%", "дешевле оценки")
     expect(page.locator(".verdict")).to_have_class("verdict good")
     expect(page.locator(".vwhy")).to_contain_text("Цена ниже даже нижней границы.")
 
@@ -246,8 +259,11 @@ def test_home_unknown_factor_is_hidden_not_raw_snake_case(hermetic_page, mock_ap
 
     submit(page)
 
-    expect(page.locator("#fxList .fx")).to_have_count(5)
+    # пять известных особенностей и итог; незнакомой строки нет ни под каким именем
+    expect(page.locator("#fxList .fx:not(.tot)")).to_have_count(5)
+    expect(page.locator("#fxList .fx")).to_have_count(6)
     expect(page.locator("#fxList")).not_to_contain_text("some_new_secret_feature")
+    expect(page.locator("#fxList")).not_to_contain_text("some_new")
 
 
 def test_home_factors_path_from_typical_flat(hermetic_page, mock_api, hermetic_server, predict_fair):
@@ -263,11 +279,23 @@ def test_home_factors_path_from_typical_flat(hermetic_page, mock_api, hermetic_s
 
     submit(page)
 
-    path = page.locator("#fxPath")
-    expect(path).to_be_visible()
-    expect(path.locator(".fxpv")).to_have_text(["43,8 млн ₸", "+2,4 млн ₸", "46,2 млн ₸"])
-    expect(page.locator("#fxSub")).to_have_text("по сравнению с типичной квартирой в Алматы")
-    expect(page.locator("#fxList .fx")).to_have_count(6)
+    # водопад: «Типичная квартира» → 5 особенностей → «Прочее» → «Оценка»
+    rows = page.locator("#fxList .fx")
+    expect(rows).to_have_count(8)
+    expect(rows.first).to_have_class("fx base")
+    expect(rows.first.locator(".fxn")).to_have_text("Типичная квартира")
+    expect(rows.first.locator(".fxv")).to_have_text("43,8 млн ₸")
+    expect(rows.last).to_have_class("fx tot")
+    expect(rows.last.locator(".fxv")).to_have_text("46,2 млн ₸")
+    expect(page.locator("#fxSub")).to_have_text("от типичной квартиры в Алматы — к этой")
+    # путь сходится: полоса последнего шага кончается ровно там, где полоса оценки
+    ends = page.evaluate("""() => [...document.querySelectorAll('#fxList .fx')].map(r => {
+      const i = r.querySelector('.fxb i'), a = +i.style.getPropertyValue('--a'), w = +i.style.getPropertyValue('--w');
+      return {cls: r.className, a, w};
+    })""")
+    tot, last = ends[-1], ends[-2]
+    assert last["cls"] == "fx oth"
+    assert abs(last["a"] - tot["w"]) < 0.002, ends  # «прочее» отрицательное: идёт вниз до оценки
     other = page.locator("#fxList .fx.oth")
     expect(other.locator(".fxn")).to_contain_text("Прочее")
     expect(other.locator(".fxv")).to_have_text("−5,5 млн")
@@ -312,13 +340,20 @@ def test_home_server_error_shows_friendly_status(hermetic_page, mock_api, hermet
     submit(page, "https://krisha.kz/a/show/123456789")
 
     # Ошибка — внутри карточки: что случилось и что сделать; пример спрятан.
+    # 502 отдаёт и Cloudflare при рестарте Space — без приговора объявлению и с повтором.
     err = page.locator("#rErr")
     expect(err).to_be_visible()
     expect(err).to_contain_text("Сервис сейчас не отвечает. Попробуйте ещё раз через минуту")
+    expect(err).to_contain_text("Сервер мог перезапускаться")
+    expect(err).not_to_contain_text("Не получилось разобрать")
     expect(err.locator("[data-retry]")).to_be_visible()
+    expect(err.locator("[data-retry]")).to_be_focused()
+    expect(page.locator("#lotUrl")).not_to_have_attribute("aria-invalid", "true")
     expect(page.locator("#rBody")).to_be_hidden()
     expect(page.locator("#rTag")).to_be_hidden()
-    expect(page.locator("#checkStatus")).to_have_text("Не удалось получить оценку")
+    # причину озвучивает карточка (role=alert); живой регион статуса её не дублирует
+    expect(err).to_have_attribute("role", "alert")
+    expect(page.locator("#checkStatus")).to_have_text("")
     # Кнопка разблокирована для повторной попытки, скелетон снят.
     expect(page.locator("form[data-check]:has(#lotUrl) .gobtn")).to_be_enabled()
     expect(page.locator(".sheet")).to_have_attribute("aria-busy", "false")
@@ -388,15 +423,14 @@ def test_home_rate_limit_429_message_reaches_user(hermetic_page, mock_api, herme
 
 
 def test_home_busy_state_while_model_thinks(hermetic_page, mock_api, hermetic_server, predict_fair):
-    """Долгий ответ модели: кнопка занята, карточка в скелетоне, статус озвучен."""
+    """Долгий ответ модели: кнопка занята, карточка в скелетоне, статус озвучен.
+    Обычно ответ за пару секунд — тогда хватает спиннера и скелетона; строка ожидания
+    в карточке появляется через 10 с и через 25 с говорит, что ждать осталось недолго."""
     page = hermetic_page
+    page.clock.install()
     mock_api()
-
-    def slow(route):
-        page.wait_for_timeout(1500)
-        route.fulfill(status=200, body=json.dumps(predict_fair), content_type="application/json")
-
-    page.route("**/api/predict", slow)
+    held = []
+    page.route("**/api/predict", lambda r: held.append(r))  # ответ отдаём вручную, когда проверим ожидание
     page.goto(hermetic_server + "/")
     wait_ready(page)
 
@@ -408,15 +442,23 @@ def test_home_busy_state_while_model_thinks(hermetic_page, mock_api, hermetic_se
     expect(btn).to_have_attribute("data-l0", re.compile(r"Проверить"))
     expect(page.locator(".sheet")).to_have_attribute("aria-busy", "true")
     expect(page.locator("#checkStatus")).to_have_text("Считаем оценку объявления")
-    # Статус ожидания — над вердиктом, а не в низу высокой карточки.
     wait = page.locator("#rWait")
+    expect(wait).to_be_hidden()
+    page.clock.run_for(9_000)
+    expect(wait).to_be_hidden()
+    page.clock.run_for(1_500)
+    # Статус ожидания — над вердиктом, а не в низу высокой карточки.
     expect(wait).to_be_visible()
-    expect(wait).to_contain_text("Открываем объявление")
+    expect(wait).to_contain_text("Дольше обычного")
     assert wait.bounding_box()["y"] < page.locator(".verdict").bounding_box()["y"]
+    page.clock.run_for(15_000)
+    expect(wait).to_contain_text("Всё ещё считаем")
     # Подпись site.js под карточкой главной не нужна.
     expect(page.locator(".waitmsg")).to_have_count(0)
 
     # После ответа всё возвращается в рабочее состояние.
+    assert len(held) == 1
+    held[0].fulfill(status=200, body=json.dumps(predict_fair), content_type="application/json")
     expect(page.locator(".vbig")).to_have_text("В рынке")
     expect(btn).to_be_enabled()
     expect(page.locator(".sheet")).to_have_attribute("aria-busy", "false")
@@ -433,8 +475,12 @@ def test_home_gives_up_after_45_seconds(hermetic_page, mock_api, hermetic_server
     wait_ready(page)
 
     submit(page)
+    expect(page.locator(".sheet")).to_have_attribute("aria-busy", "true")
+    page.clock.run_for(10_500)
     expect(page.locator("#rWait")).to_be_visible()
-    page.clock.run_for(46_000)
+    page.clock.run_for(34_000)  # 44,5 с — ещё ждём
+    expect(page.locator("#rErr")).to_be_hidden()
+    page.clock.run_for(1_500)
 
     err = page.locator("#rErr")
     expect(err).to_contain_text("Оценка не пришла за 45 секунд")
@@ -461,8 +507,20 @@ def test_home_survives_dead_market_api(hermetic_page, hermetic_server):
     # Само значение не фиксируем — оно переписывается каждым переобучением,
     # а тест должен ловить пустоту, а не расхождение с конкретной неделей.
     expect(page.locator("[data-l=total]").first).to_have_text(re.compile(r"^\d{1,3}(\s\d{3})+$"))
-    # Кнопки демо нет (без /api/demo), но форма работает.
-    expect(page.locator("[data-demo]")).to_be_hidden()
+    # Строка примеров видна сразу (без сдвига вёрстки), но без /api/demo пример честно не
+    # подбирается: подсказка вставить свою ссылку, на сервер ничего не уходит, карточка — пример.
+    calls = []
+    page.route("**/api/predict", lambda r: (calls.append(r.request.url), r.abort()))
+    demo = page.locator("[data-demo]")
+    expect(demo).to_be_visible()
+    demo.click()
+    err = page.locator("form[data-check]:has(#lotUrl) + [data-err]")
+    expect(err).to_have_text("Не получилось подобрать пример. Вставьте свою ссылку")
+    expect(demo).to_be_enabled()
+    expect(demo).to_have_text("пример продажи")
+    expect(page.locator("#rTag")).to_be_visible()
+    assert calls == []
+    # Форма работает.
     expect(page.locator("form[data-check]:has(#lotUrl) .gobtn")).to_be_enabled()
     assert errors == [], f"необработанные JS-ошибки: {errors}"
 
@@ -549,33 +607,40 @@ def test_home_theme_toggle_persists_in_local_storage(hermetic_page, mock_api, he
     page.goto(hermetic_server + "/")
     wait_ready(page)
 
-    was = page.get_attribute("html", "data-theme")
-    assert was in ("dark", "light")
-    page.click("[data-theme-toggle]")
-    now = page.get_attribute("html", "data-theme")
-    assert now != was
+    # Без сохранённого выбора — тёмная (решение владельца 2026-10-15); переключатель — в шапке.
+    assert page.get_attribute("html", "data-theme") == "dark"
+    toggle = page.locator("nav [data-theme-toggle]")
+    expect(toggle).to_have_count(1)
+    expect(toggle).to_have_attribute("aria-label", "Включить светлую тему")
+    toggle.click()
+    assert page.get_attribute("html", "data-theme") == "light"
     # Один ключ bagam-theme; старый kfp-theme больше не пишется (site.js переносит его и удаляет).
-    assert page.evaluate("localStorage.getItem('bagam-theme')") == now
+    assert page.evaluate("localStorage.getItem('bagam-theme')") == "light"
     assert page.evaluate("localStorage.getItem('kfp-theme')") is None
-    # Подпись переключателя рассказывает текущую тему.
-    expect(page.locator("[data-theme-label]").first).to_have_text(
-        "светлая" if now == "light" else "тёмная")
+    # Кнопка называет действие, а не текущую тему; панель браузера — в цвет выбранной темы.
+    expect(toggle).to_have_attribute("aria-label", "Включить тёмную тему")
+    assert set(page.locator('meta[name="theme-color"]').evaluate_all("els => els.map(e => e.content)")) == {"#F1F4EC"}
 
     page.reload()
     wait_ready(page)
-    assert page.get_attribute("html", "data-theme") == now
+    assert page.get_attribute("html", "data-theme") == "light"
+    toggle.click()
+    assert page.evaluate("localStorage.getItem('bagam-theme')") == "dark"
 
 
-def test_theme_follows_system_and_migrates_old_key(hermetic_page, mock_api, hermetic_server):
+def test_theme_defaults_to_dark_and_migrates_old_key(hermetic_page, mock_api, hermetic_server):
     page = hermetic_page
     mock_api()
-    # без сохранённого выбора — системная тема
-    page.emulate_media(color_scheme="light")
+    # без сохранённого выбора — тёмная при любой системной теме (решение владельца 2026-10-15)
+    for scheme in ("light", "dark"):
+        page.emulate_media(color_scheme=scheme)
+        page.goto(hermetic_server + "/about")
+        assert page.get_attribute("html", "data-theme") == "dark", scheme
+    # сохранённый выбор сильнее системы
+    page.emulate_media(color_scheme="dark")
+    page.evaluate("localStorage.setItem('bagam-theme', 'light')")
     page.goto(hermetic_server + "/about")
     assert page.get_attribute("html", "data-theme") == "light"
-    page.emulate_media(color_scheme="dark")
-    page.goto(hermetic_server + "/about")
-    assert page.get_attribute("html", "data-theme") == "dark"
     # старый ключ переносится в bagam-theme и удаляется
     page.evaluate("localStorage.clear(); localStorage.setItem('kfp-theme', 'light')")
     page.goto(hermetic_server + "/about")
@@ -646,7 +711,7 @@ def test_home_rent_listing_renders_monthly_report(hermetic_page, mock_api, herme
 
     expect(page.locator(".vbig")).to_have_text("В рынке")
     expect(page.locator(".vsub")).to_contain_text("аренда в обычных пределах")
-    expect(page.locator(".vpct")).to_have_text("+10,3%")
+    expect_pct(page, "+10,3%", "дороже оценки")
     expect(page.locator("#count")).to_contain_text("320 000")
     expect(page.locator("#count small")).to_have_text("₸/мес")
     expect(page.locator("#rFair")).to_contain_text("290 000")
@@ -657,8 +722,10 @@ def test_home_rent_listing_renders_monthly_report(hermetic_page, mock_api, herme
     expect(page.locator(".rmk.fair span")).to_have_text("оценка · 290 тыс")
     expect(page.locator("#rRange")).to_contain_text("250–340 тыс")
     expect(page.locator("#rBand")).to_contain_text("такие квартиры обычно сдают за 250–340 тыс")
-    factors = page.locator("#fxList .fx")
+    factors = page.locator("#fxList .fx:not(.tot)")
     expect(factors).to_have_count(4)
+    expect(page.locator("#fxList .fx.tot .fxn")).to_have_text("Справедливая аренда")
+    expect(page.locator("#fxList .fx.tot .fxv")).to_have_text("290 тыс ₸/мес")
     expect(factors.nth(1).locator(".fxn")).to_have_text("Кондиционер")
     expect(factors.nth(1).locator(".fxv")).to_have_text("+14 тыс")
     expect(factors.nth(2).locator(".fxn")).to_have_text("Можно с животными")

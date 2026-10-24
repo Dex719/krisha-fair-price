@@ -121,7 +121,9 @@ def test_home_keeps_api_flow_theme_and_skeleton():
     # честные тексты ошибок вместо «что-то пошло не так»
     assert "Сервис сейчас не отвечает" in html
     assert "Слишком много запросов подряд" in html
-    assert "Нужна ссылка на объявление вида krisha.kz/a/show/" in html
+    # разбор поля и его тексты — общие для всех форм сайта (bagam.parseLot в site.js)
+    assert "Нужна ссылка на объявление вида krisha.kz/a/show/" in _with_shared("index.html")
+    assert "b.parseLot(" in html and "b.lotError[" in html
 
 
 def test_home_uses_live_sources_and_has_no_frozen_numbers():
