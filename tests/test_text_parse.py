@@ -60,3 +60,12 @@ def test_predict_from_text_happy_path(monkeypatch):
     assert captured["district"] == "Bostandykskiy_r-n" and captured["area"] == 60.0
     assert result["parsed_fields"]["rooms"] == 2
     assert "description" not in result["parsed_fields"]
+
+
+def test_building_type_enum_matches_krisha_values():
+    # в базе krisha — «иной» (190 строк на 24.10), а не «иное»: незнакомая
+    # категория уводила CatBoost в «пропуск» вместо выученного значения
+    enum = text_parse.RESPONSE_SCHEMA["properties"]["building_type"]["enum"]
+    assert "иной" in enum and "иное" not in enum
+    listing = parsed_to_listing({**PARSED, "building_type": "иной"}, TEXT)
+    assert listing["building_type"] == "иной"

@@ -102,9 +102,22 @@ def save_spatial_ref(ref: dict, path: Path | str = SPATIAL_REF_PATH) -> None:
 
 @lru_cache(maxsize=2)  # продажа + аренда
 def load_spatial_ref(path: Path | str | None = None) -> dict | None:
-    """Референс из models/spatial_ref.json; нет файла → None (фичи в фолбэк)."""
+    """Референс из models/spatial_ref.json; нет файла → None (фичи в фолбэк).
+
+    Путь задан явно (референс аренды), а файла нет → ПУСТОЙ референс {} с
+    предупреждением, а не None: None для add_spatial_features значит «возьми
+    референс по умолчанию», и аренда молча считала hex/knn-фичи по ценам
+    ПРОДАЖИ (₸/м² в сотни раз больше) — оценка уезжала без единой ошибки в
+    логах. Пустой референс уводит фичи в честный фолбэк на district_ppsm.
+    """
     p = Path(path or SPATIAL_REF_PATH)
     if not p.exists():
+        if path is not None:
+            logger.warning(
+                "Пространственный референс %s не найден — фичи в фолбэк на district_ppsm "
+                "(референс по умолчанию НЕ подставляю: он от другой модели)", p,
+            )
+            return {}
         return None
     return json.loads(p.read_text(encoding="utf-8"))
 
@@ -187,7 +200,7 @@ def add_spatial_features(
     if ref is None:
         ref = load_spatial_ref()
     fallback = df["district_ppsm"] if "district_ppsm" in df else pd.Series(np.nan, index=df.index)
-    if ref is None:
+    if not ref:  # None (нет файла по умолчанию) или {} (явный путь без файла)
         for col in SPATIAL_FEATURES:
             df[col] = fallback if col.endswith("_ppsm") else 0.0
         return df

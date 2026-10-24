@@ -150,3 +150,29 @@ def test_building_groups():
     g = building_groups(df)
     assert g.iloc[0] == g.iloc[1]
     assert g.iloc[0] != g.iloc[2]
+
+
+def test_explicit_missing_ref_is_empty_not_default(tmp_path, monkeypatch):
+    # Аудит 24.10: аренда без models/rent/spatial_ref.json молча брала
+    # продажный референс (load_spatial_ref → None → add_spatial_features
+    # подставлял референс по умолчанию). Явный путь без файла → пустой {}.
+    import json
+
+    from krisha import spatial
+
+    sale_ref = tmp_path / "sale_ref.json"
+    sale_ref.write_text(json.dumps({
+        "lat": [43.24] * 5, "lon": [76.9] * 5, "ppsm": [1_000_000.0] * 5,
+        "hex7": {}, "hex8": {},
+    }), encoding="utf-8")
+    monkeypatch.setattr(spatial, "SPATIAL_REF_PATH", sale_ref)
+    spatial.load_spatial_ref.cache_clear()
+    try:
+        assert spatial.load_spatial_ref(tmp_path / "rent" / "spatial_ref.json") == {}
+        assert spatial.load_spatial_ref(None)["ppsm"][0] == 1_000_000.0  # по умолчанию — как было
+        df = pd.DataFrame({"lat": [43.24], "lon": [76.9], "district_ppsm": [5_000.0]})
+        out = spatial.add_spatial_features(df, ref=spatial.load_spatial_ref(tmp_path / "missing.json"))
+        assert out["knn_ppsm"].iloc[0] == 5_000.0  # фолбэк district_ppsm, не продажные 1 млн
+        assert out["hex7_ppsm"].iloc[0] == 5_000.0 and out["knn_n"].iloc[0] == 0
+    finally:
+        spatial.load_spatial_ref.cache_clear()
