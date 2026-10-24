@@ -218,12 +218,18 @@ def test_model_not_worse_than_old_within_gate_tolerance(meta):
         pytest.skip("первый трейн: old_model в мете нет")
     if GATE_SAMPLES_PATH.exists():
         samples = json.loads(GATE_SAMPLES_PATH.read_text(encoding="utf-8"))
+        clusters = samples.get("clusters")
         lower, _upper, _point = model_gate.bootstrap_ape_diff(
-            samples["ape_new"], samples["ape_old"]
+            samples["ape_new"], samples["ape_old"], clusters=clusters
         )
-        assert lower <= model_gate.BOOTSTRAP_TOLERANCE, (
+        # тот же допуск, что выбрал бы гейт: кластерный или (старые samples) построчный
+        tolerance = (
+            model_gate.BOOTSTRAP_TOLERANCE if clusters is not None
+            else model_gate.BOOTSTRAP_TOLERANCE_ROWWISE
+        )
+        assert lower <= tolerance, (
             f"нижняя граница CI разницы APE (новая-старая) {lower:+.4f} "
-            f"превышает допуск гейта {model_gate.BOOTSTRAP_TOLERANCE:+.4f}"
+            f"превышает допуск гейта {tolerance:+.4f}"
         )
     else:
         assert (
@@ -279,8 +285,10 @@ def test_metrics_history_last_entry_matches_meta(meta):
 
 
 def test_gate_samples_contract_and_consistency_with_meta(meta):
-    """ape_new/ape_old — парные выборки размера n_test, значения конечны и >= 0,
-    а их средние обязаны сходиться с mape в мете: это буквально та же выборка."""
+    """ape_new/ape_old (+ clusters — здания строк) — парные выборки строк, на
+    которых гейт сравнивал модели: весь test или, если старая модель видела
+    часть теста, old_model_rows «невиданных» строк (model_vs_old в мете).
+    Значения конечны и >= 0, средние сходятся с метой: это та же выборка."""
     if not GATE_SAMPLES_PATH.exists():
         pytest.skip("model_gate_samples.json отсутствует")
     metrics = meta["metrics"]
@@ -288,13 +296,17 @@ def test_gate_samples_contract_and_consistency_with_meta(meta):
         pytest.skip("первый трейн: gate samples не пишутся без старой модели")
 
     samples = json.loads(GATE_SAMPLES_PATH.read_text(encoding="utf-8"))
-    assert set(samples.keys()) == {"ape_new", "ape_old"}
+    assert {"ape_new", "ape_old"} <= set(samples.keys()) <= {"ape_new", "ape_old", "clusters"}
     ape_new = np.asarray(samples["ape_new"], dtype=float)
     ape_old = np.asarray(samples["ape_old"], dtype=float)
-    assert len(ape_new) == len(ape_old) == metrics["n_test"]
+    n_rows = metrics.get("old_model_rows") or metrics["n_test"]
+    assert len(ape_new) == len(ape_old) == n_rows
+    if "clusters" in samples:
+        assert len(samples["clusters"]) == n_rows
     assert np.all(np.isfinite(ape_new)) and np.all(ape_new >= 0)
     assert np.all(np.isfinite(ape_old)) and np.all(ape_old >= 0)
-    assert float(ape_new.mean()) == pytest.approx(metrics["model"]["mape"], rel=1e-6)
+    new_metrics = metrics.get("model_vs_old") or metrics["model"]
+    assert float(ape_new.mean()) == pytest.approx(new_metrics["mape"], rel=1e-6)
     assert float(ape_old.mean()) == pytest.approx(metrics["old_model"]["mape"], rel=1e-6)
 
 

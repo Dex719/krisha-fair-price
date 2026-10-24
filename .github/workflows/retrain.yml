@@ -54,6 +54,9 @@ jobs:
         run: |
           cp models/model_meta.json /tmp/old_meta.json
           cp models/model.cbm /tmp/old_model.cbm || true
+          # train.py ищет старую квантильную рядом со старой точечной (<имя>_quantile.cbm),
+          # чтобы гейт сравнивал ширину интервала на том же тесте
+          cp models/model_quantile.cbm /tmp/old_model_quantile.cbm || true
 
       - name: Train
         run: python scripts/train.py --compare-old /tmp/old_model.cbm --compare-old-meta /tmp/old_meta.json
@@ -181,6 +184,7 @@ jobs:
           fi
           if [ -s models/rent/model.cbm ]; then
             cp models/rent/model.cbm /tmp/old_rent_model.cbm
+            cp models/rent/model_quantile.cbm /tmp/old_rent_model_quantile.cbm || true
             cp models/rent/model_meta.json /tmp/old_rent_meta.json
             echo "has_old=1" >> "$GITHUB_OUTPUT"
           else

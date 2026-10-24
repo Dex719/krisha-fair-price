@@ -70,7 +70,9 @@ RESPONSE_SCHEMA = {
         "building_type": {
             "type": "STRING",
             "nullable": True,
-            "enum": ["кирпичный", "панельный", "монолитный", "иное"],
+            # «иной» — ровно как в базе krisha (building_type): модель училась
+            # на этой категории, «иное» было бы для неё незнакомым значением
+            "enum": ["кирпичный", "панельный", "монолитный", "иной"],
         },
         "complex_name": {"type": "STRING", "nullable": True},
         "price": {"type": "NUMBER", "nullable": True},

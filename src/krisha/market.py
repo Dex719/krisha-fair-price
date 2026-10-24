@@ -17,7 +17,7 @@ from krisha.db import get_price_history, use_conn
 MIN_DELISTED_SAMPLE = 15  # меньше снятых аналогов → оценку не показываем
 MIN_BAND_SAMPLE = 20      # ценовые полосы — только на приличной выборке
 MIN_CITY_SAMPLE = 30      # фолбэк на весь город требует больше данных
-NEAR_BAND_PCT = 5.0       # ±5% от медианного ₸/м² сегмента = «в рынке»
+NEAR_BAND_PCT = 5.0       # ±5% от оценки модели (diff_pct) = «в рынке»
 
 # Снятые объявления для оценки срока продажи. Честные фильтры:
 # - is_active = 0 и delisted_at заполнен — только реально помеченные снятыми;
@@ -36,9 +36,19 @@ NEAR_BAND_PCT = 5.0       # ±5% от медианного ₸/м² сегмен
 # падает с 6.0 до 3.1 дня. Истина лежит между двумя оценками (лот был жив в
 # last_seen и мёртв в delisted_at), но нижняя граница ошибается на интервал
 # наблюдения (~1 день), а верхняя — на весь лаг детекции (~4 дня).
+_DELISTED_SELECT = "SELECT julianday(last_seen) - julianday(first_seen) AS days, price, area"
+# Справедливая цена снятого лота — из последнего предикта в журнале
+# predictions (алерты/канал/пользователи). Полосу «похожие по цене» снятый
+# лот получает по ТОЙ ЖЕ шкале, что и оцениваемый: отклонение цены от оценки
+# модели (diff_pct). Раньше полосы выборки считались по ₸/м² от медианы
+# сегмента, а полоса лота — по diff_pct; две шкалы совпадали лишь в 47%
+# случаев, и бот показывал срок для другой группы.
+_FAIR_PRICE_COL = (
+    ", (SELECT p.fair_price FROM predictions p WHERE p.listing_id = listings.id "
+    "AND p.fair_price > 0 ORDER BY p.predicted_at DESC LIMIT 1) AS fair_price"
+)
 _DELISTED_SQL = (
-    "SELECT julianday(last_seen) - julianday(first_seen) AS days, price, area "
-    "FROM listings "
+    " FROM listings "
     "WHERE is_active = 0 AND delisted_at IS NOT NULL AND first_seen IS NOT NULL "
     "AND last_seen IS NOT NULL "
     "AND julianday(last_seen) - julianday(first_seen) >= 1 "
@@ -109,19 +119,26 @@ def days_on_market(
 def _delisted_rows(
     conn: sqlite3.Connection, district: str | None = None, rooms: int | None = None
 ) -> list[sqlite3.Row]:
-    """Снятые объявления сегмента (или всего города) с длительностью и ₸/м²."""
-    sql, params = _DELISTED_SQL, []
+    """Снятые объявления сегмента (или всего города) с длительностью, ценой и
+    справедливой ценой из журнала предиктов (fair_price; None — не оценивался).
+
+    Нет таблицы predictions (старая/тестовая база) — те же строки без
+    fair_price: срок по сегменту показывается, полоса — нет.
+    """
+    where, params = _DELISTED_SQL, []
     if district is not None and rooms is not None:
-        sql += " AND district = ? AND rooms = ?"
+        where += " AND district = ? AND rooms = ?"
         params = [district, int(rooms)]
-    try:
-        return conn.execute(sql, params).fetchall()
-    except sqlite3.OperationalError:
-        return []
+    for select in (_DELISTED_SELECT + _FAIR_PRICE_COL, _DELISTED_SELECT + ", NULL AS fair_price"):
+        try:
+            return conn.execute(select + where, params).fetchall()
+        except sqlite3.OperationalError:
+            continue
+    return []
 
 
 def _price_band(deviation_pct: float) -> str:
-    """Полоса цены по отклонению от медианы: below / near / above."""
+    """Полоса цены по отклонению от справедливой: below / near / above."""
     if deviation_pct <= -NEAR_BAND_PCT:
         return "below"
     if deviation_pct < NEAR_BAND_PCT:
@@ -130,15 +147,17 @@ def _price_band(deviation_pct: float) -> str:
 
 
 def _band_stats(rows: list[sqlite3.Row], band: str) -> tuple[int, int] | None:
-    """Медиана дней в ценовой полосе сегмента (по отклонению ₸/м² от медианы)."""
-    priced = [r for r in rows if r["price"] and r["area"]]
-    if len(priced) < MIN_BAND_SAMPLE:
-        return None
-    median_ppsm = statistics.median(r["price"] / r["area"] for r in priced)
+    """Медиана дней в ценовой полосе сегмента — по отклонению цены снятого
+    лота от оценки модели (та же шкала diff_pct, что у оцениваемого лота).
+
+    Снятых с оценкой в полосе меньше MIN_BAND_SAMPLE → None: полосу не
+    показываем вовсе, а не подменяем другой шкалой.
+    """
     days = [
         r["days"]
-        for r in priced
-        if _price_band((r["price"] / r["area"] / median_ppsm - 1) * 100) == band
+        for r in rows
+        if r["price"] and r["fair_price"]
+        and _price_band((r["price"] - r["fair_price"]) / r["fair_price"] * 100) == band
     ]
     if len(days) < MIN_BAND_SAMPLE:
         return None

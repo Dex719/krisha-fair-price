@@ -285,15 +285,27 @@ def test_liquidity_city_fallback(tmp_path):
     assert est["band"] is None  # ценовые полосы только внутри сегмента
 
 
+def _add_prediction(db, listing_id: int, fair_price: float, at: str = "2026-07-01 00:00:00") -> None:
+    with get_conn(db) as conn:
+        conn.execute(
+            "INSERT INTO predictions (listing_id, predicted_at, fair_price) VALUES (?, ?, ?)",
+            (listing_id, at, fair_price),
+        )
+
+
 def test_liquidity_price_bands(tmp_path):
     db = tmp_path / "t.db"
     init_db(db)
     _anchor(db)
-    # 60 снятых: дешёвые уходят за ~5 дн., в рынке ~10, дорогие ~30
+    # 60 снятых: дешёвые уходят за ~5 дн., в рынке ~10, дорогие ~30.
+    # Полоса снятого лота — по отклонению его цены от оценки модели (журнал
+    # predictions), как и у оцениваемого лота.
     for i in range(20):
-        _add_delisted(db, 4000 + i, price=40_000_000, days=5.0)   # ₸/м² −20%
-        _add_delisted(db, 4100 + i, price=50_000_000, days=10.0)  # медиана
-        _add_delisted(db, 4200 + i, price=60_000_000, days=30.0)  # ₸/м² +20%
+        _add_delisted(db, 4000 + i, price=40_000_000, days=5.0)   # −20% к оценке
+        _add_delisted(db, 4100 + i, price=50_000_000, days=10.0)  # в оценке
+        _add_delisted(db, 4200 + i, price=60_000_000, days=30.0)  # +20% к оценке
+        for lid in (4000 + i, 4100 + i, 4200 + i):
+            _add_prediction(db, lid, 50_000_000)
     over = liquidity_estimate(DISTRICT, 2, diff_pct=12.0, db_path=db)
     assert over["band"] == "above"
     assert over["band_median_days"] == 30 and over["band_sample"] == 20
@@ -304,3 +316,58 @@ def test_liquidity_price_bands(tmp_path):
     assert fair["median_days"] == 10 and fair["sample"] == 60
     # без diff_pct полосы не считаем
     assert liquidity_estimate(DISTRICT, 2, db_path=db)["band"] is None
+
+
+def test_liquidity_band_uses_model_scale_not_segment_ppsm(tmp_path):
+    # Аудит 24.10: дорогие по ₸/м² квартиры могут стоять ровно по оценке
+    # модели (хороший дом). Полоса — по отклонению от оценки, а не от
+    # медианы ₸/м² сегмента: иначе лот «в рынке» получал срок дорогих.
+    db = tmp_path / "t.db"
+    init_db(db)
+    _anchor(db)
+    for i in range(20):
+        _add_delisted(db, 5000 + i, price=40_000_000, days=5.0)
+        _add_delisted(db, 5100 + i, price=60_000_000, days=30.0)
+        _add_prediction(db, 5000 + i, 40_000_000)  # дёшево по ₸/м², но по оценке
+        _add_prediction(db, 5100 + i, 60_000_000)  # дорого по ₸/м², но по оценке
+    est = liquidity_estimate(DISTRICT, 2, diff_pct=0.0, db_path=db)
+    assert est["band"] == "near" and est["band_sample"] == 40
+    assert est["band_median_days"] == round((5 + 30) / 2)
+    assert liquidity_estimate(DISTRICT, 2, diff_pct=15.0, db_path=db)["band"] is None
+
+
+def test_liquidity_band_uses_latest_prediction(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db)
+    _anchor(db)
+    for i in range(20):
+        _add_delisted(db, 6000 + i, price=60_000_000, days=7.0)
+        _add_prediction(db, 6000 + i, 40_000_000, at="2026-06-01 00:00:00")  # устаревшая
+        _add_prediction(db, 6000 + i, 59_000_000, at="2026-06-15 00:00:00")
+    est = liquidity_estimate(DISTRICT, 2, diff_pct=1.0, db_path=db)
+    assert est["band"] == "near" and est["band_median_days"] == 7
+
+
+def test_liquidity_band_none_without_predictions(tmp_path):
+    # Снятые без оценки модели — полосы нет (вернуть срок «по сегменту» честнее,
+    # чем подменять шкалу), а сам срок по сегменту остаётся.
+    db = tmp_path / "t.db"
+    init_db(db)
+    _anchor(db)
+    for i in range(30):
+        _add_delisted(db, 7000 + i, price=40_000_000 + i * 1_000_000, days=float(5 + i))
+    est = liquidity_estimate(DISTRICT, 2, diff_pct=0.0, db_path=db)
+    assert est["sample"] == 30 and est["median_days"] is not None
+    assert est["band"] is None and est["band_median_days"] is None and est["band_sample"] is None
+
+
+def test_liquidity_survives_db_without_predictions_table(tmp_path):
+    db = tmp_path / "t.db"
+    init_db(db)
+    _anchor(db)
+    for i in range(20):
+        _add_delisted(db, 8000 + i, days=9.0)
+    with get_conn(db) as conn:
+        conn.execute("DROP TABLE predictions")
+    est = liquidity_estimate(DISTRICT, 2, diff_pct=0.0, db_path=db)
+    assert est["median_days"] == 9 and est["band"] is None

@@ -77,6 +77,7 @@ from krisha.targets import (
 from krisha.train import (
     POINT_ITERATIONS,
     QUANTILE_ITERATIONS,
+    _filter_stale_and_out_of_area,
     baseline_predict,
     building_groups,
     dedup_relistings,
@@ -143,7 +144,8 @@ def load_raw_with_history(db_path: Path | str = SALE.db_path) -> tuple[pd.DataFr
 
     В отличие от train.load_dataset(): НЕ фильтруем по is_active/delisted_at
     относительно "сейчас" (это NOW-относительный фильтр, для прошлых фолдов
-    неверный — лот, снятый вчера, был живым и валидным полгода назад) и НЕ
+    неверный — лот, снятый вчера, был живым и валидным полгода назад; тот же
+    фильтр применяется в build_fold_data относительно даты фолда) и НЕ
     трогаем колонку price здесь — она восстанавливается по price_history для
     каждого фолда отдельно (см. asof_prices).
     """
@@ -218,17 +220,30 @@ def build_fold_data(
     test_raw = _frame_for_ids(
         listings, listings.loc[ids_test, "id"], asof_prices(price_history, fold.test_end)
     )
+    # Тот же отсев, что train.load_dataset в проде: чужие города (bbox Алматы)
+    # и давно снятые лоты — но «давно» считается от даты фолда, а не от
+    # сегодня: лот, снятый после train_end, на дату фолда был живым.
+    train_raw = _filter_stale_and_out_of_area(train_raw, now=fold.train_end)
+    test_raw = _filter_stale_and_out_of_area(test_raw, now=fold.test_end)
     train_raw = prepare_frame(train_raw, spec) if len(train_raw) else train_raw
     test_raw = prepare_frame(test_raw, spec) if len(test_raw) else test_raw
 
     # Дедуп перезалитых — как в проде dedup_relistings(df) до сплита, но без
     # last_seen/scraped_at: они отражают состояние БД НА СЕЙЧАС, не на дату
     # фолда, и порядок «свежести» внутри группы подглядывал бы в будущее.
-    train_raw = train_raw.drop(columns=[c for c in ("last_seen", "scraped_at") if c in train_raw])
+    # Прод дедупит ВСЮ выборку до сплита, поэтому и test тоже: перевыставление
+    # внутри тестовой недели иначе считалось дважды и тянуло метрику к себе.
+    drop_now = ("last_seen", "scraped_at")
+    train_raw = train_raw.drop(columns=[c for c in drop_now if c in train_raw])
+    test_raw = test_raw.drop(columns=[c for c in drop_now if c in test_raw])
     n_before_dedup = len(train_raw)
     if n_before_dedup:
         train_raw = dedup_relistings(train_raw)
     n_deduped = n_before_dedup - len(train_raw)
+    n_test_before = len(test_raw)
+    if n_test_before:
+        test_raw = dedup_relistings(test_raw)
+    n_deduped += n_test_before - len(test_raw)
 
     n_purged = 0
     if len(train_raw) and len(test_raw):
