@@ -262,22 +262,9 @@ bagam.ready(function(b){
 (function(){
   const API = '/api/predict';
   const RX = /krisha\.kz\/a\/show\/(\d+)/i;
-  /* поле: пусто, одна ссылка, голый номер или несколько разных ссылок — свой ответ на каждый случай
-     (тот же разбор — bagam.parseLot в site.js для форм на других страницах) */
-  function parseLot(v){
-    v = String(v || '').trim();
-    if (!v) return {err: 'empty'};
-    const ids = [];
-    for (const m of v.matchAll(/krisha\.kz\/a\/show\/(\d+)/ig)) if (!ids.includes(m[1])) ids.push(m[1]);
-    if (!ids.length && /^\d{6,12}$/.test(v)) ids.push(v);
-    if (ids.length > 1) return {err: 'many'};
-    return ids.length ? {id: ids[0]} : {err: 'bad'};
-  }
-  const LOT_ERR = {
-    empty: 'Вставьте ссылку на объявление с krisha.kz',
-    many: 'В поле несколько ссылок — оставьте одну',
-    bad: 'Нужна ссылка на объявление вида krisha.kz/a/show/1012607661 или его номер'
-  };
+  /* разбор поля (пусто, одна ссылка, голый номер, несколько ссылок) и тексты ошибок — одни на весь
+     сайт: bagam.parseLot / bagam.lotError в site.js. Он грузится с defer, поэтому отправка формы
+     ждёт его через bagam.ready (до загрузки — очередь, после — сразу) */
   const submitForm = f => f.requestSubmit ? f.requestSubmit() : f.dispatchEvent(new Event('submit', {cancelable: true}));
   /* цели счётчиков посещаемости (bagam.track из site.js); без счётчиков — ничего не делает */
   const track = (name, params) => { if (window.bagam && bagam.track) bagam.track(name, params); };
@@ -423,8 +410,11 @@ bagam.ready(function(b){
   let health = null;
   function staleText(){
     if (!health || health.freshness !== 'stale') return '';
+    /* «устарели» наступает после 30 ч: до двух суток считаем часами («33 ч назад»), а не «давно»
+       или округлённые «2 дня» при 36 ч */
     const h = health.data_age_hours, n = h != null ? Math.round(h / 24) : 0;
-    const ago = n >= 2 ? n + ' ' + (window.bagam && bagam.plural ? bagam.plural(n, ['день', 'дня', 'дней']) : 'дн.') + ' назад' : 'давно';
+    const ago = h == null ? 'давно' : h < 48 ? Math.round(h) + ' ч назад'
+      : n + ' ' + (window.bagam && bagam.plural ? bagam.plural(n, ['день', 'дня', 'дней']) : 'дн.') + ' назад';
     return 'Объявления обновлялись ' + ago + ' — оценка может отставать от сегодняшних цен.';
   }
   bagam.ready(b => b.live.then(res => {
@@ -773,8 +763,10 @@ bagam.ready(function(b){
   const ERR_TIMEOUT = ['Оценка не пришла за 45 секунд', 'Сервер перегружен или завис. Попробуйте ещё раз через минуту — обычно ответ приходит за несколько секунд.'];
   const ERR_NET = ['Нет связи с сервисом', 'Проверьте интернет и попробуйте ещё раз.'];
   const ERR_DOWN = ['Сервис сейчас не отвечает. Попробуйте ещё раз через минуту', 'Похоже, сервер перезапускается — обычно это занимает минуту.'];
-  /* 502 — объявление открылось, но разобрать его не вышло: повтор не поможет */
-  const ERR_PARSE = ['Не получилось разобрать это объявление', 'Возможно, это не квартира (дом, участок, коммерция) или страница krisha устроена необычно. Попробуйте другое объявление.', 'input'];
+  /* 502 отдаёт и Cloudflare, пока Space перезапускается, и сам сервис на внутренней ошибке
+     (в том числе когда страницу объявления не удалось разобрать). По коду их не различить —
+     поэтому без приговора объявлению и с кнопкой повтора */
+  const ERR_502 = ['Сервис сейчас не отвечает. Попробуйте ещё раз через минуту', 'Сервер мог перезапускаться — обычно это занимает минуту. Если ошибка повторяется на этом объявлении, возможно, его страницу не удаётся разобрать — попробуйте другое.'];
   /* сервер сам говорит, через сколько секунд повторять (Retry-After): кнопка ждёт столько же */
   const retryAfter = res => { const n = parseInt(res.headers.get('Retry-After') || '', 10); return n > 0 ? Math.min(n, 90) : 0; };
   async function httpError(res){
@@ -795,7 +787,7 @@ bagam.ready(function(b){
     if (res.status === 429) return ['Слишком много запросов подряд. Попробуйте через минуту', 'Частые проверки ограничены, чтобы сервиса хватало всем.', '', retryAfter(res) || 60];
     if (res.status === 404) return [await detail() || 'Объявление не найдено — возможно, его уже сняли с продажи', 'Проверьте ссылку или возьмите другое объявление.', 'input'];
     if (res.status === 503) return [await detail() || 'Сервис перегружен. Попробуйте через полминуты', 'Обычно это ненадолго — кнопка повтора станет доступна, когда можно пробовать снова.', '', retryAfter(res)];
-    if (res.status === 502) return ERR_PARSE;
+    if (res.status === 502) return ERR_502;
     return ERR_DOWN;
   }
 
@@ -852,14 +844,49 @@ bagam.ready(function(b){
     nudgeTimer = setTimeout(() => { sp.textContent = keep; }, 2200);
   }
 
-  let busyNow = false, lastId = null, lastForm = null, fromDemo = false, shownId = null;
+  /* gen — поколение запроса: растёт при каждой новой проверке, клике «пример» и переходе по истории.
+     Ответ, пришедший после смены поколения, уже никому не нужен: его не рисуем и адрес не трогаем */
+  let busyNow = false, lastId = null, lastForm = null, shownId = null;
+  let gen = 0, curCtl = null;
   let demoMisses = 0, retryDemo = null, lastDemo = null;
-  async function check(id, form){
+  /* последние разборы по номеру: «назад / вперёд» показывает их из памяти, а не тратит
+     лимит запросов на повторный расчёт */
+  const CACHE_MAX = 20, cache = new Map();
+  function remember(id, data){
+    cache.delete(id); cache.set(id, data);
+    if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
+  }
+  /* что было на карточке до запроса: тихий повтор примера, который не удался, возвращает как было */
+  const snap = () => ({body: body.hidden, tag: tag.hidden, badge: demoBadge.hidden, demo: sheet.classList.contains('is-demo'),
+    head: head.hidden, done: done.hidden, src: src.hidden, err: errBox.hidden});
+  function restore(s){
+    body.hidden = s.body; tag.hidden = s.tag; demoBadge.hidden = s.badge; sheet.classList.toggle('is-demo', s.demo);
+    head.hidden = s.head; done.hidden = s.done; src.hidden = s.src; errBox.hidden = s.err;
+  }
+  function idle(){ busyNow = false; curCtl = null; setBusy(false); setFormsBusy(false); }
+  /* идущий расчёт больше не нужен (человек ушёл по истории): обрываем его, ответ не нарисуется */
+  function cancel(){
+    if (!busyNow) return;
+    gen++;
+    if (curCtl) curCtl.abort();
+    retryDemo = null;
+    idle();
+    status.textContent = '';
+  }
+  /* готовый разбор на карточку — и свежий ответ, и из памяти */
+  function show(id, data){
+    render(data);
+    // Те же слова, что в карточке: подселение и «подозрительно дёшево» — без процента
+    status.textContent = 'Готово: ' + $('.vbig').textContent + ($('.vpct').hidden ? '' : ', ' + $('.vpct').dataset.say);
+    shownId = id;
+  }
+  /* source: 'link' — своя ссылка (форма, история, повтор), 'demo' — кнопка «пример» */
+  async function check(id, form, source){
     if (busyNow){ nudge(form); return; }
+    source = source || 'link';
+    const my = ++gen;
     busyNow = true; lastId = id; lastForm = form;
-    /* пример с кнопки «Показать на примере» — отдельной меткой, чтобы не путать со своими ссылками */
-    const source = fromDemo ? 'demo' : 'link';
-    fromDemo = false;
+    const before = snap();
     const inp = form.querySelector('input');
     setFormsBusy(true, form);
     errBox.hidden = true;
@@ -872,34 +899,41 @@ bagam.ready(function(b){
     status.textContent = 'Считаем оценку объявления';
     bringIntoView(form);
     const ctl = 'AbortController' in window ? new AbortController() : null;
+    curCtl = ctl;
     let late = false;
     const timer = ctl ? setTimeout(() => { late = true; ctl.abort(); }, LIMIT) : 0;
     try {
       const res = await fetch(API, {method: 'POST', headers: {'content-type': 'application/json'},
         body: JSON.stringify({url: 'https://krisha.kz/a/show/' + id}), signal: ctl ? ctl.signal : undefined});
+      if (my !== gen) return;
       if (!res.ok) throw {ui: await httpError(res), status: res.status};
       const data = await res.json();
-      render(data);
+      if (my !== gen) return;
+      remember(id, data);
+      show(id, data);
       track('check_ok', {deal: RENT ? 'rent' : 'sale', verdict: String(data.verdict || ''), source});
-      // Те же слова, что в карточке: подселение и «подозрительно дёшево» — без процента
-      status.textContent = 'Готово: ' + $('.vbig').textContent + ($('.vpct').hidden ? '' : ', ' + $('.vpct').dataset.say);
-      /* адрес с номером: результат можно переслать, он переживает перезагрузку
-         (хеш через replaceState не вызывает повторной проверки — слушателя смены хеша нет) */
-      /* новая проверка — новая запись истории: «назад» возвращает к прошлому разбору или к пустой карточке */
+      /* адрес с номером: результат можно переслать, он переживает перезагрузку.
+         Новая проверка — новая запись истории: «назад» возвращает к прошлому разбору или к пустой карточке */
       try {
         const to = location.pathname + location.search + '#check=' + id;
         if (location.hash === '#check=' + id) history.replaceState(null, '', to); else history.pushState(null, '', to);
       } catch (e2){}
-      shownId = id;
       setBusy(false);
       bringIntoView(form);
       headT.focus({preventScroll: true});
     } catch (ex){
+      if (my !== gen) return;
       const e = late ? ERR_TIMEOUT : ex && ex.ui ? ex.ui : ex instanceof TypeError ? ERR_NET
         : ['Не удалось получить оценку. Попробуйте ещё раз', 'Если повторится — попробуйте через пару минут.'];
       track('check_error', {kind: late ? 'timeout' : e[2] === 'input' ? 'input' : e === ERR_NET ? 'network' : 'server', source});
-      /* пример из базы мог уже уйти с krisha (404): молча берём другой, а не показываем ошибку */
-      if (source === 'demo' && ex && ex.status === 404 && demoMisses < 2){ demoMisses++; retryDemo = lastDemo; return; }
+      /* пример из базы мог уже уйти с krisha (404): молча берём другой, а не показываем ошибку.
+         Пока другой подбирается, карточка — какой была до клика (с пометкой «пример»), статус пуст */
+      if (source === 'demo' && ex && ex.status === 404 && demoMisses < 2){
+        demoMisses++; retryDemo = lastDemo;
+        restore(before);
+        status.textContent = '';
+        return;
+      }
       showError(e);
       /* причину озвучивает сама карточка (role=alert) — второй раз её не повторяем */
       status.textContent = '';
@@ -907,18 +941,30 @@ bagam.ready(function(b){
       else errBox.querySelector('[data-retry]').focus({preventScroll: true, focusVisible: false});
     } finally {
       clearTimeout(timer);
-      busyNow = false;
-      setBusy(false);
-      setFormsBusy(false);
-      if (retryDemo){ const d = retryDemo; retryDemo = null; d(); } else if (source === 'demo') demoMisses = 0;
+      /* сменилось поколение — состояние форм уже принадлежит новому запросу */
+      if (my === gen){
+        idle();
+        if (retryDemo){ const d = retryDemo; retryDemo = null; d(); } else if (source === 'demo') demoMisses = 0;
+      }
     }
   }
-  /* «назад» / «вперёд»: адрес и карточка не расходятся. #check=<id> — показываем этот разбор,
-     пустой адрес после своей проверки — убираем её и возвращаем приглашение вставить ссылку */
+  /* «назад» / «вперёд»: адрес и карточка не расходятся. #check=<id> — показываем этот разбор
+     (из памяти, если он там есть), пустой адрес после своей проверки — убираем её и возвращаем
+     приглашение вставить ссылку. Расчёт, который шёл в этот момент, обрываем: он про другой адрес */
   addEventListener('popstate', () => {
     const m = location.hash.match(/check=(\d+)/);
-    if (m){ if (m[1] !== shownId && !busyNow){ const f = forms[0]; f.querySelector('input').value = 'https://krisha.kz/a/show/' + m[1]; check(m[1], f); } return; }
+    if (m){
+      const id = m[1];
+      if (id === shownId && !busyNow) return;
+      cancel();
+      const f = forms[0];
+      f.querySelector('input').value = 'https://krisha.kz/a/show/' + id;
+      const hit = cache.get(id);
+      if (hit) show(id, hit); else check(id, f);
+      return;
+    }
     if (location.hash || !shownId) return;
+    cancel();
     shownId = null;
     body.hidden = true; head.hidden = true; done.hidden = true; errBox.hidden = true; src.hidden = true;
     tag.querySelector('b').textContent = 'Разбор';
@@ -958,42 +1004,48 @@ bagam.ready(function(b){
       /* строка примеров видна сразу (появляясь после ответа API, она сдвигала разбор вниз — CLS);
          пока пример подбирается, кнопка ждёт его с «Ищем пример…» */
       let next = pick();
-      {
-        const run = async () => {
-          if (busyNow){ nudge(form); return; }
-          if (demo.disabled) return;
-          /* пример ещё подбирается — показываем ожидание, а не молчим */
-          const t0 = demo.textContent;
-          demo.disabled = true; demo.textContent = 'Ищем пример…'; demo.setAttribute('aria-busy', 'true');
-          const url = await next;
-          next = pick();
-          demo.disabled = false; demo.textContent = t0; demo.removeAttribute('aria-busy');
-          if (!url){ hint('Не получилось подобрать пример. Вставьте свою ссылку'); return; }
-          inp.value = url;
-          clear();
-          track('demo', {deal: sel === '[data-demo-rent]' ? 'rent' : 'sale'});
-          fromDemo = true;
-          lastDemo = run;
-          submitForm(form);
-        };
-        demo.addEventListener('click', run);
-      }
+      const run = async () => {
+        if (busyNow){ nudge(form); return; }
+        if (demo.disabled) return;
+        const my = ++gen;
+        /* пример ещё подбирается — показываем ожидание, а не молчим */
+        const t0 = demo.textContent;
+        demo.disabled = true; demo.textContent = 'Ищем пример…'; demo.setAttribute('aria-busy', 'true');
+        const url = await next;
+        next = pick();
+        demo.disabled = false; demo.textContent = t0; demo.removeAttribute('aria-busy');
+        /* пока пример подбирался, человек отправил свою ссылку или ушёл по истории:
+           пример не затирает ни поле, ни разбор */
+        if (my !== gen || busyNow) return;
+        if (!url){ hint('Не получилось подобрать пример. Вставьте свою ссылку'); return; }
+        inp.value = url;
+        clear();
+        track('demo', {deal: sel === '[data-demo-rent]' ? 'rent' : 'sale'});
+        lastDemo = run;
+        check(url.match(RX)[1], form, 'demo');
+      };
+      demo.addEventListener('click', run);
     });
     form.addEventListener('submit', e => {
       e.preventDefault();
-      const lot = parseLot(inp.value);
-      if (!lot.id){
-        track('check_bad_link', {kind: lot.err});
-        fromDemo = false;
-        inp.setAttribute('aria-invalid', 'true');
-        inp.setAttribute('aria-describedby', err.id);
-        err.textContent = LOT_ERR[lot.err];
-        err.classList.remove('hint'); err.classList.add('on');
-        inp.focus();
-        return;
-      }
-      clear();
-      check(lot.id, form);
+      /* своя ссылка важнее примера, который ещё подбирается (во время расчёта поколение не трогаем:
+         повторное нажатие получит «Уже считаем») */
+      if (!busyNow) gen++;
+      const v = inp.value;
+      bagam.ready(b => {
+        const lot = b.parseLot(v);
+        if (!lot.id){
+          track('check_bad_link', {kind: lot.err});
+          inp.setAttribute('aria-invalid', 'true');
+          inp.setAttribute('aria-describedby', err.id);
+          err.textContent = b.lotError[lot.err];
+          err.classList.remove('hint'); err.classList.add('on');
+          inp.focus();
+          return;
+        }
+        clear();
+        check(lot.id, form);
+      });
     });
   });
   // приход с подстраницы: /#check=<id> — сразу считаем
