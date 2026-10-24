@@ -272,6 +272,17 @@ CREATE TABLE IF NOT EXISTS sweep_state (
     value       TEXT NOT NULL,
     updated_at  TEXT DEFAULT (datetime('now'))
 );
+
+-- Аудит 03.10 / 24.10: неудачные попытки докачки деталей по лоту. Курсор
+-- шарда не перепрыгивает упавший лот (sweep() перестаёт двигать отметку
+-- после первого сбоя в последовательной части окна), а чтобы «ядовитый» лот
+-- (вечный 404/битый парс) не застопорил курсор навсегда, после
+-- DETAIL_POISON_ATTEMPTS неудач его разрешено пропустить. Успех стирает строку.
+CREATE TABLE IF NOT EXISTS detail_fetch_failures (
+    listing_id      INTEGER PRIMARY KEY,
+    attempts        INTEGER NOT NULL DEFAULT 0,
+    last_failed_at  TEXT DEFAULT (datetime('now'))
+);
 """
 
 LISTING_COLUMNS = [
@@ -308,11 +319,16 @@ INSERT INTO listings (
 )
 ON CONFLICT(id) DO UPDATE SET
     {_UPSERT_SET},
-    last_seen = datetime('now'),
-    is_active = 1,
-    delisted_at = NULL,
     scraped_at = datetime('now');
 """
+# Аудит 24.10: last_seen / is_active / delisted_at на конфликте НЕ трогаем.
+# Это факты выдачи («лот виден в поиске»), и ставит их только сайтинг
+# (SIGHTING_UPSERT_SQL) и снятие в sweep(). Детальная страница krisha
+# открывается и у архивных лотов, поэтому докачка деталей (очередь новых и
+# refresh) раньше «оживляла» снятый лот: last_seen=now, is_active=1,
+# delisted_at=NULL — и он снова считался активным до следующего снятия,
+# портя дни на рынке и активный сток. Новая строка (INSERT) по-прежнему
+# получает first_seen/last_seen/is_active — для краула это и есть сайтинг.
 
 # issue #117: пользовательский предикт (predict.py:predict_from_url,
 # source="user") не источник истины по цене/параметрам лота — устаревшая
@@ -1214,6 +1230,35 @@ def advance_shard_cursor(
             "last_id = excluded.last_id, updated_at = excluded.updated_at",
             (shard, int(last_id)),
         )
+
+
+def record_detail_failure(conn: sqlite3.Connection, listing_id: int) -> int:
+    """+1 неудачная попытка докачки деталей лота; возвращает их число."""
+    sql = (
+        "INSERT INTO detail_fetch_failures (listing_id, attempts, last_failed_at) "
+        "VALUES (?, 1, datetime('now')) "
+        "ON CONFLICT(listing_id) DO UPDATE SET "
+        "attempts = attempts + 1, last_failed_at = excluded.last_failed_at"
+    )
+    try:
+        conn.execute(sql, (int(listing_id),))
+    except sqlite3.OperationalError:
+        conn.executescript(SCHEMA)
+        conn.execute(sql, (int(listing_id),))
+    row = conn.execute(
+        "SELECT attempts FROM detail_fetch_failures WHERE listing_id = ?", (int(listing_id),)
+    ).fetchone()
+    return int(row[0])
+
+
+def clear_detail_failure(conn: sqlite3.Connection, listing_id: int) -> None:
+    """Лот докачан — счётчик неудач больше не нужен."""
+    try:
+        conn.execute(
+            "DELETE FROM detail_fetch_failures WHERE listing_id = ?", (int(listing_id),)
+        )
+    except sqlite3.OperationalError:
+        pass  # таблицы ещё нет — и стирать нечего
 
 
 def shard_backlog_window(

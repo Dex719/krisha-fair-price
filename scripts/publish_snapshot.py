@@ -8,8 +8,10 @@
 человекочитаемую сводку счётчиков прохода в описании релиза.
 
 Ротация: снапшоты старше ``--rotate-keep-days`` дней удаляются, КРОМЕ
-воскресных (они остаются архивом навсегда). Ротация fail-soft — ошибка
-не должна ронять рескрейп-workflow.
+воскресных (они остаются архивом навсегда). Удаляются только СВОИ ассеты
+(``--asset-name`` и его .sha256): в том же релизе дня лежит база аренды, и
+ротация продажи не должна её сносить. Релиз удаляется, когда опустел.
+Ротация fail-soft — ошибка не должна ронять рескрейп-workflow.
 
 Запуск из workflow (после шага "Upload DB to release"):
     python scripts/publish_snapshot.py \\
@@ -173,8 +175,22 @@ def _edit_notes(tag: str, body: str) -> None:
     run_gh(["release", "edit", tag, "--notes-file", notes_path])
 
 
-def rotate(keep_days: int) -> None:
-    """Удаляет снапшоты старше ``keep_days``, кроме воскресных — fail-soft."""
+def _release_assets(tag: str) -> list[str]:
+    out = run_gh(["release", "view", tag, "--json", "assets", "-q", ".assets[].name"]).stdout
+    return [line.strip() for line in out.splitlines() if line.strip()]
+
+
+def rotate(keep_days: int, asset_name: str | None = None) -> None:
+    """Ротация снапшотов старше ``keep_days``, кроме воскресных — fail-soft.
+
+    Аудит 24.10: продажа и аренда лежат в ОДНОМ релизе ``snapshot-<дата>``,
+    а ротацию запускает только продажа — раньше она удаляла релиз целиком и
+    сносила архив аренды (у которой ротации нет вовсе). Теперь с
+    ``asset_name`` удаляются только свои ассеты (база и её .sha256); релиз
+    уходит целиком, лишь когда в нём ничего не осталось. Без ``asset_name`` —
+    прежнее поведение (весь релиз). Политика хранения (N дней, воскресные
+    навсегда) не изменилась.
+    """
     try:
         result = run_gh(["release", "list", "--json", "tagName", "--limit", "500"])
         releases = json.loads(result.stdout)
@@ -197,6 +213,20 @@ def rotate(keep_days: int) -> None:
         if tag_date.weekday() == 6:  # воскресенье — хранить вечно
             continue
         try:
+            if asset_name:
+                own = {asset_name, f"{asset_name}.sha256"}
+                assets = _release_assets(tag)
+                for name in assets:
+                    if name in own:
+                        run_gh(["release", "delete-asset", tag, name, "--yes"])
+                rest = [a for a in assets if a not in own]
+                if rest:
+                    if len(rest) < len(assets):
+                        logger.info(
+                            "Снапшот %s: удалены ассеты %s, остальные (%s) сохранены",
+                            tag, sorted(own & set(assets)), ", ".join(rest),
+                        )
+                    continue
             run_gh(["release", "delete", tag, "--yes", "--cleanup-tag"])
             logger.info("Удалён устаревший снапшот %s", tag)
         except Exception:
@@ -235,7 +265,7 @@ def main(argv: list[str] | None = None) -> int:
             time.sleep(wait)
 
     if args.rotate_keep_days > 0:
-        rotate(args.rotate_keep_days)
+        rotate(args.rotate_keep_days, args.asset_name)
     return 0
 
 

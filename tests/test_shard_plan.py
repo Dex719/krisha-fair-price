@@ -859,3 +859,97 @@ def test_fresh_first_window_falls_back_when_no_fresh(tmp_path):
         warm, _, fresh_warm = shard_backlog_window_fresh_first(conn, shard, 1000, 3)
     assert cold == [103, 102, 101] and fresh_cold == frozenset()
     assert warm == [103, 102, 101] and fresh_warm == frozenset()
+
+
+# ---------- аудит 03.10 / 24.10: курсор не перепрыгивает упавший лот ----------
+
+
+def _run_passes(tmp_path, monkeypatch, n_passes, failing: set[int]):
+    db = tmp_path / "test.db"
+    ids = list(range(1000, 1010))
+    stock = {"Алатауский 2к": ids}
+    calls_per_pass: list[list[int]] = []
+    cursors: list[int | None] = []
+    for _ in range(n_passes):
+        client = FakeClient(_pages_by_shard(stock))
+        monkeypatch.setattr(rescrape, "PoliteClient", lambda c=client, **_kw: c)
+        calls: list[int] = []
+
+        def parse(html, url, _calls=calls):
+            lid = int(url.rsplit("/", 1)[-1])
+            _calls.append(lid)
+            return None if lid in failing else _listing(lid)
+
+        monkeypatch.setattr(rescrape, "parse_detail", parse)
+        sweep(max_pages=1, max_new_details=4, db_path=db)
+        calls_per_pass.append(calls)
+        with get_conn(db) as conn:
+            row = conn.execute(
+                "SELECT last_id FROM shard_cursors WHERE shard = 'Алатауский 2к'"
+            ).fetchone()
+        cursors.append(row[0] if row else None)
+    return db, calls_per_pass, cursors
+
+
+def test_cursor_stops_at_first_failed_lot(tmp_path, monkeypatch):
+    """Воспроизведение из аудита: лот 1008 упал, 1007/1006 докачались —
+    раньше курсор уезжал на 1006, и 1008 оказывался выше отметки до заворота.
+    Теперь отметка остаётся на 1009, и следующий проход начинает с 1008."""
+    failing = {1008}
+    db = tmp_path / "test.db"
+    ids = list(range(1000, 1010))
+    stock = {"Алатауский 2к": ids}
+
+    client = FakeClient(_pages_by_shard(stock))
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda c=client, **_kw: c)
+    monkeypatch.setattr(
+        rescrape, "parse_detail",
+        lambda html, url: None if int(url.rsplit("/", 1)[-1]) in failing
+        else _listing(int(url.rsplit("/", 1)[-1])),
+    )
+    sweep(max_pages=1, max_new_details=4, db_path=db)
+    with get_conn(db) as conn:
+        cursor = conn.execute(
+            "SELECT last_id FROM shard_cursors WHERE shard = 'Алатауский 2к'"
+        ).fetchone()[0]
+    assert cursor == 1009
+
+    failing.clear()  # сбой был временным
+    calls: list[int] = []
+
+    def parse_spy(html, url):
+        lid = int(url.rsplit("/", 1)[-1])
+        calls.append(lid)
+        return _listing(lid)
+
+    client = FakeClient(_pages_by_shard(stock))
+    monkeypatch.setattr(rescrape, "PoliteClient", lambda c=client, **_kw: c)
+    monkeypatch.setattr(rescrape, "parse_detail", parse_spy)
+    sweep(max_pages=1, max_new_details=4, db_path=db)
+    assert calls[0] == 1008  # упавший лот взят первым, а не потерян
+    assert calls == [1008, 1005, 1004, 1003]
+    with get_conn(db) as conn:
+        assert conn.execute(
+            "SELECT last_id FROM shard_cursors WHERE shard = 'Алатауский 2к'"
+        ).fetchone()[0] == 1003
+        # успех стирает счётчик неудач
+        assert conn.execute("SELECT COUNT(*) FROM detail_fetch_failures").fetchone()[0] == 0
+
+
+def test_poison_lot_does_not_stall_cursor_forever(tmp_path, monkeypatch):
+    """«Ядовитый» лот (падает всегда) держит курсор DETAIL_POISON_ATTEMPTS−1
+    проходов, потом курсор проходит мимо и backlog ниже докачивается."""
+    assert rescrape.DETAIL_POISON_ATTEMPTS == 3
+    db, calls, cursors = _run_passes(tmp_path, monkeypatch, 3, failing={1008})
+    assert calls[0] == [1009, 1008, 1007, 1006]
+    assert calls[1] == [1008, 1005, 1004, 1003]
+    assert calls[2] == [1008, 1002, 1001, 1000]
+    # 1-й и 2-й проходы: отметка стоит перед упавшим лотом
+    assert cursors[0] == 1009
+    assert cursors[1] == 1009
+    # 3-я неудача — лот признан ядовитым, курсор ушёл на дно
+    assert cursors[2] == 1000
+    with get_conn(db) as conn:
+        assert conn.execute(
+            "SELECT attempts FROM detail_fetch_failures WHERE listing_id = 1008"
+        ).fetchone()[0] == 3

@@ -66,6 +66,7 @@ STATE_FILES = (
     "prediction_log.json",
     "channel_posted.json",
     "alerted_ids.json",
+    "alerted_chats.json",
 )
 STATE_KEY_ENV = "STATE_ENCRYPTION_KEY"
 
@@ -198,6 +199,35 @@ def remove_subscription(chat_id: int) -> bool:
         return True
 
 
+def move_subscription(old_chat_id: int | str, new_chat_id: int | str) -> bool:
+    """Группа стала супергруппой (migrate_to_chat_id): подписка переезжает на новый id."""
+    old, new = str(old_chat_id), str(new_chat_id)
+    with STATE_LOCK:
+        subs = load_subscriptions()
+        if old not in subs:
+            return False
+        subs[new] = subs.pop(old)
+        _save(subs, "alerts: обновление подписок", deleted_keys={old}, touched_keys={new})
+        return True
+
+
+def forget_chat(chat_id: int | str) -> None:
+    """Чат недоступен навсегда (бот заблокирован, чат удалён): убираем
+    подписку и слежку, чтобы рассылка не стучалась туда каждый день."""
+    from krisha.tracking import remove_tracked
+
+    remove_subscription(int(chat_id))
+    remove_tracked(int(chat_id), None)
+
+
+def migrate_chat(old_chat_id: int | str, new_chat_id: int | str) -> None:
+    """Перенос подписки и слежки на новый id чата (группа → супергруппа)."""
+    from krisha.tracking import move_tracked
+
+    move_subscription(old_chat_id, new_chat_id)
+    move_tracked(old_chat_id, new_chat_id)
+
+
 def _save(
     subs: dict[str, Any],
     message: str,
@@ -216,8 +246,13 @@ def save_json_state(
     encrypt: bool = True,
     deleted_keys: set[str] | None = None,
     touched_keys: set[str] | None = None,
-) -> None:
+    update_only: bool = False,
+    normalize=None,
+) -> Any:
     """Сохраняет JSON-состояние локально и коммитит в GitHub (см. докстринг модуля).
+
+    Возвращает то, что в итоге записано (после слияния с сервером), — по нему
+    вызывающий проверяет, что его правка пережила слияние (лимит слежки).
 
     Общий механизм для subscriptions.json, tracked.json и др.
     encrypt=True шифрует содержимое целиком (файлы с chat_id — PII);
@@ -233,6 +268,12 @@ def save_json_state(
     локальной копии: у Space она с момента старта, и ночные правки Actions
     (новые базовые цены, снятые лоты) одна команда /track любого чата
     откатывала у ВСЕХ чатов. None — писатель отвечает за файл целиком.
+
+    Ключ вида "chat:lot" в `touched_keys`/`deleted_keys` — правка одного лота
+    внутри чата (tracked.json): слияние идёт на уровне пары, см. _merge_remote.
+    `update_only` — тронутые ключи только обновляют то, что есть на сервере,
+    и не воскрешают удалённое там (ночная сверка цен в Actions).
+    `normalize(merged)` — правило файла поверх слияния (лимит лотов на чат).
     """
     payload, encrypted = _encode_payload(data, encrypt)
     if encrypt and not encrypted:
@@ -243,7 +284,13 @@ def save_json_state(
     _write_local(path, payload)
     # PII-состояние без ключа никогда не публикуем в репозиторий.
     if not encrypt or encrypted:
-        _push_to_github(path, payload, message, data, deleted_keys, encrypt, touched_keys)
+        written = _push_to_github(
+            path, payload, message, data, deleted_keys, encrypt, touched_keys,
+            update_only=update_only, normalize=normalize,
+        )
+        if written is not None:
+            return written
+    return data
 
 
 def _write_local(path, text: str) -> None:
@@ -361,6 +408,8 @@ def _merge_remote(
     remote: Any,
     deleted_keys: set[str] | None,
     touched_keys: set[str] | None = None,
+    update_only: bool = False,
+    normalize=None,
 ) -> Any:
     """Сливает удалённое состояние в локальное перед PUT (issue #111).
 
@@ -370,15 +419,16 @@ def _merge_remote(
     мы удалили намеренно. Без `deleted_keys` отписка бы «воскресала» из
     удалённой копии.
 
-    Гранулярность — именно чат целиком: если два писателя одновременно
-    правили РАЗНЫЕ лоты ОДНОГО чата в tracked.json, победит наша версия
-    чата. Это осознанный компромисс: одновременная правка одного чата с
-    двух сторон практически не встречается, а полноценный merge требует
-    хранить дельту, а не итоговое состояние (см. issue #111 про переход к
-    единственному писателю).
+    Ключ "chat:lot" — правка одного лота чата (tracked.json). Раньше
+    гранулярность была чат целиком, и при двух воркерах uvicorn два быстрых
+    «Следить» в одном чате расходились по разным процессам: второй писатель
+    клал свою версию чата поверх и терял лот первого (и обходил лимит).
+    Теперь накладываем ровно пару (чат, лот), а удалённую пару — убираем.
 
     С `touched_keys` (см. save_json_state) поверх сервера кладём только их:
-    локальная копия остальных чатов может быть устаревшей.
+    локальная копия остальных чатов может быть устаревшей. `update_only` —
+    тронутое только обновляет существующее на сервере (не воскрешает то, что
+    там успели удалить). `normalize` — правило файла поверх результата.
 
     Не словари (или сервер отдал мусор) — сливать нечего, пишем как есть.
     """
@@ -387,9 +437,34 @@ def _merge_remote(
     if touched_keys is None:
         merged = {**remote, **local}
     else:
-        merged = {**remote, **{k: local[k] for k in touched_keys if k in local}}
+        merged = {k: (dict(v) if isinstance(v, dict) else v) for k, v in remote.items()}
+        for key in touched_keys:
+            chat, sep, lot = key.partition(":")
+            if not sep:
+                if key in local and (not update_only or key in remote):
+                    merged[key] = local[key]
+                continue
+            mine = local.get(chat)
+            if not isinstance(mine, dict) or lot not in mine:
+                continue
+            theirs = merged.get(chat)
+            if update_only and not (isinstance(theirs, dict) and lot in theirs):
+                continue
+            if not isinstance(theirs, dict):
+                theirs = merged[chat] = {}
+            theirs[lot] = mine[lot]
     for key in deleted_keys or ():
-        merged.pop(key, None)
+        chat, sep, lot = key.partition(":")
+        if not sep:
+            merged.pop(key, None)
+            continue
+        theirs = merged.get(chat)
+        if isinstance(theirs, dict):
+            theirs.pop(lot, None)
+            if not theirs:
+                merged.pop(chat, None)
+    if normalize is not None:
+        merged = normalize(merged)
     return merged
 
 
@@ -401,8 +476,13 @@ def _push_to_github(
     deleted_keys: set[str] | None = None,
     encrypt: bool = True,
     touched_keys: set[str] | None = None,
-) -> None:
+    update_only: bool = False,
+    normalize=None,
+) -> Any:
     """Коммитит файл состояния в STATE_REPO, чтобы пережить рестарт.
+
+    Возвращает записанные данные (после слияния) или None, если записи в
+    GitHub не было (нет токена, ошибка) — тогда в силе локальная копия.
 
     Токен — см. _state_token (KRISHA_DB_TOKEN и на Space, и в Actions).
 
@@ -417,7 +497,7 @@ def _push_to_github(
     token = _state_token()
     if not token:
         logger.warning("KRISHA_DB_TOKEN не задан — %s сохранён только локально", path.name)
-        return
+        return None
     rel = f"data/{path.name}"
     url = f"{_GH_API}/repos/{STATE_REPO}/contents/{rel}"
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
@@ -426,8 +506,9 @@ def _push_to_github(
             resp = httpx.get(url, headers=headers, timeout=15.0)
             sha = resp.json().get("sha") if resp.status_code == 200 else None
             body_payload = payload
+            written = data
             if sha and data is not None:
-                raw_remote = _remote_text(resp)
+                raw_remote = _remote_text(resp, url, token)
                 remote = _decode_payload(raw_remote, path.name)
                 if remote is None and raw_remote.strip():
                     # FAIL-CLOSED (issue #150). Файл на сервере ЕСТЬ, но мы его
@@ -449,13 +530,17 @@ def _push_to_github(
                             f"Похоже, сменился ключ шифрования. Данные на сервере целы.\n"
                             f"Перезаписать намеренно: переменная {FORCE_OVERWRITE_ENV}=1"
                         )
-                        return
+                        return None
                     logger.warning(
                         "%s: %s=1 — перезаписываю нечитаемое удалённое состояние",
                         rel, FORCE_OVERWRITE_ENV,
                     )
                 elif remote is not None:
-                    merged = _merge_remote(data, remote, deleted_keys, touched_keys)
+                    merged = _merge_remote(
+                        data, remote, deleted_keys, touched_keys,
+                        update_only=update_only, normalize=normalize,
+                    )
+                    written = merged
                     if merged != data:
                         logger.info(
                             "%s: слил конкурентные изменения с сервера (+%d ключей)",
@@ -473,7 +558,7 @@ def _push_to_github(
                 if body_payload != payload:
                     # локально — то же, что ушло на сервер, а не устаревшая копия
                     _write_local(path, body_payload)
-                return
+                return written
             if put.status_code in (409, 422) and attempt < PUSH_MAX_ATTEMPTS:
                 # Кто-то записал файл между нашими GET и PUT — перечитываем
                 # sha и сливаемся заново, а не затираем его правку.
@@ -485,22 +570,51 @@ def _push_to_github(
                 continue
             logger.error("GitHub push %s: %s %s", rel, put.status_code, put.text[:200])
             _alert_admin(f"⚠️ {rel}: не сохранено в GitHub — HTTP {put.status_code}")
-            return
+            return None
         except httpx.HTTPError as exc:
             logger.warning("GitHub push %s не удался: %s", rel, exc)
             _alert_admin(f"⚠️ {rel}: не сохранено в GitHub — {type(exc).__name__}")
-            return
+            return None
     # Ретраи исчерпаны: локальная копия уже записана, удалённая осталась чужой.
     logger.error("GitHub push %s: конфликт не разрешён за %d попыток", rel, PUSH_MAX_ATTEMPTS)
     _alert_admin(f"⚠️ {rel}: конфликт записи не разрешён за {PUSH_MAX_ATTEMPTS} попытки")
+    return None
 
 
-def _remote_text(resp) -> str:
-    """Содержимое файла из ответа GitHub Contents API (base64)."""
+def _remote_text(resp, url: str | None = None, token: str | None = None) -> str:
+    """Содержимое файла из ответа GitHub Contents API.
+
+    Для файлов больше 1 МБ Contents API отдаёт `content: ""` и
+    `encoding: "none"` — раньше это читалось как пустой файл: слияние
+    пропускалось, и PUT затирал всё, что было на сервере (prediction_log
+    давно перерос мегабайт). Тогда дочитываем файл raw-запросом, как pull_state.
+    sha берётся из первого ответа: если файл успел измениться между двумя
+    GET, PUT со старым sha получит 409 и пойдёт на новую попытку.
+    """
     try:
-        return base64.b64decode(resp.json().get("content") or "").decode("utf-8")
-    except (ValueError, UnicodeDecodeError):
+        body = resp.json()
+    except ValueError:
+        body = {}
+    if not isinstance(body, dict):
         return ""
+    content = body.get("content") or ""
+    too_big = body.get("encoding") == "none" or (not content and (body.get("size") or 0) > 0)
+    if not too_big:
+        try:
+            return base64.b64decode(content).decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            return ""
+    if not url or not token:
+        return ""
+    raw = httpx.get(
+        url,
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github.raw+json"},
+        timeout=30.0,
+    )
+    if raw.status_code != 200:
+        # Не прочитали — пусть сработает fail-closed выше, а не перезапись.
+        raise httpx.HTTPError(f"raw GET HTTP {raw.status_code}")
+    return raw.text
 
 
 def main(argv: list[str] | None = None) -> int:

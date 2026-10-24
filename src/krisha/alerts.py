@@ -64,6 +64,35 @@ def remember_alerted(ids: list[int], path: Path | None = None) -> None:
     save_json_state(path, merged, "state: разосланные в алертах лоты", encrypt=False)
 
 
+# Кому какой лот уже ушёл: {"<chat_id>": [id, ...]}. Глобальный alerted_ids
+# пополняется, только когда лот дошёл до ВСЕХ чатов, которым был выбран;
+# до тех пор этот журнал не даёт прислать его повторно тем, кто уже получил,
+# и не лишает лота тех, до кого он не дошёл (раньше один общий delivered_ids
+# помечал лот разосланным после первой же удачной доставки любому чату).
+# chat_id — PII, поэтому файл шифруется, как подписки.
+ALERTED_CHAT_KEEP = 300
+
+
+def _alerted_chats_path() -> Path:
+    # рядом с ALERTED_PATH: тесты, подменяющие его, заодно изолируют и журнал
+    return ALERTED_PATH.with_name("alerted_chats.json")
+
+
+def load_alerted_chats() -> dict[str, list[int]]:
+    from krisha.subscriptions import load_json_state
+
+    data = load_json_state(_alerted_chats_path())
+    if not isinstance(data, dict):
+        return {}
+    out: dict[str, list[int]] = {}
+    for chat, ids in data.items():
+        try:
+            out[str(chat)] = [int(i) for i in ids]
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def match_filters(listing: dict[str, Any], flt: dict[str, Any]) -> bool:
     if flt.get("rooms") and listing.get("rooms") != flt["rooms"]:
         return False
@@ -236,41 +265,237 @@ def format_alert(deals: list[dict], flt: dict | None = None) -> str:
     return "\n\n".join(parts)
 
 
-# Пауза между сообщениями одному чату: Telegram режет больше ~1 сообщения в секунду в чат.
-ALERT_CARD_PAUSE_S = 0.4
+# Пауза между сообщениями одному чату: Telegram режет больше ~1 сообщения в
+# секунду в чат (было 0.4 с — подборка из 6 сообщений ловила 429).
+ALERT_CARD_PAUSE_S = 1.1
+# Общий темп бота: ~30 сообщений в секунду на всех; держим запас.
+ALERT_GLOBAL_PAUSE_S = 0.04
+# Потолок ожидания по retry_after: дольше ждать в шаге с таймаутом нельзя.
+MAX_RETRY_AFTER_S = 30.0
+# Журнал доставки пишем раз в столько успешных карточек (и в finally): шаг
+# Actions с таймаутом 15 минут убивался посреди рассылки, а remember_alerted
+# стоял только в конце — назавтра те же подборки приходили повторно.
+ALERT_SAVE_EVERY = 25
+
+# тесты подменяют оба, чтобы не ждать паузы по-настоящему
+_sleep = time.sleep
+_now = time.monotonic
+
+
+class _Pacer:
+    """Паузы рассылки: не чаще ALERT_CARD_PAUSE_S в один чат и
+    ALERT_GLOBAL_PAUSE_S между любыми сообщениями."""
+
+    def __init__(self) -> None:
+        self._last_chat: dict[str, float] = {}
+        self._last_any: float | None = None
+
+    def wait(self, chat_id: Any) -> None:
+        now = _now()
+        due = now
+        last = self._last_chat.get(str(chat_id))
+        if last is not None:
+            due = max(due, last + ALERT_CARD_PAUSE_S)
+        if self._last_any is not None:
+            due = max(due, self._last_any + ALERT_GLOBAL_PAUSE_S)
+        if due > now:
+            _sleep(due - now)
+        stamp = _now()
+        self._last_chat[str(chat_id)] = stamp
+        self._last_any = stamp
+
+
+def chat_is_gone(resp: dict | None) -> bool:
+    """Чат недоступен навсегда: бот заблокирован/выгнан, пользователь удалён,
+    чата нет. Повторять отправку туда бессмысленно — подписку надо убирать."""
+    if not isinstance(resp, dict) or resp.get("ok"):
+        return False
+    code = resp.get("error_code")
+    desc = str(resp.get("description") or "").lower()
+    if code == 403:
+        return True
+    return code == 400 and ("chat not found" in desc or "user not found" in desc)
+
+
+def deliver(chat_id: Any, pacer: _Pacer | None = None, **payload: Any) -> tuple[dict | None, int, str]:
+    """sendMessage с одним повтором на 429 (по parameters.retry_after) и
+    переездом группы (migrate_to_chat_id → новый id, подписка и слежка за ним).
+
+    Возвращает (ответ, фактический id чата, статус); статус "ok", "gone" —
+    чат мёртв, подписка и слежка убраны, "error" — прочий сбой.
+    """
+    from krisha.bot import tg_call
+    from krisha.subscriptions import forget_chat, migrate_chat
+
+    chat = int(chat_id)
+    resp: dict | None = None
+    retried = migrated = False
+    while True:
+        if pacer is not None:
+            pacer.wait(chat)
+        resp = tg_call("sendMessage", chat_id=chat, **payload)
+        if resp and resp.get("ok"):
+            return resp, chat, "ok"
+        params = (resp or {}).get("parameters") or {}
+        new_chat = params.get("migrate_to_chat_id")
+        if new_chat and not migrated:
+            migrated = True
+            try:
+                migrate_chat(chat, int(new_chat))
+            except Exception:  # noqa: BLE001 — перенос состояния не должен ронять рассылку
+                logger.warning("alerts: не удалось перенести состояние чата", exc_info=True)
+            chat = int(new_chat)
+            continue
+        if (resp or {}).get("error_code") == 429 and not retried:
+            retried = True
+            try:
+                wait = float(params.get("retry_after") or 1)
+            except (TypeError, ValueError):
+                wait = 1.0
+            _sleep(min(max(wait, 0.0), MAX_RETRY_AFTER_S) + 0.1)
+            continue
+        if chat_is_gone(resp):
+            try:
+                forget_chat(chat)
+            except Exception:  # noqa: BLE001
+                logger.warning("alerts: не удалось убрать мёртвый чат", exc_info=True)
+            return resp, chat, "gone"
+        return resp, chat, "error"
+
+
+class _DeliveryLog:
+    """Журнал доставки рассылки: что ушло какому чату, и какие лоты дошли до
+    всех, кому были выбраны. Сохраняется кусками (checkpoint) и в finally."""
+
+    def __init__(self, persist: bool) -> None:
+        self.persist = persist
+        self.by_chat = load_alerted_chats()
+        self.selected: dict[int, set[str]] = {}
+        self.delivered: dict[int, set[str]] = {}
+        self.dead: set[str] = set()
+        self.done: set[int] = set()
+        self._dirty: set[str] = set()
+        self._deleted: set[str] = set()
+        self._unsaved = 0
+
+    def seen(self, chat: str) -> set[int]:
+        return set(self.by_chat.get(chat, ()))
+
+    def select(self, chat: str, lot: int) -> None:
+        self.selected.setdefault(lot, set()).add(chat)
+
+    def record(self, chat: str, actual_chat: int, lot: int) -> None:
+        self.delivered.setdefault(lot, set()).add(chat)
+        key = str(actual_chat)
+        if key != chat and chat in self.by_chat:
+            # группа переехала: журнал — за новым id
+            self.by_chat[key] = self.by_chat.pop(chat) + self.by_chat.get(key, [])
+            self._deleted.add(chat)
+        ids = self.by_chat.setdefault(key, [])
+        if lot not in ids:
+            ids.append(lot)
+            del ids[:-ALERTED_CHAT_KEEP]
+        self._dirty.add(key)
+        self._unsaved += 1
+        if self._unsaved >= ALERT_SAVE_EVERY:
+            self.flush()
+
+    def drop(self, chat: str) -> None:
+        self.dead.add(chat)
+        if self.by_chat.pop(chat, None) is not None:
+            self._deleted.add(chat)
+            self._dirty.discard(chat)
+
+    def _complete(self) -> list[int]:
+        out = []
+        for lot, chats in self.selected.items():
+            if lot in self.done:
+                continue
+            need = chats - self.dead
+            if need and need <= self.delivered.get(lot, set()):
+                out.append(lot)
+        return out
+
+    def flush(self) -> None:
+        self._unsaved = 0
+        if not self.persist:
+            return
+        from krisha.subscriptions import save_json_state
+
+        if self._dirty or self._deleted:
+            save_json_state(
+                _alerted_chats_path(), self.by_chat, "state: журнал рассылки алертов",
+                deleted_keys=set(self._deleted), touched_keys=set(self._dirty),
+            )
+            self._dirty.clear()
+            self._deleted.clear()
+        complete = self._complete()
+        if complete:
+            # Помечаем только реально доставленные: окно ловит лот и по
+            # scraped_at, так что без этой отметки очередь дообновления деталей
+            # (issue #102) присылала бы один и тот же лот снова и снова.
+            remember_alerted(sorted(complete))
+            self.done.update(complete)
 
 
 def send_alerts(
     subscriptions: dict[str, dict], deals: list[dict], persist: bool = True
 ) -> int:
     """Рассылает подборки: заголовок и по карточке с кнопками на каждое объявление.
-    Возвращает число чатов, которым подборка дошла."""
-    from krisha.bot import tg_call
+    Возвращает число чатов, которым подборка дошла.
 
-    sent = 0
-    delivered_ids: set[int] = set()
+    Сообщения идут по кругу (заголовки всем, потом первая карточка всем…):
+    пауза ≥ ALERT_CARD_PAUSE_S нужна между сообщениями ОДНОМУ чату, и подряд
+    по чату 200 подписчиков × 6 сообщений не влезали в таймаут шага.
+    """
+    log = _DeliveryLog(persist)
+    plans: list[dict[str, Any]] = []
     for chat_id, flt in subscriptions.items():
-        matched = [d for d in deals if match_filters(d, flt)][:MAX_DEALS_PER_CHAT]
+        chat = str(chat_id)
+        seen = log.seen(chat)
+        matched = [
+            d for d in deals
+            if match_filters(d, flt) and not (d.get("id") is not None and int(d["id"]) in seen)
+        ][:MAX_DEALS_PER_CHAT]
         if not matched:
             continue
-        resp = tg_call("sendMessage", chat_id=int(chat_id), text=format_alert_header(matched, flt),
-                       parse_mode="HTML", reply_markup=HEADER_KEYBOARD)
-        if not (resp and resp.get("ok")):
-            continue
-        sent += 1
         for d in matched:
-            time.sleep(ALERT_CARD_PAUSE_S)
-            extra = {}
-            keyboard = deal_keyboard(d)
-            if keyboard:
-                extra["reply_markup"] = keyboard
-            card = tg_call("sendMessage", chat_id=int(chat_id), text=format_deal_card(d),
-                           parse_mode="HTML", disable_web_page_preview=True, **extra)
-            if card and card.get("ok") and d.get("id") is not None:
-                delivered_ids.add(int(d["id"]))
-    # Помечаем только реально доставленные: окно теперь ловит лот и по
-    # scraped_at, так что без этой отметки очередь дообновления деталей
-    # (issue #102) присылала бы один и тот же лот снова и снова.
-    if persist and delivered_ids:
-        remember_alerted(sorted(delivered_ids))
+            if d.get("id") is not None:
+                log.select(chat, int(d["id"]))
+        plans.append({"chat": chat, "target": int(chat_id), "flt": flt, "deals": matched})
+
+    pacer = _Pacer()
+    sent = 0
+    try:
+        active = []
+        for plan in plans:
+            _, target, status = deliver(plan["target"], pacer,
+                                        text=format_alert_header(plan["deals"], plan["flt"]),
+                                        parse_mode="HTML", reply_markup=HEADER_KEYBOARD)
+            plan["target"] = target
+            if status == "ok":
+                sent += 1
+                active.append(plan)
+            elif status == "gone":
+                log.drop(plan["chat"])
+        for i in range(MAX_DEALS_PER_CHAT):
+            for plan in active:
+                if plan.get("stop") or i >= len(plan["deals"]):
+                    continue
+                d = plan["deals"][i]
+                extra = {}
+                keyboard = deal_keyboard(d)
+                if keyboard:
+                    extra["reply_markup"] = keyboard
+                _, target, status = deliver(plan["target"], pacer, text=format_deal_card(d),
+                                            parse_mode="HTML", disable_web_page_preview=True,
+                                            **extra)
+                plan["target"] = target
+                if status == "ok" and d.get("id") is not None:
+                    log.record(plan["chat"], target, int(d["id"]))
+                elif status == "gone":
+                    plan["stop"] = True
+                    log.drop(plan["chat"])
+    finally:
+        log.flush()
     return sent

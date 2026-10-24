@@ -147,7 +147,12 @@ def test_migration_backfills_legacy_rows(tmp_path):
     assert [p["price"] for p in get_price_history(5, db)] == [50_000_000]
 
 
-def test_upsert_revives_delisted(tmp_path):
+def test_sighting_revives_delisted_but_detail_upsert_does_not(tmp_path):
+    """Аудит 24.10: «оживляет» снятый лот только появление в выдаче (сайтинг).
+    Детальная страница открывается и у архивных лотов — её докачка снятый
+    лот активным не делает (см. db.UPSERT_SQL)."""
+    from krisha.db import record_sighting
+
     db = tmp_path / "test.db"
     init_db(db)
     upsert_listing(_listing(7, 40_000_000), db)
@@ -156,6 +161,11 @@ def test_upsert_revives_delisted(tmp_path):
             "UPDATE listings SET is_active = 0, delisted_at = datetime('now') WHERE id = 7"
         )
     upsert_listing(_listing(7, 40_000_000), db)
+    with get_conn(db) as conn:
+        row = conn.execute("SELECT is_active, delisted_at FROM listings WHERE id = 7").fetchone()
+    assert row["is_active"] == 0 and row["delisted_at"] is not None
+
+    record_sighting(7, "https://krisha.kz/a/show/7", 40_000_000, db)
     with get_conn(db) as conn:
         row = conn.execute("SELECT is_active, delisted_at FROM listings WHERE id = 7").fetchone()
     assert row["is_active"] == 1 and row["delisted_at"] is None

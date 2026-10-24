@@ -8,16 +8,22 @@
 
 Что делает (ничего не меняет на диске проекта — всё во временном каталоге):
 
-1. скачивает `krisha.db.gz` из релиза и сверяет sha256 с опубликованным;
+1. скачивает `krisha.db.gz` (с `--rent` — `krisha_rent.db.gz`) из релиза и
+   сверяет sha256 с опубликованным — СТРОГО: не скачался `.sha256` — провал
+   (аудит 24.10: раньше проверка молча пропускалась);
 2. распаковывает и прогоняет `PRAGMA integrity_check`;
 3. проверяет, что схема на месте и данные осмысленны: есть обязательные
    таблицы, объявления и история цен непусты, активных лотов больше нуля;
-4. смотрит свежесть: MAX(last_seen) не старше порога (по умолчанию 48 часов);
+4. смотрит свежесть так же, как прод (`db.data_observed_at`: конец последнего
+   прохода по sweep_runs, а не MAX(last_seen), который двигают и
+   пользовательские проверки) — не старше порога (по умолчанию 48 часов);
 5. поднимает приложение на этой базе (TestClient) и дёргает /api/health и
    /api/stats — то есть проверяет не «файл скачался», а «сервис на нём живёт».
+   Для аренды — та же статистика, что отдаёт /api/stats/rent.
 
-Запуск:
+Запуск (еженедельно — .github/workflows/restore-drill.yml):
     python scripts/restore_drill.py                 # полное учение
+    python scripts/restore_drill.py --rent          # база аренды
     python scripts/restore_drill.py --skip-app      # без подъёма приложения
     python scripts/restore_drill.py --max-age-hours 72
 """
@@ -49,14 +55,28 @@ def _check(label: str, ok: bool, detail: str = "") -> None:
         raise DrillError(f"{label}{': ' + detail if detail else ''}")
 
 
-def restore(db_path: Path) -> None:
-    """Скачивание + checksum + распаковка — тем же кодом, что и на проде."""
+def restore(db_path: Path, rent: bool = False) -> None:
+    """Скачивание + checksum + распаковка — тем же кодом, что и на проде,
+    но со строгой проверкой: без опубликованного sha256 учение не проходит."""
     from krisha import db_release
 
-    db_release.download(db_path)
+    if rent:
+        db_release.download(
+            db_path, db_release.RENT_ASSET_NAME, "KRISHA_RENT_DB_URL", strict_checksum=True
+        )
+    else:
+        db_release.download(db_path, strict_checksum=True)
 
 
-def check_database(db_path: Path, max_age_hours: float) -> dict:
+def _observed_at(con: sqlite3.Connection, deal: str) -> str | None:
+    """Свежесть как у прода (/api/health → db.data_observed_at), строкой UTC."""
+    from krisha.db import data_observed_at
+
+    moment = data_observed_at(con, deal)
+    return moment.strftime("%Y-%m-%d %H:%M:%S") if moment else None
+
+
+def check_database(db_path: Path, max_age_hours: float, deal: str = "prodazha") -> dict:
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         integrity = con.execute("PRAGMA integrity_check").fetchone()[0]
@@ -73,14 +93,14 @@ def check_database(db_path: Path, max_age_hours: float) -> dict:
         _check("активные лоты есть", active > 0, f"{active} активных")
         _check("история цен есть", history > 0, f"{history} точек")
 
-        last_seen = con.execute("SELECT MAX(last_seen) FROM listings").fetchone()[0]
+        last_seen = _observed_at(con, deal)
         age_hours = _age_hours(last_seen)
         _check(
             "данные свежие",
             age_hours is not None and age_hours <= max_age_hours,
-            f"последнее наблюдение {last_seen} ({age_hours:.1f} ч назад)"
+            f"последний проход сборщика {last_seen} ({age_hours:.1f} ч назад)"
             if age_hours is not None
-            else "MAX(last_seen) не читается",
+            else "момент последнего прохода не читается",
         )
         return {"listings": listings, "active": active, "history": history,
                 "last_seen": last_seen, "age_hours": age_hours}
@@ -124,21 +144,34 @@ def check_app(db_path: Path) -> None:
     _check("статистика непустая", bool(total), f"total_listings={total}")
 
 
+def check_rent_app(db_path: Path) -> None:
+    """Аренда: те же данные, что отдаёт /api/stats/rent (compute_rent_stats)."""
+    from krisha.stats import compute_rent_stats
+
+    stats = compute_rent_stats(db_path, sale_db_path=db_path.with_name("no-sale.db"))
+    total = (stats or {}).get("total_listings")
+    _check("статистика аренды непустая", bool(total), f"total_listings={total}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Учение по восстановлению базы из релиза")
     parser.add_argument("--max-age-hours", type=float, default=48.0,
-                        help="допустимый возраст последнего наблюдения (по умолчанию 48)")
+                        help="допустимый возраст последнего прохода сборщика (по умолчанию 48)")
+    parser.add_argument("--rent", action="store_true",
+                        help="база аренды (krisha_rent.db.gz) вместо продажи")
     parser.add_argument("--skip-app", action="store_true",
                         help="только база, без подъёма приложения")
     parser.add_argument("--keep", metavar="PATH",
                         help="сохранить восстановленную базу по этому пути")
     args = parser.parse_args(argv)
+    deal = "arenda" if args.rent else "prodazha"
 
     with tempfile.TemporaryDirectory(prefix="restore-drill-") as tmpdir:
-        db_path = Path(args.keep) if args.keep else Path(tmpdir) / "krisha.db"
-        print(f"1/3 Восстановление из релиза db-latest → {db_path}")
+        name = "krisha_rent.db" if args.rent else "krisha.db"
+        db_path = Path(args.keep) if args.keep else Path(tmpdir) / name
+        print(f"1/3 Восстановление {name} из релиза db-latest → {db_path}")
         try:
-            restore(db_path)
+            restore(db_path, rent=args.rent)
         except Exception as exc:  # noqa: BLE001 — учение обязано сказать, что упало
             print(f"  ✗ скачивание/проверка: {exc}", file=sys.stderr)
             return 1
@@ -147,10 +180,13 @@ def main(argv: list[str] | None = None) -> int:
 
         print("2/3 Проверки базы")
         try:
-            summary = check_database(db_path, args.max_age_hours)
+            summary = check_database(db_path, args.max_age_hours, deal)
             if not args.skip_app:
                 print("3/3 Приложение на восстановленной базе")
-                check_app(db_path)
+                if args.rent:
+                    check_rent_app(db_path)
+                else:
+                    check_app(db_path)
             else:
                 print("3/3 Приложение пропущено (--skip-app)")
         except DrillError as exc:

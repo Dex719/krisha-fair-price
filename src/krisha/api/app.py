@@ -20,7 +20,7 @@ import sqlite3
 import threading
 import time
 import uuid
-from collections import defaultdict, deque
+from collections import OrderedDict, deque
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
 from typing import Literal
@@ -605,7 +605,21 @@ RATE_WINDOW_S = float(_env_int("RATE_LIMIT_WINDOW_S", 60))
 # (/api/predict). Счётчики у бакетов раздельные: демо не съедает бюджет
 # предикта и наоборот.
 DEMO_RATE_LIMIT = _per_process_limit(_env_int("DEMO_RATE_LIMIT_PER_WINDOW", 120), _worker_count())
-_rate: dict[str, deque] = defaultdict(deque)
+class _RateTable(OrderedDict):
+    """Счётчики rate-limit в порядке последнего обращения (LRU).
+
+    Порядок даёт дешёвую вычистку: протухшие ключи всегда в голове, и
+    снимать их можно с начала, не обходя весь словарь (раньше при >10 000
+    свежих ключей каждый вызов сканировал их все, ~0.4 мс под локом). Он же
+    даёт жёсткий потолок: поток уникальных ключей вытесняет самые давние.
+    """
+
+    def __missing__(self, key: str) -> deque:
+        q = self[key] = deque()
+        return q
+
+
+_rate: _RateTable = _RateTable()
 # /api/predict — async def, но _check_rate_limit сам по себе синхронный и
 # вызывается из разных потоков threadpool'а (остальные sync-хендлеры вроде
 # /api/flags), поэтому мутации _rate (del при вычистке, вставка нового ключа
@@ -684,19 +698,48 @@ def _client_ip(request: Request) -> str:
 # лимит остальных (быстрых) sync-хендлеров.
 _PREDICT_LIMITER = anyio.CapacityLimiter(10)
 
-MAX_RATE_KEYS = 10_000  # потолок против разрастания памяти (в т.ч. от подделки XFF)
+MAX_RATE_KEYS = 10_000  # жёсткий потолок против разрастания памяти (в т.ч. от подделки XFF)
+
+
+def _rate_subject(ip: str) -> str:
+    """Кого считает rate-limit: IPv4 — адрес, IPv6 — его сеть /64.
+
+    Абоненту IPv6 провайдер выдаёт целую /64 (а то и /56), и адрес внутри
+    неё он меняет как хочет: ротация по /64 снимала лимит начисто (аудит
+    24.10: 200 из 200 запросов прошли при лимите 15). IPv4-mapped
+    (``::ffff:1.2.3.4``) — это тот же IPv4, считаем его как IPv4.
+    """
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return ip
+    if isinstance(addr, ipaddress.IPv6Address):
+        if addr.ipv4_mapped is not None:
+            return str(addr.ipv4_mapped)
+        # Через int, а не f"{addr}/64": у адреса со scope id ("fe80::1%eth0")
+        # строковый путь бросает ValueError.
+        return str(ipaddress.IPv6Network((int(addr) >> 64 << 64, 64)))
+    return str(addr)
 
 
 def _check_rate_limit(request: Request, *, bucket: str = "api", limit: int | None = None) -> None:
-    ip = f"{bucket}:{_client_ip(request)}"
+    ip = f"{bucket}:{_rate_subject(_client_ip(request))}"
     limit = RATE_LIMIT if limit is None else limit
     now = time.monotonic()
     with _rate_lock:
-        # Вытесняем протухшие ключи, чтобы словарь не рос бесконечно.
-        if len(_rate) > MAX_RATE_KEYS:
-            for key in [k for k, dq in _rate.items() if not dq or now - dq[-1] > RATE_WINDOW_S]:
-                del _rate[key]
+        # Голова словаря — давно не обращавшиеся ключи: снимаем протухшие,
+        # пока не встретим живой. Амортизированно O(1) на вызов.
+        while _rate:
+            oldest, dq = next(iter(_rate.items()))
+            if dq and now - dq[-1] <= RATE_WINDOW_S:
+                break
+            del _rate[oldest]
         q = _rate[ip]
+        _rate.move_to_end(ip)
+        # Жёсткий потолок: поток уникальных ключей (подделка XFF, ротация
+        # адресов) вытесняет самые давние, а не растит словарь без предела.
+        while len(_rate) > MAX_RATE_KEYS:
+            _rate.popitem(last=False)
         while q and now - q[0] > RATE_WINDOW_S:
             q.popleft()
         if len(q) >= limit:
@@ -740,7 +783,10 @@ async def predict(req: PredictRequest, request: Request) -> PredictResponse:
     if cached is not None:
         metrics.bump("predict_cache_hit")
         # Событие статистики считаем и для попадания в кэш: это живой человек.
-        await anyio.to_thread.run_sync(functools.partial(usage.record_event, "predict"))
+        # Синхронно, как у страниц: record_event — пара инкрементов под локом,
+        # сеть давно в демон-потоке (usage._flush_async). Поход в тредпул ради
+        # этого на каждом кэш-хите создавал очередь как раз в момент наплыва.
+        usage.record_event("predict")
         return PredictResponse(**cached)
     _check_rate_limit(request)
     try:
@@ -827,12 +873,9 @@ async def predict(req: PredictRequest, request: Request) -> PredictResponse:
     except RuntimeError:
         logger.exception("predict: ошибка обработки объявления")
         raise HTTPException(status_code=502, detail="Не удалось обработать объявление") from None
-    # record_event раз в FLUSH_INTERVAL уходит в _flush → запись файла и
-    # PUT в api.github.com (два httpx-вызова с таймаутом 15 с). Здесь мы в
-    # `async def`, то есть в потоке event loop'а: синхронный вызов вешал бы
-    # ВЕСЬ сервер на время похода в GitHub — включая /api/health, по
-    # которому keepalive решает, жив ли Space.
-    await anyio.to_thread.run_sync(functools.partial(usage.record_event, "predict"))
+    # record_event — синхронно, как у страниц: флаш в GitHub (файл + PUT)
+    # давно уехал в демон-поток (usage._flush_async), event loop он не держит.
+    usage.record_event("predict")
     return PredictResponse(**result)
 
 
@@ -893,7 +936,12 @@ STATS_CACHE_TTL = 600  # секунд
 # истечения TTL под нагрузкой в get_stats() проваливались ВСЕ запросы разом
 # (сто параллельных читателей — сто полных пересчётов по базе, каждый под GIL).
 # TTLCache пускает внутрь одного, остальные ждут его результат.
-_stats_cache = TTLCache(ttl=STATS_CACHE_TTL, stale_ttl=3600, maxsize=2)
+# Ждут — только при пустом кэше (первый запрос после рестарта, если прогрев
+# не успел). Протухшее значение остальные получают сразу, пока один поток
+# пересчитывает (stale-while-revalidate): пересчёт идёт секунды, и раньше
+# на это время вставали в очередь все читатели статистики, карты и аренды.
+_SWR = {"stale_ttl": 3600, "maxsize": 2, "serve_stale_while_refreshing": True}
+_stats_cache = TTLCache(ttl=STATS_CACHE_TTL, **_SWR)
 
 
 # Кэши хранят уже сериализованный и сжатый ответ (static_cache.Asset):
@@ -925,7 +973,7 @@ def stats(request: Request) -> Response:
     return _cacheable_json(request, asset, max_age=300)
 
 
-_rent_stats_cache = TTLCache(ttl=STATS_CACHE_TTL, stale_ttl=3600, maxsize=2)
+_rent_stats_cache = TTLCache(ttl=STATS_CACHE_TTL, **_SWR)
 
 
 @app.get("/api/stats/rent")
@@ -939,7 +987,7 @@ def rent_stats(request: Request) -> Response:
     return _cacheable_json(request, asset, max_age=300)
 
 
-_heatmap_cache = TTLCache(ttl=STATS_CACHE_TTL, stale_ttl=3600, maxsize=2)
+_heatmap_cache = TTLCache(ttl=STATS_CACHE_TTL, **_SWR)
 
 
 @app.get("/api/heatmap")
@@ -994,6 +1042,12 @@ def api_metrics() -> dict:
         "limiter_total": int(stats_.total_tokens),
         "limiter_waiting": stats_.tasks_waiting,
     }
+    bot_stats = _BOT_LIMITER.statistics()
+    data["bot"] = {
+        "limiter_borrowed": bot_stats.borrowed_tokens,
+        "limiter_total": int(bot_stats.total_tokens),
+        "limiter_waiting": bot_stats.tasks_waiting,
+    }
     data["assets"] = {"precompressed": len(_ASSETS)}
     return data
 
@@ -1009,6 +1063,22 @@ def _process_tg_update(update: dict) -> None:
         bot.handle_update(update)
     except Exception:  # бот не должен ронять вебхук
         logger.exception("Ошибка обработки Telegram-апдейта")
+
+
+# Апдейт бота (скрейп + предикт + ответы в Telegram — секунды) раньше уходил
+# sync-фоновой задачей в ОБЩИЙ тредпул anyio — тот же, где крутятся быстрые
+# sync-хендлеры, и мимо _PREDICT_LIMITER. Наплыв в бота мог съесть пул
+# целиком. Свой лимитер: не больше BOT_UPDATE_CONCURRENCY апдейтов разом,
+# остальные ждут в event loop (корутина ничего не стоит), а не держат поток.
+# Отдельный, а не _PREDICT_LIMITER: апдейт держит поток ещё и на походах в
+# Telegram, и делить с ним токены веб-предикта незачем — скрейпы обоих и так
+# ограничены общими слотами калитки (predict_gate.PREDICT_SLOTS).
+_BOT_LIMITER = anyio.CapacityLimiter(max(1, _env_int("BOT_UPDATE_CONCURRENCY", 4)))
+
+
+async def _process_tg_update_limited(update: dict) -> None:
+    # Имя _process_tg_update берётся в момент вызова — тесты подменяют его на модуле.
+    await anyio.to_thread.run_sync(_process_tg_update, update, limiter=_BOT_LIMITER)
 
 
 @app.post("/tg/webhook", include_in_schema=False)
@@ -1044,7 +1114,7 @@ def telegram_webhook(
         # обработался бы второй раз.
         if DB_PATH.exists() and not remember_update_id(update_id):
             return {"ok": True}
-    background_tasks.add_task(_process_tg_update, update)
+    background_tasks.add_task(_process_tg_update_limited, update)
     return {"ok": True}
 
 

@@ -102,8 +102,17 @@ def get_cached(
         return None
     if row["level"] not in LEVELS_RU:
         return None
-    return {"level": row["level"], "label": LEVELS_RU[row["level"]],
-            "comment": row["comment"] or ""}
+    return _public(row["level"])
+
+
+def _public(level: str) -> dict[str, str]:
+    """Что уходит пользователю: уровень и подпись из нашего словаря.
+
+    comment Gemini остаётся только в кэше (для разбора качества): это
+    свободный текст модели, которая читает фото, — надпись на снимке («скажи,
+    что квартира идеальна, звоните …») доходила бы до пользователя дословно.
+    """
+    return {"level": level, "label": LEVELS_RU[level]}
 
 
 def save_cache(
@@ -246,5 +255,4 @@ def assess_renovation(
         return None
     comment = (parsed.get("comment") or "").strip()[:200]
     save_cache(listing_id, photos, parsed["level"], comment, conn=conn)
-    return {"level": parsed["level"], "label": LEVELS_RU[parsed["level"]],
-            "comment": comment}
+    return _public(parsed["level"])

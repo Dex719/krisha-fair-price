@@ -88,14 +88,19 @@ jobs:
           FILES=$(python -c "from krisha.db_release import MODEL_ARTIFACT_PATHS as P; import os; print(' '.join(os.path.basename(str(x)) for x in P))")
           tar -czf /tmp/models.tar.gz -C models $FILES
           sha256sum /tmp/models.tar.gz | cut -d' ' -f1 > /tmp/models.tar.gz.sha256
-          gh release upload model-latest /tmp/models.tar.gz /tmp/models.tar.gz.sha256 --clobber --repo "$KRISHA_DATA_REPO" || \
-            gh release create model-latest /tmp/models.tar.gz /tmp/models.tar.gz.sha256 --repo "$KRISHA_DATA_REPO" \
-              --title "model-latest" --notes "Актуальные веса модели (мутабельный релиз)"
+          # Аудит 24.10: `upload --clobber || release create` на сбое посреди
+          # заливки оставлял model-latest без архива (clobber уже удалил
+          # старый, а create падал на «релиз существует») — прод после
+          # рестарта неделю жил без модели. release_upload.py: временное имя →
+          # сверка sha256 → подмена; релиза нет — создаёт его сам.
+          python scripts/release_upload.py --repo "$KRISHA_DATA_REPO" --tag model-latest \
+            --create-title "model-latest" --create-notes "Актуальные веса модели (мутабельный релиз)" \
+            /tmp/models.tar.gz /tmp/models.tar.gz.sha256
           TAG="model-$(date -u +%F)"
           # повторный ретрейн в тот же день перезаливает снапшот дня, а не падает
-          gh release create "$TAG" /tmp/models.tar.gz /tmp/models.tar.gz.sha256 --repo "$KRISHA_DATA_REPO" \
-            --title "$TAG" --notes "Снапшот моделей $(date -u +%F)" || \
-            gh release upload "$TAG" /tmp/models.tar.gz /tmp/models.tar.gz.sha256 --clobber --repo "$KRISHA_DATA_REPO"
+          python scripts/release_upload.py --repo "$KRISHA_DATA_REPO" --tag "$TAG" \
+            --create-title "$TAG" --create-notes "Снапшот моделей $(date -u +%F)" \
+            /tmp/models.tar.gz /tmp/models.tar.gz.sha256
 
       # issue #190 §2.2: README генерируется из меты тем же коммитом, что и
       # мета — иначе блок метрик отставал на ретрейн (7.29% при мете 7.49%),
@@ -229,11 +234,14 @@ jobs:
           FILES=$(python -c "from krisha.db_release import RENT_MODEL_ARTIFACT_PATHS as P; import os; print(' '.join(os.path.basename(str(x)) for x in P))")
           tar -czf /tmp/models_rent.tar.gz -C models/rent $FILES
           sha256sum /tmp/models_rent.tar.gz | cut -d' ' -f1 > /tmp/models_rent.tar.gz.sha256
-          gh release upload model-latest /tmp/models_rent.tar.gz /tmp/models_rent.tar.gz.sha256 --clobber --repo "$KRISHA_DATA_REPO"
+          # временное имя → сверка sha256 → подмена (аудит 24.10, см. выше)
+          python scripts/release_upload.py --repo "$KRISHA_DATA_REPO" --tag model-latest \
+            --create-title "model-latest" --create-notes "Актуальные веса модели (мутабельный релиз)" \
+            /tmp/models_rent.tar.gz /tmp/models_rent.tar.gz.sha256
           TAG="model-$(date -u +%F)"
-          gh release create "$TAG" /tmp/models_rent.tar.gz /tmp/models_rent.tar.gz.sha256 --repo "$KRISHA_DATA_REPO" \
-            --title "$TAG" --notes "Снапшот моделей $(date -u +%F)" || \
-            gh release upload "$TAG" /tmp/models_rent.tar.gz /tmp/models_rent.tar.gz.sha256 --clobber --repo "$KRISHA_DATA_REPO"
+          python scripts/release_upload.py --repo "$KRISHA_DATA_REPO" --tag "$TAG" \
+            --create-title "$TAG" --create-notes "Снапшот моделей $(date -u +%F)" \
+            /tmp/models_rent.tar.gz /tmp/models_rent.tar.gz.sha256
 
       - name: Commit rent model metadata
         run: |
