@@ -72,8 +72,14 @@ BULK_ABS_MIN_ROWS = 1500      # и не меньше стольких строк
 BULK_MIN_DAYS_FOR_MEDIAN = 5  # меньше дней истории — медиана бессмысленна, bulk не ищем
 
 
-def _filter_stale_and_out_of_area(df: pd.DataFrame) -> pd.DataFrame:
+def _filter_stale_and_out_of_area(
+    df: pd.DataFrame, now: pd.Timestamp | None = None
+) -> pd.DataFrame:
     """issue #104: снятые месяцы назад лоты и чужие города не должны учить модель.
+
+    now — «текущий момент» для отсечки давно снятых (по умолчанию сейчас).
+    Стенд (scripts/backtest.py) передаёт дату фолда: лот, снятый после неё,
+    на ту дату был живым.
 
     - is_active=1 ИЛИ delisted_at не старше STALE_DELISTED_DAYS дней: лот, снятый
       давно, обучается на своей последней цене с first_seen из прошлого — цена
@@ -85,7 +91,10 @@ def _filter_stale_and_out_of_area(df: pd.DataFrame) -> pd.DataFrame:
     before = len(df)
     if {"is_active", "delisted_at"}.issubset(df.columns):
         delisted_at = pd.to_datetime(df["delisted_at"], errors="coerce", utc=True)
-        cutoff = pd.Timestamp.now(tz="utc") - pd.Timedelta(days=STALE_DELISTED_DAYS)
+        now = pd.Timestamp.now(tz="utc") if now is None else pd.Timestamp(now)
+        if now.tzinfo is None:
+            now = now.tz_localize("utc")
+        cutoff = now - pd.Timedelta(days=STALE_DELISTED_DAYS)
         recently_delisted = delisted_at >= cutoff
         is_active = pd.to_numeric(df["is_active"], errors="coerce").fillna(1) == 1
         df = df[is_active | recently_delisted]
@@ -461,20 +470,25 @@ def evaluate(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
 def _save_gate_samples(
     y_true: np.ndarray, y_new: np.ndarray, y_old: np.ndarray,
     path: Path | str = MODEL_GATE_SAMPLES_PATH,
+    clusters: np.ndarray | pd.Series | None = None,
 ) -> None:
     """issue #106: пары APE (новая/старая модель) по каждой test-строке.
 
     Нужны model_gate.py для парного бутстрепа разницы MAPE — точнее плоского
     допуска ±0.5 п.п., который на ~1400 строках теста и пропускает деградации,
     и блокирует реальные улучшения (шум ~1.5-2σ на одном сплите).
+
+    clusters — здание каждой строки (building_groups): гейт ресемплит целые
+    здания, а не строки. Квартиры одного дома и перевыставления коррелируют,
+    построчный бутстреп считает их независимыми и сужает интервал.
     """
     ape_new = (np.abs(y_new - y_true) / np.maximum(y_true, 1.0)).tolist()
     ape_old = (np.abs(y_old - y_true) / np.maximum(y_true, 1.0)).tolist()
+    payload: dict = {"ape_new": ape_new, "ape_old": ape_old}
+    if clusters is not None:
+        payload["clusters"] = [str(c) for c in clusters]
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text(
-        json.dumps({"ape_new": ape_new, "ape_old": ape_old}, separators=(",", ":")),
-        encoding="utf-8",
-    )
+    Path(path).write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
 
 
 # --- Доверительный интервал цены: MultiQuantile-модель + CQR --------------
@@ -493,6 +507,33 @@ GATE_MIN_UNSEEN_ROWS = 200
 QUANTILE_ITERATIONS = 800  # верхний потолок итераций — реально режется early stopping (issue #132)
 QUANTILE_EARLY_STOPPING_ROUNDS = 100  # как у точечной RMSE-модели ниже
 CQR_SCALE_MAX = 10.0  # защита от переполнения expm1 при аномальном scale (см. MIN_INTERVAL_WIDTH_LOG)
+# Калибруем на 1 п.п. выше цели. Гарантия CQR — для calib и test из одного
+# распределения, а у нас calib — прошлые две недели train, test — следующие
+# 2–3 недели: дрейф цен и состава съедает покрытие. Факт по ретрейнам
+# 01.10–18.10 (coverage_test): продажа 79.6 / 78.1%, аренда 78.9 / 78.1 /
+# 80.5 / 78.4% — в среднем 78.9% при цели 80%, недобор ~1.1 п.п., а порог
+# гейта (цель − 2 п.п. = 78%) пробивался почти впритык (аренда 78.06%).
+# +1 п.п. к уровню калибровки расширяет интервал примерно на 2–3% и
+# возвращает ожидаемое покрытие к ~80%.
+CQR_COVERAGE_MARGIN = 0.01
+
+
+def _cqr_scale(scores: np.ndarray, clusters: np.ndarray | None = None) -> float:
+    """Масштаб CQR: квантиль conformity-скоров уровня ⌈(n+1)·c⌉/n.
+
+    c = цель + CQR_COVERAGE_MARGIN. n в поправке на конечную выборку — число
+    ЗДАНИЙ в calib, а не строк: квартиры одного дома коррелируют, и эффективный
+    размер calib меньше числа строк. Сам квантиль — по строкам (покрытие
+    гейт меряет по строкам теста).
+    """
+    scores = np.asarray(scores, dtype=float)
+    if len(scores) == 0:
+        return 0.0
+    n_eff = len(np.unique(clusters)) if clusters is not None and len(clusters) else len(scores)
+    n_eff = max(int(n_eff), 1)
+    coverage = INTERVAL_TARGET_COVERAGE + CQR_COVERAGE_MARGIN
+    level = min(1.0, np.ceil((n_eff + 1) * coverage) / n_eff)
+    return min(max(float(np.quantile(scores, level, method="higher")), 0.0), CQR_SCALE_MAX)
 
 
 def _fit_multiquantile(
@@ -590,6 +631,15 @@ def fit_quantile_interval(
         fit_idx, cal_idx = next(splitter.split(raw_train, groups=groups))
     fit_raw = raw_train.iloc[fit_idx].reset_index(drop=True)
     cal_raw = raw_train.iloc[cal_idx].reset_index(drop=True)
+    # calib должен быть устроен как test: из train убраны перевыставления
+    # test-квартир (purge_leaked_train_rows), значит из fit — перевыставления
+    # calib-квартир. Иначе на таких строках модель «узнаёт» квартиру,
+    # conformity-скор занижен, и интервал на тесте недопокрывает.
+    fit_purged, n_cal_purged = purge_leaked_train_rows(fit_raw, cal_raw)
+    if len(fit_purged):
+        fit_raw = fit_purged
+    else:  # вырожденный случай (крошечная выборка из одних дублей) — не опустошаем fit
+        n_cal_purged = 0
 
     from krisha.spatial import build_spatial_ref, self_indices_for
 
@@ -637,12 +687,11 @@ def fit_quantile_interval(
     lo_cal, hi_cal = preds_cal[:, 0], preds_cal[:, 1]
     width_cal = np.maximum(hi_cal - lo_cal, MIN_INTERVAL_WIDTH_LOG)
     scores = np.maximum(lo_cal - y_cal, y_cal - hi_cal) / width_cal
-    n = len(scores)
-    level = min(1.0, np.ceil((n + 1) * INTERVAL_TARGET_COVERAGE) / n)
-    scale = min(max(float(np.quantile(scores, level, method="higher")), 0.0), CQR_SCALE_MAX)
+    scale = _cqr_scale(scores, building_groups(cal_raw).to_numpy())
     fit_meta = {
         "n_fit": len(fit_df),
         "n_calib": len(cal_df),
+        "n_calib_purged": n_cal_purged,
         "quantile_best_iterations": best_iterations,  # issue #132: early stopping
     }
     return model, scale, fit_meta
@@ -658,7 +707,14 @@ def interval_bounds(
     """Границы интервала в ₸ для строк test_df — как их видит пользователь."""
     features, cat_features = spec.all_features, list(spec.cat_features)
     test_pool = Pool(test_df[features], cat_features=cat_features)
-    preds_test = model.predict(test_pool)
+    return _bounds_from_pool(model, scale, test_pool, point_pred)
+
+
+def _bounds_from_pool(
+    model: CatBoostRegressor, scale: float, pool: Pool, point_pred: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Границы интервала в ₸ по готовому Pool (общий код новой и старой модели)."""
+    preds_test = model.predict(pool)
     lo_test, hi_test = preds_test[:, 0], preds_test[:, 1]
     width_test = np.maximum(hi_test - lo_test, MIN_INTERVAL_WIDTH_LOG)
     # клип лог-границ до expm1: даже с CQR_SCALE_MAX очень широкий
@@ -685,22 +741,70 @@ def train_quantile_interval(
     """
     model, scale, fit_meta = fit_quantile_interval(raw_train, spec, iterations)
     price_lo, price_hi = interval_bounds(model, scale, test_df, point_pred, spec)
-    y_true = test_df["price"].to_numpy()
-    covered = (y_true >= price_lo) & (y_true <= price_hi)
-    mid = np.maximum((price_lo + price_hi) / 2.0, 1.0)
-    width_pct = (price_hi - price_lo) / mid
-
     interval_meta = {
         "alpha_lo": QUANTILE_ALPHA_LO,
         "alpha_hi": QUANTILE_ALPHA_HI,
         "target_coverage": INTERVAL_TARGET_COVERAGE,
+        "calibration_coverage": INTERVAL_TARGET_COVERAGE + CQR_COVERAGE_MARGIN,
         "cqr_scale": scale,  # множитель ширины интервала (нормированный CQR)
-        "coverage_test": float(np.mean(covered)),
-        "median_width_pct": float(np.median(width_pct)),
+        **_interval_quality(test_df["price"].to_numpy(), price_lo, price_hi),
         **fit_meta,
     }
     logger.info("Интервал (CQR): %s", json.dumps(interval_meta))
     return model, interval_meta
+
+
+def _interval_quality(y_true: np.ndarray, price_lo: np.ndarray, price_hi: np.ndarray) -> dict:
+    """Покрытие и медианная относительная ширина интервала на выборке."""
+    covered = (y_true >= price_lo) & (y_true <= price_hi)
+    mid = np.maximum((price_lo + price_hi) / 2.0, 1.0)
+    width_pct = (price_hi - price_lo) / mid
+    return {
+        "coverage_test": float(np.mean(covered)),
+        "median_width_pct": float(np.median(width_pct)),
+    }
+
+
+def _old_interval_on_test(
+    old_quantile_path, old_meta_path, test_df: pd.DataFrame, y_old: np.ndarray
+) -> dict | None:
+    """Интервал СТАРОЙ модели на том же test, что и новый (для гейта ширины).
+
+    Раньше гейт сравнивал ширину нового интервала на новом тесте с шириной
+    старого, взятой из старой меты, — то есть посчитанной на тесте прошлой
+    недели. Состав теста меняется (доля новостроек, районы), и ширина вместе с
+    ним; сравнение путало дрейф выборки с деградацией. Здесь старая квантильная
+    модель + её cqr_scale + её точечный прогноз (центр) прогоняются по тому же
+    test_df. None — старой квантильной модели или её scale нет (гейт тогда
+    падает обратно на мету с предупреждением).
+    """
+    if not old_quantile_path or not Path(old_quantile_path).exists():
+        return None
+    if not old_meta_path or not Path(old_meta_path).exists():
+        return None
+    old_meta = json.loads(Path(old_meta_path).read_text(encoding="utf-8"))
+    scale = ((old_meta.get("metrics") or {}).get("interval") or {}).get("cqr_scale")
+    if scale is None:
+        return None
+    qmodel = CatBoostRegressor()
+    qmodel.load_model(str(old_quantile_path))
+    pool = _old_model_pool(qmodel, test_df, old_meta_path)
+    price_lo, price_hi = _bounds_from_pool(qmodel, float(scale), pool, y_old)
+    return _interval_quality(test_df["price"].to_numpy(), price_lo, price_hi)
+
+
+def _default_old_quantile_path(old_model_path) -> Path | None:
+    """Квантильная модель рядом со старой точечной: old_model.cbm → old_model_quantile.cbm.
+
+    Ретрейн копирует старые артефакты в /tmp перед обучением; чтобы гейт
+    ширины считал старый интервал на новом тесте, рядом с /tmp/old_model.cbm
+    должна лежать /tmp/old_model_quantile.cbm (у аренды —
+    /tmp/old_rent_model_quantile.cbm). Нет файла — fallback на мету.
+    """
+    if not old_model_path:
+        return None
+    p = Path(old_model_path)
+    return p.with_name(f"{p.stem}_quantile{p.suffix}")
 
 
 def prepare_frame(df: pd.DataFrame, spec: ModelSpec = SALE) -> pd.DataFrame:
@@ -775,7 +879,7 @@ def fit_point_model(
         knn_self_indices=self_indices_for(raw_train),
     )
 
-    # Early stopping — по val-сплиту из train (по «зданиям»), а не по test:
+    # Early stopping — по val-сплиту из train, а не по test:
     # иначе число деревьев подгоняется под тестовую выборку и метрики чуть
     # оптимистичнее реальности. Схема: probe-модель находит оптимальное число
     # итераций на val, финальная переобучается на всём train.
@@ -785,10 +889,30 @@ def fit_point_model(
     # district_ppsm/hex_ppsm/knn считались по ВСЕМУ raw_train, включая val —
     # val-строки видели собственную цену в своих же референсных статистиках,
     # best_iterations выбирался по оценке, которая уже частично «списала».
-    es_splitter = GroupShuffleSplit(n_splits=1, test_size=0.15, random_state=seed)
-    fit_idx, val_idx = next(es_splitter.split(raw_train, groups=building_groups(raw_train)))
-    fit_raw_es = raw_train.iloc[fit_idx].reset_index(drop=True)
-    val_raw_es = raw_train.iloc[val_idx].reset_index(drop=True)
+    #
+    # Аудит 24.10: val — самый свежий срез train ПО ВРЕМЕНИ (та же
+    # time_based_split, что режет test), а из fit убраны перевыставления
+    # val-квартир — val устроен как test. Случайный по зданиям val мерил
+    # интерполяцию в «знакомом» времени, а прод экстраполирует вперёд.
+    # Проверка на локальной базе продажи (30.8k train / 3.8k test): случайный
+    # val останавливал на 3040 деревьях, временной — на 3999 из 4000; MAPE
+    # теста при 3040 деревьях 7.26%, при 4000 — 7.17% (кривая теста монотонно
+    # падает до потолка). То есть временной val согласован с тестом, а
+    # «ES не срабатывает» у продажи (3993/4000) — не поломка: модели правда
+    # нужны все деревья. Нет first_seen / вырожденный сплит — прежний
+    # случайный по зданиям.
+    fit_idx, val_idx = time_based_split(raw_train, window_days=TEST_WINDOW_DAYS)
+    if len(fit_idx) == 0 or len(val_idx) == 0:
+        es_splitter = GroupShuffleSplit(n_splits=1, test_size=0.15, random_state=seed)
+        fit_idx, val_idx = next(es_splitter.split(raw_train, groups=building_groups(raw_train)))
+        fit_raw_es = raw_train.iloc[fit_idx].reset_index(drop=True)
+        val_raw_es = raw_train.iloc[val_idx].reset_index(drop=True)
+    else:
+        fit_raw_es = raw_train.iloc[fit_idx].reset_index(drop=True)
+        val_raw_es = raw_train.iloc[val_idx].reset_index(drop=True)
+        fit_purged, _ = purge_leaked_train_rows(fit_raw_es, val_raw_es)
+        if len(fit_purged):
+            fit_raw_es = fit_purged
     ppsm_maps_es = compute_ppsm_maps(fit_raw_es)
     spatial_ref_es = build_spatial_ref(fit_raw_es)
     fit_df_es = build_features(
@@ -819,6 +943,7 @@ def train(
     spec: ModelSpec = SALE,
     old_meta_path: str | Path | None = None,
     refit_on_all: bool = True,
+    old_quantile_path: str | Path | None = None,
 ) -> dict:
     """Полный пайплайн обучения. Возвращает метрики (model vs baseline).
 
@@ -833,6 +958,8 @@ def train(
     оценивается на том же свежем test-сплите → metrics["old_model"], и
     метрический гейт сравнивает яблоки с яблоками (см. scripts/model_gate.py).
     old_meta_path — её мета: из неё берётся точка центра (см. _old_model_pool).
+    old_quantile_path — её квантильная модель (по умолчанию <old_model>_quantile.cbm
+    рядом с old_model_path): ширина старого интервала на этом же test → гейт.
 
     spec — какую модель учим (krisha.model_spec: SALE или RENT).
     """
@@ -840,6 +967,9 @@ def train(
         df = load_dataset(spec.db_path)
     df = prepare_frame(df, spec)
     logger.info("После очистки (%s): %s строк", spec.label, len(df))
+    # История до дедупа: по ней гейт узнаёт перевыставления, которые старая
+    # модель видела под другим id (_unseen_by_old_model).
+    history_before_dedup = df
     features, cat_features = spec.all_features, list(spec.cat_features)
     # Честная схема валидации (issue #104):
     # 1) дедуп перезалитых объявлений (одна квартира под разными id);
@@ -985,8 +1115,10 @@ def train(
             # Прошлая модель, переобученная на всех данных, уже видела начало
             # этого test-окна — на нём она выглядела бы лучше, чем есть, и гейт
             # отклонял бы честные ретрейны. Сравниваем обе модели только на
-            # строках, появившихся после её данных.
-            unseen = _unseen_by_old_model(raw_test, old_meta_path)
+            # строках, появившихся после её данных (и не перевыставлениях
+            # квартир, которые она видела под другим id).
+            unseen = _unseen_by_old_model(raw_test, old_meta_path, history_before_dedup)
+            clusters = building_groups(test_df).to_numpy()
             if unseen is not None:
                 if int(unseen.sum()) < GATE_MIN_UNSEEN_ROWS:
                     raise ValueError(
@@ -994,6 +1126,7 @@ def train(
                         f"(нужно ≥ {GATE_MIN_UNSEEN_ROWS}) — сравнивать не на чем"
                     )
                 y_true_g, y_model_g, y_old_g = y_true[unseen], y_model[unseen], y_old[unseen]
+                clusters = clusters[unseen]
                 metrics["model_vs_old"] = evaluate(y_true_g, y_model_g)
                 metrics["old_model_rows"] = int(unseen.sum())
             else:
@@ -1001,19 +1134,48 @@ def train(
             metrics["old_model"] = evaluate(y_true_g, y_old_g)
             logger.info("Старая модель на новом test: %s", json.dumps(metrics["old_model"]))
             if save:
-                _save_gate_samples(y_true_g, y_model_g, y_old_g, path=spec.gate_samples_path)
+                _save_gate_samples(
+                    y_true_g, y_model_g, y_old_g, path=spec.gate_samples_path, clusters=clusters,
+                )
         except Exception as exc:  # набор фичей мог измениться — гейт уходит в fail-closed
             metrics["old_model_error"] = str(exc)
             logger.warning("Не удалось оценить старую модель (%s): %s", old_model_path, exc)
+        else:
+            # Ширина/покрытие старого интервала на ЭТОМ ЖЕ test — для гейта
+            # ширины. Не критично: нет старой квантильной модели или она не
+            # оценилась — гейт возьмёт ширину из старой меты с предупреждением.
+            try:
+                old_interval = _old_interval_on_test(
+                    old_quantile_path or _default_old_quantile_path(old_model_path),
+                    old_meta_path, test_df, y_old,
+                )
+                if old_interval:
+                    metrics["old_model_interval"] = old_interval
+                    logger.info("Интервал старой модели на новом test: %s", json.dumps(old_interval))
+            except Exception as exc:
+                logger.warning("Не удалось оценить интервал старой модели: %s", exc)
     if save and refit_on_all:
         # В прод — модель на всех данных; ₸/м²-карты, пространственный
         # референс и типичные значения — от неё же, чтобы признаки на
-        # инференсе считались так же, как при её обучении. Интервал остаётся
-        # от калибровки выше: ему нужна отложенная выборка, а точечная модель
-        # в него входит только центром (finalize_interval).
+        # инференсе считались так же, как при её обучении.
         final = fit_point_model(df, spec, iterations)
         model, ppsm_maps, spatial_ref = final.model, final.ppsm_maps, final.spatial_ref
         feature_defaults = _typical_values(final.train_df, spec)
+        # Квантильную модель — тоже на всех данных. Раньше она оставалась от
+        # калибровки (fit-часть train без calib и test) и отставала от точечной
+        # на 25–35 дней свежих цен, а её признаки в проде считались по картам
+        # и референсу финальной модели — не тем, на которых она училась.
+        # Число деревьев — найденное early stopping'ом, масштаб CQR — из
+        # калибровки выше (cqr_scale в мете): калибровке нужна отложенная
+        # выборка, поэтому scale переносится на переобученную модель как есть —
+        # тот же приём, что у точечной (метрики на модели без test, в прод —
+        # модель на всех данных).
+        q_iterations = int(interval_meta.get("quantile_best_iterations") or QUANTILE_ITERATIONS)
+        quantile_model = _fit_multiquantile(
+            Pool(final.train_df[features], final.train_df[TARGET], cat_features=cat_features),
+            q_iterations,
+        )
+        interval_meta["final_fit"] = {"data": "train+test", "iterations": q_iterations}
         metrics["final_fit"] = {
             "data": "train+test",
             "n_rows": len(final.train_df),
@@ -1075,11 +1237,22 @@ def _max_first_seen(df: pd.DataFrame) -> str | None:
     return None if pd.isna(ts) else ts.isoformat()
 
 
-def _unseen_by_old_model(raw_test: pd.DataFrame, old_meta_path) -> np.ndarray | None:
+def _unseen_by_old_model(
+    raw_test: pd.DataFrame, old_meta_path, history: pd.DataFrame | None = None
+) -> np.ndarray | None:
     """Маска test-строк, которых прошлая модель не видела при обучении.
 
     None — сравнивать можно на всём test: у прошлой модели нет final_fit в мете
     (училась без test-окна, как до 10.2026) или у строк нет first_seen.
+
+    history — все строки до дедупа (prepare_frame, но ДО dedup_relistings).
+    «Свежая» по first_seen строка бывает перевыставлением квартиры, которую
+    старая модель уже видела под другим id (на базе 24.10 — 11%+ свежих строк
+    продажи): на ней старая выглядит лучше, чем есть, и сравнение смещено
+    против новой. Такие строки — отпечаток встречается в истории с first_seen
+    не позже отсечки старой модели — тоже исключаются. Нужна именно история до
+    дедупа: дедуп оставляет у перевыставления только свежую запись, и старое
+    появление квартиры из df уже пропало.
     """
     if not old_meta_path or not Path(old_meta_path).exists():
         return None
@@ -1087,8 +1260,21 @@ def _unseen_by_old_model(raw_test: pd.DataFrame, old_meta_path) -> np.ndarray | 
     cutoff = ((meta.get("metrics") or {}).get("final_fit") or {}).get("max_first_seen")
     if not cutoff or "first_seen" not in raw_test.columns:
         return None
+    cutoff_ts = pd.Timestamp(cutoff)
     ts = pd.to_datetime(raw_test["first_seen"], errors="coerce", utc=True)
-    return (ts > pd.Timestamp(cutoff)).to_numpy()
+    unseen = (ts > cutoff_ts).to_numpy()
+    if history is not None and "first_seen" in history.columns and len(history):
+        hist_ts = pd.to_datetime(history["first_seen"], errors="coerce", utc=True)
+        seen_fp = set(_fingerprints(history.loc[(hist_ts <= cutoff_ts).to_numpy()], "hist"))
+        relisted = _fingerprints(raw_test, "gate").isin(seen_fp).to_numpy()
+        n_relisted = int((unseen & relisted).sum())
+        if n_relisted:
+            logger.info(
+                "Гейт: %d свежих строк test — перевыставления квартир, которые старая "
+                "модель видела в обучении; исключаю из сравнения", n_relisted,
+            )
+        unseen = unseen & ~relisted
+    return unseen
 
 
 def _old_model_pool(old_model: CatBoostRegressor, test_df: pd.DataFrame, old_meta_path) -> Pool:
@@ -1101,8 +1287,16 @@ def _old_model_pool(old_model: CatBoostRegressor, test_df: pd.DataFrame, old_met
     из её меты; у мет до 10.2026 его нет — LEGACY_ALMATY_CENTER), иначе после
     смены центра старая модель видела бы чужие расстояния и гейт сравнивал
     бы нечестно.
+
+    Признак, который старая модель знает, а новый build_features уже не
+    считает (удалили вычисление колонки), раньше ронял оценку KeyError'ом →
+    old_model_error → гейт блокировал КАЖДЫЙ следующий ретрейн, то есть
+    удалить фичу было невозможно в принципе. Теперь такая колонка заполняется
+    «пропуском» (NaN для числовых, MISSING_CAT для категориальных) с
+    предупреждением: старая модель оценивается чуть хуже, чем есть, — это
+    честная цена удаления признака, а не вечный блок.
     """
-    from krisha.features import dist_to_center, model_center
+    from krisha.features import MISSING_CAT, dist_to_center, model_center
 
     df = test_df
     if old_meta_path and Path(old_meta_path).exists():
@@ -1112,7 +1306,17 @@ def _old_model_pool(old_model: CatBoostRegressor, test_df: pd.DataFrame, old_met
             df["dist_center_km"] = dist_to_center(df, old_center)
     names = list(old_model.feature_names_)
     cat_idx = set(old_model.get_cat_feature_indices())
-    return Pool(df[names], cat_features=[n for i, n in enumerate(names) if i in cat_idx])
+    cat_names = {n for i, n in enumerate(names) if i in cat_idx}
+    missing = [n for n in names if n not in df.columns]
+    if missing:
+        logger.warning(
+            "Старая модель знает признаки, которых нет в новом наборе: %s — "
+            "заполняю пропуском (NaN / %r)", missing, MISSING_CAT,
+        )
+        df = df.copy()
+        for n in missing:
+            df[n] = MISSING_CAT if n in cat_names else np.nan
+    return Pool(df[names], cat_features=[n for n in names if n in cat_names])
 
 
 def _typical_values(train_df: pd.DataFrame, spec: ModelSpec) -> dict:
