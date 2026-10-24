@@ -29,9 +29,11 @@ krisha.kz, тысяча инференсов CatBoost и тысяча занят
 
 from __future__ import annotations
 
+import copy
 import logging
 import os
 import threading
+import time
 from typing import Any
 
 import httpx
@@ -63,6 +65,11 @@ PREDICT_CACHE_TTL_S = _env_float("PREDICT_CACHE_TTL_S", 600.0)
 # получилось» десять минут было бы обидно. Но и повторять скрейп на каждый
 # запрос нельзя — минута тишины по битой ссылке.
 PREDICT_NEGATIVE_TTL_S = _env_float("PREDICT_NEGATIVE_TTL_S", 60.0)
+# Отказ ИСТОЧНИКА (SafeLine, таймауты, 5xx) — состояние чужого сервера, а не
+# объявления: держим его секунды, а не минуту, — krisha может ожить. Но без
+# этих секунд восемь человек с одной ссылкой давали восемь скрейпов подряд,
+# пять из них — уже после того, как клиентам ответили 503 (аудит 24.10).
+SOURCE_FAILURE_TTL_S = _env_float("SOURCE_FAILURE_TTL_S", 4.0)
 PREDICT_SLOTS = max(1, _env_int("PREDICT_SLOTS", 10))
 # Сколько ждать свободный слот, прежде чем отказать. 15 с — верхняя граница
 # терпения человека, который смотрит на спиннер.
@@ -80,6 +87,10 @@ class PredictBusy(RuntimeError):
 
 _cache = TTLCache(ttl=PREDICT_CACHE_TTL_S, maxsize=2048)
 _negative: TTLCache = TTLCache(ttl=PREDICT_NEGATIVE_TTL_S, maxsize=2048)
+# Отказы источника: ключ → (time.perf_counter() отказа, исключение без traceback).
+# perf_counter, а не monotonic: на Windows у monotonic шаг ~16 мс, и «отказ
+# случился, пока я ждал» неотличим от «отказ был до меня».
+_source_failures: TTLCache = TTLCache(ttl=SOURCE_FAILURE_TTL_S, maxsize=2048)
 _slots = threading.BoundedSemaphore(PREDICT_SLOTS)
 _busy_count = 0
 _busy_lock = threading.Lock()
@@ -113,9 +124,67 @@ def peek(url: str, live_vision: bool = False) -> dict[str, Any] | None:
 
 def peek_failure(url: str, live_vision: bool = False) -> Exception | None:
     """Свежая ошибка по этому объявлению (негативный кэш) или None."""
-    entry = _negative.peek(cache_key(url, live_vision))
+    return _fresh_failure(cache_key(url, live_vision))
+
+
+def _detached(exc: Exception, *, may_reset: bool = True) -> Exception:
+    """Копия исключения без traceback, __cause__ и __context__.
+
+    Закэшированное исключение бросают снова и снова. ``raise failure`` на том
+    же объекте каждый раз ДОПИСЫВАЕТ кадры к его __traceback__ (аудит 24.10:
+    глубина 404 после 200 попаданий) и держит в памяти все эти кадры с их
+    локальными переменными. Поэтому в кэш кладём и наружу бросаем копию.
+
+    Если копию не собрать (экзотический ``__init__``), при ``may_reset``
+    обрезаем traceback у самого объекта — так можно с тем, что лежит в кэше,
+    но не с исключением, которое прямо сейчас летит к вызывающему.
+    """
+    try:
+        clone = copy.copy(exc)
+        ok = type(clone) is type(exc) and clone.args == exc.args
+    except Exception:  # noqa: BLE001
+        ok = False
+    if not ok:
+        return exc.with_traceback(None) if may_reset else exc
+    clone.__traceback__ = None
+    clone.__cause__ = None
+    clone.__context__ = None
+    return clone
+
+
+def _remember(cache: TTLCache, key: str, exc: Exception, value_of=lambda stored: stored) -> None:
+    """Кладёт отказ в кэш, если он не из этого же кэша.
+
+    Копия, брошенная из кэша, помечена: перезаписать ею запись значило бы
+    продлевать короткий TTL отказа источника с каждым запросом — и krisha,
+    уже ожившая, оставалась бы «лежащей», пока идёт трафик.
+    """
+    if getattr(exc, "_from_gate_cache", False):
+        return
+    stored = _detached(exc, may_reset=False)
+    try:
+        stored._from_gate_cache = True  # type: ignore[attr-defined]
+    except AttributeError:  # __slots__ без __dict__ — просто не помечаем
+        pass
+    cache.set(key, value_of(stored))
+
+
+def _fresh_failure(key: str, since: float | None = None) -> Exception | None:
+    """Ошибка по ключу, которую надо отдать вместо нового скрейпа.
+
+    Негативный кэш объявления (минута) или свежий отказ источника (секунды).
+    ``since`` — когда поток встал в очередь: отказ, случившийся ПОКА он ждал
+    лок, отвечает и ему, даже если короткий TTL уже истёк — повторять за
+    соседом тот же скрейп незачем.
+    """
+    entry = _negative.peek(key)
     if entry is not None and entry[0] < PREDICT_NEGATIVE_TTL_S:
-        return entry[1]
+        return _detached(entry[1])
+    entry = _source_failures.peek(key)
+    if entry is not None:
+        age, (failed_at, exc) = entry
+        if age < SOURCE_FAILURE_TTL_S or (since is not None and failed_at > since):
+            return _detached(exc)
     return None
 
 
@@ -123,6 +192,7 @@ def stats() -> dict[str, int]:
     return {
         "cached": len(_cache),
         "negative": len(_negative),
+        "source_failures": len(_source_failures),
         "slots": PREDICT_SLOTS,
         "busy": _busy_count,
     }
@@ -133,6 +203,7 @@ def clear() -> None:
     global _busy_count
     _cache.clear()
     _negative.clear()
+    _source_failures.clear()
     with _busy_lock:
         _busy_count = 0
 
@@ -189,31 +260,44 @@ def cached_predict(
 
     Поднимает ``PredictBusy``, если слот не освободился за ``wait_s``, и
     прокидывает ошибки самого разбора (запомнив их в негативном кэше).
-    ``InvalidListingUrl`` не кэшируется: это ошибка ввода, скрейпа не было.
-    ``SourceUnavailable`` (и его ``ChallengeBlocked``) — тоже: это состояние
-    чужого сервера, а не объявления.
+    ``InvalidListingUrl`` не кэшируется: это ошибка ввода, скрейпа не было,
+    и проверяется она ДО кэша и слотов — мусор не занимает ни лок, ни слот.
+    ``SourceUnavailable`` (и его ``ChallengeBlocked``) кэшируется на секунды
+    (``SOURCE_FAILURE_TTL_S``): это состояние чужого сервера, а не объявления.
     """
+    if not KRISHA_URL_RE.search(url or ""):
+        raise InvalidListingUrl("Ожидается ссылка вида https://krisha.kz/a/show/<id>")
     key = cache_key(url, live_vision)
     fresh = _cache.peek(key)
     if fresh is not None and fresh[0] < PREDICT_CACHE_TTL_S:
         return fresh[1]
-    failure = peek_failure(url, live_vision)
+    failure = _fresh_failure(key)
     if failure is not None:
         raise failure
+    since = time.perf_counter()
+
+    def recheck() -> None:
+        # Под локом ключа: пока ждали, сосед мог упереться в отказ — он же и наш.
+        failed = _fresh_failure(key, since)
+        if failed is not None:
+            raise failed
+
     wait = PREDICT_SLOT_WAIT_S if wait_s is None else wait_s
     try:
-        return _cache.get_or_call(key, lambda: _run(url, live_vision, wait))
-    except (PredictBusy, InvalidListingUrl, SourceUnavailable):
+        return _cache.get_or_call(key, lambda: _run(url, live_vision, wait), recheck=recheck)
+    except (PredictBusy, InvalidListingUrl):
         # Занятость — состояние сервиса, а не свойство объявления; кривой URL —
         # ошибка ввода. Ни то, ни другое в негативный кэш не кладём.
-        #
-        # Отказ источника (челлендж SafeLine, блок, таймауты) — из той же семьи:
-        # он про сиюминутное состояние ЧУЖОГО сервера, и на том же объявлении
-        # следующий запрос обычно проходит. Закэшировать его было бы хуже всего
-        # именно в главном сценарии проекта — тысяча человек с ОДНОЙ ссылкой из
-        # поста: первый неудачник запер бы остальных на минуту, хотя источник
-        # уже пускает. От лавины скрейпов здесь защищают слоты, а не кэш.
+        raise
+    except SourceUnavailable as exc:
+        # Отказ источника (челлендж SafeLine, блок, таймауты) — про сиюминутное
+        # состояние ЧУЖОГО сервера: на том же объявлении следующий запрос
+        # обычно проходит. Минутный кэш запер бы тысячу человек с одной ссылкой
+        # из поста, хотя источник уже пускает, — поэтому только секунды. Их
+        # хватает, чтобы один отказ ответил всем, кто ждал тот же скрейп, а
+        # брошенные по таймауту потоки не ходили на krisha по очереди.
+        _remember(_source_failures, key, exc, lambda stored: (time.perf_counter(), stored))
         raise
     except Exception as exc:
-        _negative.set(key, exc)
+        _remember(_negative, key, exc)
         raise
