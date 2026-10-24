@@ -1,5 +1,5 @@
-"""Браузерные e2e общего каркаса (static/js/site.js): меню, живые цифры, GSAP по страницам,
-«меньше движения», формы-переходы и аккордеон без GSAP. Герметично, см. conftest.py."""
+"""Браузерные e2e общего каркаса (static/js/site.js): меню, живые цифры, без сторонних библиотек анимации,
+«меньше движения», формы-переходы и аккордеон. Герметично, см. conftest.py."""
 
 import re
 
@@ -80,19 +80,27 @@ def test_subpages_do_not_load_gsap_and_show_everything(hermetic_page, mock_api, 
 
 def test_reduced_motion_keeps_animations(hermetic_page, mock_api, hermetic_server):
     """«Меньше движения» в системе анимации не выключает: у владельца в Windows анимации
-    выключены, и без них сайт выглядел мёртвым. GSAP грузится, счётчик бежит до свежего значения."""
+    выключены, и без них сайт выглядел мёртвым. Режим — html.anim (не html.still), вход героя
+    идёт CSS-анимацией, счётчик бежит от нуля и заканчивает на свежем значении API."""
     page = hermetic_page
     page.emulate_media(reduced_motion="reduce")
     mock_api()
-    loaded = []
-    page.on("request", lambda r: loaded.append(r.url) if "gsap" in r.url.lower() else None)
     page.goto(hermetic_server + "/", wait_until="load")
     _ready(page)
-    page.wait_for_function("() => !!window.gsap", timeout=10000)
-    assert loaded, "GSAP должен грузиться и при «меньше движения»"
-    assert page.evaluate("[bagam.rm, bagam.lite]") == [True, False]
-    page.locator(".mets").scroll_into_view_if_needed()
-    page.wait_for_timeout(1800)
+    assert page.evaluate("[bagam.rm, bagam.lite, bagam.motion()]") == [True, False, True]
+    cls = page.evaluate("[...document.documentElement.classList]")
+    assert "anim" in cls and "rm" in cls and "still" not in cls, cls
+    assert page.evaluate("getComputedStyle(document.querySelector('.hero h1 span')).animationName") == "bgmup"
+    # бегущий счётчик: пишем каждое значение, пока блок метрик въезжает в экран
+    seen = page.evaluate("""async () => {
+      const el = document.querySelector('.met [data-l=mape]'), seen = [];
+      new MutationObserver(() => seen.push(el.textContent)).observe(el, {childList: true, characterData: true, subtree: true});
+      el.scrollIntoView({block: 'center'});
+      await new Promise(r => setTimeout(r, 2200));
+      return seen;
+    }""")
+    assert len(set(seen)) >= 5, f"счётчик не бежал: {seen}"
+    assert seen[-1] == "7,6%"
     assert set(page.locator(".met [data-l=mape]").all_text_contents()) == {"7,6%"}
 
 
@@ -107,7 +115,7 @@ def test_reduced_motion_keeps_reveal_on_subpages(hermetic_page, mock_api, hermet
 
 
 def test_lite_mode_is_static(hermetic_page, mock_api, hermetic_server):
-    """Статичен только лёгкий режим (здесь — экономия трафика): без GSAP, без появления блоков."""
+    """Статичен только лёгкий режим (здесь — экономия трафика): без появления блоков и счётчиков."""
     page = hermetic_page
     page.add_init_script(
         "Object.defineProperty(navigator, 'connection', {value: {saveData: true}, configurable: true});")
@@ -117,7 +125,7 @@ def test_lite_mode_is_static(hermetic_page, mock_api, hermetic_server):
     page.goto(hermetic_server + "/", wait_until="load")
     _ready(page)
     page.wait_for_timeout(1500)
-    assert page.evaluate("bagam.lite") is True
+    assert page.evaluate("[bagam.lite, bagam.motion(), document.documentElement.classList.contains('still')]") == [True, False, True]
     assert loaded == []
     assert page.evaluate("document.querySelectorAll('[data-rv]').length") == 0
     assert set(page.locator(".met [data-l=mape]").all_text_contents()) == {"7,6%"}
@@ -154,7 +162,6 @@ def test_to_top_glides_on_every_page(hermetic_page, mock_api, hermetic_server, p
 def test_jump_form_and_faq_work_before_any_animation_library(hermetic_page, mock_api, hermetic_server):
     page = hermetic_page
     mock_api()
-    page.route("**/static/js/gsap.min.js*", lambda r: r.abort())
     page.goto(hermetic_server + "/about", wait_until="domcontentloaded")
 
     page.locator(".faq .q").first.click()
@@ -176,3 +183,22 @@ def test_theme_toggle_updates_theme_color(hermetic_page, mock_api, hermetic_serv
     want = "#F1F4EC" if theme == "light" else "#0A100C"
     assert set(page.locator('meta[name="theme-color"]').evaluate_all("els => els.map(e => e.content)")) == {want}
     assert page.evaluate("getComputedStyle(document.documentElement).colorScheme") == theme
+
+
+@pytest.mark.parametrize("path", ("/", "/stats") + SUBPAGES)
+def test_no_horizontal_scroll_at_320px(hermetic_page, mock_api, hermetic_server, path):
+    """Самый узкий телефон: ни сетка героя /bot, ни длинное слово в заголовке /terms не
+    вылезают за экран."""
+    page = hermetic_page
+    page.set_viewport_size({"width": 320, "height": 640})
+    mock_api()
+    page.goto(hermetic_server + path, wait_until="load")
+    _ready(page)
+    over = page.evaluate("""() => {
+      const W = document.documentElement.clientWidth, h1 = document.querySelector('h1');
+      return [document.documentElement.scrollWidth - W,
+              Math.round(h1.getBoundingClientRect().right - W), h1.scrollWidth - h1.clientWidth];
+    }""")
+    assert over[0] <= 0, f"{path}: горизонтальная прокрутка на {over[0]} px"
+    assert over[1] <= 0, f"{path}: заголовок вылезает за экран на {over[1]} px"
+    assert over[2] <= 0, f"{path}: слово заголовка не помещается в строку ({over[2]} px)"
