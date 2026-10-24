@@ -68,6 +68,16 @@ def test_no_copies_of_shared_code(name):
     # GSAP — только там, где есть что анимировать. «Рынку» хватает bagam.reveal/countUp и CSS
     # GSAP не нужен ни одной странице: появления — bagam.reveal и CSS (−115 КБ скриптов на главной)
     assert "data-gsap" not in html and "gsap." not in html, name
+    # разбор поля «ссылка на объявление» — один на сайт (bagam.parseLot в site.js)
+    assert "function parseLot" not in html and "krisha\\.kz\\/a\\/show\\/(\\d+)/ig" not in html, name
+
+
+def test_no_dead_animation_library():
+    """GSAP не грузит ни одна страница — ни файлов, ни загрузчика в site.js."""
+    assert not (STATIC / "js" / "gsap.min.js").exists()
+    assert not (STATIC / "js" / "ScrollTrigger.min.js").exists()
+    for dead in ("gsapLoad", "data-gsap", "ScrollTrigger", "B.boot"):
+        assert dead not in SITE_JS, dead
 
 
 def test_shell_markup_is_identical_on_every_page():
@@ -122,7 +132,7 @@ def test_current_page_is_marked_with_aria_current(name, current):
 
 
 def test_site_js_api_and_fixes():
-    for api in ("B.ready", "B.boot", "B.put", "B.live", "B.ru", "B.fmt", "B.pct", "B.plural",
+    for api in ("B.ready", "B.parseLot", "B.lotError", "B.put", "B.live", "B.ru", "B.fmt", "B.pct", "B.plural",
                 "B.glide", "B.reveal", "B.countUp", "B.markCurrent", "B.tg", "B.setTheme"):
         assert api in SITE_JS, f"site.js: нет {api}"
     # «Назад» в Telegram ведёт на главную, а не в необъявленный HOME_URL

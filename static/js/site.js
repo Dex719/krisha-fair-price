@@ -1,15 +1,14 @@
 /* baǵam — общий скрипт всех страниц сайта.
 
-   Подключение: <script src="/static/js/site.js" defer></script> в <head>. На главной и на
-   «Рынке» — с атрибутом data-gsap: только там bagam.boot() подгружает GSAP + ScrollTrigger.
+   Подключение: <script src="/static/js/site.js" defer></script> в <head>. Сторонних библиотек
+   анимации нет: появления — IntersectionObserver + CSS, счётчики и прокрутка — свои кадры.
    Тему до первой отрисовки ставит маленький инлайн-скрипт в <head>; он же выставляет классы
    html.js / html.anim | html.still / html.lite / html.rm и заводит очередь window.bagam.ready(fn), поэтому
    постраничный код может обращаться к bagam откуда угодно — fn выполнится, когда этот файл готов.
 
    Наружу — window.bagam:
      ready(fn)              fn(bagam) после инициализации (до неё — в очередь, после — сразу)
-     boot(fn)               fn после загрузки GSAP (только на data-gsap-страницах); на слабом
-                            устройстве, при экономии трафика или медленной сети — сразу и без GSAP
+     parseLot(v), lotError  разбор поля «ссылка на объявление»: {id} | {err: empty|many|bad}; тексты ошибок
      put(key, text)         текст во все [data-l=key]; бегущий счётчик подхватит его в конце
      live                   Promise<{stats, health}> — ответы /api/stats и /api/health (null — не пришёл).
                             <html data-live="off"> (страница 404): в API не ходим, live сразу {null, null},
@@ -34,7 +33,6 @@
   'use strict';
 
   var root = d.documentElement;
-  var me = d.currentScript;
   var NB = '\u00a0';
   var B = (w.bagam && typeof w.bagam === 'object') ? w.bagam : {};
   var queue = B.q || [];
@@ -533,53 +531,9 @@
 
 
 
-  /* ------------------------------------------------------------ GSAP по требованию */
-  var wantsGsap = !!(me && me.hasAttribute('data-gsap'));
-  var gsapReady = null;
-  function loadScript(src) {
-    return new Promise(function (resolve, reject) {
-      var el = d.createElement('script');
-      el.src = src;
-      el.async = false;
-      el.onload = resolve;
-      el.onerror = reject;
-      d.head.appendChild(el);
-    });
-  }
-  function slowNetwork() {
-    /* сеть сама себя измерила: html полз дольше двух секунд — 65 КБ библиотеки важнее украшений */
-    var nv = w.performance && performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
-    return !!(nv && (nv.responseEnd - nv.requestStart) > 2000);
-  }
-  function gsapLoad() {
-    if (gsapReady) return gsapReady;
-    gsapReady = new Promise(function (resolve) {
-      var guard = setTimeout(resolve, 7000);
-      function start() {
-        if (slowNetwork()) {
-          root.classList.add('lite');
-          B.lite = true;
-          applyMotion();
-          clearTimeout(guard);
-          resolve();
-          return;
-        }
-        loadScript('/static/js/gsap.min.js')
-          .then(function () { return loadScript('/static/js/ScrollTrigger.min.js'); })
-          .then(function () { clearTimeout(guard); resolve(); }, function () { clearTimeout(guard); resolve(); });
-      }
-      if (d.readyState === 'complete') later(start);
-      else on(w, 'load', function () { later(start); });
-    });
-    return gsapReady;
-  }
   function run(fn) { try { fn(); } catch (e) { setTimeout(function () { throw e; }); } }
-  B.boot = function (fn) {
-    if (!wantsGsap || still()) { run(fn); return; }
-    gsapLoad().then(function () { run(fn); });
-  };
 
-  /* ------------------------------------------------------------ появление блоков (без GSAP) */
+  /* ------------------------------------------------------------ появление блоков */
   /* Прячем только то, что ниже первого экрана: уже нарисованное не исчезает и не «влетает». */
   var REVEAL_DEFAULT = '.sect .shead,.bsplit>*';
   function reveal(sel) {
@@ -620,11 +574,11 @@
     });
   }
   B.reveal = reveal;
-  if (!wantsGsap) reveal();
+  reveal();
 
   /* ------------------------------------------------------------ формы-переходы на главную */
   /* Подстраницы не считают оценку сами: ссылка уходит на главную, /#check=<id>.
-     Обработчик вешается сразу, а не после GSAP. Если форма всё же ушла обычным GET
+     Обработчик вешается сразу. Если форма всё же ушла обычным GET
      (Enter до загрузки скрипта) — подбираем ?url= и уводим туда же. */
   var LOT_RX = /krisha\.kz\/a\/show\/(\d+)/i;
   /* поле «ссылка на объявление»: пусто, одна ссылка, голый номер (как на странице 404) или
@@ -644,6 +598,7 @@
     bad: 'Нужна ссылка на объявление вида krisha.kz/a/show/1012607661 или его номер'
   };
   B.parseLot = parseLot;
+  B.lotError = LOT_ERR;
   /* текст ошибки связан с полем: скринридер назовёт причину вместе с полем */
   function fieldError(inp, err, text) {
     if (!err) return;

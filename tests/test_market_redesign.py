@@ -134,7 +134,7 @@ def test_week_chart_tooltips_share_coordinates_and_one_tab_stop():
     assert 'tabindex="0"' in plot and 'role="group"' in plot
     for key in ("ArrowLeft", "ArrowRight", "Home", "End", "Escape"):
         assert f"'{key}'" in script
-    assert 'aria-live="polite"' in html and 'class="vh" data-r="ttab"' in html
+    assert 'aria-live="polite"' in html and '<div class="vh"><table data-r="ttab"></table></div>' in html
     # ни кнопки на неделю, ни кнопки на столбик гистограммы
     assert 'class="cband"' not in html and "class=\"hcol" not in html and "cband" not in script
     # одна формула x на всё: (позиция + .5) / span
