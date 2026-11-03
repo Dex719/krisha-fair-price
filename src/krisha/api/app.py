@@ -61,6 +61,7 @@ from krisha.predict import (
     InvalidListingUrl,
     ListingNotFound,
     ListingOutsideAlmaty,
+    db_fallback_sql,
 )
 from krisha.predict_gate import PredictBusy
 from krisha.scraping.client import ChallengeBlocked, SourceUnavailable
@@ -896,16 +897,22 @@ DEMO_POOL_SIZE = 100
 _demo_pool_cache = TTLCache(ttl=DEMO_POOL_TTL_S, stale_ttl=3600, maxsize=4)
 
 
-def _demo_pool(db_path: pathlib.Path | None = None) -> list[tuple[int, str]]:
-    # DB_PATH читается в момент вызова, а не при определении: тесты его подменяют
+def _demo_pool(
+    db_path: pathlib.Path | None = None, deal: Literal["prodazha", "arenda"] = "prodazha"
+) -> list[tuple[int, str]]:
+    # DB_PATH читается в момент вызова, а не при определении: тесты его подменяют.
+    # Только лоты, которые можно оценить и без страницы krisha (поля детальной
+    # страницы, predict.db_fallback_sql): с 2026-11-02 SafeLine её не отдаёт, и
+    # «Показать на примере» на строке из одной выдачи отвечало бы 503.
     with get_conn(db_path or DB_PATH) as conn:
         rows = conn.execute(
-            """
+            f"""
             SELECT id, url
             FROM listings
             WHERE is_active = 1
               AND url IS NOT NULL
               AND url LIKE '%krisha.kz/a/show/%'
+              AND {db_fallback_sql(deal)}
             ORDER BY last_seen DESC
             LIMIT ?
             """,
@@ -923,7 +930,7 @@ def demo(request: Request, deal: Literal["prodazha", "arenda"] = "prodazha") -> 
     if not db_path.exists():
         raise HTTPException(status_code=503, detail="Демо-объявление временно недоступно")
     # продажа — прежний вызов без аргументов (его же греет warmup), аренда — своя база
-    producer = (lambda: _demo_pool(db_path)) if deal == "arenda" else _demo_pool
+    producer = (lambda: _demo_pool(db_path, deal="arenda")) if deal == "arenda" else _demo_pool
     pool = _demo_pool_cache.get_or_call(str(db_path), producer)
     if not pool:
         raise HTTPException(status_code=503, detail="Демо-объявление временно недоступно")

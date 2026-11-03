@@ -105,7 +105,16 @@ def _run_with_client(base_url: str, client: httpx.Client | Any) -> list[str]:
         raise SmokeError("POST /api/predict demo: fair_price must be a positive number")
     if not (predict.get("verdict") or predict.get("listing_id") or predict.get("title")):
         raise SmokeError("POST /api/predict demo: response does not look meaningful")
-    checks.append("POST /api/predict demo")
+    # Источник закрыт (SafeLine), и сервис оценил лот по нашей базе: для
+    # пользователя это рабочий ответ, поэтому смоук зелёный — постоянно красная
+    # проверка хуже отсутствующей (issue #157). Но отказ источника — инцидент,
+    # и прятать его нельзя: печатаем ::warning:: в лог Actions со счётчиками
+    # скрейпа. Ответ без поля source — старый прод, это живая оценка.
+    if predict.get("source", "live") == "db":
+        print(_db_fallback_warning(predict, _scrape_counters_note(client, base_url)))
+        checks.append("POST /api/predict demo (оценка из базы, источник закрыт)")
+    else:
+        checks.append("POST /api/predict demo")
 
     stats = _get_json(client, base_url, "/api/stats", "GET /api/stats")
     _expect_non_empty_stats(stats)
@@ -214,6 +223,18 @@ def _scrape_counters_note(client: httpx.Client | Any, base_url: str) -> str:
         return ""
     picked = {k: v for k, v in sorted(counters.items()) if k.startswith(("scrape_", "predict_"))}
     return f" | /api/metrics: {picked}" if picked else ""
+
+
+def _db_fallback_warning(predict: dict[str, Any], counters_note: str) -> str:
+    """Строка-аннотация GitHub Actions: оценка из базы, источник отказал."""
+    as_of = predict.get("data_as_of") or "неизвестной даты"
+    text = (
+        f"POST /api/predict demo: оценка из нашей базы (данные на {as_of}) — "
+        "krisha.kz отказывает в страницах объявлений (SafeLine)"
+        f"{counters_note}"
+    )
+    # Аннотация однострочная: перевод строки оборвал бы её в логе Actions.
+    return "::warning::" + text.replace("\r", " ").replace("\n", " ")
 
 
 def _demo_url(client: httpx.Client | Any, base_url: str) -> str:

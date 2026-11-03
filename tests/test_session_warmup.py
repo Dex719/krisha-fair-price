@@ -68,9 +68,10 @@ def _db_with_listing(tmp_path):
     db = tmp_path / "k.db"
     init_db(db)
     with get_conn(db) as conn:
+        # с полями детальной страницы: без них лот не попадает в демо-пул
         conn.execute(
-            "INSERT INTO listings (id, url, is_active, last_seen) "
-            "VALUES (7, 'https://krisha.kz/a/show/7', 1, datetime('now'))"
+            "INSERT INTO listings (id, url, is_active, last_seen, rooms, area, lat, lon, year_built) "
+            "VALUES (7, 'https://krisha.kz/a/show/7', 1, datetime('now'), 2, 55, 43.24, 76.91, 2015)"
         )
     return db
 

@@ -94,6 +94,14 @@ DELIST_AFTER_DAYS = 3  # не видели в выдаче N дней → счи
 # остаётся выше неё и берётся следующим проходом, а не теряется до заворота.
 DETAIL_POISON_ATTEMPTS = 3
 
+# Инцидент 2026-11-02: столько лотов ПОДРЯД, где каждая попытка упёрлась в
+# страницу SafeLine (468-челлендж или 403-блок), — и докачка деталей
+# прерывается как по бану (BanDetected, banned_phase="details"). Без порога
+# 468 баном не считался: проход ~3 ч долбил челлендж до бюджета времени,
+# оставался зелёным с нулём деталей, а SafeLine эскалирует челлендж в блок.
+# Одиночный 468 среди успехов серию не начинает: успех/404 её сбрасывает.
+DETAIL_WAF_STREAK = 3
+
 # Сигнатуры анти-бот/капча-страниц (нижний регистр) — сервер отдал HTTP 200,
 # но это не выдача. Проверяются только на первой странице шарда, чтобы не
 # гонять re.search по мегабайтам HTML на каждой странице.
@@ -211,6 +219,33 @@ def _alert_ban(exc: BanDetected) -> None:
         )
     except Exception as e:  # noqa: BLE001 — алерт не должен уронить сам проход
         logger.warning("Не удалось отправить алерт о бане: %s", e)
+
+
+def _alert_zero_details(planned: int, stats_note: str) -> None:
+    """Алерт админу: детали были в плане, а не докачано ни одной (инцидент 2026-11-02).
+
+    Проход при этом не краснеет: выдача (цены, last_seen) валидна, и база
+    должна доехать до релиза — та же логика, что у бана на деталях в
+    `--fail-empty` (scripts/rescrape.py). Сигнал — этот алерт и ERROR в логе.
+    """
+    chat_id = os.environ.get(ADMIN_CHAT_ENV)
+    if not chat_id:
+        logger.info("%s не задан — алерт о нуле деталей не отправлен", ADMIN_CHAT_ENV)
+        return
+    from krisha.bot import tg_call
+
+    try:
+        tg_call(
+            "sendMessage",
+            chat_id=int(chat_id),
+            text=(
+                f"🕳 Krisha rescrape: докачано 0 деталей из {planned} в плане "
+                f"({stats_note}). Выдача обойдена и база заливается, но детальные "
+                "страницы /a/show/ источник не отдаёт — очередь деталей растёт."
+            ),
+        )
+    except Exception as e:  # noqa: BLE001 — алерт не должен уронить сам проход
+        logger.warning("Не удалось отправить алерт о нуле деталей: %s", e)
 
 
 def _alert_ban_rollback(streak: int) -> None:
@@ -878,6 +913,12 @@ def sweep(
             )
         new_count = 0
         stop_details = banned  # бан на выдаче — детали не качаем вовсе
+        # Инцидент 2026-11-02: на деталях серия «только SafeLine» — тоже бан.
+        # Включаем порог ТОЛЬКО здесь: на выдаче одиночные челленджи лечатся
+        # сменой сессии, и ранний стоп выдачи (красный проход без заливки)
+        # там был бы хуже, чем пара непокрытых шардов.
+        client.waf_streak_threshold = DETAIL_WAF_STREAK
+        details_planned = sum(len(p["window"]) for p in plan)
         details_started = _now()
         for p in plan:
             if stop_details:
@@ -1019,6 +1060,26 @@ def sweep(
                     upsert_listing(listing, db_path, price_bounds=bounds)
                     refreshed_count += 1
         detail_seconds = _now() - details_started
+        details_planned += refresh_queue_size
+
+    # Инцидент 2026-11-02: проход с нулём деталей при непустом плане был
+    # зелёным четыре ночи подряд, пока очередь росла 4172 → 7544. Бан на выдаче
+    # уже алертнут и красит проход сам — второй алерт там не нужен.
+    zero_details = (
+        details_planned > 0 and new_count + refreshed_count == 0 and banned_phase != "search"
+    )
+    if zero_details:
+        note = (
+            f"бан на деталях: {banned_phase == 'details'}, "
+            f"запросов {detail_requests}, бюджет времени: {time_budget_hit}"
+        )
+        logger.error(
+            "Докачано 0 деталей из %s в плане (%s) — источник не отдаёт "
+            "детальные страницы; база всё равно заливается",
+            details_planned,
+            note,
+        )
+        _alert_zero_details(details_planned, note)
 
     price_changes = 0
     known_seen = [lid for lid in found if lid in seen_in_db]
@@ -1292,6 +1353,10 @@ def sweep(
         # неполное покрытие, заливать нельзя. Раньше одна серия 403 на
         # деталях выбрасывала целиком успешный ночной обход.
         "banned_phase": banned_phase,
+        # Инцидент 2026-11-02: детали были в плане (окна шардов + устаревшие),
+        # а не докачано ни одной — алерт админу, проход не краснеет.
+        "details_planned": details_planned,
+        "zero_details": zero_details,
         # Мягкий стоп по своему дедлайну вместо жёсткого kill раннера,
         # который убивает джобу вместе с шагом заливки базы.
         "time_budget_hit": time_budget_hit,

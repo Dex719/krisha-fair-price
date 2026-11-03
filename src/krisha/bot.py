@@ -37,6 +37,7 @@ from krisha.predict import (
     DailyRentNotSupported,
     ListingNotFound,
     ListingOutsideAlmaty,
+    db_fallback_sql,
     is_almaty,
 )
 from krisha.scraping.client import SourceUnavailable
@@ -336,6 +337,17 @@ def verdict_line(result: dict[str, Any]) -> str:
     return f"{mark} <b>{word}: на {dec(abs(diff))}% {side} оценки</b>"
 
 
+def db_source_note(data_as_of: str | None) -> str:
+    """Строка карточки для оценки по нашей базе (source="db"): krisha не отдала
+    страницу. data_as_of приходит как YYYY-MM-DD, показываем ДД.ММ.ГГГГ."""
+    when = ""
+    if data_as_of:
+        parts = str(data_as_of)[:10].split("-")
+        if len(parts) == 3:
+            when = " на " + ".".join(reversed(parts))
+    return f"Оценка по нашим данным{when} — krisha.kz сейчас не отдаёт страницу объявления"
+
+
 def format_reply(result: dict[str, Any]) -> str:
     """Текст ответа бота (HTML) по результату predict_from_url.
 
@@ -383,6 +395,8 @@ def format_reply(result: dict[str, Any]) -> str:
         lines.append(f"{mark} <b>{head}:</b> {html.escape(reasons)}")
     if result.get("delisted_at") is not None:
         lines.append("🏁 По нашим данным объявление уже снято — оценка по последней цене.")
+    if result.get("source") == "db":
+        lines.append(f"🗂 {html.escape(db_source_note(result.get('data_as_of')))}")
 
     reno = result.get("renovation")
     if reno and reno.get("label"):
@@ -784,9 +798,10 @@ def _demo_url(deal: str) -> str | None:
 
     try:
         with get_conn(RENT_DB_PATH if deal == "arenda" else DB_PATH) as conn:
+            # как у /api/demo: только лоты, которые оцениваются и без страницы krisha
             rows = conn.execute(
                 "SELECT url FROM listings WHERE is_active = 1 AND url LIKE '%krisha.kz/a/show/%' "
-                "ORDER BY last_seen DESC LIMIT 50"
+                f"AND {db_fallback_sql(deal)} ORDER BY last_seen DESC LIMIT 50"
             ).fetchall()
     except Exception:  # noqa: BLE001 — нет базы — нет примера, бот отвечает подсказкой
         logger.warning("bot: не удалось взять пример из базы", exc_info=True)

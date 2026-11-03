@@ -126,6 +126,11 @@ class PredictResponse(BaseModel):
     # Объявление пропало из выдачи krisha по нашей базе (краулер пометил снятым),
     # хотя страница ещё открывается: когда пометили ("" — дата неизвестна), иначе None.
     delisted_at: str | None = None
+    # Откуда данные объявления: "live" — страница krisha прямо сейчас, "db" —
+    # krisha её не отдала, оценка по нашей базе (predict.predict_from_db) на
+    # дату data_as_of (YYYY-MM-DD); у живой оценки data_as_of = None.
+    source: Literal["live", "db"] = "live"
+    data_as_of: str | None = None
 
 
 class DemoResponse(BaseModel):

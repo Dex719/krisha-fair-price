@@ -94,6 +94,11 @@ jobs:
           # По расписанию inputs пусты, и дефолты `:-` работают как прежние `||`.
           INPUT_PAGES: ${{ github.event.inputs.pages }}
           INPUT_MAX_NEW: ${{ github.event.inputs.max_new }}
+          # Инцидент 2026-11-02: алерты прохода (_alert_ban, ноль деталей,
+          # откат разгона) шлёт сам rescrape — без этих двух строк они молча
+          # уходили в лог «TG_ADMIN_CHAT_ID не задан». Нет секрета — пусто, не шлём.
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
         # Аудит 03.10: --fail-below — та же защита от «тихо собрали мало», что
         # у продажи (8000 при стоке ~44k). Выдача аренды ~9k лотов, порог
         # 2000 срабатывает на обрезанной/заблокированной выдаче, а не на

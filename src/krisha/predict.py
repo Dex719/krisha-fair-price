@@ -9,7 +9,9 @@ import logging
 import re
 import sqlite3
 from collections.abc import Callable
+from datetime import date
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -35,7 +37,7 @@ from krisha.db import get_conn
 from krisha.features import listing_to_frame, listings_to_frame, model_center
 from krisha.geo import build_location_details
 from krisha.interval import MIN_INTERVAL_WIDTH_LOG, finalize_interval
-from krisha.scraping.client import PoliteClient, StickyCookies
+from krisha.scraping.client import PoliteClient, SourceUnavailable, StickyCookies
 from krisha.scraping.detail_parser import parse_detail
 
 logger = logging.getLogger(__name__)
@@ -529,6 +531,7 @@ def predict_from_listing(
     live_vision: bool = True,
     conn: sqlite3.Connection | None = None,
     deal: str | None = None,
+    record: bool = True,
 ) -> dict[str, Any]:
     """issue #110: `conn` — необязательное уже открытое SQLite-соединение,
     переданное вызывающим кодом (`predict_from_url`/`api/app.py`). Если None,
@@ -539,19 +542,26 @@ def predict_from_listing(
     analogs, log_prediction) — теперь один на всю функцию.
 
     `deal` — продажа или аренда; None — определить по объявлению
-    (krisha.rent.detect_deal). От него зависят модель, база рынка и подписи."""
+    (krisha.rent.detect_deal). От него зависят модель, база рынка и подписи.
+
+    `record=False` — не писать предикт в лог predictions: оценка по нашей же
+    базе (predict_from_db) не меняет базу ни строкой."""
     if deal is None:
         from krisha.rent import detect_deal
 
         deal = detect_deal(listing)
     if conn is None:
         with get_conn(RENT_DB_PATH if deal == RENT else DB_PATH) as new_conn:
-            return _predict_from_listing(listing, live_vision, new_conn, deal)
-    return _predict_from_listing(listing, live_vision, conn, deal)
+            return _predict_from_listing(listing, live_vision, new_conn, deal, record)
+    return _predict_from_listing(listing, live_vision, conn, deal, record)
 
 
 def _predict_from_listing(
-    listing: dict[str, Any], live_vision: bool, conn: sqlite3.Connection, deal: str = "prodazha"
+    listing: dict[str, Any],
+    live_vision: bool,
+    conn: sqlite3.Connection,
+    deal: str = "prodazha",
+    record: bool = True,
 ) -> dict[str, Any]:
     rent = deal == RENT
     model, meta = load_model(deal)
@@ -690,6 +700,8 @@ def _predict_from_listing(
     # predict_from_url, канальный через alerts.find_good_deals — оба
     # заходят сюда) — без этого нельзя проверить, работают ли вердикты:
     # через месяц сравниваем price drift/days-on-market по verdict.
+    if not record:
+        return result
     from krisha.db import log_prediction
 
     try:
@@ -809,6 +821,104 @@ def _delisted_at(conn: sqlite3.Connection, listing_id: Any) -> str | None:
     return row[1] or ""
 
 
+# Запасной путь, когда krisha не отдаёт страницу объявления: с 2026-11-02
+# SafeLine закрыл /a/show/ для всех наших IP, а выдача открыта
+# (docs/ai-graph/incidents/2026-11-02-prod-smoke-red.md). Оцениваем по своей
+# базе, но только строку с полями, которые заполняет ТОЛЬКО детальная страница
+# (parse_detail): выдача пишет лишь id/url/price (db.SIGHTING_UPSERT_SQL), и по
+# такой строке модель оценивала бы пустое место. Год постройки страница продажи
+# отдаёт всегда (в базе 24.10 — у всех 18 684 докачанных лотов), а у аренды
+# krisha его почти не показывает (2% строк): требовать его там — оставить
+# аренду без запасного пути.
+DB_FALLBACK_FIELDS = ("rooms", "area", "lat", "lon")
+DB_FALLBACK_FIELDS_SALE = (*DB_FALLBACK_FIELDS, "year_built")
+
+
+def db_fallback_fields(deal: str) -> tuple[str, ...]:
+    """Поля, без которых строку базы нельзя оценить вместо страницы объявления."""
+    return DB_FALLBACK_FIELDS if deal == RENT else DB_FALLBACK_FIELDS_SALE
+
+
+def db_fallback_sql(deal: str) -> str:
+    """То же SQL-условием — для выбора демо-лотов (api/app.py:_demo_pool)."""
+    return " AND ".join(f"{col} IS NOT NULL" for col in db_fallback_fields(deal))
+
+
+def _db_row(db_path: Path, listing_id: int) -> dict[str, Any] | None:
+    # Нет файла — не создаём на его месте пустую базу (sqlite3.connect создаёт).
+    if not Path(db_path).exists():
+        return None
+    try:
+        with get_conn(db_path) as conn:
+            row = conn.execute("SELECT * FROM listings WHERE id = ?", (listing_id,)).fetchone()
+    except (sqlite3.Error, OverflowError):
+        logger.warning("predict: строку %s в %s не прочитать", listing_id, db_path, exc_info=True)
+        return None
+    return dict(row) if row is not None else None
+
+
+def _data_as_of(row: dict[str, Any]) -> str | None:
+    """На какую дату верны данные строки, YYYY-MM-DD.
+
+    last_seen — когда рескрейп в последний раз видел лот в выдаче: тем же
+    проходом он обновляет и цену с карточки выдачи, а характеристики квартиры
+    не стареют. scraped_at (последняя докачка страницы) — только если
+    last_seen пуст (миграция заполняет его из scraped_at).
+    """
+    for col in ("last_seen", "scraped_at"):
+        raw = row.get(col)
+        if not raw:
+            continue
+        try:
+            return date.fromisoformat(str(raw)[:10]).isoformat()
+        except ValueError:
+            continue
+    return None
+
+
+def predict_from_db(listing_id: int) -> dict[str, Any] | None:
+    """Оценка по строке нашей базы — когда krisha не отдала страницу объявления.
+
+    None — строки нет или в ней нет полей детальной страницы
+    (db_fallback_fields): вызывающий отвечает отказом источника, как раньше.
+    Ни сети, ни живого vision, и базу не меняет ничем: ни upsert, ни лога
+    предикта. Результат помечен source="db" и data_as_of (см. _data_as_of).
+    """
+    from krisha.db import find_duplicate_id, listing_fingerprint
+    from krisha.rent import detect_deal, is_daily_rent
+
+    row, deal = _db_row(DB_PATH, listing_id), "prodazha"
+    # До слежки за арендой /track писал аренду в базу продажи — такие строки
+    # там есть (bot._track_listing_meta). Аренду оцениваем по базе аренды.
+    if row is None or detect_deal(row) == RENT:
+        row, deal = _db_row(RENT_DB_PATH, listing_id), RENT
+    if row is None or any(row.get(col) is None for col in db_fallback_fields(deal)):
+        return None
+    # Фото в базе не хранятся; deal — как у parse_detail, чтобы дальше не гадать.
+    listing = {**row, "deal": deal, "photos": []}
+    # Те же отказы, что у живого пути: в базу такие лоты не попадают, но
+    # оценка не должна зависеть от того, откуда пришли данные.
+    if not is_almaty(listing):
+        raise ListingOutsideAlmaty(OUTSIDE_ALMATY)
+    if deal == RENT and is_daily_rent(listing):
+        raise DailyRentNotSupported(DAILY_RENT)
+    with get_conn(RENT_DB_PATH if deal == RENT else DB_PATH) as conn:
+        result = predict_from_listing(
+            listing, live_vision=False, conn=conn, deal=deal, record=False
+        )
+        result["delisted_at"] = _delisted_at(conn, listing_id)
+        result["duplicate_of"] = None
+        try:
+            result["duplicate_of"] = find_duplicate_id(
+                listing_fingerprint(listing), listing_id, conn=conn
+            )
+        except Exception:  # noqa: BLE001 — дубль не должен ломать оценку
+            logger.warning("predict: поиск дубля по базе не удался", exc_info=True)
+    result["source"] = "db"
+    result["data_as_of"] = _data_as_of(row)
+    return result
+
+
 def predict_from_url(
     url: str,
     live_vision: bool = True,
@@ -828,8 +938,16 @@ def predict_from_url(
     # больше минуты на один запрос. timeout прокидывает вызывающий
     # (predict_gate.user_timeout: 5 с всего, 3 с на connect). Остальные
     # настройки пользовательского клиента — в user_client.
-    with user_client(timeout=timeout, on_attempt=on_attempt) as client:
-        html = client.get(url)
+    try:
+        with user_client(timeout=timeout, on_attempt=on_attempt) as client:
+            html = client.get(url)
+    except SourceUnavailable:
+        # Источник не отдал страницу (SafeLine, блок, таймауты) — оцениваем по
+        # своей базе, если там есть всё нужное модели; иначе — отказ, как раньше.
+        result = predict_from_db(int(match.group(1)))
+        if result is None:
+            raise
+        return result
     if html is None:
         # С raise_on_challenge любой отказ источника поднимает SourceUnavailable,
         # так что None здесь значит ровно одно — 404: объявления нет.
@@ -870,4 +988,6 @@ def predict_from_url(
             upsert_listing({**listing, "source": "user"}, conn=conn, price_bounds=price_bounds_for(deal))
         except Exception:  # noqa: BLE001 — сохранение не должно ломать оценку
             logger.warning("predict: не удалось сохранить объявление в базу", exc_info=True)
+    result["source"] = "live"
+    result["data_as_of"] = None
     return result
