@@ -35,4 +35,5 @@ meta, b = get(L + "almaty-medeuskij/?das[live.rooms][]=1&page=1")
 h = json.loads(b)["html"]
 i = h.find("a-card__text-preview")
 print("HTMLSAMPLE", re.sub(r"\s+", " ", h[:200]))
-open("/tmp/card.html", "w").write(h)
+j = h.find("<div data-id"); j = j if j >= 0 else 0
+print("CARDHTML", h[j:j+7000])
