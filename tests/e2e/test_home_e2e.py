@@ -222,6 +222,27 @@ def test_home_duplicate_listing_warns_about_repost(hermetic_page, mock_api, herm
     expect(warn).to_contain_text("Похоже на перезалив объявления №1012607661")
 
 
+def test_home_db_source_says_estimate_is_from_our_data(
+    hermetic_page, mock_api, hermetic_server, predict_fair
+):
+    """source="db": krisha не отдала страницу, оценка по нашей базе — одна строка с датой."""
+    page = hermetic_page
+    data = deepcopy(predict_fair)
+    data.update(source="db", data_as_of="2026-11-01")
+    mock_api(predict=data)
+    page.goto(hermetic_server + "/")
+    wait_ready(page)
+
+    submit(page)
+
+    warn = page.locator("#rWarn")
+    expect(warn).to_be_visible()
+    expect(warn).to_contain_text(
+        "Оценка по нашим данным на 01.11.2026 — krisha.kz сейчас не отдаёт страницу объявления"
+    )
+    expect(warn).to_have_class("rwarn soft")
+
+
 def test_home_predict_no_price_renders_model_estimate(hermetic_page, mock_api, hermetic_server, predict_no_price):
     """Объявление без цены: вердикта нет, но оценка модели показана честно —
 

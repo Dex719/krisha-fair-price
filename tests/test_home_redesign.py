@@ -259,6 +259,10 @@ def test_demo_endpoint_returns_active_listing_url_and_is_rate_limited(tmp_path, 
             "area": 55.0,
             "rooms": 2,
             "district": "Auezovskiy_r-n",
+            # поля детальной страницы: без них лот не попадает в демо-пул
+            "lat": 43.24,
+            "lon": 76.91,
+            "year_built": 2015,
             "source": "test",
         },
         db_path=db_path,
@@ -303,7 +307,8 @@ def test_demo_endpoint_serves_rent_listing_from_rent_base(tmp_path, monkeypatch)
     db.init_db(rent_path)
     db.upsert_listing(
         {"id": 555000111, "url": "https://krisha.kz/a/show/555000111", "title": "Аренда",
-         "price": 300_000, "area": 50.0, "rooms": 2, "district": "Auezovskiy_r-n", "source": "test"},
+         "price": 300_000, "area": 50.0, "rooms": 2, "district": "Auezovskiy_r-n",
+         "lat": 43.24, "lon": 76.91, "source": "test"},
         db_path=rent_path, price_bounds=(20_000, 10_000_000),
     )
     monkeypatch.setattr(app_module, "RENT_DB_PATH", rent_path)

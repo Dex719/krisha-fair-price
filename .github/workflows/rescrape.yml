@@ -100,6 +100,11 @@ jobs:
           INPUT_PAGES: ${{ github.event.inputs.pages }}
           INPUT_MAX_NEW: ${{ github.event.inputs.max_new }}
           INPUT_TIME_BUDGET_MIN: ${{ github.event.inputs.time_budget_min }}
+          # Инцидент 2026-11-02: алерты прохода (_alert_ban, ноль деталей,
+          # откат разгона) шлёт сам rescrape — без этих двух строк они молча
+          # уходили в лог «TG_ADMIN_CHAT_ID не задан». Нет секрета — пусто, не шлём.
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_ADMIN_CHAT_ID: ${{ secrets.TG_ADMIN_CHAT_ID }}
         run: |
           # Пустой max_new = «не передавать --max-new» (пресет режима, см. выше),
           # поэтому флаг добавляем только непустому значению.

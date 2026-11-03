@@ -255,3 +255,27 @@ def test_keepalive_restores_health_state_after_checkout():
     save = next(i for i, u in enumerate(uses) if u.startswith("actions/cache/save@"))
     check = _index(steps, "Health check")
     assert checkout < restore < check < save
+
+
+def test_rescrape_steps_pass_telegram_secrets_for_pass_alerts():
+    """Инцидент 2026-11-02: _alert_ban / алерт «0 деталей» шлёт сам rescrape —
+    без этих env шаг писал «TG_ADMIN_CHAT_ID не задан», и бан на деталях
+    четыре ночи не доходил до админа."""
+    for workflow, step in (("rescrape.yml", "Rescrape"), ("rescrape-rent.yml", "Rescrape rent")):
+        env = _named(_all_steps(workflow), step)["env"]
+        assert env["TELEGRAM_BOT_TOKEN"] == "${{ secrets.TELEGRAM_BOT_TOKEN }}", workflow
+        assert env["TG_ADMIN_CHAT_ID"] == "${{ secrets.TG_ADMIN_CHAT_ID }}", workflow
+
+
+def test_db_upload_survives_a_green_rescrape_with_details_ban():
+    """Бан на деталях и «0 деталей» не красят шаг Rescrape (scripts/rescrape.py),
+    а заливка базы и снапшот идут сразу за ним без своего if — значит, валидная
+    выдача доезжает до релиза. Если заливку когда-нибудь закроют условием,
+    этот тест напомнит, что выдачу после бана на деталях терять нельзя."""
+    for workflow, rescrape_step, upload_step in (
+        ("rescrape.yml", "Rescrape", "Upload DB to release"),
+        ("rescrape-rent.yml", "Rescrape rent", "Upload rent DB to release"),
+    ):
+        steps = _all_steps(workflow)
+        assert _index(steps, rescrape_step) < _index(steps, upload_step)
+        assert "if" not in _named(steps, upload_step), workflow

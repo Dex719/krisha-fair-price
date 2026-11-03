@@ -243,3 +243,79 @@ def test_retry_after_header_is_honoured_and_capped():
 
     assert smoke_prod._retry_after_s(WithHeader(), 4.0) == 7.0
     assert smoke_prod._retry_after_s(Absurd(), 4.0) == smoke_prod.PREDICT_RETRY_WAIT_MAX_S
+
+
+# --- Оценка из базы, когда источник закрыт ----------------------------------
+# Инцидент 2026-11-02: krisha закрыла страницы объявлений SafeLine, прод вместо
+# 503 оценивает лот по нашей базе (`source: "db"`). Смоук зелёный (issue #157:
+# постоянно красная проверка хуже отсутствующей), но отказ источника виден
+# аннотацией ::warning:: в логе Actions.
+
+_PREDICT_OK = {"listing_id": 123, "fair_price": 45_000_000, "verdict": "FAIR"}
+
+
+def _predict_client(payload):
+    client = _ok_client()
+    client.post_map["/api/predict"] = FakeResponse(json_data=payload)
+    return client
+
+
+def test_db_estimate_passes_with_visible_warning(capsys):
+    client = _predict_client({**_PREDICT_OK, "source": "db", "data_as_of": "2026-11-01"})
+    client.get_map["/api/metrics"] = FakeResponse(
+        json_data={"counters": {"scrape_http_403": 5, "rate_limited": 1}}
+    )
+
+    checks = smoke_prod.run_smoke("https://prod.example", client=client)
+
+    assert any(c.startswith("POST /api/predict demo") for c in checks)
+    assert "GET /api/forecast" in checks, "остальные проверки идут дальше"
+    out = capsys.readouterr().out
+    warnings = [line for line in out.splitlines() if line.startswith("::warning::")]
+    assert len(warnings) == 1
+    assert "2026-11-01" in warnings[0] and "SafeLine" in warnings[0]
+    assert "'scrape_http_403': 5" in warnings[0] and "rate_limited" not in warnings[0]
+
+
+def test_db_estimate_without_date_or_metrics_still_warns(capsys):
+    client = _predict_client({**_PREDICT_OK, "source": "db", "data_as_of": None})
+
+    smoke_prod.run_smoke("https://prod.example", client=client)
+
+    assert "::warning::" in capsys.readouterr().out
+
+
+def test_db_estimate_must_still_carry_a_price():
+    client = _predict_client({"listing_id": 123, "source": "db", "data_as_of": "2026-11-01"})
+
+    with pytest.raises(smoke_prod.SmokeError, match="fair_price"):
+        smoke_prod.run_smoke("https://prod.example", client=client)
+
+
+def test_live_estimate_passes_without_warning(capsys):
+    client = _predict_client({**_PREDICT_OK, "source": "live", "data_as_of": None})
+
+    checks = smoke_prod.run_smoke("https://prod.example", client=client)
+
+    assert "POST /api/predict demo" in checks
+    assert "::warning::" not in capsys.readouterr().out
+
+
+def test_response_without_source_is_treated_as_live(capsys):
+    """Старый прод не знает о полях source/data_as_of — это живая оценка."""
+    client = _predict_client(_PREDICT_OK)
+
+    checks = smoke_prod.run_smoke("https://prod.example", client=client)
+
+    assert "POST /api/predict demo" in checks
+    assert "::warning::" not in capsys.readouterr().out
+
+
+def test_source_refusal_503_is_still_a_failure(monkeypatch, capsys):
+    """Фолбэк в базу не сработал и прод ответил 503 — это падение, не warning."""
+    monkeypatch.setattr(smoke_prod.time, "sleep", lambda _s: None)
+    client = _sequenced_client([_busy()])
+
+    with pytest.raises(smoke_prod.SmokeError, match="HTTP 503"):
+        smoke_prod.run_smoke("https://prod.example", client=client)
+    assert "::warning::" not in capsys.readouterr().out

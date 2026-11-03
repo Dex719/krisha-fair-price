@@ -70,6 +70,10 @@ PREDICT_NEGATIVE_TTL_S = _env_float("PREDICT_NEGATIVE_TTL_S", 60.0)
 # этих секунд восемь человек с одной ссылкой давали восемь скрейпов подряд,
 # пять из них — уже после того, как клиентам ответили 503 (аудит 24.10).
 SOURCE_FAILURE_TTL_S = _env_float("SOURCE_FAILURE_TTL_S", 4.0)
+# Оценка по нашей базе (krisha не отдала страницу, predict.predict_from_db) —
+# тоже про сиюминутное состояние источника: держим минуту, а не десять, чтобы
+# после того, как krisha оживёт, люди быстрее получили живую оценку.
+DB_RESULT_TTL_S = _env_float("PREDICT_DB_RESULT_TTL_S", 60.0)
 PREDICT_SLOTS = max(1, _env_int("PREDICT_SLOTS", 10))
 # Сколько ждать свободный слот, прежде чем отказать. 15 с — верхняя граница
 # терпения человека, который смотрит на спиннер.
@@ -91,6 +95,8 @@ _negative: TTLCache = TTLCache(ttl=PREDICT_NEGATIVE_TTL_S, maxsize=2048)
 # perf_counter, а не monotonic: на Windows у monotonic шаг ~16 мс, и «отказ
 # случился, пока я ждал» неотличим от «отказ был до меня».
 _source_failures: TTLCache = TTLCache(ttl=SOURCE_FAILURE_TTL_S, maxsize=2048)
+# Оценки по базе — отдельно: у TTLCache один TTL на весь кэш (см. _DbResult).
+_db_results: TTLCache = TTLCache(ttl=DB_RESULT_TTL_S, maxsize=2048)
 _slots = threading.BoundedSemaphore(PREDICT_SLOTS)
 _busy_count = 0
 _busy_lock = threading.Lock()
@@ -114,12 +120,33 @@ def cache_key(url: str, live_vision: bool = False) -> str:
     return f"{base}:v" if live_vision else base
 
 
-def peek(url: str, live_vision: bool = False) -> dict[str, Any] | None:
-    """Готовый разбор из кэша или None. Без единого похода наружу."""
-    entry = _cache.peek(cache_key(url, live_vision))
-    if entry is not None and entry[0] < PREDICT_CACHE_TTL_S:
+class _DbResult(Exception):
+    """Не ошибка: оценка по базе, вынесенная из-под основного кэша.
+
+    TTLCache кладёт в себя всё, что вернул producer, с одним TTL на кэш. Чтобы
+    оценка по базе жила короче живой, producer её не возвращает, а бросает:
+    основной кэш её не запоминает, калитка кладёт её в короткий _db_results.
+    """
+
+    def __init__(self, result: dict[str, Any]) -> None:
+        super().__init__("оценка по базе")
+        self.result = result
+
+
+def _fresh_db_result(key: str) -> dict[str, Any] | None:
+    entry = _db_results.peek(key)
+    if entry is not None and entry[0] < DB_RESULT_TTL_S:
         return entry[1]
     return None
+
+
+def peek(url: str, live_vision: bool = False) -> dict[str, Any] | None:
+    """Готовый разбор из кэша или None. Без единого похода наружу."""
+    key = cache_key(url, live_vision)
+    entry = _cache.peek(key)
+    if entry is not None and entry[0] < PREDICT_CACHE_TTL_S:
+        return entry[1]
+    return _fresh_db_result(key)
 
 
 def peek_failure(url: str, live_vision: bool = False) -> Exception | None:
@@ -193,6 +220,7 @@ def stats() -> dict[str, int]:
         "cached": len(_cache),
         "negative": len(_negative),
         "source_failures": len(_source_failures),
+        "db_results": len(_db_results),
         "slots": PREDICT_SLOTS,
         "busy": _busy_count,
     }
@@ -204,6 +232,7 @@ def clear() -> None:
     _cache.clear()
     _negative.clear()
     _source_failures.clear()
+    _db_results.clear()
     with _busy_lock:
         _busy_count = 0
 
@@ -244,9 +273,13 @@ def _run(url: str, live_vision: bool, wait_s: float) -> dict[str, Any]:
     with _busy_lock:
         _busy_count += 1
     try:
-        return predict_from_url(
+        result = predict_from_url(
             url, live_vision=live_vision, timeout=user_timeout(), on_attempt=count_scrape_attempt
         )
+        if result.get("source") == "db":
+            # krisha не отдала страницу, ответили по базе — видно в /api/metrics
+            metrics.bump("predict_db_fallback")
+        return result
     finally:
         with _busy_lock:
             _busy_count -= 1
@@ -264,6 +297,8 @@ def cached_predict(
     и проверяется она ДО кэша и слотов — мусор не занимает ни лок, ни слот.
     ``SourceUnavailable`` (и его ``ChallengeBlocked``) кэшируется на секунды
     (``SOURCE_FAILURE_TTL_S``): это состояние чужого сервера, а не объявления.
+    Оценка по нашей базе (``source="db"``) живёт ``DB_RESULT_TTL_S``, а не
+    ``PREDICT_CACHE_TTL_S`` — по той же причине.
     """
     if not KRISHA_URL_RE.search(url or ""):
         raise InvalidListingUrl("Ожидается ссылка вида https://krisha.kz/a/show/<id>")
@@ -271,6 +306,9 @@ def cached_predict(
     fresh = _cache.peek(key)
     if fresh is not None and fresh[0] < PREDICT_CACHE_TTL_S:
         return fresh[1]
+    from_db = _fresh_db_result(key)
+    if from_db is not None:
+        return from_db
     failure = _fresh_failure(key)
     if failure is not None:
         raise failure
@@ -281,10 +319,24 @@ def cached_predict(
         failed = _fresh_failure(key, since)
         if failed is not None:
             raise failed
+        # ...или получить оценку по базе: она не в _cache, но тоже ответ всем ждущим.
+        answered = _fresh_db_result(key)
+        if answered is not None:
+            raise _DbResult(answered)
 
     wait = PREDICT_SLOT_WAIT_S if wait_s is None else wait_s
+
+    def produce() -> dict[str, Any]:
+        result = _run(url, live_vision, wait)
+        if result.get("source") == "db":
+            _db_results.set(key, result)
+            raise _DbResult(result)
+        return result
+
     try:
-        return _cache.get_or_call(key, lambda: _run(url, live_vision, wait), recheck=recheck)
+        return _cache.get_or_call(key, produce, recheck=recheck)
+    except _DbResult as answered:
+        return answered.result
     except (PredictBusy, InvalidListingUrl):
         # Занятость — состояние сервиса, а не свойство объявления; кривой URL —
         # ошибка ввода. Ни то, ни другое в негативный кэш не кладём.

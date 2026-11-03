@@ -393,6 +393,11 @@ bagam.ready(function(b){
         '<i>По нашим данным оно пропало из выдачи krisha.kz' + (when ? ' (' + esc(when) + ')' : '') +
         '. Оценка — по последней цене в объявлении: квартира могла уже уйти.</i></div>');
     }
+    /* krisha не отдала страницу — оценка по нашей базе на дату data_as_of (YYYY-MM-DD → ДД.ММ.ГГГГ) */
+    if (r.source === 'db'){
+      const asOf = /^\d{4}-\d{2}-\d{2}/.test(r.data_as_of || '') ? ' на ' + r.data_as_of.slice(0, 10).split('-').reverse().join('.') : '';
+      parts.push('<div><b>Оценка по нашим данным' + esc(asOf) + ' — krisha.kz сейчас не отдаёт страницу объявления</b></div>');
+    }
     const st = staleText();
     if (st) parts.push('<div><b>Данные рынка устарели</b><i>' + esc(st) + '</i></div>');
     if (r.duplicate_of){

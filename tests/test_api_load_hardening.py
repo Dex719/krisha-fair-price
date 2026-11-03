@@ -34,6 +34,10 @@ def _seed(db_path, listing_id: int = 9001, last_seen: datetime | None = None) ->
             "area": 55.0,
             "rooms": 2,
             "district": "Auezovskiy_r-n",
+            # поля детальной страницы: без них лот не попадает в демо-пул
+            "lat": 43.24,
+            "lon": 76.91,
+            "year_built": 2015,
             "source": "test",
         },
         db_path=db_path,

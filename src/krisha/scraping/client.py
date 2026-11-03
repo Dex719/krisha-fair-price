@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 class BanDetected(RuntimeError):
     """Несколько URL подряд отдали ТОЛЬКО HTTP 403 на всех попытках (issue #101).
 
+    Или — если включён `waf_streak_threshold` — ТОЛЬКО страницу SafeLine
+    (468-челлендж или 403-блок) на всех попытках (инцидент 2026-11-02).
+
     Это отличается от 429 (троттлинг — тем же UA/IP через эскалирующий
     бэкофф обычно снова пускают): серия 403 обычно значит бан по IP/JA3
     (датацентр-диапазоны GitHub Actions публично известны Cloudflare).
@@ -137,6 +140,7 @@ class PoliteClient:
         raise_on_challenge: bool = False,
         cookie_store: StickyCookies | None = None,
         on_attempt: Callable[[str], None] | None = None,
+        waf_streak_threshold: int | None = None,
     ):
         self.delay_range = delay_range
         self.max_retries = max(1, int(max_retries))
@@ -161,6 +165,16 @@ class PoliteClient:
         self.on_attempt = on_attempt
         self.ban_streak_threshold = max(1, int(ban_streak_threshold))
         self._ban_streak = 0
+        # Инцидент 2026-11-02: krisha закрыла SafeLine'ом КАЖДУЮ детальную
+        # страницу, а 468 серию 403 не продолжает (челлендж «вероятностный»,
+        # см. ChallengeBlocked) — докачка три часа долбила WAF до бюджета
+        # времени, проход оставался зелёным с нулём деталей. Серия из N URL
+        # подряд, где ВСЕ попытки упёрлись в страницу SafeLine (468 или
+        # 403-блок, в любой смеси), — тоже BanDetected. None — выключено
+        # (дефолт): выдача и пользовательский путь живут по-прежнему, rescrape
+        # включает порог только на фазе деталей (DETAIL_WAF_STREAK).
+        self.waf_streak_threshold = waf_streak_threshold
+        self._waf_streak = 0
         # issue #152: без телеметрии «подходим ли мы к грани» ненаблюдаемо —
         # единичные 403 и 429 тонут в warning-логах, а latency растёт задолго
         # до первого бана. Счётчики уезжают в summary-JSON прохода.
@@ -286,6 +300,7 @@ class PoliteClient:
                 if resp.status_code == 200:
                     self._count("http_200")
                     self._ban_streak = 0
+                    self._waf_streak = 0
                     if self.cookie_store is not None:
                         # Сессия дошла до объявления — её куки (ведро A) отдаём
                         # следующим пользовательским запросам.
@@ -294,6 +309,7 @@ class PoliteClient:
                 if resp.status_code == 404:
                     self._count("http_404")
                     self._ban_streak = 0
+                    self._waf_streak = 0
                     logger.warning("404: %s", url)
                     return None
                 if resp.status_code == 429:
@@ -349,6 +365,20 @@ class PoliteClient:
             raise SourceUnavailable(
                 f"{attempts_done} попыток без страницы ({url}) — источник временно недоступен"
             )
+
+        if self.waf_streak_threshold and waf_hits and waf_hits == attempts_done:
+            self._waf_streak += 1
+            if self._waf_streak >= self.waf_streak_threshold:
+                streak, url_at_streak = self._waf_streak, url
+                self._waf_streak = 0
+                self._ban_streak = 0
+                raise BanDetected(
+                    f"{streak} URL подряд получили только страницу SafeLine "
+                    f"(468-челлендж / 403-блок) на всех попытках (последний: "
+                    f"{url_at_streak}) — источник закрыт anti-bot'ом, а не случайный челлендж"
+                )
+        else:
+            self._waf_streak = 0
 
         if saw_403 and all_403:
             self._ban_streak += 1
